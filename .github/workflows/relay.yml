@@ -85,6 +85,9 @@ jobs:
   checks:
     needs: decide
     if: needs.decide.outputs.checks == 'true'
+    concurrency:
+      group: factory-checks-${{ github.repository }}-${{ needs.decide.outputs.pr }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
