@@ -1,4 +1,5 @@
 import { COLUMNS, boardItems, waitsForOwner, toggleSkill, setPath, toBase64, fromBase64 } from './lib.mjs';
+import { stageMinutes, estimate, etaText } from './eta.mjs';
 import { resolveConfig } from './config-core.mjs';
 
 const API = 'https://api.github.com';
@@ -111,6 +112,15 @@ async function renderBoard() {
   const items = (await api(`/repos/${current.repo.full_name}/issues?state=open&per_page=100`))
     .map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
   const cards = boardItems(items);
+  // Label history of the repo (most recent first), for the time estimates. Never blocks the board.
+  const events = [];
+  for (let page = 1; page <= 3; page++) {
+    const batch = await api(`/repos/${current.repo.full_name}/issues/events?per_page=100&page=${page}`).catch(() => []);
+    events.push(...batch);
+    if (batch.length < 100) break;
+  }
+  const now = Date.now();
+  const minutes = stageMinutes(events, now);
   const mine = cards.filter((c) => waitsForOwner(c.labels));
   const summary = mine.length
     ? el('p', { class: 'summary' }, mine.length === 1 ? '1 élément attend ta réponse.' : `${mine.length} éléments attendent ta réponse.`)
@@ -121,7 +131,8 @@ async function renderBoard() {
       el('h2', {}, col.title, el('span', {}, String(inCol.length))),
       inCol.length ? inCol.map((c) => el('a', { class: `item${waitsForOwner(c.labels) ? ' you' : ''}`, href: c.html_url, target: '_blank', rel: 'noopener' },
         c.title,
-        el('small', {}, `${c.pull_request ? 'PR' : 'Issue'} #${c.number}${c.labels.includes('factory:running') ? ' · un agent travaille' : waitsForOwner(c.labels) ? ' · à toi' : ''}`)))
+        el('small', {}, `${c.pull_request ? 'PR' : 'Issue'} #${c.number}${c.labels.includes('factory:running') ? ' · un agent travaille' : waitsForOwner(c.labels) ? ' · à toi' : ''}`),
+        el('small', { class: 'eta' }, etaText(estimate(c, events, minutes, now)))))
         : el('p', { class: 'empty-col' }, '—'));
   }));
   board.replaceChildren(summary, grid);
