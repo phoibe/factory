@@ -11,6 +11,7 @@ export const L = {
   checks: 'factory:checks',
   acceptance: 'factory:acceptance',
   fixing: 'factory:fixing',
+  pending: 'factory:pending',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -27,6 +28,7 @@ export const LABEL_DEFS = [
   [L.checks, '5319e7', 'Contrôles automatiques en cours'],
   [L.acceptance, 'fbca04', 'Recette : teste la preview et réponds « ok »'],
   [L.fixing, 'e99695', "Correction en cours après un contrôle rouge"],
+  [L.pending, 'bfdadc', "Message reçu pendant qu'un agent travaillait, traité juste après"],
 ];
 
 export const AGENT_MARKER = '<!-- factory-agent -->';

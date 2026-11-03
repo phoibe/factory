@@ -1,23 +1,31 @@
 import { L } from './labels.mjs';
 
-const APPROVALS = ['go', 'ok', 'okay', 'oui', 'yes', 'valide', 'validé', 'validée', "c'est bon", 'cest bon', 'on y va',
-  'lgtm', 'parfait', 'nickel', 'top', 'ça me va', 'ca me va', 'approuvé', '👍', '✅'];
-const RESERVATIONS = /\b(mais|sauf|par contre|cependant|toutefois|non|pas encore)\b|\?/;
+// Words allowed in an approval. Every word of the message must be one of them, and one must be a "core" word,
+// so "ok, le bouton en rouge" is a change request, not an approval.
+const CORE = new Set(['go', 'ok', 'okay', 'oui', 'yes', 'valide', 'validé', 'validée', 'validées', 'bon', 'lgtm', 'parfait', 'nickel',
+  'top', 'super', 'génial', 'accord', "d'accord", 'daccord', 'approuvé', 'approuvée', 'va', 'vas-y', 'parfaitement', '👍', '✅', '👌']);
+const FILLER = new Set(["c'est", 'cest', 'on', 'y', 'ça', 'ca', 'me', 'merci', 'tout', 'pour', 'moi', 'très', 'tres', 'bien', 'est',
+  'vas', 'allez', 'c', 'ok!', 'beaucoup', 'là', 'la', 'alors', 'du', 'coup', 'parfait!']);
 
 // True when a message is a short, unconditional "yes" (e.g. "Go !", "Oui c'est bon", "👍").
 export function isApproval(text) {
-  const t = String(text || '').trim().toLowerCase().replace(/[’`]/g, "'");
-  if (!t || RESERVATIONS.test(t)) return false;
-  if (t.split(/\s+/).length > 6) return false;
-  const bare = t.replace(/^[^\p{L}\p{Extended_Pictographic}]+/u, '');
-  return APPROVALS.some((a) => bare === a || bare.startsWith(a + ' ') || bare.startsWith(a + '!') || bare.startsWith(a + '.')
-    || bare.startsWith(a + ',') || (/\p{Extended_Pictographic}/u.test(a) && bare.startsWith(a)));
+  const t = String(text || '').toLowerCase().replace(/[’`]/g, "'");
+  const words = t
+    .replace(/(\p{Extended_Pictographic})/gu, ' $1 ')
+    .replace(/[!.,;:()…"«»\-–—]+(?=\s|$)/g, ' ')
+    .replace(/[️‍]/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length || words.length > 8 || t.includes('?')) return false;
+  if (!words.every((w) => CORE.has(w) || FILLER.has(w))) return false;
+  return words.some((w) => CORE.has(w));
 }
 
 const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
 const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked];
+const isFactoryIssue = (labels) => has(labels, L.feature) || has(labels, L.bug);
 
 function startIssue(ev, config, ctx) {
   if (has(ev.labels, L.bug)) {
@@ -31,11 +39,11 @@ function startIssue(ev, config, ctx) {
 function onIssue(ev, config, ctx) {
   if (ev.event === 'issues') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'issue fermée' };
-    const isFactory = has(ev.labels, L.feature) || has(ev.labels, L.bug);
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug].includes(ev.addedLabel));
-    if (!starting || !isFactory) return ignore('événement non pertinent');
+    if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (!ev.fromOwner) return ignore("issue ouverte par quelqu'un d'autre que le propriétaire");
-    if (STATE_LABELS.some((l) => has(ev.labels, l))) return ignore('issue déjà prise en charge');
+    if (ev.fromAgent) return ignore("issue proposée par l'agent : elle démarre quand le propriétaire y écrit");
+    if (has(ev.labels, L.running) || STATE_LABELS.some((l) => has(ev.labels, l))) return ignore('issue déjà prise en charge');
     return startIssue(ev, config, ctx);
   }
   // A comment on an issue.
@@ -48,13 +56,17 @@ function onIssue(ev, config, ctx) {
   }
   if (has(ev.labels, L.queued)) return ignore("issue en file d'attente");
   if (has(ev.labels, L.building)) return fire('feedback');
+  if (isFactoryIssue(ev.labels)) return startIssue(ev, config, ctx); // e.g. an idea the agent filed
   return ignore('issue hors factory');
 }
 
-function onPr(ev, config) {
+function onPr(ev) {
   if (ev.event === 'pull_request') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'PR fermée' };
     if (!ev.fromOwner) return ignore("PR d'un tiers");
+    if (ev.action === 'synchronize' && has(ev.labels, L.acceptance)) {
+      return { type: 'checks', add: [L.checks], remove: [L.acceptance], reason: 'nouveau code pendant la recette : on recontrôle' };
+    }
     const checksNow = has(ev.labels, L.checks)
       && (ev.action === 'synchronize' || ev.action === 'opened' || ev.action === 'reopened' || (ev.action === 'labeled' && ev.addedLabel === L.checks));
     return checksNow ? { type: 'checks', add: [], remove: [], reason: 'PR prête pour les contrôles' } : ignore('rien à faire sur cette PR');
@@ -75,13 +87,17 @@ function onPr(ev, config) {
 
 // Turns one GitHub event into one factory action. Pure: all IO lives in relay.mjs.
 export function decide(ev, config, ctx) {
+  if (ev.kind === 'dispatch') return ev.payload ? { type: 'agent', reason: 'lancement de l\'agent sur GitHub Actions' } : ignore('rien à lancer');
+  if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
+    return ev.removedLabel === L.running && has(ev.labels, L.pending) ? { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" } : ignore('label retiré');
+  }
   const isComment = ev.event === 'issue_comment' || ev.event === 'pull_request_review';
   if (isComment) {
     if (ev.fromAgent) return ignore("message de l'agent");
     if (!ev.fromOwner) return ignore("message de quelqu'un d'autre que le propriétaire");
-    if (ctx.lockFresh) return ignore("un agent travaille déjà : il lira ce message avant de finir");
     if (ev.event === 'issue_comment' && ev.action !== 'created') return ignore('commentaire modifié');
     if (ev.event === 'pull_request_review' && ev.action !== 'submitted') return ignore('revue non soumise');
+    if (ctx.lockFresh) return { type: 'defer', add: [L.pending], remove: [], reason: 'un agent travaille : message traité dès qu\'il a fini' };
   }
   return ev.kind === 'pr' ? onPr(ev, config) : onIssue(ev, config, ctx);
 }

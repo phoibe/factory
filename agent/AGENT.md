@@ -63,13 +63,18 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 Sur l'issue : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
-Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques) →
+Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques, à poser
+même si les contrôles sont désactivés : la factory passe alors directement à la suite) →
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
 - Quand ton étape le dit, change les labels (voir « API GitHub »).
-- **À la fin de chaque run**, retire `factory:running` de l'issue et de la PR concernées, même en cas d'échec.
-- Juste avant de terminer, relis les commentaires : si le propriétaire a écrit depuis le début de ton run,
-  traite son message dans ce même run (c'est pour ça que la factory ne t'a pas relancé).
+- **La toute dernière action de chaque run**, même en cas d'échec : retirer `factory:running` de l'issue et
+  de la PR concernées. Rien après.
+- Ne traite pas les messages que le propriétaire écrit pendant ton run (la factory les a marqués 👀) : elle
+  les traitera elle-même dès que tu retires `factory:running`. Ne fais jamais toi-même une transition que
+  seule la factory fait : passer en construction après un « go », lancer les contrôles, fusionner.
+- Quand tu ouvres une issue pour une idée nouvelle, mets `<!-- factory-agent -->` au début de sa description
+  et le label `factory:feature` : elle ne démarrera que quand le propriétaire y écrira.
 
 ## Code et Git
 

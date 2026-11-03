@@ -8,13 +8,15 @@ const ctx = { inFlight: 0, lockFresh: false };
 const ev = (o) => ({ kind: 'issue', event: 'issue_comment', action: 'created', number: 1, labels: [], text: '', fromOwner: true, fromAgent: false, ...o });
 
 test('isApproval accepts short approvals', () => {
-  for (const t of ['go', 'Go !', 'ok', 'OK.', 'oui', "Oui c'est bon", '👍', '✅', 'validé', 'on y va', 'LGTM', 'ça me va']) {
+  for (const t of ['go', 'Go !', 'ok', 'OK.', 'oui', "Oui c'est bon", '👍', '✅', 'validé', 'on y va', 'LGTM', 'ça me va',
+    'Parfait, merci !', "Oui c’est bon pour moi", 'ok 👍', 'vas-y', "d'accord"]) {
     assert.equal(isApproval(t), true, t);
   }
 });
 
 test('isApproval rejects conditional or long answers', () => {
   for (const t of ['ok mais change la couleur', 'oui sauf le bouton', 'ok ?', 'non', '', 'go pour la partie 1 par contre la 2 non',
+    'ok, le bouton en rouge', 'go, et ajoute un export', 'top, change juste le titre', 'merci',
     'le bouton est trop gros, ok ?', 'ok je pense que ce serait mieux avec un autre titre en haut de page']) {
     assert.equal(isApproval(t), false, t);
   }
@@ -73,7 +75,32 @@ test('comments by the agent, strangers, or during a live run are ignored', () =>
   const base = { labels: [L.feature, L.grilling], text: 'x' };
   assert.equal(decide(ev({ ...base, fromAgent: true }), config, ctx).type, 'ignore');
   assert.equal(decide(ev({ ...base, fromOwner: false }), config, ctx).type, 'ignore');
-  assert.equal(decide(ev(base), config, { ...ctx, lockFresh: true }).type, 'ignore');
+  const d = decide(ev(base), config, { ...ctx, lockFresh: true });
+  assert.deepEqual([d.type, d.add], ['defer', [L.pending]]);
+});
+
+test('issues the agent files do not start on their own, a comment from the owner starts them', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.feature], fromAgent: true }), config, ctx).type, 'ignore');
+  assert.equal(decide(ev({ labels: [L.feature], text: 'vas-y' }), config, ctx).stage, 'grilling');
+});
+
+test('a second start event on an issue already locked is ignored', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'labeled', addedLabel: L.feature, labels: [L.feature, L.running] }), config, ctx).type, 'ignore');
+});
+
+test('removing the running label replays a deferred message', () => {
+  const e = ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.grilling, L.pending] });
+  assert.equal(decide(e, config, ctx).type, 'replay');
+  assert.equal(decide({ ...e, labels: [L.grilling] }, config, ctx).type, 'ignore');
+});
+
+test('a dispatch with a payload starts the Actions agent', () => {
+  assert.equal(decide({ kind: 'dispatch', payload: '{}' }, config, ctx).type, 'agent');
+});
+
+test('a push during acceptance sends the PR back to checks', () => {
+  const a = decide(pr({ event: 'pull_request', action: 'synchronize', labels: [L.acceptance] }), config, ctx);
+  assert.deepEqual([a.type, a.add, a.remove], ['checks', [L.checks], [L.acceptance]]);
 });
 
 test('comments on issues outside the factory are ignored', () => {

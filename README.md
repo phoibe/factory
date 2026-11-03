@@ -47,6 +47,13 @@ Issue / commentaire / PR ──► GitHub Actions (relay.yml) ──► decide()
 2. **Settings** → **Actions** → **General** → coche **Allow GitHub Actions to create and approve pull
    requests**, pour la PR mensuelle des skills.
 
+## Limites connues
+
+- Le jeton du panneau est stocké dans le navigateur, sur `phoibe.github.io`. Ce domaine est partagé par tous
+  les sites GitHub Pages du compte : n'y publie pas de site tiers.
+- Les projets doivent appartenir au compte personnel (pas à une organisation) : seul le propriétaire du
+  dépôt peut déclencher l'agent.
+
 ## Développement
 
 ```

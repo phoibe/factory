@@ -2,6 +2,7 @@
 // The factory's orchestrator, run by .github/workflows/relay.yml on every project event.
 //   node scripts/relay.mjs decide
 //   node scripts/relay.mjs report --result success|failure --pr 12
+//   node scripts/relay.mjs release            (end of an Actions agent run: PAYLOAD env)
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,8 @@ import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const LOCK_MINUTES = 90;
+export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
+export const PROJECT_WORKFLOW = 'factory.yml';
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -24,16 +26,20 @@ export function linkedIssue(body) {
 // Normalises a GitHub webhook payload into the shape decide() expects.
 export function eventFromPayload(eventName, p) {
   const owner = p.repository?.owner?.login;
-  const isOwner = (login) => Boolean(login) && (login === owner || login === 'claude[bot]');
-  const base = { event: eventName, action: p.action, addedLabel: p.label?.name, fromAgent: false, text: '' };
+  const isOwnerOrApp = (login) => Boolean(login) && (login === owner || login === 'claude[bot]');
+  const base = { event: eventName, action: p.action, addedLabel: p.label?.name, removedLabel: p.label?.name, fromAgent: false, text: '' };
+  if (eventName === 'workflow_dispatch') return { ...base, kind: 'dispatch', payload: p.inputs?.payload || '', labels: [] };
   if (eventName === 'issues') {
-    return { ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels), fromOwner: p.sender?.login === owner };
+    return {
+      ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
+      fromAgent: (p.issue.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
+    };
   }
   if (eventName === 'issue_comment') {
     const body = p.comment?.body || '';
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
-      text: body, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
     };
   }
   if (eventName === 'pull_request_review') {
@@ -46,7 +52,7 @@ export function eventFromPayload(eventName, p) {
   if (eventName === 'pull_request') {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
-      merged: Boolean(p.pull_request.merged), fromOwner: isOwner(p.sender?.login),
+      merged: Boolean(p.pull_request.merged), fromOwner: isOwnerOrApp(p.sender?.login),
     };
   }
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
@@ -54,35 +60,48 @@ export function eventFromPayload(eventName, p) {
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const outputs = {};
+  const liveLabels = async (n) => names((await gh.getIssue(n))?.labels);
 
   async function inFlight() {
     const open = await gh.listIssues({ labels: L.building });
     return (open || []).filter((i) => !i.pull_request).length;
   }
 
-  async function lockFresh(number, labels) {
-    if (!labels.includes(L.running)) return false;
+  async function lockStart(number) {
     const events = (await gh.listEvents(number)) || [];
     const last = events.filter((e) => e.event === 'labeled' && e.label?.name === L.running).pop();
-    return Boolean(last) && now() - Date.parse(last.created_at) < LOCK_MINUTES * 60_000;
+    return last ? Date.parse(last.created_at) : null;
   }
 
-  async function fireAgent({ stage, issue, pr }) {
+  async function lockFresh(number, labels) {
+    if (!labels.includes(L.running)) return false;
+    const start = await lockStart(number);
+    return start !== null && now() - start < LOCK_MINUTES * 60_000;
+  }
+
+  // Starts an agent run. Labels the targets `factory:running` first; on failure, removes it, explains, and throws.
+  async function fireAgent({ stage, issue, pr, extra = {} }) {
     const targets = [issue, pr].filter(Boolean);
     for (const n of targets) await gh.addLabels(n, [L.running]);
-    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory' };
+    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', ...extra };
     log(`fire ${stage} ${JSON.stringify(payload)}`);
+    const fail = async (message, error) => {
+      for (const n of targets) await gh.removeLabel(n, L.running);
+      await gh.comment(targets[targets.length - 1], say(message));
+      throw new Error(error);
+    };
     if (config.runner === 'github-actions') {
-      outputs.agent = 'true';
-      outputs.payload = JSON.stringify(payload);
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      try {
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify(payload) });
+      } catch (e) {
+        await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécris ton message dans quelques minutes ; si ça se répète, vérifie que le workflow « Factory » est activé (onglet Actions).", String(e));
+      }
       return;
     }
     if (!env.FACTORY_ROUTINE_URL || !env.FACTORY_ROUTINE_TOKEN) {
-      for (const n of targets) await gh.removeLabel(n, L.running);
-      await gh.comment(targets[targets.length - 1], say(
-        "Je n'ai pas pu lancer l'agent : la routine Claude n'est pas configurée pour ce dépôt.\n\n"
-        + 'Ajoute les secrets `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (voir le guide de mise en route du README), puis réécris ton message.'));
-      throw new Error('routine secrets missing');
+      await fail("Je n'ai pas pu lancer l'agent : la routine Claude n'est pas configurée pour ce dépôt.\n\n"
+        + 'Ajoute les secrets `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (voir le guide de mise en route du README), puis réécris ton dernier message.', 'routine secrets missing');
     }
     const res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
       method: 'POST',
@@ -96,11 +115,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     });
     if (!res.ok) {
       const detail = await res.text();
-      for (const n of targets) await gh.removeLabel(n, L.running);
-      await gh.comment(targets[targets.length - 1], say(
-        `Je n'ai pas pu lancer l'agent (la routine Claude a répondu ${res.status}). `
-        + "Ça arrive quand la limite quotidienne de lancements est atteinte. Réécris ton message plus tard, ou passe ce projet sur le moteur « GitHub Actions » dans le panneau."));
-      throw new Error(`routine fire failed: ${res.status} ${detail}`);
+      await fail(`Je n'ai pas pu lancer l'agent (la routine Claude a répondu ${res.status}). `
+        + "Ça arrive quand la limite quotidienne de lancements est atteinte. Réécris ton dernier message plus tard (rien n'a changé entre-temps), ou passe ce projet sur le moteur « GitHub Actions » dans le panneau.",
+      `routine fire failed: ${res.status} ${detail}`);
     }
     const body = await res.json().catch(() => ({}));
     log(`session: ${body.claude_code_session_url || '?'}`);
@@ -110,28 +127,38 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let free = config.maxParallel - (await inFlight());
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
-    for (const issue of queued.slice(0, free)) {
+    for (const issue of queued) {
+      if (free <= 0) break;
+      const labels = await liveLabels(issue.number);
+      if (!labels.includes(L.queued)) continue; // another relay run took it
+      await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : 'build', issue: issue.number });
       await gh.removeLabel(issue.number, L.queued);
       await gh.addLabels(issue.number, [L.building]);
-      const isBug = names(issue.labels).includes(L.bug);
-      await gh.comment(issue.number, say('Une place s\'est libérée : je démarre la construction.'));
-      await fireAgent({ stage: isBug ? 'bugfix' : 'build', issue: issue.number });
+      await gh.comment(issue.number, say("Une place s'est libérée : je démarre la construction."));
       free -= 1;
-      if (config.runner === 'github-actions') break; // one agent job per workflow run
     }
   }
 
-  async function mergePr(prNumber) {
+  async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
-    await gh.merge(prNumber);
     const issue = linkedIssue(pr.body);
+    try {
+      await gh.merge(prNumber, sha);
+    } catch (e) {
+      log(`merge failed: ${e}`);
+      for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
+      await gh.addLabels(prNumber, [L.fixing]);
+      await gh.comment(prNumber, say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté."));
+      await fireAgent({ stage: 'update-branch', issue, pr: prNumber });
+      return;
+    }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running]) await gh.removeLabel(prNumber, l);
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) await gh.removeLabel(issue, L.building);
     await dequeue();
   }
 
-  async function previewUrl(sha, { attempts = 30, delayMs = 20_000 } = {}) {
+  async function previewUrl(sha, { attempts = 15, delayMs = 20_000 } = {}) {
     for (let i = 0; i < attempts; i++) {
       for (const d of (await gh.deployments(sha)) || []) {
         const ok = ((await gh.deploymentStatuses(d.id)) || []).find((s) => s.state === 'success');
@@ -142,33 +169,65 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return null;
   }
 
-  async function handle(ev) {
+  // Owner messages written while an agent held the lock, joined into one, or null.
+  async function deferredMessage(number, ownerLogin) {
+    const since = await lockStart(number);
+    const comments = (await gh.listComments(number)) || [];
+    const mine = comments.filter((c) => c.user?.login === ownerLogin && !(c.body || '').includes(AGENT_MARKER)
+      && (since === null || Date.parse(c.created_at) >= since));
+    return mine.length ? mine.map((c) => c.body).join('\n\n') : null;
+  }
+
+  async function handle(ev, { ownerLogin } = {}) {
+    if (ev.kind === 'dispatch') {
+      outputs.agent = 'true';
+      outputs.payload = ev.payload;
+      return { action: { type: 'agent' }, outputs };
+    }
     const ctx = { inFlight: 0, lockFresh: false };
     if (ev.kind !== 'none' && ev.number) {
+      ev = { ...ev, labels: await liveLabels(ev.number) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
-    const action = decide(ev, config, ctx);
+    let action = decide(ev, config, ctx);
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
-    for (const l of action.remove || []) await gh.removeLabel(n, l);
-    if (action.add?.length) await gh.addLabels(n, action.add);
+    if (action.type === 'replay') {
+      await gh.removeLabel(n, L.pending);
+      const text = await deferredMessage(n, ownerLogin);
+      if (!text) return { action, outputs };
+      const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
+      action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
+      log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    const applyLabels = async () => {
+      for (const l of action.remove || []) await gh.removeLabel(n, l);
+      if (action.add?.length) await gh.addLabels(n, action.add);
+    };
     switch (action.type) {
       case 'fire': {
-        if (ev.kind === 'pr') {
-          const pr = await gh.getPr(n);
-          await fireAgent({ stage: action.stage, issue: linkedIssue(pr.body), pr: n });
-        } else {
-          await fireAgent({ stage: action.stage, issue: n });
-        }
+        const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
+        await fireAgent({ stage: action.stage, issue: pr ? linkedIssue(pr.body) : n, pr: pr ? n : null });
+        await applyLabels(); // only once the agent really started
         break;
       }
+      case 'defer':
+        await applyLabels();
+        if (ev.commentId) await gh.react(ev.commentId, 'eyes').catch(() => {});
+        break;
       case 'queue':
+        await applyLabels();
         await gh.comment(n, say(`C'est noté. ${config.maxParallel} feature(s) sont déjà en construction, c'est le maximum réglé pour ce projet : celle-ci est en file d'attente et démarrera toute seule dès qu'une place se libère.`));
         break;
       case 'checks':
-        outputs.checks = 'true';
-        outputs.pr = String(n);
+        await applyLabels();
+        if (!config.stages.checks) {
+          await report({ result: 'success', pr: n });
+        } else {
+          outputs.checks = 'true';
+          outputs.pr = String(n);
+        }
         break;
       case 'merge':
         await mergePr(n);
@@ -182,8 +241,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return { action, outputs };
   }
 
-  async function report({ result, pr: prNumber }) {
+  async function report({ result, pr: prNumber, runId, sha }) {
     const pr = await gh.getPr(prNumber);
+    if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     const issueNumber = linkedIssue(pr.body);
     const issue = issueNumber ? await gh.getIssue(issueNumber) : null;
     const isBug = names(issue?.labels).includes(L.bug);
@@ -192,9 +252,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const failures = comments.slice(lastReset + 1).filter((c) => (c.body || '').includes(CHECKS_FAILED_MARKER)).length;
     const next = afterChecks({ result, isBug, acceptanceOn: config.stages.acceptance, failures, maxLoops: config.review.maxLoops });
     log(`checks ${result} -> ${next}`);
-    for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
-    if (next === 'merge') return mergePr(prNumber);
+    if (next === 'merge') return mergePr(prNumber, pr.head.sha);
     if (next === 'acceptance') {
+      for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
       const url = await previewUrl(pr.head.sha);
       const where = url
@@ -204,18 +264,30 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     if (next === 'fix') {
+      await fireAgent({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { checksRun: runId || null } });
+      await gh.removeLabel(prNumber, L.checks);
       await gh.addLabels(prNumber, [L.fixing]);
-      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`Un contrôle automatique a échoué. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de ton côté.`)}`);
-      await fireAgent({ stage: 'fix-checks', issue: issueNumber, pr: prNumber });
+      const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
+      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`Un contrôle automatique a échoué${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de ton côté.`)}`);
       return;
     }
     // blocked: the next failure count starts again from zero once the owner unblocks it.
+    for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
     if (issueNumber) await gh.addLabels(issueNumber, [L.blocked]);
     await gh.comment(prNumber, `${CHECKS_RESET_MARKER}\n${say("Les contrôles restent rouges : j'ai mis la construction en pause et expliqué la situation sur l'issue.")}`);
     await gh.comment(issueNumber || prNumber, say(`Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Tu peux répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
   }
 
-  return { handle, report, dequeue, outputs };
+  // End of an agent run on GitHub Actions (its label changes emit no events): release the lock, replay deferred messages.
+  async function release(payload, { ownerLogin } = {}) {
+    for (const n of [payload.issue, payload.pr].filter(Boolean)) {
+      const had = (await liveLabels(n)).includes(L.pending);
+      await gh.removeLabel(n, L.running);
+      if (had) await handle({ kind: n === payload.pr ? 'pr' : 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: n, labels: [] }, { ownerLogin });
+    }
+  }
+
+  return { handle, report, dequeue, release, outputs };
 }
 
 function writeOutputs(outputs) {
@@ -228,6 +300,7 @@ async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const arg = (name) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : undefined; };
   const repo = process.env.GITHUB_REPOSITORY;
+  const ownerLogin = process.env.GITHUB_REPOSITORY_OWNER;
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const file = await gh.getContent('factory.config.json');
@@ -237,9 +310,11 @@ async function main() {
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
     const payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-    await relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload));
+    await relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin });
   } else if (command === 'report') {
-    await relay.report({ result: arg('result'), pr: Number(arg('pr')) });
+    await relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha') });
+  } else if (command === 'release') {
+    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'), { ownerLogin });
   } else if (command === 'dequeue') {
     await relay.dequeue();
   } else {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Runs the automated checks enabled in factory.config.json inside a project checkout.
-// Usage: node scripts/checks.mjs <projectDir>
+// Usage: node scripts/checks.mjs <projectDir> [--config <path>]
+// The rules come from --config (the default branch's copy, so a PR cannot switch its own checks off).
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -34,10 +35,14 @@ export function summary(results) {
 }
 
 function main() {
-  const projectDir = resolve(process.argv[2] || '.');
+  const args = process.argv.slice(2);
+  const ci = args.indexOf('--config');
+  const projectDir = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--config') || '.');
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
-  const cfgPath = join(projectDir, 'factory.config.json');
-  const { config } = resolveConfig(existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, 'utf8')) : {}, catalog);
+  const cfgPath = ci >= 0 ? args[ci + 1] : join(projectDir, 'factory.config.json');
+  let raw = {};
+  try { raw = JSON.parse(readFileSync(cfgPath, 'utf8')); } catch { console.log('::warning::Règles illisibles, valeurs par défaut utilisées.'); }
+  const { config } = resolveConfig(raw, catalog);
   const pkgPath = join(projectDir, 'package.json');
   if (!existsSync(pkgPath)) {
     console.log("::error::Pas de package.json : il n'y a pas encore d'application à contrôler.");
