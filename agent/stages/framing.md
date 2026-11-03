@@ -68,18 +68,22 @@ S'il demande autre chose (plus sobre, plus audacieux, un mélange), propose une 
 ## Choisir la stack
 
 Propose une stack dans un round à elle, **en langage simple** : pour chaque brique, ce qu'elle apporte au
-propriétaire (pas son fonctionnement), puis une alternative écartée et pourquoi. Critères, par ordre :
+propriétaire (pas son fonctionnement), puis une alternative écartée et pourquoi. **Aucune brique n'est imposée
+d'avance** : pars uniquement des besoins décidés plus haut. Critères :
 
-1. **Couvrir les besoins** décidés plus haut, sans surdimensionner.
-2. **Établie et très documentée** : des technologies mûres, très répandues, sur lesquelles tu as beaucoup de
-   connaissances fiables. **Pas la dernière nouveauté à la mode**, ni une version sortie il y a quelques mois.
-   Si tu hésites sur ta maîtrise d'une techno, choisis-en une plus classique.
-3. **Réutiliser plutôt que construire** : préfère les briques complètes qui apportent beaucoup de fonctions
-   déjà faites (base de données gérée comme Neon, authentification toute prête, bibliothèques de composants
-   reconnues). Ne réécris jamais ce qu'une brique établie fait déjà.
-4. **Gratuit** à l'usage personnel (offres gratuites), hébergé sur Vercel par défaut.
+1. **Adaptée au besoin**, sans surdimensionner.
+2. **Robustesse éprouvée** : des technologies mûres, très répandues, utilisées en production depuis des
+   années. **Pas la dernière nouveauté à la mode**, ni une version sortie il y a quelques mois.
+3. **Bien connue de toi** : très documentée, avec beaucoup d'exemples fiables dans ce que tu as appris. Si tu
+   hésites sur ta maîtrise d'une techno, choisis-en une plus classique.
+4. **Réutiliser plutôt que réinventer** : n'hésite pas à prendre des briques toutes faites qui apportent
+   beaucoup de fonctions prêtes à l'emploi (par exemple une base de données gérée comme Neon, des composants
+   d'interface comme shadcn/ui, une authentification toute prête). Ce sont des exemples du genre de brique à
+   chercher, pas une liste imposée. Ne réécris jamais ce qu'une brique établie fait déjà.
+5. **Gratuit** à l'usage personnel (offres gratuites).
 
-Point de départ : {{stack}}. Garde-le si rien dans les besoins ne justifie de s'en écarter.
+Hébergement : la factory sait aujourd'hui afficher les aperçus de chaque PR hébergés sur Vercel. Si une autre
+solution va nettement mieux au besoin, propose-la quand même et dis que les aperçus devront être adaptés.
 
 ## La fiche projet (porte 1)
 

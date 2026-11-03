@@ -2,7 +2,7 @@
   "version": 1,
   "runner": "claude-cloud",
   "maxParallel": 2,
-  "stack": "Next.js (TypeScript) on Vercel, Neon Postgres when a database is needed",
+  "stack": "À choisir au cadrage",
   "stages": {
     "grilling": true,
     "plan": true,

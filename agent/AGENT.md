@@ -12,8 +12,7 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
 2. Si `PRODUCT.md` existe à la racine (ou `docs/PRODUCT.md` sur un projet plus ancien), lis-le : c'est la
-   vision du produit et la stack validées par le propriétaire. Elles priment sur la stack par défaut
-   ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. Si une feature
+   vision du produit et la stack validées par le propriétaire. Elles priment sur la ligne « Stack » ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. Si une feature
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
 3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
@@ -22,7 +21,7 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 
 ## Règles de la factory pour ce projet
 
-- Stack par défaut : {{stack}}
+- Stack : {{stack}} (au cadrage, ne t'en sers pas : la stack se décide à partir des besoins)
 - Choix techniques : technologies établies et très documentées que tu maîtrises bien, jamais la dernière
   nouveauté à la mode ; réutilise les briques complètes existantes (base gérée, authentification toute prête,
   bibliothèques reconnues) plutôt que de reconstruire.
