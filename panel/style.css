@@ -61,3 +61,4 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; }
 #toast.show { opacity: 1; }
 @media (max-width: 600px) { .top { flex-wrap: wrap; } nav { width: 100%; } nav select { flex: 1; } }
 .item .eta { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.item .alert { display: block; margin-top: 4px; color: var(--danger); }

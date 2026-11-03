@@ -277,3 +277,21 @@ test('vercelPreview reads the preview link from the Vercel bot comment once read
   assert.equal(vercelPreview([{ user: { login: 'vercel[bot]' }, body: row('Building') }]), null);
   assert.equal(vercelPreview([{ user: { login: 'someone' }, body: row('Ready') }]), null);
 });
+
+test('report posts the Fabrication comment from the journal and flags missing skills', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.building] }], prs: [{ number: 10, labels: [L.checks], head: { sha: 'abc' }, body: 'Closes #5' }] });
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async (path, ref) => {
+    assert.equal(ref, 'abc');
+    if (path === '.factory/journal/s1.jsonl') return { content: Buffer.from(journal).toString('base64') };
+    return null;
+  };
+  gh.listPrFiles = async () => [{ filename: 'src/lib/x.ts' }, { filename: '.factory/journal/s1.jsonl', status: 'added' }];
+  gh.updateComment = async () => assert.fail('no previous comment');
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, plan: true, tdd: true, review: true } }, env, log: quiet });
+  const alerts = await relay.fabrication(10, await gh.getPr(10));
+  assert.equal(alerts.length, 2); // TDD and review missing
+  const posted = gh.calls.find((c) => c[0] === 'comment' && c[1] === 10);
+  assert.match(posted[2], /## Fabrication/);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.skillsAlert));
+});

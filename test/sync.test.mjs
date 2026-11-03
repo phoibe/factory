@@ -47,3 +47,18 @@ test('disabled stages are shown as off in AGENT.md', () => {
 test('render leaves unknown placeholders untouched', () => {
   assert.equal(render('{{a}} {{b}}', { a: 1 }), '1 {{b}}');
 });
+
+test('installs the journal hook and keeps the project settings', () => {
+  const dir = project();
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  writeFileSync(join(dir, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Bash(ls)'] }, hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'echo mine' }] }] } }));
+  sync({ projectDir: dir });
+  sync({ projectDir: dir });
+  const s = JSON.parse(readFileSync(join(dir, '.claude/settings.json'), 'utf8'));
+  assert.deepEqual(s.permissions, { allow: ['Bash(ls)'] });
+  assert.equal(s.hooks.PostToolUse.length, 2);
+  assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'echo mine');
+  assert.equal(s.hooks.PostToolUse[1].matcher, 'Skill|Bash');
+  assert.equal(s.hooks.UserPromptSubmit.length, 1);
+  assert.ok(existsSync(join(dir, '.factory/scripts/journal.mjs')));
+});

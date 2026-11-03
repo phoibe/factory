@@ -47,7 +47,9 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       try { await request('DELETE', `/repos/{repo}/issues/${n}/labels/${enc(label)}`); } catch (e) { if (!String(e).includes('404')) throw e; }
     },
     merge: (n, sha) => request('PUT', `/repos/{repo}/pulls/${n}/merge`, { merge_method: 'squash', ...(sha ? { sha } : {}) }),
-    getContent: (path) => request('GET', `/repos/{repo}/contents/${path}`),
+    getContent: (path, ref) => request('GET', `/repos/{repo}/contents/${path}${ref ? `?ref=${enc(ref)}` : ''}`),
+    listPrFiles: (n) => paginate(`/repos/{repo}/pulls/${n}/files?per_page=100`),
+    updateComment: (id, body) => request('PATCH', `/repos/{repo}/issues/comments/${id}`, { body }),
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),
   };

@@ -132,7 +132,8 @@ async function renderBoard() {
       inCol.length ? inCol.map((c) => el('a', { class: `item${waitsForOwner(c.labels) ? ' you' : ''}`, href: c.html_url, target: '_blank', rel: 'noopener' },
         c.title,
         el('small', {}, `${c.pull_request ? 'PR' : 'Issue'} #${c.number}${c.labels.includes('factory:running') ? ' · un agent travaille' : waitsForOwner(c.labels) ? ' · à toi' : ''}`),
-        el('small', { class: 'eta' }, etaText(estimate(c, events, minutes, now)))))
+        el('small', { class: 'eta' }, etaText(estimate(c, events, minutes, now))),
+        c.labels.includes('factory:skills-alert') ? el('small', { class: 'alert' }, '⚠️ un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR)') : null))
         : el('p', { class: 'empty-col' }, '—'));
   }));
   board.replaceChildren(summary, grid);
