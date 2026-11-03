@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64 } from '../panel/lib.mjs';
+import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -33,4 +33,12 @@ test('toggleSkill and setPath do not mutate the input', () => {
 
 test('base64 round-trips accents', () => {
   assert.equal(fromBase64(toBase64('Règles é ✅')), 'Règles é ✅');
+});
+
+test('a phone link carries the token in the fragment and is read back once', () => {
+  const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_ABC_123');
+  assert.equal(link, 'https://phoibe.github.io/factory/#jeton=github_pat_ABC_123');
+  assert.equal(tokenFromHash(new URL(link).hash), 'github_pat_ABC_123');
+  assert.equal(tokenFromHash('#autre'), null);
+  assert.equal(tokenFromHash(''), null);
 });

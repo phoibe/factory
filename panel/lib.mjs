@@ -57,3 +57,12 @@ export function setPath(config, path, value) {
 // UTF-8 safe base64 for the GitHub Contents API.
 export const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 export const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
+
+// Token carried by a phone link (#jeton=…). The fragment never reaches a server.
+export function tokenFromHash(hash) {
+  const m = /^#jeton=([A-Za-z0-9_]+)$/.exec(hash || '');
+  return m ? m[1] : null;
+}
+
+// Link that signs a phone in with the same token.
+export const phoneLink = (pageUrl, token) => `${pageUrl.split('#')[0]}#jeton=${token}`;
