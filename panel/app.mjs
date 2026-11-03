@@ -1,5 +1,6 @@
-import { COLUMNS, boardItems, waitsForOwner, toggleSkill, setPath, toBase64, fromBase64 } from './lib.mjs';
-import { stageMinutes, estimate, etaText } from './eta.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64 } from './lib.mjs';
+import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
+import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
 
 const API = 'https://api.github.com';
@@ -104,39 +105,166 @@ async function openProject(fullName) {
   show('project-view');
   renderRules();
   await renderBoard();
+  if (!live.tick) startLive();
+}
+
+// ---- Live board -------------------------------------------------------------------------------
+// The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
+// answer is a 304 that GitHub does not count against the hourly limit.
+const live = { repo: null, etags: new Map(), issues: null, events: [], prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const LANES = [
+  ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
+  ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
+  ['queued', 'En file d\'attente', 'La file est vide.'],
+];
+
+async function cachedGet(path) {
+  const hit = live.etags.get(path);
+  const res = await fetch(API + path, {
+    cache: 'no-store',
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
+  });
+  if (res.status === 304 && hit) return { data: hit.data, changed: false };
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  const etag = res.headers.get('etag');
+  if (etag) live.etags.set(path, { etag, data });
+  return { data, changed: true };
+}
+
+function mergeEvents(fresh) {
+  const seen = new Set(live.events.map((e) => e.id));
+  live.events = [...fresh.filter((e) => !seen.has(e.id)), ...live.events];
+}
+
+async function refresh() {
+  if (live.busy) { live.again = true; return; }
+  live.busy = true;
+  live.again = false;
+  const repo = current.repo.full_name;
+  try {
+    const first = live.repo !== repo;
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], prev: null });
+    const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
+    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
+    if (first) {
+      for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
+        const batch = await api(`/repos/${repo}/issues/events?per_page=100&page=${page}`).catch(() => []);
+        mergeEvents(batch);
+        if (batch.length < 100) break;
+      }
+    }
+    if (live.repo !== repo) return; // the owner switched project meanwhile
+    if (ev.changed) mergeEvents(ev.data);
+    live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
+    live.last = Date.now();
+    live.failures = 0;
+    if (issues.changed || ev.changed || first) drawBoard();
+  } catch (err) {
+    live.failures++;
+    if (!live.issues) $('board').replaceChildren(el('p', { class: 'board-error' }, `GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`));
+  } finally {
+    live.busy = false;
+    drawStatus();
+    if (live.again) refresh(); else schedule();
+  }
+}
+
+function schedule() {
+  clearTimeout(live.timer);
+  if (document.hidden || $('board').hidden || !current) return;
+  live.timer = setTimeout(refresh, pollDelay(live.failures));
+}
+
+function drawStatus() {
+  const s = document.querySelector('.live');
+  if (!s) return;
+  const down = live.failures > 0;
+  s.classList.toggle('down', down);
+  s.querySelector('.live-text').textContent = down
+    ? 'Connexion à GitHub perdue · nouvel essai automatique'
+    : `En direct · à jour ${agoText(Date.now() - live.last)}`;
+}
+
+function stepTrack(c) {
+  const p = progress(c);
+  if (!p) return null;
+  return el('div', { class: 'step' },
+    el('ol', { class: 'track', 'aria-hidden': 'true' },
+      Array.from({ length: p.total }, (_, i) => el('li', { class: i < p.index ? 'done' : i === p.index ? 'now' : '' }))),
+    el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
+}
+
+function card(c, lane, minutes, now, moved) {
+  const e = estimate(c, live.events, minutes, now);
+  const kind = c.labels.includes('factory:bug') ? 'Bug' : 'Feature';
+  const blocked = c.column === 'blocked';
+  const running = c.labels.includes('factory:running');
+  const status = lane === 'yours'
+    ? el('p', { class: 'cta' }, actionFor(c.column), el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
+    : lane === 'working'
+      ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
+        running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente')
+      : null;
+  return el('a', { class: `ticket ${lane}${blocked ? ' blocked' : ''}${moved ? ' moved' : ''}`, href: c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) },
+    el('div', { class: 'ticket-top' },
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
+      e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
+    el('h3', {}, c.title),
+    status,
+    stepTrack(c),
+    el('p', { class: 'eta' }, timeLine(e)),
+    c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR).') : null);
+}
+
+function drawBoard() {
+  const board = $('board');
+  const now = Date.now();
+  const cards = boardItems(live.issues);
+  const moved = moves(live.prev, cards);
+  live.prev = new Map(cards.map((c) => [c.number, c.column]));
+  const movedSet = new Set(moved.map((m) => m.number));
+  for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
+  const minutes = stageMinutes(live.events, now);
+  const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
+  const n = byLane.yours.length;
+  const headline = n ? (n === 1 ? '1 chose t\'attend' : `${n} choses t'attendent`)
+    : cards.length ? 'Rien ne t\'attend' : 'Aucune feature en cours';
+  const sub = cards.length
+    ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent tes réponses.'
+    : 'Lance-toi avec « Nouvelle feature ».';
+  const focusKey = document.activeElement?.dataset?.key;
+  board.replaceChildren(
+    el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
+      el('div', {}, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub)),
+      el('p', { class: 'live', role: 'status' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
+    ...LANES.filter(([id]) => cards.length || id === 'yours').map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
+      el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
+      byLane[id].length
+        ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
+        : el('p', { class: 'lane-empty' }, empty))));
+  if (focusKey) board.querySelector(`[data-key="${focusKey}"]`)?.focus();
+  drawStatus();
+}
+
+function startLive() {
+  clearInterval(live.tick);
+  // Every 5 s the "à jour il y a" text moves; every minute the durations on the cards move.
+  let n = 0;
+  live.tick = setInterval(() => { drawStatus(); if (++n % 12 === 0 && live.issues && !$('board').hidden) drawBoard(); }, 5000);
 }
 
 async function renderBoard() {
-  const board = $('board');
-  board.replaceChildren(el('p', { class: 'muted' }, 'Chargement…'));
-  const items = (await api(`/repos/${current.repo.full_name}/issues?state=open&per_page=100`))
-    .map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
-  const cards = boardItems(items);
-  // Label history of the repo (most recent first), for the time estimates. Never blocks the board.
-  const events = [];
-  for (let page = 1; page <= 3; page++) {
-    const batch = await api(`/repos/${current.repo.full_name}/issues/events?per_page=100&page=${page}`).catch(() => []);
-    events.push(...batch);
-    if (batch.length < 100) break;
-  }
-  const now = Date.now();
-  const minutes = stageMinutes(events, now);
-  const mine = cards.filter((c) => waitsForOwner(c.labels));
-  const summary = mine.length
-    ? el('p', { class: 'summary' }, mine.length === 1 ? '1 élément attend ta réponse.' : `${mine.length} éléments attendent ta réponse.`)
-    : el('p', { class: 'summary calm' }, cards.length ? 'Rien ne t\'attend : les agents travaillent.' : 'Aucune feature en cours. Lance-toi avec « Nouvelle feature ».');
-  const grid = el('div', { class: 'board' }, COLUMNS.map((col) => {
-    const inCol = cards.filter((c) => c.column === col.id);
-    return el('section', { class: `column${col.yours ? ' yours' : ''}`, 'aria-label': col.title },
-      el('h2', {}, col.title, el('span', {}, String(inCol.length))),
-      inCol.length ? inCol.map((c) => el('a', { class: `item${waitsForOwner(c.labels) ? ' you' : ''}`, href: c.html_url, target: '_blank', rel: 'noopener' },
-        c.title,
-        el('small', {}, `${c.pull_request ? 'PR' : 'Issue'} #${c.number}${c.labels.includes('factory:running') ? ' · un agent travaille' : waitsForOwner(c.labels) ? ' · à toi' : ''}`),
-        el('small', { class: 'eta' }, etaText(estimate(c, events, minutes, now)))))
-        : el('p', { class: 'empty-col' }, '—'));
-  }));
-  board.replaceChildren(summary, grid);
+  if (live.repo !== current.repo.full_name) $('board').replaceChildren(el('p', { class: 'muted board-loading' }, 'Chargement…'));
+  clearTimeout(live.timer);
+  await refresh();
 }
+
+// Coming back to the tab refreshes at once (unless it just did), leaving it pauses the polling.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !current) return clearTimeout(live.timer);
+  if (Date.now() - live.last > 5000) refresh(); else schedule();
+});
 
 function checkbox(id, checked, onchange) {
   return el('input', { type: 'checkbox', id, checked, onchange: (e) => onchange(e.target.checked) });
