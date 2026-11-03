@@ -1,0 +1,129 @@
+# Reusable orchestrator. Called by .github/workflows/factory.yml in every project (see phoibe/factory-template).
+name: Factory relay
+on:
+  workflow_call:
+    inputs:
+      factory_ref:
+        description: Branch or tag of phoibe/factory to use
+        type: string
+        default: main
+    secrets:
+      FACTORY_ROUTINE_URL:
+        required: false
+      FACTORY_ROUTINE_TOKEN:
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      deployments: read
+    outputs:
+      checks: ${{ steps.relay.outputs.checks }}
+      pr: ${{ steps.relay.outputs.pr }}
+      agent: ${{ steps.relay.outputs.agent }}
+      payload: ${{ steps.relay.outputs.payload }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: relay
+        run: node .factory-src/scripts/relay.mjs decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
+
+  # Fallback runner (runner: "github-actions" in factory.config.json).
+  agent:
+    needs: decide
+    if: needs.decide.outputs.agent == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: '*'
+          prompt: |
+            Tu es l'agent de la software factory de ce dépôt. Voici le JSON de ce run :
+            ${{ needs.decide.outputs.payload }}
+            Lis .factory/AGENT.md, puis suis l'étape indiquée dans "stage".
+          claude_args: >-
+            --max-turns 300
+            --allowedTools "Bash,Read,Edit,Write,MultiEdit,Glob,Grep,WebFetch,WebSearch,Task,Skill,TodoWrite"
+      - name: Release the lock
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAYLOAD: ${{ needs.decide.outputs.payload }}
+        run: |
+          for n in $(echo "$PAYLOAD" | jq -r '.issue, .pr | select(. != null)'); do
+            gh issue edit "$n" --remove-label factory:running || true
+          done
+
+  checks:
+    needs: decide
+    if: needs.decide.outputs.checks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ needs.decide.outputs.pr }}/head
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .factory-src/scripts/checks.mjs .
+
+  report:
+    needs: [decide, checks]
+    if: always() && needs.decide.outputs.checks == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      deployments: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
