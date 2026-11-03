@@ -1,6 +1,7 @@
 export const L = {
   feature: 'factory:feature',
   bug: 'factory:bug',
+  project: 'factory:project',
   grilling: 'factory:grilling',
   specReview: 'factory:spec-review',
   queued: 'factory:queued',
@@ -18,6 +19,7 @@ export const L = {
 export const LABEL_DEFS = [
   [L.feature, '1d76db', 'Nouvelle feature pour la factory'],
   [L.bug, 'd73a4a', 'Bug à corriger par la factory'],
+  [L.project, '1d76db', 'Cadrage du projet : vision, périmètre et stack'],
   [L.grilling, 'fbca04', 'Questions en cours pour clarifier la feature'],
   [L.specReview, 'fbca04', 'Spec à valider : réponds « go »'],
   [L.queued, 'c5def5', "En file d'attente"],

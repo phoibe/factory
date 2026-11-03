@@ -3,7 +3,7 @@
 Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`). Construis-la jusqu'à une PR.
 
 1. **Branche** `claude/issue-<n>-<mot-clé>` depuis `main`.
-2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack par défaut, avec dès le
+2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `docs/PRODUCT.md` (ou la stack par défaut), avec dès le
    départ les scripts npm `typecheck`, `lint`, `test`, `build` et `test:a11y` (Playwright + axe-core sur les
    pages principales). Ces scripts sont ceux que lancent les contrôles automatiques.
 3. **Plan** (si l'étape plan est active) : skill `writing-plans`, plan enregistré dans

@@ -11,14 +11,20 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 `{"repo": "owner/name", "issue": 12, "pr": 34 | null, "stage": "grilling", "factory": "phoibe/factory"}`.
 
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
-2. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
+2. Si `docs/PRODUCT.md` existe, lis-le : c'est la vision du produit et la stack validées par le propriétaire.
+   Elles priment sur la stack par défaut ci-dessous. Si une feature validée change la vision ou le
+   périmètre, mets ce fichier à jour dans la même PR.
+3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
-3. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
+4. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
    tu mets le bon label et tu termines. Sa réponse relancera un nouveau run.
 
 ## Règles de la factory pour ce projet
 
 - Stack par défaut : {{stack}}
+- Choix techniques : technologies établies et très documentées que tu maîtrises bien, jamais la dernière
+  nouveauté à la mode ; réutilise les briques complètes existantes (base gérée, authentification toute prête,
+  bibliothèques reconnues) plutôt que de reconstruire.
 - Étapes actives : {{stages}}
 - Revue de code : au plus {{maxLoops}} allers-retours entre le développeur et le relecteur, ensuite escalade.
 - Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : {{skills}}
@@ -61,7 +67,7 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 ## Labels (la machine à états)
 
-Sur l'issue : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
+Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
 Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques, à poser
 même si les contrôles sont désactivés : la factory passe alors directement à la suite) →

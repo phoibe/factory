@@ -163,3 +163,27 @@ test('afterChecks routes green and red results', () => {
   assert.equal(afterChecks({ ...base, result: 'failure', failures: 2 }), 'fix');
   assert.equal(afterChecks({ ...base, result: 'failure', failures: 3 }), 'blocked');
 });
+
+test('a new project issue starts framing, even when grilling is off', () => {
+  for (const c of [config, { ...config, stages: { ...config.stages, grilling: false } }]) {
+    const a = decide(ev({ event: 'issues', action: 'opened', labels: [L.project] }), c, ctx);
+    assert.deepEqual([a.type, a.stage, a.add], ['fire', 'framing', [L.grilling]]);
+  }
+});
+
+test('answers during project framing fire framing again', () => {
+  const a = decide(ev({ labels: [L.project, L.grilling], text: '1 oui, 2 non' }), config, ctx);
+  assert.equal(a.stage, 'framing');
+});
+
+test('brief approval lays the foundation without queueing, remarks revise the brief', () => {
+  const go = decide(ev({ labels: [L.project, L.specReview], text: 'go' }), config, { ...ctx, inFlight: 5 });
+  assert.deepEqual([go.type, go.stage, go.add, go.remove], ['fire', 'foundation', [L.building], [L.specReview]]);
+  const remark = decide(ev({ labels: [L.project, L.specReview], text: 'ajoute un mode sombre' }), config, ctx);
+  assert.equal(remark.stage, 'framing');
+});
+
+test('project issues from strangers or filed by the agent do not start', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.project], fromOwner: false }), config, ctx).type, 'ignore');
+  assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.project], fromAgent: true }), config, ctx).type, 'ignore');
+});

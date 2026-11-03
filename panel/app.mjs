@@ -98,6 +98,7 @@ async function openProject(fullName) {
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
+  $('new-project').href = `${base}/issues/new?template=project.yml`;
   show('project-view');
   renderRules();
   await renderBoard();
