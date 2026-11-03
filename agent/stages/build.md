@@ -15,9 +15,9 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    qu'il trouve (skill `receiving-code-review`), puis relance une revue neuve. Au plus {{maxLoops}} tours.
    S'il reste un problème bloquant après le dernier tour : ouvre quand même la PR en brouillon, explique le
    blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
-6. **Passe design** (si active et si l'interface change) : skill `impeccable` sur les écrans touchés, en
-   respectant `DESIGN.md` (ses jetons, ses composants, ses « Do's and Don'ts ») ; pas de nouvelle couleur ou
-   police hors de ce fichier. Si la feature a vraiment besoin d'un nouveau composant, ajoute-le à `DESIGN.md`.
+6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`
+   (critique impeccable de chaque écran créé ou modifié, puis correction de tout ce qu'elle trouve), en
+   respectant `DESIGN.md` : pas de nouvelle couleur ou police hors de ce fichier.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour

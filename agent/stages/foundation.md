@@ -33,7 +33,7 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
      importé quand le dépôt était vide, il ne sait donc pas encore quel type d'appli construire.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
-6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design vérifie que la page suit `DESIGN.md`), puis vérifie
+6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
    localement que les cinq scripts passent.
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
