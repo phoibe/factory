@@ -1,0 +1,56 @@
+{
+  "packs": [
+    {
+      "id": "superpowers",
+      "name": "Superpowers",
+      "repo": "obra/superpowers",
+      "commit": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "license": "MIT",
+      "licenseFile": "LICENSE",
+      "include": [
+        "skills/*"
+      ],
+      "defaultEnabled": [
+        "test-driven-development",
+        "systematic-debugging",
+        "writing-plans",
+        "executing-plans",
+        "subagent-driven-development",
+        "dispatching-parallel-agents",
+        "requesting-code-review",
+        "receiving-code-review",
+        "verification-before-completion"
+      ]
+    },
+    {
+      "id": "matt-pocock",
+      "name": "Matt Pocock skills",
+      "repo": "mattpocock/skills",
+      "commit": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+      "license": "MIT",
+      "licenseFile": "LICENSE",
+      "include": [
+        "skills/productivity/*",
+        "skills/engineering/*"
+      ],
+      "defaultEnabled": [
+        "grilling",
+        "to-spec"
+      ]
+    },
+    {
+      "id": "impeccable",
+      "name": "Impeccable",
+      "repo": "pbakaus/impeccable",
+      "commit": "9fadc41729c38fd47d7ae622b501558653f9d2e9",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE",
+      "include": [
+        ".claude/skills/impeccable"
+      ],
+      "defaultEnabled": [
+        "impeccable"
+      ]
+    }
+  ]
+}

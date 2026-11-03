@@ -1,0 +1,39 @@
+# Reusable: installs the enabled skills and agent instructions into the calling project, and its labels.
+name: Factory sync
+on:
+  workflow_call:
+    inputs:
+      factory_ref:
+        type: string
+        default: main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .factory-src/scripts/sync.mjs .
+      - run: node .factory-src/scripts/labels-setup.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Commit
+        run: |
+          rm -rf .factory-src
+          git add -A .claude .factory
+          if git diff --cached --quiet; then echo "Rien à synchroniser"; exit 0; fi
+          git config user.name "factory-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(factory): sync skills and agent instructions"
+          git push

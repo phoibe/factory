@@ -1,0 +1,52 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { resolveConfig, enabledSkills } from '../scripts/lib/config.mjs';
+
+const catalog = {
+  packs: [
+    { id: 'sp', skills: [{ id: 'tdd', path: 'packs/sp/tdd', defaultEnabled: true }, { id: 'brain', path: 'packs/sp/brain', defaultEnabled: false }] },
+    { id: 'imp', skills: [{ id: 'impeccable', path: 'packs/imp/impeccable', defaultEnabled: true }] },
+  ],
+};
+
+test('empty config resolves to defaults with every pack enabled', () => {
+  const { config, warnings } = resolveConfig(undefined, catalog);
+  assert.equal(config.maxParallel, 2);
+  assert.equal(config.runner, 'claude-cloud');
+  assert.equal(config.review.maxLoops, 3);
+  assert.equal(config.stages.screenshots, true);
+  assert.deepEqual(config.skills.sp, { enabled: true, skills: { tdd: true, brain: false } });
+  assert.deepEqual(warnings, []);
+});
+
+test('per-skill override inside a pack', () => {
+  const { config } = resolveConfig({ skills: { sp: { skills: { brain: true, tdd: false } } } }, catalog);
+  assert.deepEqual(enabledSkills(config, catalog).map((s) => s.id), ['brain', 'impeccable']);
+});
+
+test('a disabled pack yields none of its skills', () => {
+  const { config } = resolveConfig({ skills: { imp: { enabled: false } } }, catalog);
+  assert.deepEqual(enabledSkills(config, catalog).map((s) => s.id), ['tdd']);
+});
+
+test('unknown pack and skill ids produce warnings, not errors', () => {
+  const { warnings } = resolveConfig({ skills: { nope: { enabled: true }, sp: { skills: { ghost: true } } } }, catalog);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings.join(' '), /nope/);
+  assert.match(warnings.join(' '), /ghost/);
+});
+
+test('invalid values fall back to defaults with a warning', () => {
+  const { config, warnings } = resolveConfig({ maxParallel: 0, runner: 'mars', review: { maxLoops: 'x' } }, catalog);
+  assert.equal(config.maxParallel, 2);
+  assert.equal(config.runner, 'claude-cloud');
+  assert.equal(config.review.maxLoops, 3);
+  assert.equal(warnings.length, 3);
+});
+
+test('stage toggles override defaults', () => {
+  const { config } = resolveConfig({ stages: { grilling: false }, maxParallel: 4 }, catalog);
+  assert.equal(config.stages.grilling, false);
+  assert.equal(config.stages.plan, true);
+  assert.equal(config.maxParallel, 4);
+});
