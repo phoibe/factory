@@ -25,6 +25,13 @@ export function linkedIssue(body) {
 }
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
+// The preview link of the latest Vercel bot comment, once its deployment is "Ready".
+export function vercelPreview(comments) {
+  const body = [...comments].reverse().find((c) => c.user?.login === 'vercel[bot]')?.body || '';
+  if (!/Ready\]\(|\/ready\.svg/i.test(body)) return null;
+  return /\[Preview\]\((https:\/\/[^)\s]+)\)/.exec(body)?.[1] || null;
+}
+
 export function eventFromPayload(eventName, p, now = Date.now()) {
   const owner = p.repository?.owner?.login;
   const isOwnerOrApp = (login) => Boolean(login) && (login === owner || login === 'claude[bot]');
@@ -200,12 +207,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await dequeue();
   }
 
-  async function previewUrl(sha, { attempts = 15, delayMs = 20_000 } = {}) {
+  async function previewUrl(sha, prNumber, { attempts = 15, delayMs = 20_000 } = {}) {
     for (let i = 0; i < attempts; i++) {
-      for (const d of (await gh.deployments(sha)) || []) {
+      for (const d of (await gh.deployments(sha).catch(() => [])) || []) {
         const ok = ((await gh.deploymentStatuses(d.id)) || []).find((s) => s.state === 'success');
         if (ok) return ok.environment_url || ok.target_url;
       }
+      // Vercel's GitHub app often reports only a commit status plus a comment it keeps up to date.
+      const fromComment = vercelPreview((await gh.listComments(prNumber)) || []);
+      if (fromComment) return fromComment;
       if (i < attempts - 1) await sleep(delayMs);
     }
     return null;
@@ -314,7 +324,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (next === 'acceptance') {
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
-      const url = await previewUrl(pr.head.sha);
+      const url = await previewUrl(pr.head.sha, prNumber);
       const where = url
         ? `Tu peux tester la nouvelle version ici : ${url}`
         : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README).";
