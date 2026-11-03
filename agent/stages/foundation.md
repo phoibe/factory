@@ -14,6 +14,8 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
      pages principales), qui passent tous : ce sont ceux des contrôles automatiques ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
+   - un `vercel.json` qui déclare le framework (ex. `{"framework": "nextjs"}`) : le projet Vercel a été
+     importé quand le dépôt était vide, il ne sait donc pas encore quel type d'appli construire.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 5. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6), puis vérifie
