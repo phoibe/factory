@@ -112,3 +112,13 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; }
 @keyframes moved { 0% { box-shadow: 0 0 0 3px var(--accent), var(--shadow); } 100% { box-shadow: 0 0 0 0 transparent, var(--shadow); } }
 @media (prefers-reduced-motion: reduce) { .live-dot::after, .dot.on::after { animation: none; } .ticket, .ticket.moved, .cta .arrow { transition: none; animation: none; } }
 @media (max-width: 600px) { .pulse-bar { padding: 14px 16px; } .tickets { grid-template-columns: 1fr; } .actions .button { flex: 1 1 auto; text-align: center; } }
+
+/* ---- Phone sign-in ---- */
+.tip { padding: 12px 14px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+dialog#phone { max-width: 380px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
+dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
+#phone-qr { width: 240px; max-width: 100%; margin: 16px auto; padding: 8px; background: #fff; border-radius: 8px; }
+#phone-qr svg { display: block; width: 100%; height: auto; }
+.small { font-size: .85rem; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+@media (max-width: 600px) { #phone-open { display: none; } }

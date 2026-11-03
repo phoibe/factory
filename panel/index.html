@@ -11,6 +11,7 @@
     <a class="brand" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V10l5 3V10l5 3V6l8 4v10z"/></svg>Factory</a>
     <nav id="nav" hidden>
       <select id="project" aria-label="Projet"></select>
+      <button id="phone-open" class="ghost" type="button">Sur mon téléphone</button>
       <button id="logout" class="ghost" type="button">Se déconnecter</button>
     </nav>
   </header>
@@ -19,6 +20,7 @@
     <section id="login" class="card narrow" hidden>
       <h1>Connecte le panneau à GitHub</h1>
       <p>Le panneau a besoin d'un jeton GitHub pour lire tes projets et enregistrer tes règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
+      <p class="tip">Déjà connecté sur ton ordinateur ? Là-bas, clique sur <strong>Sur mon téléphone</strong> et scanne le code avec ce téléphone : rien à recopier.</p>
       <ol>
         <li>Ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la création de jeton</a>.</li>
         <li>Nom : « factory panneau ». Expiration : 1 an. <strong>Repository access</strong> : <strong>All repositories</strong>.</li>
@@ -60,6 +62,16 @@
       <form id="rules" role="tabpanel" aria-labelledby="tab-rules" hidden></form>
     </section>
   </main>
+  <dialog id="phone" aria-labelledby="phone-title">
+    <h2 id="phone-title">Ouvrir le panneau sur ton téléphone</h2>
+    <p>Scanne ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté, et le reste.</p>
+    <div id="phone-qr"></div>
+    <p class="muted small">Ce code contient ton jeton GitHub : ne le montre à personne. Astuce : une fois ouvert, ajoute la page à l'écran d'accueil.</p>
+    <div class="dialog-actions">
+      <button id="phone-copy" class="secondary" type="button">Copier le lien</button>
+      <button id="phone-close" type="button">Fermer</button>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="app.mjs"></script>
 </body>

@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64 } from './lib.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink } from './lib.mjs';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -27,7 +27,15 @@ const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
 ];
 
+// A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
+const linked = tokenFromHash(location.hash);
+if (linked) {
+  store.set(TOKEN_KEY, linked);
+  history.replaceState(null, '', location.pathname + location.search);
+}
 let token = store.get(TOKEN_KEY);
+// Ask the browser not to clear the token when it tidies its storage (mobile browsers do).
+if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
 
 function el(tag, attrs = {}, ...children) {
@@ -57,7 +65,7 @@ async function api(path, init = {}) {
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`);
+  if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`), { status: res.status });
   return res.status === 204 ? null : res.json();
 }
 
@@ -339,6 +347,12 @@ async function start() {
   try {
     projects = await loadProjects();
   } catch (err) {
+    // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
+    if (err.status !== 401) {
+      toast('GitHub ne répond pas. Nouvel essai dans 15 s.');
+      setTimeout(() => start().catch(() => {}), 15_000);
+      return;
+    }
     store.del(TOKEN_KEY);
     token = null;
     $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifie-le et réessaie.`;
@@ -356,6 +370,23 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => { store.del(TOKEN_KEY); token = null; show('login'); });
+function loadScript(src) {
+  return new Promise((ok, ko) => document.head.append(el('script', { src, onload: ok, onerror: ko })));
+}
+
+async function openPhone() {
+  const link = phoneLink(location.href, token);
+  if (!window.qrcode) await loadScript('vendor/qrcode.js');
+  const qr = window.qrcode(0, 'M');
+  qr.addData(link);
+  qr.make();
+  $('phone-qr').innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+  $('phone-copy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Lien copié. Ouvre-le sur ton téléphone.'), () => toast('Copie impossible : scanne le code.'));
+  $('phone').showModal();
+}
+
+$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
+$('phone-close').addEventListener('click', () => $('phone').close());
 $('project').addEventListener('change', (e) => openProject(e.target.value));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
