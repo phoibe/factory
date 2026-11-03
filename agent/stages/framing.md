@@ -14,9 +14,56 @@ Cette étape a lieu une fois par projet, sur l'issue « Nouveau projet » (label
    - **les usages principaux** et ce que la toute première version doit permettre ;
    - **hors sujet** : ce que l'appli ne fera pas ;
    - **données et accès** : comptes ou non, plusieurs appareils, partage, données sensibles ;
-   - **ton et apparence** : sobre, ludique, mobile d'abord ou ordinateur ;
+   - **le design**, dans ses propres rounds (voir « Le questionnaire design » puis « La direction visuelle ») ;
    - **la stack**, en dernier (voir ci-dessous).
 4. Laisse le label `factory:grilling` tant qu'il reste des questions.
+
+## Le questionnaire design
+
+But : réunir tout ce dont le skill `impeccable` a besoin pour écrire les documents de design (`PRODUCT.md`
+et `DESIGN.md`) et donner à l'appli une interface soignée et un look qui lui ressemble. Lis d'abord, dans
+`.claude/skills/impeccable/`, `SKILL.md` puis `reference/init.md` et `reference/new-work.md` (sections 1 à 4) :
+ce sont eux qui disent ce qui compte. Si l'étape « passe design » est désactivée, réduis ce questionnaire à
+une seule question sur le ton et l'apparence.
+
+Pose ces questions en un ou deux rounds à part, **après** celles sur le produit, en langage de tous les
+jours. Chacune avec ta recommandation (➡️) tirée de ce qu'il a déjà dit. Ne demande **jamais** de valeur
+technique (couleur en code, taille de police, nom de style tout fait) : demande des situations, des
+ressentis et des exemples. Ce qu'il faut savoir :
+
+1. **La scène d'usage** : où, quand et sur quel écran il s'en sert (téléphone le soir au lit, ordinateur au
+   bureau, dehors en plein soleil…). C'est elle qui décide clair ou sombre, la taille des boutons, la densité.
+2. **Le ressenti** : trois mots pour ce qu'il doit éprouver en l'ouvrant (calme, fier, motivé, amusé…), et
+   ce qui le ferait se sentir mal (infantilisé, culpabilisé, noyé…).
+3. **Les inspirations** : deux ou trois applis, sites, objets ou lieux dont il aime le look, et pourquoi en
+   une phrase ; puis un ou deux qu'il n'aime pas. Aide-le avec des exemples s'il sèche.
+4. **Ce qui existe déjà** : un nom définitif, un logo, des couleurs ou des images à garder, ou rien.
+5. **La personnalité** : plutôt discrète et sérieuse, chaleureuse, ou joueuse ; et le ton des textes
+   (tutoiement ou vouvoiement, sobre ou avec de l'humour).
+6. **La densité** : peu d'éléments très aérés, ou beaucoup d'informations d'un coup d'œil.
+7. **Le mouvement** : animations et petites récompenses visuelles bienvenues, discrètes, ou aucune.
+8. **L'accessibilité** : un besoin particulier (vue, daltonisme, gros caractères, usage d'une seule main).
+
+N'en garde que celles dont la réponse n'est pas déjà claire. S'il répond « comme tu veux » à une question,
+note-la « déléguée » et choisis toi-même à partir de ses autres réponses.
+
+## La direction visuelle
+
+Quand le questionnaire est réglé, propose le monde visuel de l'appli dans un round à lui, en suivant la
+section « Create or replace the visual world » de `reference/new-work.md` (lance son script `concept-seed`
+s'il est disponible ; sinon dérive les directions toi-même en suivant la même méthode). La page de choix
+interactive du skill n'est pas utilisable ici : présente les directions dans le commentaire.
+
+- **Deux ou trois directions** très différentes, numérotées, chacune en quatre lignes simples : l'univers
+  dont elle s'inspire et pourquoi il lui va, les couleurs décrites en mots (« vert sapin profond, fond
+  papier crème »), le caractère des textes (« titres arrondis et généreux »), le petit détail qui la rend
+  reconnaissable, et le risque honnête.
+- **Ta recommandation** (➡️) et pourquoi, en une phrase.
+- **La sortie sûre** : une dernière option « classique, comme les meilleures applis du genre », jamais
+  recommandée.
+- Termine par : « Réponds par le numéro de la direction, ou dis ce qu'il faudrait changer. »
+
+S'il demande autre chose (plus sobre, plus audacieux, un mélange), propose une nouvelle série.
 
 ## Choisir la stack
 
@@ -43,6 +90,9 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Usages principaux** ;
 - **Première version** : la liste des features, une ligne chacune (chacune deviendra une issue) ;
 - **Hors sujet** ;
+- **Design** : la scène d'usage, les trois mots du ressenti, les inspirations et anti-inspirations, ce qui
+  existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
+  visuelle choisie avec ses quatre lignes ;
 - **Stack** : chaque brique avec sa raison en une phrase ;
 - **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
 

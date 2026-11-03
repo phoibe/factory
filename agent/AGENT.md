@@ -11,9 +11,10 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 `{"repo": "owner/name", "issue": 12, "pr": 34 | null, "stage": "grilling", "factory": "phoibe/factory"}`.
 
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
-2. Si `docs/PRODUCT.md` existe, lis-le : c'est la vision du produit et la stack validées par le propriétaire.
-   Elles priment sur la stack par défaut ci-dessous. Si une feature validée change la vision ou le
-   périmètre, mets ce fichier à jour dans la même PR.
+2. Si `PRODUCT.md` existe à la racine (ou `docs/PRODUCT.md` sur un projet plus ancien), lis-le : c'est la
+   vision du produit et la stack validées par le propriétaire. Elles priment sur la stack par défaut
+   ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. Si une feature
+   validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
 3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
 4. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,

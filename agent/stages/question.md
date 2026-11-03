@@ -8,7 +8,7 @@ ni branche, ni PR, ni label, ni autre issue. Tu réponds, c'est tout.
    donnent le contexte.
 2. Cherche la réponse dans les faits, par ordre de fiabilité :
    - le code de `main` et ses tests (un test qui couvre le cas est la meilleure preuve) ;
-   - `docs/PRODUCT.md` et les specs validées (commentaires `<!-- factory-spec -->` des issues) ;
+   - `PRODUCT.md` (ou `docs/PRODUCT.md`), `DESIGN.md` et les specs validées (commentaires `<!-- factory-spec -->` des issues) ;
    - les issues et PR ouvertes, pour ce qui est prévu ou en cours.
    Si besoin, lance l'appli localement pour vérifier un comportement plutôt que de le deviner.
 3. Réponds en commentaire, en français simple, sans jargon ni nom de fichier :
