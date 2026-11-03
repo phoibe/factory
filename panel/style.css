@@ -60,3 +60,4 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; }
 @media (max-width: 600px) { .top { flex-wrap: wrap; } nav { width: 100%; } nav select { flex: 1; } }
+.item .eta { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; }
