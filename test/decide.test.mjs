@@ -187,3 +187,8 @@ test('project issues from strangers or filed by the agent do not start', () => {
   assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.project], fromOwner: false }), config, ctx).type, 'ignore');
   assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.project], fromAgent: true }), config, ctx).type, 'ignore');
 });
+
+test('the labeled event sent with an issue form opening does not start the issue a second time', () => {
+  const a = decide(ev({ event: 'issues', action: 'labeled', addedLabel: L.project, labels: [L.project], openedRecently: true }), config, ctx);
+  assert.equal(a.type, 'ignore');
+});
