@@ -113,8 +113,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     if (!env.FACTORY_ROUTINE_URL || !env.FACTORY_ROUTINE_TOKEN) {
-      await fail("Je n'ai pas pu lancer l'agent : la routine Claude n'est pas configurée pour ce dépôt.\n\n"
-        + 'Ajoute les secrets `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (voir le guide de mise en route du README), puis réécris ton dernier message.', 'routine secrets missing');
+      await fail("Je n'ai pas pu lancer l'agent : je ne trouve pas les secrets de la routine Claude **dans ce dépôt**.\n\n"
+        + `Ouvre https://github.com/${repo}/settings/secrets/actions (la page des secrets de ce dépôt-ci, pas de factory-template) `
+        + 'et crée, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écris « réessaie » ici.', 'routine secrets missing');
     }
     const res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
       method: 'POST',
