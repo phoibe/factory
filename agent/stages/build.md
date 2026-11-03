@@ -9,7 +9,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 3. **Plan** (si l'étape plan est active) : skill `writing-plans`, plan enregistré dans
    `docs/plans/issue-<n>.md`. Pas de validation humaine du plan : exécute-le toi-même (`executing-plans`
    ou `subagent-driven-development`).
-4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord.
+4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
+   lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD).
 5. **Revue de code** (si active) : lance un **sous-agent** qui n'a pas écrit le code, avec un contexte neuf
    (skill `requesting-code-review`) : il relit le diff contre la spec et les standards du dépôt. Corrige ce
    qu'il trouve (skill `receiving-code-review`), puis relance une revue neuve. Au plus {{maxLoops}} tours.

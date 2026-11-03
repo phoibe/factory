@@ -12,6 +12,19 @@ const STAGE_LABELS = {
   screenshots: 'captures avant/après', checks: 'contrôles automatiques', acceptance: 'recette',
 };
 
+const HOOK_COMMAND = 'node "$CLAUDE_PROJECT_DIR/.factory/scripts/journal.mjs"';
+const HOOK_EVENTS = { UserPromptSubmit: null, PostToolUse: 'Skill|Bash', PostToolUseFailure: 'Bash' };
+
+// Adds the journal hook to the project's Claude Code settings, keeping everything else in the file.
+export function withJournalHook(settings = {}) {
+  const hooks = { ...(settings.hooks || {}) };
+  for (const [event, matcher] of Object.entries(HOOK_EVENTS)) {
+    const others = (hooks[event] || []).filter((g) => !(g.hooks || []).some((h) => String(h.command || '').includes('.factory/scripts/journal.mjs')));
+    hooks[event] = [...others, { ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: HOOK_COMMAND }] }];
+  }
+  return { ...settings, hooks };
+}
+
 export function render(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
@@ -51,6 +64,9 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
     writeFileSync(join(outDir, 'stages', f), render(readFileSync(join(factoryDir, 'agent/stages', f), 'utf8'), vars));
   }
   cpSync(join(factoryDir, 'agent/scripts/shots.mjs'), join(outDir, 'scripts/shots.mjs'));
+  cpSync(join(factoryDir, 'agent/scripts/journal.mjs'), join(outDir, 'scripts/journal.mjs'));
+  const settingsPath = join(projectDir, '.claude/settings.json');
+  writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');
   writeFileSync(join(outDir, 'config.resolved.json'), JSON.stringify(config, null, 2) + '\n');
   return { installed: skills.map((s) => s.id), removed, warnings };

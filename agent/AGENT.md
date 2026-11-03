@@ -31,6 +31,12 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
 
+**Journal de fabrication.** L'outil note tout seul, dans `.factory/journal/`, les skills que tu charges et
+les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été
+suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
+(`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
+tests avec la commande de test du projet, sinon rien n'est noté.
+
 ## Parler au propriétaire
 
 - **Toujours en français**, simple, concret, sans jargon technique. Pas de nom de fichier, de fonction ou de
