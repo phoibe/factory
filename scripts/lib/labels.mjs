@@ -14,6 +14,7 @@ export const L = {
   acceptance: 'factory:acceptance',
   fixing: 'factory:fixing',
   pending: 'factory:pending',
+  skillsAlert: 'factory:skills-alert',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -33,6 +34,7 @@ export const LABEL_DEFS = [
   [L.acceptance, 'fbca04', 'Recette : teste la preview et réponds « ok »'],
   [L.fixing, 'e99695', "Correction en cours après un contrôle rouge"],
   [L.pending, 'bfdadc', "Message reçu pendant qu'un agent travaillait, traité juste après"],
+  [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 
 export const AGENT_MARKER = '<!-- factory-agent -->';

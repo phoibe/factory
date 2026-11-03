@@ -10,6 +10,7 @@ import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER } from './lib/labels.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
@@ -309,9 +310,27 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return { action, outputs };
   }
 
+  // Posts (or refreshes) the PR's « Fabrication » comment from the journal the hook wrote on the branch.
+  async function fabrication(prNumber, pr) {
+    // Only the journal files this PR adds or changes: older runs already merged into main are not this PR's.
+    const files = ((await gh.listPrFiles(prNumber)) || []).filter((f) => f.status !== 'removed').map((f) => f.filename);
+    const texts = [];
+    for (const path of files.filter((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) {
+      const file = await gh.getContent(path, pr.head.sha);
+      if (file?.content) texts.push(Buffer.from(file.content, 'base64').toString('utf8'));
+    }
+    const { body, alerts } = summarize(parseJournal(texts), { stages: config.stages, ui: uiChanged(files) });
+    const mine = ((await gh.listComments(prNumber)) || []).find((c) => (c.body || '').includes(FABRICATION_MARKER));
+    const text = say(body);
+    if (mine) await gh.updateComment(mine.id, text); else await gh.comment(prNumber, text);
+    if (alerts.length) await gh.addLabels(prNumber, [L.skillsAlert]); else await gh.removeLabel(prNumber, L.skillsAlert);
+    return alerts;
+  }
+
   async function report({ result, pr: prNumber, runId, sha }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
+    try { await fabrication(prNumber, pr); } catch (e) { log(`fabrication: ${e.message}`); }
     const issueNumber = linkedIssue(pr.body);
     const issue = issueNumber ? await gh.getIssue(issueNumber) : null;
     const isBug = names(issue?.labels).includes(L.bug);
@@ -360,7 +379,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, outputs };
+  return { handle, report, dequeue, release, fabrication, outputs };
 }
 
 function writeOutputs(outputs) {
