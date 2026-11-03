@@ -99,6 +99,7 @@ async function openProject(fullName) {
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
   $('new-project').href = `${base}/issues/new?template=project.yml`;
+  $('new-question').href = `${base}/issues/new?template=question.yml`;
   show('project-view');
   renderRules();
   await renderBoard();
