@@ -262,3 +262,10 @@ test('failures before a reset marker are not counted again', async () => {
   await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
   assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
 });
+
+test('eventFromPayload flags issues opened less than a minute ago', () => {
+  const p = (created) => ({ action: 'labeled', label: { name: 'factory:project' }, repository: { owner: { login: 'phoibe' } }, sender: { login: 'phoibe' }, issue: { number: 2, labels: [], body: '', created_at: created } });
+  const now = Date.parse('2026-11-03T18:04:30Z');
+  assert.equal(eventFromPayload('issues', p('2026-11-03T18:04:09Z'), now).openedRecently, true);
+  assert.equal(eventFromPayload('issues', p('2026-11-03T17:00:00Z'), now).openedRecently, false);
+});

@@ -44,6 +44,7 @@ function onIssue(ev, config, ctx) {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'issue fermée' };
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
+    if (ev.action === 'labeled' && ev.openedRecently) return ignore("label posé à l'ouverture : l'ouverture s'en charge");
     if (!ev.fromOwner) return ignore("issue ouverte par quelqu'un d'autre que le propriétaire");
     if (ev.fromAgent) return ignore("issue proposée par l'agent : elle démarre quand le propriétaire y écrit");
     if (has(ev.labels, L.running) || STATE_LABELS.some((l) => has(ev.labels, l))) return ignore('issue déjà prise en charge');

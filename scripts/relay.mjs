@@ -25,7 +25,7 @@ export function linkedIssue(body) {
 }
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
-export function eventFromPayload(eventName, p) {
+export function eventFromPayload(eventName, p, now = Date.now()) {
   const owner = p.repository?.owner?.login;
   const isOwnerOrApp = (login) => Boolean(login) && (login === owner || login === 'claude[bot]');
   const base = { event: eventName, action: p.action, addedLabel: p.label?.name, removedLabel: p.label?.name, fromAgent: false, text: '' };
@@ -40,6 +40,8 @@ export function eventFromPayload(eventName, p) {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
       fromAgent: (p.issue.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
+      // An issue form with labels sends "opened" and "labeled" together: the "labeled" one must not start it twice.
+      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000,
     };
   }
   if (eventName === 'issue_comment') {
