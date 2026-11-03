@@ -17,7 +17,7 @@ avec des agents IA. Pierre n'intervient que sur le fonctionnel et ne lit jamais 
 | Orchestrateur | GitHub Actions (workflows réutilisables de ce repo) + labels `factory:*` comme machine à états |
 | Runner des agents | Routines Claude Code (cloud Anthropic, abonnement Max) par défaut ; GitHub Actions + `claude-code-action` en secours ; réglable par projet |
 | Runner des contrôles | GitHub Actions |
-| Hébergement des applis | Vercel Hobby (preview par PR), Neon si base de données |
+| Hébergement des applis | Vercel Hobby (preview par PR) par défaut ; stack et briques décidées au cadrage selon les besoins |
 | Observabilité | aucune dédiée : sessions Claude + pages Actions + panneau |
 
 ## Organisation
