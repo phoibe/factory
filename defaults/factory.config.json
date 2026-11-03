@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "runner": "claude-cloud",
+  "maxParallel": 2,
+  "stack": "Next.js (TypeScript) on Vercel, Neon Postgres when a database is needed",
+  "stages": {
+    "grilling": true,
+    "plan": true,
+    "tdd": true,
+    "review": true,
+    "designPass": true,
+    "screenshots": true,
+    "checks": true,
+    "acceptance": true
+  },
+  "review": { "maxLoops": 3 },
+  "checks": {
+    "typecheck": true,
+    "lint": true,
+    "test": true,
+    "build": true,
+    "a11y": true,
+    "audit": true
+  },
+  "skills": {}
+}

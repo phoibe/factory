@@ -1,0 +1,289 @@
+{
+  "packs": [
+    {
+      "id": "superpowers",
+      "name": "Superpowers",
+      "repo": "obra/superpowers",
+      "commit": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "license": "MIT",
+      "skills": [
+        {
+          "id": "brainstorming",
+          "path": "packs/superpowers/brainstorming",
+          "description": "You MUST use this before any creative work - creating features, building components, adding functionality, modifying behavior, or planning anything new, in software or out of it (a talk, a business, a renovation).",
+          "defaultEnabled": false
+        },
+        {
+          "id": "diagnosing-superpowers",
+          "path": "packs/superpowers/diagnosing-superpowers",
+          "description": "Use when a superpowers session went wrong and your human partner wants to know why — repeated work, ignored plans, stumbles, poor results, a skill that didn't fire, \"it took too long\", \"why is it so expensive\", \"what is it doing\" — or wants to build a bug report for the superpowers maintainers, for the current session or a past one identified by id or path, on any harness.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "dispatching-parallel-agents",
+          "path": "packs/superpowers/dispatching-parallel-agents",
+          "description": "Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies",
+          "defaultEnabled": true
+        },
+        {
+          "id": "executing-plans",
+          "path": "packs/superpowers/executing-plans",
+          "description": "Use when executing an implementation plan in the current session as the implementer yourself — your human partner chose inline execution, or no subagent tool is available",
+          "defaultEnabled": true
+        },
+        {
+          "id": "finishing-a-development-branch",
+          "path": "packs/superpowers/finishing-a-development-branch",
+          "description": "Use when implementation is complete, all tests pass, and you need to decide how to integrate the work",
+          "defaultEnabled": false
+        },
+        {
+          "id": "receiving-code-review",
+          "path": "packs/superpowers/receiving-code-review",
+          "description": "Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation",
+          "defaultEnabled": true
+        },
+        {
+          "id": "requesting-code-review",
+          "path": "packs/superpowers/requesting-code-review",
+          "description": "Use when completing tasks, implementing major features, or before merging to verify work meets requirements",
+          "defaultEnabled": true
+        },
+        {
+          "id": "subagent-driven-development",
+          "path": "packs/superpowers/subagent-driven-development",
+          "description": "Use when executing implementation plans with independent tasks in the current session",
+          "defaultEnabled": true
+        },
+        {
+          "id": "systematic-debugging",
+          "path": "packs/superpowers/systematic-debugging",
+          "description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes",
+          "defaultEnabled": true
+        },
+        {
+          "id": "test-driven-development",
+          "path": "packs/superpowers/test-driven-development",
+          "description": "Use when implementing any feature or bugfix, before writing implementation code",
+          "defaultEnabled": true
+        },
+        {
+          "id": "using-git-worktrees",
+          "path": "packs/superpowers/using-git-worktrees",
+          "description": "Use when starting feature work that needs isolation from current workspace or before executing implementation plans - ensures an isolated workspace exists via native tools or git worktree fallback",
+          "defaultEnabled": false
+        },
+        {
+          "id": "using-superpowers",
+          "path": "packs/superpowers/using-superpowers",
+          "description": "Use when starting any conversation - establishes how to find and use skills, requiring skill invocation before ANY response including clarifying questions",
+          "defaultEnabled": false
+        },
+        {
+          "id": "verification-before-completion",
+          "path": "packs/superpowers/verification-before-completion",
+          "description": "Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always",
+          "defaultEnabled": true
+        },
+        {
+          "id": "writing-plans",
+          "path": "packs/superpowers/writing-plans",
+          "description": "Use when you have a spec or requirements for a multi-step task, before touching code",
+          "defaultEnabled": true
+        },
+        {
+          "id": "writing-skills",
+          "path": "packs/superpowers/writing-skills",
+          "description": "Use when creating new skills, editing existing skills, or verifying skills work before deployment",
+          "defaultEnabled": false
+        }
+      ]
+    },
+    {
+      "id": "matt-pocock",
+      "name": "Matt Pocock skills",
+      "repo": "mattpocock/skills",
+      "commit": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+      "license": "MIT",
+      "skills": [
+        {
+          "id": "grill-me",
+          "path": "packs/matt-pocock/grill-me",
+          "description": "A relentless interview to sharpen a plan or design.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "grilling",
+          "path": "packs/matt-pocock/grilling",
+          "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.",
+          "defaultEnabled": true
+        },
+        {
+          "id": "handoff",
+          "path": "packs/matt-pocock/handoff",
+          "description": "Compact the current conversation into a handoff document for another agent to pick up.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "teach",
+          "path": "packs/matt-pocock/teach",
+          "description": "Teach the user a new skill or concept, within this workspace.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "to-questionnaire",
+          "path": "packs/matt-pocock/to-questionnaire",
+          "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "wait-what",
+          "path": "packs/matt-pocock/wait-what",
+          "description": "Stop. That last message did not land: re-pitch it.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "writing-for-agents",
+          "path": "packs/matt-pocock/writing-for-agents",
+          "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "ask-matt",
+          "path": "packs/matt-pocock/ask-matt",
+          "description": "Ask which skill or flow fits your situation. A router over the skills in this repo.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "code-review",
+          "path": "packs/matt-pocock/code-review",
+          "description": "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".",
+          "defaultEnabled": false
+        },
+        {
+          "id": "codebase-design",
+          "path": "packs/matt-pocock/codebase-design",
+          "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "diagnosing-bugs",
+          "path": "packs/matt-pocock/diagnosing-bugs",
+          "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "domain-modeling",
+          "path": "packs/matt-pocock/domain-modeling",
+          "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "grill-with-docs",
+          "path": "packs/matt-pocock/grill-with-docs",
+          "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "implement",
+          "path": "packs/matt-pocock/implement",
+          "description": "Implement a piece of work based on a spec or set of tickets.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "implement-spec",
+          "path": "packs/matt-pocock/implement-spec",
+          "description": "Implement the result of /to-spec and /to-tickets in code.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "improve-codebase-architecture",
+          "path": "packs/matt-pocock/improve-codebase-architecture",
+          "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "pr",
+          "path": "packs/matt-pocock/pr",
+          "description": "Use when writing a PR body.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "prototype",
+          "path": "packs/matt-pocock/prototype",
+          "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "research",
+          "path": "packs/matt-pocock/research",
+          "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "retro",
+          "path": "packs/matt-pocock/retro",
+          "description": "Conduct a retrospective on a coding session.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "setup-matt-pocock-skills",
+          "path": "packs/matt-pocock/setup-matt-pocock-skills",
+          "description": "Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "tdd",
+          "path": "packs/matt-pocock/tdd",
+          "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "to-spec",
+          "path": "packs/matt-pocock/to-spec",
+          "description": "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.",
+          "defaultEnabled": true
+        },
+        {
+          "id": "to-tickets",
+          "path": "packs/matt-pocock/to-tickets",
+          "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).",
+          "defaultEnabled": false
+        },
+        {
+          "id": "triage",
+          "path": "packs/matt-pocock/triage",
+          "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "wayfinder",
+          "path": "packs/matt-pocock/wayfinder",
+          "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.",
+          "defaultEnabled": false
+        },
+        {
+          "id": "wizard",
+          "path": "packs/matt-pocock/wizard",
+          "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself.",
+          "defaultEnabled": false
+        }
+      ]
+    },
+    {
+      "id": "impeccable",
+      "name": "Impeccable",
+      "repo": "pbakaus/impeccable",
+      "commit": "9fadc41729c38fd47d7ae622b501558653f9d2e9",
+      "license": "Apache-2.0",
+      "skills": [
+        {
+          "id": "impeccable",
+          "path": "packs/impeccable/impeccable",
+          "description": "Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend interface: websites, landing pages, dashboards, product UI, components, forms, settings, onboarding, empty states, and native iOS or Android screens. Handles UX review, hierarchy, layout, typography, color, motion, UX copy, accessibility, responsive behavior, edge cases, and capturing or documenting design systems (DESIGN.md, tokens). Also for making bland UI bolder, loud UI quieter, or ambitious visual effects. Not for backend-only or non-UI tasks.",
+          "defaultEnabled": true
+        }
+      ]
+    }
+  ]
+}
