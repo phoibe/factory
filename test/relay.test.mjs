@@ -269,3 +269,11 @@ test('eventFromPayload flags issues opened less than a minute ago', () => {
   assert.equal(eventFromPayload('issues', p('2026-11-03T18:04:09Z'), now).openedRecently, true);
   assert.equal(eventFromPayload('issues', p('2026-11-03T17:00:00Z'), now).openedRecently, false);
 });
+
+test('vercelPreview reads the preview link from the Vercel bot comment once ready', async () => {
+  const { vercelPreview } = await import('../scripts/relay.mjs');
+  const row = (status) => `| [habitudes](https://vercel.com/x/habitudes) | ![${status}](https://vercel.com/static/status/${status.toLowerCase()}.svg) [${status}](https://vercel.com/x/1) | [Preview](https://habitudes-git-b-x.vercel.app) | now |`;
+  assert.equal(vercelPreview([{ user: { login: 'vercel[bot]' }, body: row('Ready') }]), 'https://habitudes-git-b-x.vercel.app');
+  assert.equal(vercelPreview([{ user: { login: 'vercel[bot]' }, body: row('Building') }]), null);
+  assert.equal(vercelPreview([{ user: { login: 'someone' }, body: row('Ready') }]), null);
+});
