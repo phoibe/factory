@@ -11,8 +11,8 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 `{"repo": "owner/name", "issue": 12, "pr": 34 | null, "stage": "grilling", "factory": "phoibe/factory"}`.
 
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
-2. Lis l'issue (et la PR si `pr` est renseigné) en entier avec `gh issue view <n> --comments` /
-   `gh pr view <n> --comments`. L'historique des commentaires est ta seule mémoire des runs précédents.
+2. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
+   ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
 3. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
    tu mets le bon label et tu termines. Sa réponse relancera un nouveau run.
 
@@ -36,9 +36,28 @@ Si une étape est désactivée ci-dessus, saute-la même si une instruction d'é
   ---
   _Généré par [Claude Code](https://claude.ai/code) · software factory_
   ```
-- Écris tes commentaires dans un fichier puis `gh issue comment <n> --body-file <fichier>` (pas de `--body` inline).
+- Écris tes commentaires dans un fichier puis publie-les avec `-F body=@fichier` (voir « API GitHub »).
 - Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Réponds « go » pour lancer la
   construction », « Réponds « ok » si les captures te conviennent »).
+
+## API GitHub
+
+Utilise l'API REST (`gh api`) ou les outils GitHub MCP s'ils sont disponibles. **N'utilise pas** `gh issue view`,
+`gh pr view`, `gh pr create`, `gh issue edit` ni `gh pr checks` : ils passent par GraphQL, qui peut être
+bloqué dans le cloud. `R` désigne `repos/<repo du payload>` :
+
+| Besoin | Commande |
+| --- | --- |
+| Lire l'issue ou la PR | `gh api R/issues/<n>` · `gh api R/pulls/<n>` |
+| Lire les commentaires | `gh api R/issues/<n>/comments --paginate` |
+| Commenter | `gh api R/issues/<n>/comments -F body=@fichier.md` |
+| Ajouter un label | `gh api R/issues/<n>/labels -f 'labels[]=factory:checks'` |
+| Retirer un label | `gh api -X DELETE R/issues/<n>/labels/factory:running` (ignorer l'erreur 404) |
+| Ouvrir une PR | `gh api R/pulls -f title=... -f head=<branche> -f base=main -F body=@pr.md` |
+| Ouvrir une issue | `gh api R/issues -f title=... -F body=@issue.md -f 'labels[]=factory:feature'` |
+| État des contrôles | `gh api R/commits/<sha>/check-runs` puis `gh run view <id> --log-failed` |
+
+Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/issues/<numéro de PR>`.
 
 ## Labels (la machine à états)
 
@@ -47,7 +66,7 @@ Sur l'issue : `factory:grilling` → `factory:spec-review` → `factory:building
 Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques) →
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
-- Quand ton étape le dit, change les labels avec `gh issue edit` / `gh pr edit --add-label/--remove-label`.
+- Quand ton étape le dit, change les labels (voir « API GitHub »).
 - **À la fin de chaque run**, retire `factory:running` de l'issue et de la PR concernées, même en cas d'échec.
 - Juste avant de terminer, relis les commentaires : si le propriétaire a écrit depuis le début de ton run,
   traite son message dans ce même run (c'est pour ça que la factory ne t'a pas relancé).

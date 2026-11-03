@@ -18,7 +18,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 6. **Passe design** (si active et si l'interface change) : skill `impeccable` sur les écrans touchés.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
-8. **PR** : `gh pr create` avec en tête un résumé en français pour le propriétaire (ce qui change pour
+8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
    lui), puis `Closes #<n>`, puis les détails techniques en anglais.
 9. **Captures** : si l'interface change et que l'étape screenshots est active, suis
    `.factory/stages/screenshots.md`, puis mets le label `factory:visual-review` sur la PR.
