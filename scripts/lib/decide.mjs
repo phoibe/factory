@@ -3,7 +3,7 @@ import { L } from './labels.mjs';
 // Words allowed in an approval. Every word of the message must be one of them, and one must be a "core" word,
 // so "ok, le bouton en rouge" is a change request, not an approval.
 const CORE = new Set(['go', 'ok', 'okay', 'oui', 'yes', 'valide', 'validé', 'validée', 'validées', 'bon', 'lgtm', 'parfait', 'nickel',
-  'top', 'super', 'génial', 'accord', "d'accord", 'daccord', 'approuvé', 'approuvée', 'va', 'vas-y', 'parfaitement', '👍', '✅', '👌']);
+  'top', 'super', 'génial', 'accord', "d'accord", 'daccord', 'approuvé', 'approuvée', 'va', 'vas-y', 'parfaitement', 'bien', '👍', '✅', '👌', '🚀', '🙌', '👏', '💯']);
 const FILLER = new Set(["c'est", 'cest', 'on', 'y', 'ça', 'ca', 'me', 'merci', 'tout', 'pour', 'moi', 'très', 'tres', 'bien', 'est',
   'vas', 'allez', 'c', 'ok!', 'beaucoup', 'là', 'la', 'alors', 'du', 'coup', 'parfait!']);
 
@@ -13,7 +13,7 @@ export function isApproval(text) {
   const words = t
     .replace(/(\p{Extended_Pictographic})/gu, ' $1 ')
     .replace(/[!.,;:()…"«»\-–—]+(?=\s|$)/g, ' ')
-    .replace(/[️‍]/g, '')
+    .replace(/[\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]/gu, '')
     .split(/\s+/)
     .filter(Boolean);
   if (!words.length || words.length > 8 || t.includes('?')) return false;

@@ -34,3 +34,4 @@ export const LABEL_DEFS = [
 export const AGENT_MARKER = '<!-- factory-agent -->';
 export const CHECKS_FAILED_MARKER = '<!-- factory-checks-failed -->';
 export const CHECKS_RESET_MARKER = '<!-- factory-checks-reset -->';
+export const UPDATE_BRANCH_MARKER = '<!-- factory-update-branch -->';

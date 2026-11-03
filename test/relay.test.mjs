@@ -57,7 +57,7 @@ test('a grilling answer fires the routine with the payload and locks the issue',
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
   const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true, fromAgent: false });
   assert.equal(action.stage, 'grilling');
-  assert.deepEqual(gh.calls[0], ['add', 5, L.running]);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 5 && c[2] === L.running));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].init.headers['anthropic-beta'], 'experimental-cc-routine-2026-04-01');
   assert.deepEqual(JSON.parse(JSON.parse(sent[0].init.body).text), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
@@ -138,7 +138,7 @@ test('a failed fire leaves the state labels untouched so the same answer works a
 });
 
 test('a failed merge sends the branch to update instead of stranding it', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance], mergeable_state: 'behind' }] });
   gh.merge = async () => { throw new Error('PUT merge -> 405'); };
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -161,9 +161,49 @@ Spec v1`, created_at: new Date(Date.now() - 5 * 60_000).toISOString() },
   });
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.release({ issue: 3, pr: null }, { ownerLogin: 'phoibe' });
+  await relay.release({ issue: 3, pr: null });
+  const d = gh.calls.find((c) => c[0] === 'dispatch');
+  assert.deepEqual(JSON.parse(d[3].payload), { replay: 3 });
+  await relay.handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 3, labels: [] }, { ownerLogin: 'phoibe' });
   assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'build');
   assert.ok(!(await gh.getIssue(3)).labels.some((l) => l.name === L.pending));
+});
+
+test('release does nothing when the agent already removed its lock', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, labels: [L.specReview, L.pending] }], prs: [] });
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).release({ issue: 3, pr: null });
+  assert.equal(gh.calls.length, 0);
+});
+
+test('a permanent merge refusal blocks with an explanation instead of looping', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance], mergeable_state: 'blocked' }] });
+  gh.merge = async () => { throw new Error('PUT merge -> 405 required review'); };
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet })
+    .handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
+});
+
+test('a failed fix-checks fire parks the issue as blocked', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet }).report({ result: 'failure', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /réessaie/.test(c[2])));
+});
+
+test('an expired lock with deferred messages handles them with the new comment', async () => {
+  const old = new Date(Date.now() - 200 * 60_000).toISOString();
+  const gh = fakeGh({
+    issues: [{ number: 3, labels: [L.feature, L.specReview, L.running, L.pending] }], prs: [],
+    events: { 3: [{ event: 'labeled', label: { name: L.running }, created_at: old }] },
+    comments: { 3: [{ user: { login: 'phoibe' }, body: 'ajoute un mode sombre', created_at: new Date(Date.now() - 100 * 60_000).toISOString() }] },
+  });
+  const sent = [];
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet })
+    .handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [], text: 'go', fromOwner: true }, { ownerLogin: 'phoibe' });
+  assert.equal(action.stage, 'spec'); // "ajoute un mode sombre" + "go" is not a plain approval
 });
 
 test('checks disabled in the rules go straight to the result', async () => {

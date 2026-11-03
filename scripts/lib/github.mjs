@@ -38,6 +38,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     getRepo: () => request('GET', '/repos/{repo}'),
     listComments: (n) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`),
     listEvents: (n) => paginate(`/repos/{repo}/issues/${n}/events?per_page=100`),
+    listReviews: (n) => paginate(`/repos/{repo}/pulls/${n}/reviews?per_page=100`),
     react: (commentId, content) => request('POST', `/repos/{repo}/issues/comments/${commentId}/reactions`, { content }),
     dispatch: (workflow, ref, inputs) => request('POST', `/repos/{repo}/actions/workflows/${workflow}/dispatches`, { ref, inputs }),
     comment: (n, body) => request('POST', `/repos/{repo}/issues/${n}/comments`, { body }),

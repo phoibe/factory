@@ -7,13 +7,14 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER } from './lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER } from './lib/labels.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 export const PROJECT_WORKFLOW = 'factory.yml';
+export const MAX_BRANCH_UPDATES = 2;
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -28,7 +29,13 @@ export function eventFromPayload(eventName, p) {
   const owner = p.repository?.owner?.login;
   const isOwnerOrApp = (login) => Boolean(login) && (login === owner || login === 'claude[bot]');
   const base = { event: eventName, action: p.action, addedLabel: p.label?.name, removedLabel: p.label?.name, fromAgent: false, text: '' };
-  if (eventName === 'workflow_dispatch') return { ...base, kind: 'dispatch', payload: p.inputs?.payload || '', labels: [] };
+  if (eventName === 'workflow_dispatch') {
+    const payload = p.inputs?.payload || '';
+    let replay = null;
+    try { replay = JSON.parse(payload).replay || null; } catch {}
+    if (replay) return { ...base, kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: Number(replay), labels: [] };
+    return { ...base, kind: 'dispatch', payload, labels: [] };
+  }
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
@@ -79,15 +86,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return start !== null && now() - start < LOCK_MINUTES * 60_000;
   }
 
-  // Starts an agent run. Labels the targets `factory:running` first; on failure, removes it, explains, and throws.
-  async function fireAgent({ stage, issue, pr, extra = {} }) {
+  // Starts an agent run. Labels the targets `factory:running` first (re-added, so the lock's start time is
+  // fresh); on failure, removes it, explains (unless quiet), and throws.
+  async function fireAgent({ stage, issue, pr, extra = {}, quiet = false }) {
     const targets = [issue, pr].filter(Boolean);
-    for (const n of targets) await gh.addLabels(n, [L.running]);
+    for (const n of targets) {
+      await gh.removeLabel(n, L.running);
+      await gh.addLabels(n, [L.running]);
+    }
     const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', ...extra };
     log(`fire ${stage} ${JSON.stringify(payload)}`);
     const fail = async (message, error) => {
       for (const n of targets) await gh.removeLabel(n, L.running);
-      await gh.comment(targets[targets.length - 1], say(message));
+      if (!quiet) await gh.comment(targets[targets.length - 1], say(message));
       throw new Error(error);
     };
     if (config.runner === 'github-actions') {
@@ -123,6 +134,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     log(`session: ${body.claude_code_session_url || '?'}`);
   }
 
+  // For runs no owner message started (checks, merge): on failure, park the issue as blocked so that
+  // « réessaie » resumes it, instead of leaving a state where comments are ignored.
+  async function fireOrBlock({ stage, issue, pr, extra, why }) {
+    try {
+      await fireAgent({ stage, issue, pr, extra, quiet: true });
+      return true;
+    } catch (e) {
+      log(`fire failed: ${e}`);
+      for (const l of [L.checks, L.fixing, L.acceptance]) if (pr) await gh.removeLabel(pr, l);
+      if (issue) await gh.addLabels(issue, [L.blocked]);
+      await gh.comment(issue || pr, say(`${why}, mais je n'ai pas pu lancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Réponds « réessaie » ici quand tu veux relancer.`));
+      return false;
+    }
+  }
+
   async function dequeue() {
     let free = config.maxParallel - (await inFlight());
     if (free <= 0) return;
@@ -131,7 +157,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
-      await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : 'build', issue: issue.number });
+      try {
+        await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : 'build', issue: issue.number, quiet: true });
+      } catch (e) {
+        log(`dequeue fire failed, the issue stays queued: ${e}`);
+        break;
+      }
       await gh.removeLabel(issue.number, L.queued);
       await gh.addLabels(issue.number, [L.building]);
       await gh.comment(issue.number, say("Une place s'est libérée : je démarre la construction."));
@@ -146,10 +177,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.merge(prNumber, sha);
     } catch (e) {
       log(`merge failed: ${e}`);
-      for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
-      await gh.addLabels(prNumber, [L.fixing]);
-      await gh.comment(prNumber, say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté."));
-      await fireAgent({ stage: 'update-branch', issue, pr: prNumber });
+      const state = (await gh.getPr(prNumber))?.mergeable_state;
+      const updates = ((await gh.listComments(prNumber)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
+      if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
+        if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion' }))) return;
+        for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
+        await gh.addLabels(prNumber, [L.fixing]);
+        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté.")}`);
+        return;
+      }
+      for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
+      if (issue) await gh.addLabels(issue, [L.blocked]);
+      await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dis-moi « réessaie » une fois la règle ajustée, ou fusionne la PR toi-même.`));
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running]) await gh.removeLabel(prNumber, l);
@@ -169,13 +208,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return null;
   }
 
-  // Owner messages written while an agent held the lock, joined into one, or null.
-  async function deferredMessage(number, ownerLogin) {
+  // Owner messages (comments and PR reviews) written since the lock was taken, joined into one, or null.
+  async function deferredMessage(number, ownerLogin, isPr) {
     const since = await lockStart(number);
-    const comments = (await gh.listComments(number)) || [];
-    const mine = comments.filter((c) => c.user?.login === ownerLogin && !(c.body || '').includes(AGENT_MARKER)
-      && (since === null || Date.parse(c.created_at) >= since));
-    return mine.length ? mine.map((c) => c.body).join('\n\n') : null;
+    const after = (t) => since === null || Date.parse(t) >= since;
+    const comments = ((await gh.listComments(number)) || [])
+      .filter((c) => c.user?.login === ownerLogin && !(c.body || '').includes(AGENT_MARKER) && after(c.created_at))
+      .map((c) => ({ at: c.created_at, body: c.body }));
+    const reviews = isPr ? ((await gh.listReviews(number)) || [])
+      .filter((r) => r.user?.login === ownerLogin && r.body && !r.body.includes(AGENT_MARKER) && after(r.submitted_at))
+      .map((r) => ({ at: r.submitted_at, body: r.body })) : [];
+    const all = [...comments, ...reviews].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    return all.length ? all.map((m) => m.body).join('\n\n') : null;
   }
 
   async function handle(ev, { ownerLogin } = {}) {
@@ -185,17 +229,28 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return { action: { type: 'agent' }, outputs };
     }
     const ctx = { inFlight: 0, lockFresh: false };
+    if (ev.kind === 'replay') {
+      const issue = await gh.getIssue(ev.number);
+      ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
+    }
     if (ev.kind !== 'none' && ev.number) {
       ev = { ...ev, labels: await liveLabels(ev.number) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
+    }
+    const isComment = ev.event === 'issue_comment' || ev.event === 'pull_request_review';
+    if (isComment && !ctx.lockFresh && ev.labels.includes(L.pending) && ev.fromOwner && !ev.fromAgent) {
+      // The lock expired without a release: handle the deferred messages together with this one.
+      const text = await deferredMessage(ev.number, ownerLogin, ev.kind === 'pr');
+      await gh.removeLabel(ev.number, L.pending);
+      ev = { ...ev, text: text || ev.text, labels: ev.labels.filter((l) => l !== L.pending) };
     }
     let action = decide(ev, config, ctx);
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
     if (action.type === 'replay') {
       await gh.removeLabel(n, L.pending);
-      const text = await deferredMessage(n, ownerLogin);
+      const text = await deferredMessage(n, ownerLogin, ev.kind === 'pr');
       if (!text) return { action, outputs };
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
@@ -264,7 +319,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     if (next === 'fix') {
-      await fireAgent({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { checksRun: runId || null } });
+      if (!(await fireOrBlock({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { checksRun: runId || null }, why: 'Un contrôle automatique a échoué' }))) return;
       await gh.removeLabel(prNumber, L.checks);
       await gh.addLabels(prNumber, [L.fixing]);
       const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
@@ -278,12 +333,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await gh.comment(issueNumber || prNumber, say(`Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Tu peux répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
   }
 
-  // End of an agent run on GitHub Actions (its label changes emit no events): release the lock, replay deferred messages.
-  async function release(payload, { ownerLogin } = {}) {
+  // End of an agent run on GitHub Actions. Releases the lock if the agent did not, and asks for a replay of
+  // deferred messages in a fresh workflow run (which has the checks and report jobs a replay may need).
+  async function release(payload) {
     for (const n of [payload.issue, payload.pr].filter(Boolean)) {
-      const had = (await liveLabels(n)).includes(L.pending);
+      const labels = await liveLabels(n);
+      if (!labels.includes(L.running)) continue; // the agent released it itself: its unlabeled event replays
       await gh.removeLabel(n, L.running);
-      if (had) await handle({ kind: n === payload.pr ? 'pr' : 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: n, labels: [] }, { ownerLogin });
+      if (labels.includes(L.pending)) {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ replay: n }) });
+      }
     }
   }
 
@@ -314,7 +374,7 @@ async function main() {
   } else if (command === 'report') {
     await relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha') });
   } else if (command === 'release') {
-    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'), { ownerLogin });
+    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {
     await relay.dequeue();
   } else {

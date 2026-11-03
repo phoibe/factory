@@ -9,14 +9,14 @@ const ev = (o) => ({ kind: 'issue', event: 'issue_comment', action: 'created', n
 
 test('isApproval accepts short approvals', () => {
   for (const t of ['go', 'Go !', 'ok', 'OK.', 'oui', "Oui c'est bon", '👍', '✅', 'validé', 'on y va', 'LGTM', 'ça me va',
-    'Parfait, merci !', "Oui c’est bon pour moi", 'ok 👍', 'vas-y', "d'accord"]) {
+    'Parfait, merci !', "Oui c’est bon pour moi", 'ok 👍', 'vas-y', "d'accord", '👍🏻', 'ok 👍🏽', 'LGTM 🚀', 'Très bien']) {
     assert.equal(isApproval(t), true, t);
   }
 });
 
 test('isApproval rejects conditional or long answers', () => {
   for (const t of ['ok mais change la couleur', 'oui sauf le bouton', 'ok ?', 'non', '', 'go pour la partie 1 par contre la 2 non',
-    'ok, le bouton en rouge', 'go, et ajoute un export', 'top, change juste le titre', 'merci',
+    'ok, le bouton en rouge', 'go, et ajoute un export', 'top, change juste le titre', 'merci', 'pas bien',
     'le bouton est trop gros, ok ?', 'ok je pense que ce serait mieux avec un autre titre en haut de page']) {
     assert.equal(isApproval(t), false, t);
   }
