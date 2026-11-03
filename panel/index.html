@@ -21,8 +21,8 @@
       <p>Le panneau a besoin d'un jeton GitHub pour lire tes projets et enregistrer tes règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
       <ol>
         <li>Ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la création de jeton</a>.</li>
-        <li>Nom : « factory panneau ». Expiration : 1 an. Accès : <strong>All repositories</strong>.</li>
-        <li>Permissions des dépôts : <strong>Contents</strong> et <strong>Issues</strong> en « Read and write », <strong>Pull requests</strong> en « Read-only ».</li>
+        <li>Nom : « factory panneau ». Expiration : 1 an. <strong>Repository access</strong> : <strong>All repositories</strong>.</li>
+        <li>Dans la boîte <strong>Repositories</strong> (pas « Account ») : <strong>+ Add permissions</strong>, coche <strong>Contents</strong>, <strong>Issues</strong> et <strong>Pull requests</strong>, puis mets Contents et Issues sur « Read and write » (Pull requests reste en « Read-only »).</li>
         <li>Génère le jeton, copie-le et colle-le ici.</li>
       </ol>
       <form id="login-form">
@@ -48,6 +48,7 @@
         <div class="actions">
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle feature</a>
           <a id="new-bug" class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
+          <a id="new-project" class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
         </div>
       </div>
       <div class="tabs" role="tablist">

@@ -25,9 +25,12 @@ const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
 const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked];
-const isFactoryIssue = (labels) => has(labels, L.feature) || has(labels, L.bug);
+const isFactoryIssue = (labels) => has(labels, L.feature) || has(labels, L.bug) || has(labels, L.project);
+// A project issue (framing) always grills, whatever the config: the vision and the stack are decided there.
+const grillStage = (labels) => (has(labels, L.project) ? 'framing' : 'grilling');
 
 function startIssue(ev, config, ctx) {
+  if (has(ev.labels, L.project)) return fire('framing', { add: [L.grilling] });
   if (has(ev.labels, L.bug)) {
     if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [], reason: 'factory pleine' };
     return fire('bugfix', { add: [L.building] });
@@ -39,7 +42,7 @@ function startIssue(ev, config, ctx) {
 function onIssue(ev, config, ctx) {
   if (ev.event === 'issues') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'issue fermée' };
-    const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug].includes(ev.addedLabel));
+    const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (!ev.fromOwner) return ignore("issue ouverte par quelqu'un d'autre que le propriétaire");
     if (ev.fromAgent) return ignore("issue proposée par l'agent : elle démarre quand le propriétaire y écrit");
@@ -48,8 +51,13 @@ function onIssue(ev, config, ctx) {
   }
   // A comment on an issue.
   if (has(ev.labels, L.blocked)) return fire('resume');
-  if (has(ev.labels, L.grilling)) return fire('grilling');
+  if (has(ev.labels, L.grilling)) return fire(grillStage(ev.labels));
   if (has(ev.labels, L.specReview)) {
+    if (has(ev.labels, L.project)) {
+      // The foundation comes before any feature, so it never waits in the queue.
+      if (!isApproval(ev.text)) return fire('framing');
+      return fire('foundation', { add: [L.building], remove: [L.specReview] });
+    }
     if (!isApproval(ev.text)) return fire('spec');
     if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [L.specReview], reason: 'factory pleine' };
     return fire('build', { add: [L.building], remove: [L.specReview] });
