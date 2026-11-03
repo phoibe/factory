@@ -192,3 +192,12 @@ test('the labeled event sent with an issue form opening does not start the issue
   const a = decide(ev({ event: 'issues', action: 'labeled', addedLabel: L.project, labels: [L.project], openedRecently: true }), config, ctx);
   assert.equal(a.type, 'ignore');
 });
+
+test('a question issue is answered right away, never queued, and each follow-up gets an answer', () => {
+  const full = { ...ctx, inFlight: 9 };
+  const open = decide(ev({ event: 'issues', action: 'opened', labels: [L.question] }), config, full);
+  assert.deepEqual([open.type, open.stage, open.add], ['fire', 'question', []]);
+  const follow = decide(ev({ labels: [L.question], text: 'et si je change de fuseau horaire ?' }), config, full);
+  assert.equal(follow.stage, 'question');
+  assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.question], fromOwner: false }), config, ctx).type, 'ignore');
+});

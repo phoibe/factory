@@ -67,7 +67,7 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 ## Labels (la machine à états)
 
-Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
+Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage ; une issue `factory:question` ne change jamais d'état, voir `stages/question.md`) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
 Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques, à poser
 même si les contrôles sont désactivés : la factory passe alors directement à la suite) →
