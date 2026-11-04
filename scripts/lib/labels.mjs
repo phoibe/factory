@@ -18,6 +18,7 @@ export const L = {
   pending: 'factory:pending',
   skillsAlert: 'factory:skills-alert',
   autoGo: 'factory:auto-go',
+  release: 'factory:release',
   noPick: 'factory:no-pick',
   urgent: 'factory:urgent',
   autoPicked: 'factory:auto-picked',
