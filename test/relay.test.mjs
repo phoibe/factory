@@ -23,6 +23,7 @@ function fakeGh(state) {
     removeLabel: async (n, l) => { calls.push(['remove', n, l]); const i = issue(n); if (i) i.labels = (i.labels || []).filter((x) => x !== l); },
     merge: async (n) => calls.push(['merge', n]),
     deployments: async () => [{ id: 1 }],
+    recentDeployments: async () => state.deployments || [{ id: 1, environment: 'Preview' }],
     deploymentStatuses: async () => [{ state: 'success', environment_url: 'https://preview.example' }],
   };
   return gh;
@@ -245,6 +246,18 @@ test('green checks on a feature open acceptance with the preview link', async ()
   await relay.report({ result: 'success', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://preview.example')));
+});
+
+test('green checks on a project without previews ask to read the summary, without waiting for a preview', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], deployments: [{ id: 1, environment: 'github-pages' }] });
+  let waited = 0;
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { waited++; } });
+  await relay.report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
+  const msg = gh.calls.find((c) => c[0] === 'comment')[2];
+  assert.match(msg, /pas de preview à tester/);
+  assert.doesNotMatch(msg, /Vercel/);
+  assert.equal(waited, 0);
 });
 
 test('green checks on a bug merge directly', async () => {

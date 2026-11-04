@@ -286,6 +286,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // A project has previews when something other than GitHub Pages (Vercel, Netlify…) deploys it, or when the
+  // Vercel bot already comments. The factory itself, for one, has none: nothing to wait for or to test there.
+  async function hasPreviews(prNumber) {
+    const envs = ((await gh.recentDeployments?.().catch(() => null)) || []).map((d) => d.environment);
+    if (envs.some((e) => e && e !== 'github-pages')) return true;
+    return Boolean(vercelPreview((await gh.listComments(prNumber)) || []));
+  }
+
   async function previewUrl(sha, prNumber, { attempts = 15, delayMs = 20_000 } = {}) {
     for (let i = 0; i < attempts; i++) {
       for (const d of (await gh.deployments(sha).catch(() => [])) || []) {
@@ -448,13 +456,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (next === 'merge') return mergePr(prNumber, pr.head.sha);
     if (next === 'acceptance') {
       // The preview can take minutes to appear: the card moves to « Teste la preview » only with the message.
-      const url = await previewUrl(pr.head.sha, prNumber);
+      const previews = await hasPreviews(prNumber);
+      const url = previews ? await previewUrl(pr.head.sha, prNumber) : null;
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
-      const where = url
-        ? `Tu peux tester la nouvelle version ici : ${url}`
-        : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README).";
-      await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅\n\n${where}\n\nVérifie les critères d'acceptation de la spec. Réponds « ok » pour mettre en ligne, ou décris ce qui ne va pas.`));
+      const ask = "Réponds « ok » pour mettre en ligne, ou décris ce qui ne va pas.";
+      const text = !previews
+        ? `Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester. Lis le paragraphe « Pour toi » en haut de la PR (et les captures s'il y en a) pour vérifier que c'est bien ce que tu voulais. ${ask}`
+        : `Les contrôles automatiques sont tous verts ✅\n\n${url
+          ? `Tu peux tester la nouvelle version ici : ${url}`
+          : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README)."}\n\nVérifie les critères d'acceptation de la spec. ${ask}`;
+      await gh.comment(prNumber, say(text));
       return;
     }
     if (next === 'fix') {
