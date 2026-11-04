@@ -492,7 +492,9 @@ function widthReport() {
     .map((e) => [e, e.getBoundingClientRect()])
     .filter(([, r]) => r.width && (r.right > w + 1 || r.left < -1))
     .map(([e, r]) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''} : ${Math.round(r.left)} → ${Math.round(r.right)}`);
-  const wide = document.documentElement.scrollWidth > w + 1 || window.innerWidth > w + 1 || (vv && vv.scale < 0.99) || out.length;
+  // A page the owner zoomed into is not too wide: only report real overflow at normal zoom.
+  const zoomed = vv && Math.abs(vv.scale - 1) > 0.01;
+  const wide = !zoomed && (document.documentElement.scrollWidth > w + 1 || out.length > 0);
   return { wide, text: `écran ${w} · fenêtre ${window.innerWidth} · page ${document.documentElement.scrollWidth} · zoom ${vv ? vv.scale.toFixed(2) : '?'}\n${out.slice(0, 30).join('\n') || 'aucun élément ne dépasse'}` };
 }
 function showWidthReport(force) {

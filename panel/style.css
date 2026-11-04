@@ -142,3 +142,7 @@ html, body { overflow-x: clip; }
 main, .top { overflow-x: clip; }
 /* iPhone zooms into any field under 16px when it is tapped, and the zoomed page then slides sideways. */
 input, select, textarea { font-size: 16px; }
+
+/* A double tap on iPhone zooms the page in (to 107 %), after which it slides sideways: turn that off.
+   Pinch-to-zoom still works. */
+html { touch-action: manipulation; }
