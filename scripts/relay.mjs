@@ -230,9 +230,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
+    await afterMerge(prNumber);
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
     await dequeue({ freed: issue });
+  }
+
+  // A merge made with the workflow's own token starts no workflow, so the panel deploy (GitHub Pages) and the
+  // skills sync that the push would have started are started by hand. A project without them is skipped.
+  async function afterMerge(prNumber) {
+    let files = [];
+    try { files = ((await gh.listPrFiles(prNumber)) || []).map((f) => f.filename); } catch { /* deploy anyway */ }
+    const ref = (await gh.getRepo())?.default_branch || 'main';
+    const wanted = ['pages.yml', ...(files.includes('factory.config.json') ? ['factory-sync.yml'] : [])];
+    for (const wf of wanted) {
+      try { await gh.dispatch(wf, ref, {}); } catch (e) { log(`after merge: ${wf} not started (${String(e.message || e).slice(0, 80)})`); }
+    }
   }
 
   async function previewUrl(sha, prNumber, { attempts = 15, delayMs = 20_000 } = {}) {
