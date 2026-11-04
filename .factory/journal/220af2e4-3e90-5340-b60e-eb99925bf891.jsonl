@@ -1,0 +1,4 @@
+{"t":"2026-11-04T16:20:16.171Z","kind":"run","stage":"skills-fix","issue":96,"pr":102,"repo":"phoibe/factory","source":"transcript"}
+{"t":"2026-11-04T16:20:29.245Z","kind":"skill","name":"requesting-code-review","id":"toolu_01WUNL8vp12RnpwyjikvTCQk","source":"transcript"}
+{"t":"2026-11-04T16:22:40.535Z","kind":"skill","name":"receiving-code-review","id":"toolu_01DkyJEonpmK9CEBvn3jcHnB","source":"transcript"}
+{"t":"2026-11-04T16:22:49.505Z","kind":"test","cmd":"python3 - <<'E'\np='test/relay.test.mjs'\ns=open(p).read()\nanchor=\"test('the catch-up happens once: afterwards\"\nnew='''test('no captures catch-up when the screenshots step is off or the change is not vi","ok":true,"id":"toolu_01NSysqp5WCJzg9orL2vMSVr","source":"transcript"}

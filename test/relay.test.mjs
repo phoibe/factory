@@ -328,10 +328,11 @@ function prWithSkippedSteps(comments = []) {
   gh.updateComment = async () => {};
   return gh;
 }
+const SHOTS = { body: '<!-- factory-agent -->\n| Écran | ![x](https://github.com/r/blob/claude/factory-assets/pr-10/a.png) |' };
 const allStages = { ...config, stages: { ...config.stages, plan: true, tdd: true, review: true, designPass: true } };
 
 test('green checks after a skipped review and design pass start one catch-up run instead of acceptance', async () => {
-  const gh = prWithSkippedSteps();
+  const gh = prWithSkippedSteps([SHOTS]);
   const sent = [];
   await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
   assert.equal(sent.length, 1);
@@ -343,8 +344,34 @@ test('green checks after a skipped review and design pass start one catch-up run
   assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
 });
 
+test('green checks on a visible change with no captures shown start a captures catch-up (PR 90)', async () => {
+  const gh = prWithSkippedSteps();
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async () => ({ content: Buffer.from(journal).toString('base64') });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.equal(sent.length, 1);
+  assert.match(JSON.parse(sent[0].init.body).text, /"missing":\["screenshots"\]/);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /les captures avant\/après/.test(c[2])));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+});
+
+test('no captures catch-up when the screenshots step is off or the change is not visual', async () => {
+  const full = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  for (const [cfg, files] of [[{ ...allStages, stages: { ...allStages.stages, screenshots: false } }, null], [allStages, [{ filename: 'scripts/x.mjs' }]]]) {
+    const gh = prWithSkippedSteps();
+    gh.getContent = async () => ({ content: Buffer.from(full).toString('base64') });
+    if (files) gh.listPrFiles = async () => files;
+    const sent = [];
+    await createRelay({ gh, repo: 'r', config: cfg, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+    assert.equal(sent.length, 0);
+  }
+});
+
 test('the catch-up happens once: afterwards the PR goes on to acceptance with the alert', async () => {
-  const gh = prWithSkippedSteps([{ body: '<!-- factory-skills-fix -->\nrattrapage' }]);
+  const gh = prWithSkippedSteps([SHOTS, { body: '<!-- factory-skills-fix -->\nrattrapage' }]);
   const sent = [];
   await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
   assert.equal(sent.length, 0);
