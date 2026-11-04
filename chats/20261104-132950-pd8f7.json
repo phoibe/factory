@@ -3,7 +3,7 @@
  "title": "Je voudrais que le rafraichissement du tableau soit plus fluide :…",
  "state": "open",
  "created": "2026-11-04T13:29:50Z",
- "updated": "2026-11-04T13:33:27Z",
+ "updated": "2026-11-04T13:37:22Z",
  "messages": [
   {
    "who": "me",
@@ -51,6 +51,17 @@
      "kind": "feature"
     }
    ]
+  },
+  {
+   "who": "me",
+   "text": "Le paramètre est à 2 features en parallèle, mais il y en a actuellement 3. Ça ne me dérange pas, mais comment est-ce possible ?",
+   "images": [],
+   "at": "2026-11-04T13:37:22Z"
+  },
+  {
+   "who": "agent",
+   "text": "Il y a plusieurs explications possibles. Je ne sais pas laquelle est la bonne, parce que je ne vois pas ton tableau en direct.\n\n- **Affichage :** dans la vue « en direct », les cartes en attente de place sont rangées sous « Construction ». Tu en vois donc 3, alors que 2 seulement sont vraiment en train de construire. C'est ma première hypothèse.\n- **Démarrages simultanés :** la limite se vérifie au moment où une feature démarre, et elle compte les cartes marquées « en construction » à cet instant. Si deux cartes démarrent presque en même temps, elles voient toutes les deux une place libre et partent ensemble. Tu peux ainsi dépasser la limite d'une unité.\n- **Retour en construction :** je n'ai pas trouvé de contrôle de la limite quand une carte revient en construction, par exemple après une correction. Elle peut alors reprendre sa place même si les deux autres sont déjà occupées.\n\nLa limite ne couvre pas les étapes après la construction (contrôles, corrections, validation). Ces cartes ne comptent pas dans les 2.\n\nJ'ai lu tout ça dans le code. Aucun test ne couvre ces cas de dépassement.\n\nDis-moi quelle carte est la 3ᵉ et dans quelle colonne elle est. Je pourrai te dire laquelle de ces explications correspond. Si tu veux que ce dépassement soit corrigé, dis-le-moi et je t'en fais un bug.",
+   "at": "2026-11-04T13:37:22Z"
   }
  ]
 }
