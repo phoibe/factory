@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=13';
+import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=14';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
@@ -167,7 +167,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -200,8 +200,9 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
+    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
       for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
@@ -212,6 +213,7 @@ async function refresh() {
     }
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
+    if (closed.data) { live.done = doneItems(closed.data); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
     // and the message the card should open on, instead of the top of the issue.
@@ -244,7 +246,7 @@ async function refresh() {
     if (live.repo !== repo) return;
     live.last = Date.now();
     live.failures = 0;
-    if (issues.changed || ev.changed || previewsChanged || first) drawBoard();
+    if (issues.changed || closed.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('p', { class: 'board-error' }, `GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`));
@@ -343,6 +345,13 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}:${doneAgo(d.mergedAt, now)}`).join('|') : null;
+  const doneChanged = doneSig !== null && live.doneSig !== doneSig;
+  if (live.doneSig != null) {
+    const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
+    for (const d of live.done) if (!known.has(String(d.number))) toast(`« ${d.title} » : ${COLUMNS.find((c) => c.id === 'done').title}`);
+  }
+  live.doneSig = doneSig;
   const sizes = Object.fromEntries([...live.plans].filter(([, p]) => p).map(([n, p]) => [n, p.size]));
   const minutes = { ...stageMinutes(live.events, now) };
   // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
@@ -365,7 +374,14 @@ function drawBoard() {
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
-        : el('p', { class: 'lane-empty' }, empty)))];
+        : el('p', { class: 'lane-empty' }, empty))),
+    el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
+      el('h2', {}, 'Terminé', el('span', { class: 'count' }, String(live.done.length))),
+      live.done.length
+        ? el('div', { class: 'tickets' }, live.done.map((d) => el('article', { class: 'ticket done' },
+          el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
+          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
+        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
@@ -394,7 +410,7 @@ function drawBoard() {
     grid.insertBefore(node, grid.children[oldIndex.get(n)] || null);
     leaving.push(node);
   }
-  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && board.querySelector('.pulse-bar');
+  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.pulse-bar');
   if (!unchanged) {
     board.replaceChildren(...holder.childNodes);
     flip(before);
