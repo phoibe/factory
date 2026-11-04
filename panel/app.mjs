@@ -448,3 +448,17 @@ $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));
+
+// Diagnostic for phones: open the panel with ?largeur to list what sticks out past the screen edge.
+if (new URLSearchParams(location.search).has('largeur')) {
+  setTimeout(() => {
+    const w = document.documentElement.clientWidth;
+    const out = [...document.querySelectorAll('body *')]
+      .map((e) => [e, e.getBoundingClientRect()])
+      .filter(([, r]) => r.width && (r.right > w + 0.5 || r.left < -0.5))
+      .map(([e, r]) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''} : ${Math.round(r.left)} → ${Math.round(r.right)}`);
+    const box = el('pre', { style: 'position:fixed;inset:auto 8px 8px 8px;max-height:40vh;overflow:auto;z-index:9;background:#000;color:#fff;font-size:12px;padding:8px;white-space:pre-wrap;margin:0' },
+      `écran ${w} px · page ${document.documentElement.scrollWidth} px\n${out.slice(0, 30).join('\n') || 'rien ne dépasse'}`);
+    document.body.append(box);
+  }, 4000);
+}
