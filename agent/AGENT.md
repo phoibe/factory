@@ -40,6 +40,12 @@ tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir
 refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
+**Captures du propriétaire.** Les images qu'il colle dans GitHub ne s'ouvrent pas depuis ta machine. La factory
+les copie pour toi : le payload liste leurs chemins dans `attachments` (sur la branche `factory-attachments`).
+Pour chacune : `gh api "repos/<repo>/contents/<chemin>?ref=factory-attachments" -H "Accept: application/vnd.github.raw" > /tmp/<nom>`,
+puis ouvre le fichier avec l'outil Read pour le voir. Regarde-les avant de répondre à un message qui contient une
+image, et ne dis jamais que tu n'y as pas accès sans avoir essayé. Ne fusionne jamais cette branche.
+
 ## Parler au propriétaire
 
 - **Toujours en français**, simple, concret, sans jargon technique. Pas de nom de fichier, de fonction ou de

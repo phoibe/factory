@@ -10,6 +10,7 @@ import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER } from './lib/labels.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { mirrorAttachments } from './lib/attachments.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -107,7 +108,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(n, L.running);
       await gh.addLabels(n, [L.running]);
     }
-    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', ...extra };
+    let attachments = [];
+    try {
+      attachments = await mirrorAttachments({ gh, fetchImpl, numbers: [issue, pr], owner: repo.split('/')[0], isPr: (n) => n === pr, log });
+    } catch (e) { log(`attachments: ${e.message}`); }
+    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', ...(attachments.length ? { attachments } : {}), ...extra };
     log(`fire ${stage} ${JSON.stringify(payload)}`);
     const fail = async (message, error) => {
       for (const n of targets) await gh.removeLabel(n, L.running);
