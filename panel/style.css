@@ -336,13 +336,13 @@ button.go:focus-visible { outline-color: var(--text); }
 .more > summary { display: none; }
 .more-menu { display: contents; }
 @media (max-width: 600px) {
-  .more { display: block; flex: 1 1 calc(50% - 8px); position: relative; }
+  .more { display: block; flex: 1 1 0; min-width: 6.5rem; position: relative; }
   .more > summary { display: block; list-style: none; text-align: center; cursor: pointer; }
   .more > summary::-webkit-details-marker { display: none; }
   .more-menu { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
   .more-menu .button, .more-menu button { width: 100%; text-align: center; }
   .more-menu .site-line { flex-direction: column; align-items: stretch; }
-  .actions #new-feature { flex: 1 1 calc(50% - 8px); }
+  .actions #new-feature { flex: 3 1 0; white-space: nowrap; }
   .more[open] { flex-basis: 100%; }
 }
 
