@@ -49,6 +49,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     if (replay) return { ...base, kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: Number(replay), labels: [] };
     return { ...base, kind: 'dispatch', payload, labels: [] };
   }
+  if (eventName === 'schedule') return { ...base, kind: 'tick', number: null, labels: [], fromOwner: false };
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
