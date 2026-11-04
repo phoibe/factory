@@ -57,7 +57,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const cfg = join(root, '.factory/config.resolved.json');
     const stages = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')).stages || {} : {};
     const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
-    console.log(report(branchFiles(git), read, stages));
+    // Hooks are not loaded when the routine serves several projects: rebuild the journal from the transcript.
+    const remote = (() => { try { return git(['remote', 'get-url', 'origin']).trim(); } catch { return ''; } })();
+    const repo = (/github\.com[/:]([^/]+\/[^/.\s]+)/.exec(remote) || [])[1];
+    if (repo) {
+      const { importTranscript } = await import('./transcript.mjs');
+      const file = importTranscript(root, repo);
+      if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
+    }
+    const files = branchFiles(git);
+    if (!files.some((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
+    else console.log(report(files, read, stages));
   } catch (e) {
     console.log(`Journal : contrôle impossible (${e.message}).`);
   }
