@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=9';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=10';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -269,8 +269,9 @@ function stepTrack(c) {
 function card(c, lane, minutes, now, moved) {
   const e = estimate(c, live.events, minutes, now);
   const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Feature';
-  const blocked = c.column === 'blocked';
   const running = c.labels.includes('factory:running');
+  // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
+  const blocked = c.column === 'blocked' && !running;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, actionFor(c.column), el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
     : lane === 'working'

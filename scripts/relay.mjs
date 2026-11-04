@@ -285,8 +285,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     switch (action.type) {
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
-        await fireAgent({ stage: action.stage, issue: pr ? linkedIssue(pr.body) : n, pr: pr ? n : null });
+        const issue = pr ? linkedIssue(pr.body) : n;
+        await fireAgent({ stage: action.stage, issue, pr: pr ? n : null });
         await applyLabels(); // only once the agent really started
+        // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
+        if (pr && issue && action.remove?.includes(L.blocked)) await gh.removeLabel(issue, L.blocked);
         break;
       }
       case 'defer':
