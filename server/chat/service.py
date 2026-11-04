@@ -156,6 +156,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         def ev(obj):
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
+        proc = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
             conv = None
@@ -174,13 +175,21 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                         out.write(data)
                     files.append(f)
             yield ev({"type": "status", "text": "Réfléchit…"})
+            # The prompt goes through stdin: a long conversation does not fit in a command-line argument.
             proc = await asyncio.create_subprocess_exec(
-                claude_bin, "-p", build_prompt(conv, message, files),
+                claude_bin, "-p",
                 "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                 "--model", model, "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob",
                 "--add-dir", folder, "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence",
                 "--append-system-prompt", SYSTEM.format(repo=repo),
-                cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=16 * 1024 * 1024)
+                cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                limit=16 * 1024 * 1024)
+            try:
+                proc.stdin.write(build_prompt(conv, message, files).encode())
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # claude exited early: its own error is read below
             draft, shown, final, failed = "", "", None, False
             async for raw in proc.stdout:
                 for e in events_from_line(raw.decode(errors="replace")):
@@ -211,12 +220,26 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 created.append({**issue, "url": made["html_url"], "number": made["number"]})
             add_exchange(conv, {"text": message, "images": images}, text, now_iso(), created)
             yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
-            await save(gh, conv)
-            yield ev({"type": "done", "conversation": {"id": conv["id"], "title": conv["title"], "updated": conv["updated"], "state": "open"}})
+            # The answer is given and the issues exist: a failed save must not make the panel offer to send the
+            # message again (that would create the issues twice). It is reported as « not saved » instead.
+            saved = True
+            try:
+                await save(gh, conv)
+            except Exception:
+                saved = False
+            yield ev({"type": "done", "saved": saved, "conversation": {"id": conv["id"], "title": conv["title"], "updated": conv["updated"], "state": "open"}})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})
         finally:
-            await gh.close()
+            # The panel left (or the answer failed): the agent must not go on running on the owner's subscription.
+            try:
+                if proc is not None and proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
+            except ProcessLookupError:
+                pass
+            finally:
+                await gh.close()
 
     async def save(gh, conv):
         await gh.ensure_branch(BRANCH, {"README.md": BRANCH_README, "vercel.json": VERCEL_OFF})
