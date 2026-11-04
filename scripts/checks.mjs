@@ -34,6 +34,21 @@ export function summary(results) {
   return ['### Contrôles automatiques', '', '| Contrôle | Résultat |', '| --- | --- |', ...rows].join('\n');
 }
 
+// How to get a browser for the accessibility check. `--with-deps` used to install ~20 MB of system fonts from a slow
+// Ubuntu mirror on every run (3 to 4 minutes); the GitHub runner can usually start Chromium without them, so the
+// system packages are installed only when a trial launch fails.
+export function browserSetup(pkg) {
+  const deps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+  const lib = deps.playwright ? 'playwright' : deps['@playwright/test'] ? '@playwright/test' : null;
+  if (!lib) return null;
+  const launch = `import('${lib}').then((p) => p.chromium.launch()).then((b) => b.close()).catch((e) => { console.error(e.message); process.exit(1); })`;
+  return {
+    install: ['npx', 'playwright', 'install', 'chromium'],
+    probe: ['node', '--input-type=module', '-e', launch],
+    deps: ['npx', 'playwright', 'install-deps', 'chromium'],
+  };
+}
+
 // The factory repository: no package.json, but its own scripts and test suite.
 export function isFactoryRepo(dir) {
   return ['scripts/relay.mjs', 'packs/catalog.json', 'test'].every((f) => existsSync(join(dir, f)));
@@ -68,8 +83,14 @@ function main() {
     console.log("::error::L'installation des dépendances a échoué.");
     process.exit(1);
   }
-  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  if (config.checks.a11y && (deps.playwright || deps['@playwright/test'])) run(['npx', 'playwright', 'install', '--with-deps', 'chromium']);
+  const browser = config.checks.a11y && browserSetup(pkg);
+  if (browser) {
+    run(browser.install);
+    if (run(browser.probe) !== 0) {
+      console.log('Chromium ne démarre pas sans paquets système : installation (plus lente).');
+      run(browser.deps);
+    }
+  }
   const results = [];
   for (const c of planChecks(config.checks, pkg)) {
     if (c.missing) { results.push({ ...c, status: 'missing' }); console.log(`::error::Script npm « ${c.script} » absent.`); continue; }

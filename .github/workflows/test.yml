@@ -5,13 +5,15 @@ on:
   pull_request:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Same image as the project checks in relay.yml.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test
+      # The checks of this branch (tests, a11y with Chromium...), so a change to the checks is tried on a real runner before it reaches the projects.
+      - run: node scripts/checks.mjs .
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
