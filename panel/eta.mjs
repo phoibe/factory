@@ -66,12 +66,13 @@ const MARKER = /<!--\s*factory-estimate\s+size=(\w+)\s+min=(\d+)\s+max=(\d+)\s*-
 export function parseEstimate(comments) {
   let best = null;
   for (const c of comments || []) {
+    if (!(c.body || '').includes('<!-- factory-agent -->')) continue; // only the agent's own comments
     const m = MARKER.exec(c.body || '');
     if (!m || !SIZES.includes(m[1])) continue;
     const at = Date.parse(c.created_at);
     if (!Number.isFinite(at) || (best && at < best.at)) continue;
-    const lo = Math.max(1, Math.min(+m[2], +m[3]));
-    const hi = Math.max(1, Math.max(+m[2], +m[3]));
+    const lo = Math.min(480, Math.max(1, Math.min(+m[2], +m[3])));
+    const hi = Math.min(480, Math.max(1, Math.max(+m[2], +m[3])));
     best = { size: m[1], min: lo, max: Math.min(hi, Math.max(lo, Math.floor(lo * 2.5))), at };
   }
   return best;
@@ -130,7 +131,8 @@ export function estimate(item, events, minutes, now, agent = null) {
   let next;
   if (planned) {
     // The agent's range counts from the moment it was posted, so a fresh estimate restarts the clock.
-    const spent = runs.reduce((t, r) => t + Math.max(0, Math.min(r.end, now) - Math.max(r.start, planned.at)), 0) / MIN;
+    let spent = runs.reduce((t, r) => t + Math.max(0, Math.min(r.end, now) - Math.max(r.start, planned.at)), 0) / MIN;
+    if (!stay && !runs.length) spent = Math.max(0, (now - planned.at) / MIN); // label history too old to be loaded
     overrun = spent >= planned.max;
     low = Math.max(0, Math.round(planned.min - spent));
     high = Math.max(0, Math.round(planned.max - spent));
@@ -160,6 +162,7 @@ export function estimate(item, events, minutes, now, agent = null) {
 
 // « entre 20 et 40 min », « entre 50 min et 1 h 20 », « environ 5 min ».
 export function rangeText(low, high) {
+  if (Math.round(low) <= 1 && Math.round(high) > 2) return `moins de ${humanMinutes(high)}`;
   if (Math.round(low) === Math.round(high)) return `environ ${humanMinutes(low)}`;
   if (high < 60) return `entre ${Math.round(low)} et ${Math.round(high)} min`;
   return `entre ${humanMinutes(low)} et ${humanMinutes(high)}`;

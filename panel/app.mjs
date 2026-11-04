@@ -219,9 +219,12 @@ async function refresh() {
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(() => null) : { data: [] };
       if (!res) continue;
+      // The agent's estimate may sit on the page before the last one on a long thread.
+      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(() => null) : { data: [] };
+      if (!before) continue;
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
-      const plan = parseEstimate(res.data);
+      const plan = parseEstimate([...before.data, ...res.data]);
       if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
         live.plans.set(c.number, plan);
         previewsChanged = true;

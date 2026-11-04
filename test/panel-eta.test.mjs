@@ -60,7 +60,7 @@ test('etaText and humanMinutes read naturally', () => {
   assert.match(etaText({ status: 'working', overrun: true }), /^Plus long que prévu/);
 });
 
-const c = (body, min) => ({ body, created_at: at(min) });
+const c = (body, min) => ({ body: body.includes('factory-estimate') ? '<!-- factory-agent -->\n' + body : body, created_at: at(min) });
 const tag = (size, lo, hi) => `<!-- factory-agent -->\n<!-- factory-estimate size=${size} min=${lo} max=${hi} -->\nEstimation`;
 
 test('parseEstimate keeps the latest valid estimate, ignores junk, fixes inverted or absurd ranges', () => {
@@ -120,4 +120,21 @@ test('rangeText stays readable', () => {
   assert.equal(rangeText(20, 40), 'entre 20 et 40 min');
   assert.equal(rangeText(50, 80), 'entre 50 min et 1 h 20');
   assert.equal(rangeText(5, 5), 'environ 5 min');
+});
+
+test('rangeText says "moins de" when the low end is gone, so the ratio never looks absurd', () => {
+  assert.equal(rangeText(0, 31), 'moins de 31 min');
+  assert.equal(rangeText(1, 25), 'moins de 25 min');
+});
+
+test('parseEstimate only trusts the agent\'s own comments and caps absurd minutes', () => {
+  assert.equal(parseEstimate([{ body: '<!-- factory-estimate size=small min=10 max=20 -->', created_at: at(0) }]), null); // not posted by the agent
+  const big = parseEstimate([c(tag('large', 5000, 9000), 0)]);
+  assert.ok(big.max <= 480 && big.min <= big.max);
+});
+
+test('with no label history the elapsed time still comes from the estimate date', () => {
+  const item = { number: 11, labels: ['factory:feature', 'factory:building', 'factory:running'], column: 'building' };
+  const e = estimate(item, [], DEFAULT_MINUTES, T0 + 90 * 60_000, { size: 'small', min: 20, max: 40, at: T0 });
+  assert.equal(e.overrun, true);
 });
