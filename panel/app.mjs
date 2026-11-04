@@ -482,16 +482,26 @@ $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));
 
-// Diagnostic for phones: open the panel with ?largeur to list what sticks out past the screen edge.
-if (new URLSearchParams(location.search).has('largeur')) {
-  setTimeout(() => {
-    const w = document.documentElement.clientWidth;
-    const out = [...document.querySelectorAll('body *')]
-      .map((e) => [e, e.getBoundingClientRect()])
-      .filter(([, r]) => r.width && (r.right > w + 0.5 || r.left < -0.5))
-      .map(([e, r]) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''} : ${Math.round(r.left)} → ${Math.round(r.right)}`);
-    const box = el('pre', { style: 'position:fixed;inset:auto 8px 8px 8px;max-height:40vh;overflow:auto;z-index:9;background:#000;color:#fff;font-size:12px;padding:8px;white-space:pre-wrap;margin:0' },
-      `écran ${w} px · page ${document.documentElement.scrollWidth} px\n${out.slice(0, 30).join('\n') || 'rien ne dépasse'}`);
-    document.body.append(box);
-  }, 4000);
+// Width diagnostic: shows by itself when something is wider than the screen (or with ?largeur),
+// listing the culprits, so the owner can send a screenshot from his phone.
+function widthReport() {
+  const w = document.documentElement.clientWidth;
+  const vv = window.visualViewport;
+  const out = [...document.querySelectorAll('body *')]
+    .filter((e) => !e.closest('#width-report'))
+    .map((e) => [e, e.getBoundingClientRect()])
+    .filter(([, r]) => r.width && (r.right > w + 1 || r.left < -1))
+    .map(([e, r]) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : ''} : ${Math.round(r.left)} → ${Math.round(r.right)}`);
+  const wide = document.documentElement.scrollWidth > w + 1 || window.innerWidth > w + 1 || (vv && vv.scale < 0.99) || out.length;
+  return { wide, text: `écran ${w} · fenêtre ${window.innerWidth} · page ${document.documentElement.scrollWidth} · zoom ${vv ? vv.scale.toFixed(2) : '?'}\n${out.slice(0, 30).join('\n') || 'aucun élément ne dépasse'}` };
 }
+function showWidthReport(force) {
+  const { wide, text } = widthReport();
+  if (!wide && !force) return;
+  document.getElementById('width-report')?.remove();
+  document.body.append(el('div', { id: 'width-report', style: 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9;background:#000;color:#fff;border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,monospace' },
+    el('p', { style: 'margin:0 0 6px;font-weight:700' }, 'La page est plus large que l\'écran : fais une capture et envoie-la à Claude.'),
+    el('pre', { style: 'margin:0;max-height:35vh;overflow:auto;white-space:pre-wrap' }, text),
+    el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
+}
+setTimeout(() => showWidthReport(new URLSearchParams(location.search).has('largeur')), 4000);
