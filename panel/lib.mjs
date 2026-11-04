@@ -164,3 +164,8 @@ export function mergeConfig(base, mine, theirs) {
   }
   return out;
 }
+
+// The browser tab title: « (2) Factory » while cards wait for the owner, plain « Factory » otherwise.
+export function tabTitle(count) {
+  return count > 0 ? `(${count}) Factory` : 'Factory';
+}
