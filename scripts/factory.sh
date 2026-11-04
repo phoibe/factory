@@ -103,23 +103,20 @@ install_into_existing() {
 claude_access() {
   say "2. Accès de Claude au dépôt"
   local inst sel id repo_id
+  # GitHub only lists app installations to tokens issued by a GitHub App, so with the gh login this
+  # usually fails: keep only a well-formed "<numeric id> <selection>" answer, otherwise guide by hand.
   inst=$(gh api user/installations --jq '.installations[] | select(.app_slug=="claude") | "\(.id) \(.repository_selection)"' 2>/dev/null | head -1 || true)
-  if [ -z "$inst" ]; then
-    warn "L'application Claude n'est pas encore installée sur ton compte GitHub."
-    echo "     Ouvre https://github.com/apps/claude/installations/select_target , choisis « All repositories », Save."
-    ask "     Appuie sur Entrée quand c'est fait." >/dev/null
-    return
+  if [[ "$inst" =~ ^[0-9]+\ (all|selected)$ ]]; then
+    id=${inst%% *}; sel=${inst#* }
+    if [ "$sel" = "all" ]; then ok "Claude a accès à tous tes dépôts"; return; fi
+    repo_id=$(gh api "repos/$REPO" --jq .id 2>/dev/null || true)
+    if [[ "$repo_id" =~ ^[0-9]+$ ]] && gh api -X PUT "user/installations/$id/repositories/$repo_id" >/dev/null 2>&1; then
+      ok "Dépôt ajouté à l'application Claude"; return
+    fi
   fi
-  id=${inst%% *}; sel=${inst#* }
-  if [ "$sel" = "all" ]; then ok "Claude a accès à tous tes dépôts"; return; fi
-  repo_id=$(gh api "repos/$REPO" --jq .id)
-  if gh api -X PUT "user/installations/$id/repositories/$repo_id" >/dev/null 2>&1; then
-    ok "Dépôt ajouté à l'application Claude"
-  else
-    warn "Je n'ai pas pu ajouter le dépôt à l'application Claude."
-    echo "     Ouvre https://github.com/settings/installations/$id et ajoute $REPO (sans retirer les autres), Save."
-    ask "     Appuie sur Entrée quand c'est fait." >/dev/null
-  fi
+  # Not an error: GitHub just won't tell the gh login which repositories the app can read.
+  echo "     Claude doit pouvoir lire $REPO. Si ce n'est pas déjà le cas (« All repositories », ou dépôt"
+  echo "     déjà dans la liste), ajoute-le via « Configure » à côté de Claude sur https://github.com/settings/installations"
 }
 
 # ---- Routine Claude (moteur des agents) ----------------------------------------------------------
