@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
   <header class="top">
     <a class="brand" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V10l5 3V10l5 3V6l8 4v10z"/></svg>Factory</a>
     <nav id="nav" hidden>
       <select id="project" aria-label="Projet"></select>
-      <a class="button ghost" href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip" title="Deux fichiers à double-cliquer sur ton Mac : créer un nouveau projet, ou mettre dans la factory un projet déjà commencé.">Outils Mac</a>
+      <a class="button ghost" href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip" title="Deux fichiers à double-cliquer sur votre Mac : créer un nouveau projet, ou mettre dans la factory un projet déjà commencé.">Outils Mac</a>
       <button id="stable" class="ghost" type="button" hidden title="Les projets suivent la version stable de la factory. Ce bouton y ajoute les derniers changements, si ses tests passent.">Déclarer stable</button>
       <button id="phone-open" class="ghost" type="button">Sur mon téléphone</button>
       <button id="logout" class="ghost" type="button">Se déconnecter</button>
@@ -20,14 +20,14 @@
 
   <main id="app">
     <section id="login" class="card narrow" hidden>
-      <h1>Connecte le panneau à GitHub</h1>
-      <p>Le panneau a besoin d'un jeton GitHub pour lire tes projets et enregistrer tes règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
-      <p class="tip">Déjà connecté sur ton ordinateur ? Là-bas, clique sur <strong>Sur mon téléphone</strong> et scanne le code avec ce téléphone : rien à recopier.</p>
+      <h1>Connectez le panneau à GitHub</h1>
+      <p>Le panneau a besoin d'un jeton GitHub pour lire vos projets et enregistrer vos règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
+      <p class="tip">Déjà connecté sur votre ordinateur ? Là-bas, cliquez sur <strong>Sur mon téléphone</strong> et scannez le code avec ce téléphone : rien à recopier.</p>
       <ol>
-        <li>Ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la création de jeton</a>.</li>
+        <li>Ouvrez <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la création de jeton</a>.</li>
         <li>Nom : « factory panneau ». Expiration : 1 an. <strong>Repository access</strong> : <strong>All repositories</strong>.</li>
-        <li>Dans la boîte <strong>Repositories</strong> (pas « Account ») : <strong>+ Add permissions</strong>, coche <strong>Contents</strong>, <strong>Issues</strong> et <strong>Pull requests</strong>, puis mets Contents et Issues sur « Read and write » (Pull requests reste en « Read-only »).</li>
-        <li>Génère le jeton, copie-le et colle-le ici.</li>
+        <li>Dans la boîte <strong>Repositories</strong> (pas « Account ») : <strong>+ Add permissions</strong>, cochez <strong>Contents</strong>, <strong>Issues</strong> et <strong>Pull requests</strong>, puis mettez Contents et Issues sur « Read and write » (Pull requests reste en « Read-only »).</li>
+        <li>Générez le jeton, copiez-le et collez-le ici.</li>
       </ol>
       <form id="login-form">
         <label for="token">Jeton</label>
@@ -39,9 +39,9 @@
 
     <section id="empty" class="card narrow" hidden>
       <h1>Aucun projet pour l'instant</h1>
-      <p>Un projet de la factory est un dépôt qui contient <code>factory.config.json</code>. Crée-en un à partir du modèle, puis reviens ici.</p>
+      <p>Un projet de la factory est un dépôt qui contient <code>factory.config.json</code>. Créez-en un à partir du modèle, puis revenez ici.</p>
       <p><a class="button" href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip">Télécharger les outils Mac</a></p>
-      <p class="muted">Décompresse le fichier, puis double-clique « Nouveau projet » ou « Adopter un projet » : une fenêtre te pose les questions et fait tout le reste.</p>
+      <p class="muted">Décompressez le fichier, puis double-cliquez sur « Nouveau projet » ou « Adopter un projet » : une fenêtre vous pose les questions et fait tout le reste.</p>
     </section>
 
     <section id="project-view" hidden>
@@ -56,29 +56,56 @@
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle feature</a>
           <a id="new-bug" class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
           <a id="new-project" class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
-          <a id="new-question" class="button secondary" target="_blank" rel="noopener" title="Une question sur l'appli. Tu peux aussi y demander une feature ou signaler un bug : l'agent crée l'issue lui-même.">Poser une question</a>
+          <button id="new-question" type="button" class="button secondary" title="Discutez avec l'agent : une question sur l'appli, une idée de feature ou un bug. Il peut en faire une feature ou un bug pour vous.">Discuter avec l'agent</button>
           <button id="general-review" type="button" class="button secondary" title="L'agent critique et corrige tous les écrans avec impeccable, puis relit et corrige tout le code.">Review générale</button>
         </div>
       </div>
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-board" aria-selected="true" aria-controls="board">Suivi</button>
+        <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat">Discussion<span id="chat-badge" class="badge" hidden></span></button>
         <button role="tab" id="tab-rules" aria-selected="false" aria-controls="rules">Règles</button>
       </div>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
+      <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+        <aside class="chat-list" aria-label="Conversations">
+          <button id="chat-new" type="button">Nouvelle conversation</button>
+          <ul id="chat-items"></ul>
+        </aside>
+        <section class="chat-thread" aria-labelledby="chat-title">
+          <header class="chat-head">
+            <button id="chat-back" type="button" class="ghost" aria-label="Retour aux conversations">←</button>
+            <h2 id="chat-title">Nouvelle conversation</h2>
+            <div class="chat-tools" id="chat-tools">
+              <button id="chat-feature" type="button" class="secondary small-btn" title="L'agent crée une feature à partir de ce que vous vous êtes dit. Elle suit ensuite son parcours habituel (questions, spec, construction).">En faire une feature</button>
+              <button id="chat-bug" type="button" class="secondary small-btn" title="L'agent crée un bug à partir de ce que vous vous êtes dit, et la correction démarre.">C'est un bug</button>
+              <button id="chat-close" type="button" class="ghost small-btn" title="Rangez la conversation dans « Terminées ». Vous pourrez la rouvrir en y écrivant.">Terminer</button>
+            </div>
+          </header>
+          <ol id="chat-messages" class="messages" aria-live="polite"></ol>
+          <div id="chat-pending" class="pending-images" hidden></div>
+          <form id="chat-form" class="composer">
+            <input id="chat-file" type="file" accept="image/*" multiple hidden>
+            <button id="chat-attach" type="button" class="ghost" aria-label="Ajouter une image" title="Ajouter une image (vous pouvez aussi coller une capture dans le message)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5.5-5.5L5 20"/></svg></button>
+            <label for="chat-input" class="visually-hidden">Votre message</label>
+            <textarea id="chat-input" rows="1" placeholder="Écrivez votre message…"></textarea>
+            <button id="chat-send" type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </form>
+        </section>
+      </div>
       <form id="rules" role="tabpanel" aria-labelledby="tab-rules" hidden></form>
     </section>
   </main>
   <dialog id="phone" aria-labelledby="phone-title">
-    <h2 id="phone-title">Ouvrir le panneau sur ton téléphone</h2>
-    <p>Scanne ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté, et le reste.</p>
+    <h2 id="phone-title">Ouvrir le panneau sur votre téléphone</h2>
+    <p>Scannez ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté, et le reste.</p>
     <div id="phone-qr"></div>
-    <p class="muted small">Ce code contient ton jeton GitHub : ne le montre à personne. Astuce : une fois ouvert, ajoute la page à l'écran d'accueil.</p>
+    <p class="muted small">Ce code contient votre jeton GitHub : ne le montrez à personne. Astuce : une fois ouvert, ajoutez la page à l'écran d'accueil.</p>
     <div class="dialog-actions">
       <button id="phone-copy" class="secondary" type="button">Copier le lien</button>
       <button id="phone-close" type="button">Fermer</button>
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=8"></script>
+  <script type="module" src="app.mjs?v=16"></script>
 </body>
 </html>

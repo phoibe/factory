@@ -9,6 +9,9 @@ on:
     types: [opened, reopened, synchronize, labeled, unlabeled, closed]
   pull_request_review:
     types: [submitted]
+  # Safety net: restarts the queue when a place was freed without an event the queue listens to.
+  schedule:
+    - cron: '*/10 * * * *'
   # Used by the factory itself to start an agent on GitHub Actions (runner "github-actions").
   workflow_dispatch:
     inputs:
@@ -30,7 +33,7 @@ jobs:
     if: >-
       (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature' || github.event.label.name == 'factory:bug' || github.event.label.name == 'factory:project' || github.event.label.name == 'factory:question' || github.event.label.name == 'factory:audit') &&
       (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'factory:checks') &&
-      ((github.event_name != 'issues' && github.event_name != 'pull_request') || github.event.action != 'unlabeled' || github.event.label.name == 'factory:running') &&
+      ((github.event_name != 'issues' && github.event_name != 'pull_request') || github.event.action != 'unlabeled' || github.event.label.name == 'factory:running' || github.event.label.name == 'factory:building') &&
       (github.event_name != 'issue_comment' || !contains(github.event.comment.body, '<!-- factory-agent -->'))
     uses: phoibe/factory/.github/workflows/relay.yml@stable
     secrets: inherit

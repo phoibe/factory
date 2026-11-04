@@ -2,7 +2,7 @@ name: Panneau
 on:
   push:
     branches: [main]
-    paths: ['panel/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', '.github/workflows/pages.yml']
+    paths: ['panel/**', 'server/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,29 @@ jobs:
           mkdir -p _site
           cp -r panel/* _site/
           cp packs/catalog.json defaults/factory.config.json scripts/lib/config-core.mjs _site/
+      # The chat server (server/chat) on Modal, when its secrets are set. The panel finds it in chat-server.json;
+      # without it, the chat falls back to the slower path through the agent's routine.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Chat server
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ] || [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::notice::Chat server not deployed: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET or CLAUDE_CODE_OAUTH_TOKEN is missing."
+            exit 0
+          fi
+          pip install -q modal==1.6.3
+          modal secret create factory-chat "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN" "OWNER=$OWNER" --force > /dev/null
+          cd server/chat
+          modal deploy app.py
+          url=$(python -c "import modal; print(modal.Function.from_name('factory-chat', 'web').get_web_url())")
+          printf '{ "url": "%s" }\n' "$url" > "$GITHUB_WORKSPACE/_site/chat-server.json"
+          echo "Chat server: $url"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
       - id: deployment

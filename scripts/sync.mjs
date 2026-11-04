@@ -5,6 +5,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, write
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig, enabledSkills } from './lib/config.mjs';
+import { hookCommand } from '../agent/scripts/run-root.mjs';
 
 const FACTORY_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STAGE_LABELS = {
@@ -12,7 +13,6 @@ const STAGE_LABELS = {
   screenshots: 'captures avant/après', checks: 'contrôles automatiques', acceptance: 'recette',
 };
 
-const hookCommand = (script) => `node "$CLAUDE_PROJECT_DIR/.factory/scripts/${script}"`;
 // The journal records what the agent does; the gate refuses to let a PR move on while a step is missing.
 const FACTORY_HOOKS = [
   ['UserPromptSubmit', null, 'journal.mjs'], ['PostToolUse', 'Skill|Bash', 'journal.mjs'], ['PostToolUseFailure', 'Bash', 'journal.mjs'],
@@ -69,7 +69,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
     writeFileSync(join(outDir, 'stages', f), render(readFileSync(join(factoryDir, 'agent/stages', f), 'utf8'), vars));
   }
   cpSync(join(factoryDir, 'agent/scripts/shots.mjs'), join(outDir, 'scripts/shots.mjs'));
-  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
+  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');

@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findRoot, rememberRoot, sessionRoot } from './run-root.mjs';
 
 const RUNNER = /^(?:(?:npx|bunx|pnpm (?:exec|dlx)|yarn)\s+)?(?:vitest|jest|playwright test|node --test)\b|^(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?(?:\s|$)/;
 const PREFIX = /^(?:cd\s+\S+|[A-Z_][A-Z0-9_]*=\S*|timeout\s+\S+|env|time|CI=\S+)\s*/;
@@ -18,16 +19,27 @@ export function isTestCommand(cmd = '') {
     return RUNNER.test(p);
   });
 }
-const FAILED_TEXT = /(\b[1-9]\d* (failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|\bERR!|exit code [1-9])/im;
+// Case matters: node --test prints « # fail 0 » on a green run.
+export const FAILED_TEXT = /(\b[1-9]\d* (?:failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|^# fail [1-9]|\bERR!|exit code [1-9])/m;
 
 // The run JSON ({"repo","issue","pr","stage"}) is somewhere in the first prompt of the run.
 export function runFromPrompt(prompt = '') {
-  const m = /\{[^{}]*"stage"\s*:\s*"[^"]+"[^{}]*\}/.exec(prompt);
-  if (!m) return null;
-  try {
-    const { stage, issue = null, pr = null } = JSON.parse(m[0]);
-    return { stage, issue, pr };
-  } catch { return null; }
+  const text = String(prompt);
+  // Every balanced {...} block, outermost first, until one parses as a run (it may hold nested objects).
+  for (let i = text.indexOf('{'); i !== -1; i = text.indexOf('{', i + 1)) {
+    let depth = 0;
+    for (let j = i; j < text.length; j++) {
+      if (text[j] === '{') depth++;
+      else if (text[j] === '}' && --depth === 0) {
+        try {
+          const o = JSON.parse(text.slice(i, j + 1));
+          if (o && typeof o.stage === 'string') return { stage: o.stage, issue: o.issue ?? null, pr: o.pr ?? null, ...(o.repo ? { repo: o.repo } : {}) };
+        } catch { /* not JSON */ }
+        break;
+      }
+    }
+  }
+  return null;
 }
 
 function responseFailed(res) {
@@ -65,10 +77,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
     const entry = entryFor(input);
     if (entry) {
-      const dir = join(process.env.CLAUDE_PROJECT_DIR || input.cwd || '.', '.factory/journal');
-      mkdirSync(dir, { recursive: true });
+      const projectDir = process.env.CLAUDE_PROJECT_DIR || input.cwd || '.';
       const session = String(input.session_id || 'session').replace(/[^\w-]/g, '').slice(0, 36);
-      appendFileSync(join(dir, `${session}.jsonl`), JSON.stringify(entry) + '\n');
+      let root;
+      if (entry.kind === 'run') { root = findRoot(projectDir, entry.repo); rememberRoot(session, root); } else root = sessionRoot(session, projectDir);
+      const dir = join(root, '.factory/journal');
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, `${session}.jsonl`);
+      // Each clone's settings carry the hook, so one call can reach it twice: keep it once.
+      const id = input.tool_use_id ? String(input.tool_use_id) : null;
+      let seen = '';
+      try { seen = readFileSync(file, 'utf8'); } catch { /* new file */ }
+      const dup = id ? seen.includes(`"id":${JSON.stringify(id)}`) : entry.kind === 'run' && seen.split('\n').some((l) => l.includes('"kind":"run"') && l.includes(`"stage":${JSON.stringify(entry.stage)}`));
+      if (!dup) appendFileSync(file, JSON.stringify(id ? { ...entry, id } : entry) + '\n');
     }
   } catch { /* never block the agent */ }
   process.exit(0);

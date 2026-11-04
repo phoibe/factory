@@ -1,6 +1,6 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
 import { COLUMNS, columnFor } from './lib.mjs';
-import { humanMinutes } from './eta.mjs';
+import { humanMinutes, rangeText } from './eta.mjs';
 
 const STEPS = [
   { id: 'grilling', name: 'Questions' },
@@ -11,11 +11,11 @@ const STEPS = [
   { id: 'acceptance', name: 'Recette' },
 ];
 const ACTIONS = {
-  grilling: 'Réponds aux questions',
-  spec: 'Valide la spec',
-  visual: 'Valide les captures',
-  acceptance: 'Teste la preview',
-  blocked: "Débloque l'agent",
+  grilling: 'Répondez aux questions',
+  spec: 'Validez la spec',
+  visual: 'Validez les captures',
+  acceptance: 'Testez la preview',
+  blocked: "Débloquez l'agent",
 };
 
 // The steps an item goes through. Bugs and general reviews have no questions and no spec.
@@ -57,12 +57,28 @@ export function agoText(ms) {
   return `il y a ${Math.floor(s / 60)} min`;
 }
 
-// Seconds between two refreshes: 15 s, doubled after each failure, at most 5 min.
-export const pollDelay = (failures) => Math.min(15_000 * 2 ** failures, 300_000);
+// Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.
+export const pollDelay = (failures, idle = false) => Math.min((idle ? 30_000 : 8_000) * 2 ** failures, 300_000);
+
+export const IDLE_AFTER = 120_000;
+export const isIdle = (lastActivity, now) => now - lastActivity >= IDLE_AFTER;
+
+// Compares two Maps number -> signature (null = nothing drawn yet).
+export function cardChanges(prev, next) {
+  const added = [], removed = [], changed = [];
+  for (const [n, sig] of next) {
+    if (!prev || !prev.has(n)) added.push(n);
+    else if (prev.get(n) !== sig) changed.push(n);
+  }
+  if (prev) for (const n of prev.keys()) if (!next.has(n)) removed.push(n);
+  return { added, removed, changed };
+}
 
 // One short line about time, from estimate() in eta.mjs.
-export function timeLine(e, clock = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })) {
+export function timeLine(e) {
   if (e.status === 'queued') return "Démarre dès qu'une place se libère";
   if (e.status === 'yours') return `Ensuite ~${humanMinutes(e.total)} de travail des agents`;
-  return `~${humanMinutes(e.next)} avant l'étape suivante · fin vers ${clock(e.endAt)}`;
+  if (e.overrun) return 'Plus long que prévu · nouvelle estimation en cours';
+  const text = rangeText(e.nextLow, e.nextHigh);
+  return `${text[0].toUpperCase()}${text.slice(1)} avant la suite`;
 }

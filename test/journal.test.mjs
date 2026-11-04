@@ -5,8 +5,10 @@ import { entryFor, runFromPrompt, isTestCommand } from '../agent/scripts/journal
 const now = new Date('2026-11-03T10:00:00Z');
 
 test('runFromPrompt reads the run JSON from the routine prompt', () => {
-  assert.deepEqual(runFromPrompt('Voici le JSON :\n{"repo":"o/r","issue":5,"pr":null,"stage":"build","factory":"phoibe/factory"}\nLis AGENT.md'), { stage: 'build', issue: 5, pr: null });
+  assert.deepEqual(runFromPrompt('Voici le JSON :\n{"repo":"o/r","issue":5,"pr":null,"stage":"build","factory":"phoibe/factory"}\nLis AGENT.md'), { stage: 'build', issue: 5, pr: null, repo: 'o/r' });
   assert.equal(runFromPrompt('bonjour'), null);
+  // With the owner's screenshots the JSON holds nested objects.
+  assert.deepEqual(runFromPrompt('{"repo":"o/r","issue":5,"stage":"build","attachments":[{"path":"a/1.png","source":"x"}]}'), { stage: 'build', issue: 5, pr: null, repo: 'o/r' });
 });
 
 test('records skills, red and green test runs, and ignores the rest', () => {
@@ -31,4 +33,11 @@ test('a file written with a heredoc that mentions vitest is not a test run', () 
   assert.ok(!isTestCommand(write));
   assert.ok(isTestCommand(`${write}\nnpx vitest run tests/a.test.ts`));
   assert.ok(!isTestCommand("python3 - <<'E'\nprint('npx vitest')\nE"));
+});
+
+test('a green node --test run (« # fail 0 ») is not read as a failure', () => {
+  const ok = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 12\n# fail 0', stderr: '' } });
+  assert.equal(ok.ok, true);
+  const ko = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 11\n# fail 1', stderr: '' } });
+  assert.equal(ko.ok, false);
 });

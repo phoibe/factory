@@ -23,6 +23,7 @@ function fakeGh(state) {
     removeLabel: async (n, l) => { calls.push(['remove', n, l]); const i = issue(n); if (i) i.labels = (i.labels || []).filter((x) => x !== l); },
     merge: async (n) => calls.push(['merge', n]),
     deployments: async () => [{ id: 1 }],
+    recentDeployments: async () => state.deployments || [{ id: 1, environment: 'Preview' }],
     deploymentStatuses: async () => [{ state: 'success', environment_url: 'https://preview.example' }],
   };
   return gh;
@@ -31,6 +32,8 @@ function fakeGh(state) {
 const fetchOk = (sink) => async (url, init) => { sink.push({ url, init }); return { ok: true, json: async () => ({ claude_code_session_url: 'https://claude.ai/code/s' }) }; };
 const env = { FACTORY_ROUTINE_URL: 'https://api.anthropic.com/v1/claude_code/routines/trig_x/fire', FACTORY_ROUTINE_TOKEN: 'tok' };
 const quiet = () => {};
+// The routine text is a title line, a blank line, then the JSON payload.
+const payloadOf = (body) => JSON.parse(JSON.parse(body).text.split('\n\n').slice(1).join('\n\n'));
 
 test('linkedIssue finds closing keywords', () => {
   assert.equal(linkedIssue('Résumé\n\nCloses #12'), 12);
@@ -46,9 +49,18 @@ test('eventFromPayload marks agent comments and the owner', () => {
   assert.deepEqual([prc.kind, prc.fromOwner], ['pr', false]);
 });
 
+test('eventFromPayload turns a dispatched {"tick":true} into a queue check', () => {
+  const ev = eventFromPayload('workflow_dispatch', { inputs: { payload: '{"tick":true}' }, repository: { owner: { login: 'phoibe' } } });
+  assert.equal(ev.kind, 'tick');
+});
+
 test('eventFromPayload trusts pushes by the Claude app on PRs', () => {
   const ev = eventFromPayload('pull_request', { action: 'synchronize', repository: { owner: { login: 'phoibe' } }, sender: { login: 'claude[bot]' }, pull_request: { number: 9, labels: [] } });
   assert.equal(ev.fromOwner, true);
+});
+
+test('a scheduled event becomes a tick', () => {
+  assert.equal(eventFromPayload('schedule', {}).kind, 'tick');
 });
 
 test('a grilling answer fires the routine with the payload and locks the issue', async () => {
@@ -60,7 +72,7 @@ test('a grilling answer fires the routine with the payload and locks the issue',
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 5 && c[2] === L.running));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].init.headers['anthropic-beta'], 'experimental-cc-routine-2026-04-01');
-  assert.deepEqual(JSON.parse(JSON.parse(sent[0].init.body).text), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
 });
 
 test('a fresh lock defers the comment with a reaction', async () => {
@@ -102,7 +114,7 @@ test('acceptance approval merges, frees the issue and starts the oldest queued o
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.building));
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'build');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
 });
 
 test('visual approval asks the workflow to run checks', async () => {
@@ -143,7 +155,7 @@ test('a failed merge sends the branch to update instead of stranding it', async 
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'update-branch');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.fixing));
 });
 
@@ -165,7 +177,7 @@ Spec v1`, created_at: new Date(Date.now() - 5 * 60_000).toISOString() },
   const d = gh.calls.find((c) => c[0] === 'dispatch');
   assert.deepEqual(JSON.parse(d[3].payload), { replay: 3 });
   await relay.handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 3, labels: [] }, { ownerLogin: 'phoibe' });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'build');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
   assert.ok(!(await gh.getIssue(3)).labels.some((l) => l.name === L.pending));
 });
 
@@ -236,6 +248,17 @@ test('green checks on a feature open acceptance with the preview link', async ()
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://preview.example')));
 });
 
+test('green checks on a project without previews merge directly: nothing to try', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], deployments: [{ id: 1, environment: 'github-pages' }] });
+  let waited = 0;
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { waited++; } });
+  await relay.report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+  assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /pas de preview/);
+  assert.equal(waited, 0);
+});
+
 test('green checks on a bug merge directly', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.bug, L.building] }], prs: [{ number: 10, body: 'Fixes #1', head: { sha: 'abc' } }] });
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet });
@@ -248,7 +271,7 @@ test('red checks fire a fix, then block after maxLoops failures', async () => {
   let gh = fakeGh(state);
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
   state.comments[10] = [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER }));
   gh = fakeGh(state);
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).report({ result: 'failure', pr: 10 });
@@ -260,7 +283,7 @@ test('failures before a reset marker are not counted again', async () => {
     comments: { 10: [{ body: CHECKS_FAILED_MARKER }, { body: CHECKS_FAILED_MARKER }, { body: CHECKS_FAILED_MARKER }, { body: '<!-- factory-checks-reset -->' }] } };
   const sent = [];
   await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
 });
 
 test('eventFromPayload flags issues opened less than a minute ago', () => {
@@ -341,6 +364,283 @@ test("the owner's pasted screenshots are copied for the agent and listed in its 
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: 'regarde', fromOwner: true });
-  const payload = JSON.parse(JSON.parse(sent[0].init.body).text);
+  const payload = payloadOf(sent[0].init.body);
   assert.deepEqual(payload.attachments, [`attachments/5/${id}.png`]);
+});
+
+test('blocked cards do not hold a place; a blocked card answered while full goes to the queue, then resumes', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.blocked] }, { number: 4, labels: [L.feature, L.building, L.blocked] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [L.feature, L.building, L.blocked], text: 'réessaie', fromOwner: true });
+  assert.equal(action.type, 'queue');
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.queued));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 3 && /file d'attente/.test(c[2])));
+  // A place frees up: the card resumes (not a fresh build).
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.building));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.resumeQueued));
+});
+
+test('a blocked card with a free place resumes right away', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.blocked] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [L.feature, L.building, L.blocked], text: 'réessaie', fromOwner: true });
+  assert.equal(action.stage, 'resume');
+  assert.equal(sent.length, 1);
+});
+
+test("the owner's answer on a blocked PR unblocks its issue too", async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.building, L.blocked] }], prs: [{ number: 15, body: 'Closes #5', head: { sha: 'abc' }, labels: [L.blocked] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  const { action } = await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 15, labels: [L.blocked], text: "c'est réglé", fromOwner: true });
+  assert.equal(action.stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 15 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 5 && c[2] === L.blocked));
+});
+
+test('checks stopped by the time limit count as a failure, so the PR never sits silently in the checks lane', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc' });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /trop longtemps/.test(c[2])));
+});
+
+test('checks cancelled because the PR changed are ignored (a newer run reports)', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'new' } }], comments: { 10: [] } };
+  const sent = [];
+  await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'old' });
+  assert.equal(sent.length, 0);
+});
+
+test('a run is named for the session list and its link is kept in one comment on the card', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/habitudes', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const msg = { kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true };
+  await relay.handle(msg);
+  assert.equal(JSON.parse(sent[0].init.body).text.split('\n')[0], 'habitudes · issue #5 · Questions');
+  const note = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5);
+  assert.match(note[2], /factory-session[\s\S]*Questions[\s\S]*\(https:\/\/claude\.ai\/code\/s\)/);
+  const updated = [];
+  gh.listComments = async () => [{ id: 9, body: note[2] }];
+  gh.updateComment = async (id, body) => updated.push(id);
+  gh.issues = undefined;
+  await relay.handle(msg);
+  assert.deepEqual(updated, [9]);
+});
+
+test('a bare « Approve » review counts as an approval, a review with only inline comments says nothing', () => {
+  const pr = { number: 3, labels: [{ name: L.acceptance }] };
+  const mk = (review) => eventFromPayload('pull_request_review', { action: 'submitted', repository: { owner: { login: 'phoibe' } }, pull_request: pr, review: { user: { login: 'phoibe' }, ...review } });
+  assert.equal(mk({ body: '', state: 'approved' }).text, 'ok');
+  assert.equal(mk({ body: '', state: 'commented' }).text, '');
+  assert.equal(mk({ body: 'Change le titre', state: 'commented' }).text, 'Change le titre');
+});
+
+test('checks cancelled early by a newer run on the same commit are not a hung test', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const now = Date.now();
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: now / 1000 - 120, now });
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: now / 1000 - 31 * 60, now });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
+});
+
+test('after its own merge the relay starts the workflows the push would have started (a bot push starts none)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.listPrFiles = async () => [{ filename: 'panel/style.css' }, { filename: 'factory.config.json' }];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  const dispatched = gh.calls.filter((c) => c[0] === 'dispatch').map((c) => c[1]);
+  assert.ok(dispatched.includes('pages.yml'));
+  assert.ok(dispatched.includes('factory-sync.yml'));
+});
+
+test('a project without those workflows still merges cleanly', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.dispatch = async () => { throw new Error('HTTP 404'); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /fusionné/.test(c[2])));
+});
+
+test("a merge frees its place even while GitHub's issue list still shows the old label", async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.building] }, { number: 2, labels: [L.building] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }],
+  });
+  // A stale list: issue 1 is still listed as building after its label was removed.
+  const stale = gh.listIssues;
+  gh.listIssues = async (q) => (q.labels === L.building ? [{ number: 1, labels: [{ name: L.building }] }, { number: 2, labels: [{ name: L.building }] }] : stale(q));
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
+});
+
+test('the regular tick sends a PR stuck in conflict (no checks can start) to a branch update', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'abc' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 61 && c[2] === L.checks));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 61 && /conflit/.test(c[2])));
+});
+
+test('the regular tick leaves a mergeable PR in its checks alone', async () => {
+  const gh = fakeGh({ issues: [{ number: 61, labels: [L.checks], pull_request: {} }], prs: [{ number: 61, state: 'open', mergeable_state: 'clean', body: '', head: { sha: 'abc' } }] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(sent.length, 0);
+});
+
+test('right after the factory merges a PR, a PR it put in conflict goes to a branch update', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.building] }, { number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [
+      { number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] },
+      { number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'def' }, labels: [L.checks] },
+    ],
+  });
+  // GitHub has not computed mergeability yet on the first read.
+  const getPr = gh.getPr;
+  let reads = 0;
+  gh.getPr = async (n) => (n === 61 && reads++ === 0 ? { ...(await getPr(n)), mergeable_state: 'unknown' } : getPr(n));
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(sent.some((s) => payloadOf(s.init.body).stage === 'update-branch' && payloadOf(s.init.body).pr === 61));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
+});
+
+test('a PR merged by hand also unsticks the PRs it put in conflict', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'def' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'pull_request', action: 'closed', number: 10, labels: [], fromOwner: true });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+});
+
+// ---- auto-pick ----
+const pickConfig = { ...config, autoPick: true, stages: { grilling: true, acceptance: true } };
+async function runPick(issues, cfg = pickConfig) {
+  const gh = fakeGh({ issues, prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: cfg, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  const started = sent.map((s) => payloadOf(s.init.body));
+  return { gh, started };
+}
+const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+
+test('autoPick off: a free slot and an open issue start nothing', async () => {
+  const { started } = await runPick([fi(1, L.feature)], { ...pickConfig, autoPick: false });
+  assert.equal(started.length, 0);
+});
+
+test('autoPick picks a bug before an older feature, and comments on it', async () => {
+  const { gh, started } = await runPick([fi(1, L.feature), fi(2, L.bug)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[2, 'bugfix']]);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.building)));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.autoPicked)));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 2 && /prise d'elle-même/.test(c[2])));
+});
+
+test('autoPick: urgent goes first, a feature starts by grilling and holds back other features', async () => {
+  const { started } = await runPick([fi(1, L.feature), fi(2, L.bug), fi(3, L.feature, L.urgent), fi(4, L.feature, L.urgent)], { ...pickConfig, maxParallel: 3 });
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[3, 'grilling'], [2, 'bugfix']]);
+});
+
+test('autoPick never takes held, running, waiting, question, project or release issues', async () => {
+  const issues = [fi(1, L.feature, L.noPick), fi(2, L.question), fi(3, L.project), fi(4, 'factory:release'), fi(5, L.feature, L.grilling),
+    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement')];
+  const { started } = await runPick(issues, { ...pickConfig, maxParallel: 20 });
+  assert.deepEqual(started, []);
+});
+
+test('autoPick takes nothing when the factory is full', async () => {
+  const { started } = await runPick([fi(1, L.building), fi(2, L.building), fi(3, L.bug)]);
+  assert.equal(started.length, 0);
+});
+
+test('autoPick starts the queue first and picks only for the slots left', async () => {
+  const { started } = await runPick([fi(5, L.feature, L.queued), fi(1, L.bug), fi(2, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [5, 1]);
+});
+
+test('autoPick stops picking features while an auto-picked one waits for the owner', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature), fi(3, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [3]);
+});
+
+test('autoPick takes the oldest bug first when several tie', async () => {
+  const { started } = await runPick([fi(7, L.bug), fi(3, L.bug), fi(5, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [3, 5]);
+});
+
+test('autoPick: a failed start releases the claim and stops', async () => {
+  const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: pickConfig, env, log: quiet,
+    fetchImpl: async () => ({ ok: false, status: 429, text: async () => 'limit' }) });
+  await relay.dequeue();
+  const issue = (await gh.getIssue(1)).labels.map((l) => l.name);
+  assert.deepEqual(issue, [L.bug]);
+  assert.equal(gh.calls.filter((c) => c[0] === 'comment' && /prise d'elle-même/.test(c[2] || '')).length, 0);
+});
+
+test('autoPick with grilling off starts the spec once and never re-picks that issue', async () => {
+  const cfg = { ...pickConfig, stages: { grilling: false, acceptance: true } };
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked), fi(2, L.feature)], cfg);
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[2, 'spec']]);
+});
+
+test('autoPick: an auto-picked spec waiting for validation also holds back other features', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.specReview), fi(2, L.feature)]);
+  assert.deepEqual(started, []);
+});
+
+test('autoPick: an urgent bug beats an urgent feature and a plain bug', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.urgent), fi(2, L.bug), fi(3, L.bug, L.urgent)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started.map((p) => p.issue), [3]);
+});
+
+test('autoPick: a picked card waiting for the owner holds its place', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(3, L.bug)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started, []);
+});
+
+test('autoPick skips a card that already has an open PR', async () => {
+  const pr = { number: 50, labels: [L.checks], pull_request: {}, body: 'Closes #1', created_at: '2026-01-05T00:00:00Z' };
+  const { started } = await runPick([fi(1, L.bug), fi(2, L.bug), pr], { ...pickConfig, maxParallel: 5 });
+  assert.deepEqual(started.map((p) => p.issue), [2]);
+});
+
+test('autoPick skips the card whose build just ended', async () => {
+  const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...pickConfig, maxParallel: 5 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue({ freed: 1 });
+  assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [2]);
 });

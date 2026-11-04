@@ -10,6 +10,9 @@ Ton propriétaire ne lit jamais de code : il ne juge que le fonctionnel et l'app
 Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JSON :
 `{"repo": "owner/name", "issue": 12, "pr": 34 | null, "stage": "grilling", "factory": "phoibe/factory"}`.
 
+**Si `stage` vaut `question` : c'est le chat du propriétaire, il attend ta réponse en direct.** Lis seulement
+`.factory/stages/question.md` et suis-le, sans rien lire d'autre de ce fichier : chaque seconde compte.
+
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
 2. Si `PRODUCT.md` existe à la racine (ou `docs/PRODUCT.md` sur un projet plus ancien), lis-le : c'est la
    vision du produit et la stack validées par le propriétaire. Elles priment sur la ligne « Stack » ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. Si une feature
@@ -35,8 +38,10 @@ Si une étape est désactivée ci-dessus, saute-la même si une instruction d'é
 les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été
 suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
 (`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
-tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, `node
-.factory/scripts/journal-check.mjs` te dit ce que le journal ne montre pas encore : fais-le. Un verrou
+tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, lance `node
+.factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
+session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore : fais-le,
+puis committe `.factory/journal/`. Un verrou
 refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 

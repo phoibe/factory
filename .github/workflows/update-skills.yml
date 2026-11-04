@@ -21,7 +21,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet; then echo "Skills déjà à jour"; exit 0; fi
+          git add -A packs
+          if git diff --cached --quiet; then echo "Skills déjà à jour"; exit 0; fi
           branch="skills-update-$(date +%Y-%m)"
           git config user.name "factory-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

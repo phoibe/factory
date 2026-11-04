@@ -2,6 +2,7 @@
   "version": 1,
   "runner": "claude-cloud",
   "maxParallel": 2,
+  "autoPick": false,
   "stack": "À choisir au cadrage",
   "stages": {
     "grilling": true,
