@@ -225,14 +225,18 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     "title": issue["title"], "labels": [label], "body": body})
                 created.append({**issue, "url": made["html_url"], "number": made["number"]})
             add_exchange(conv, {"text": message, "images": images}, text, now_iso(), created)
-            yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
             # The answer is given and the issues exist: a failed save must not make the panel offer to send the
             # message again (that would create the issues twice). It is reported as « not saved » instead.
             saved = True
+            yield ev({"type": "status", "text": "Enregistre…"})
             try:
-                await save(gh, conv)
+                # Shielded: a phone that drops during the save must not leave the conversation half written.
+                await asyncio.shield(save(gh, conv))
             except Exception:
                 saved = False
+            # Saved before answering: if the phone drops during the answer, the conversation (and the issues it
+            # created) is already stored, so a resend does not create the issues twice.
+            yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
             yield ev({"type": "done", "saved": saved, "conversation": {"id": conv["id"], "title": conv["title"], "updated": conv["updated"], "state": "open"}})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})
