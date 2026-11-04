@@ -1,0 +1,27 @@
+{
+ "id": "20261104-132950-pd8f7",
+ "title": "Je voudrais que le rafraichissement du tableau soit plus fluide :…",
+ "state": "open",
+ "created": "2026-11-04T13:29:50Z",
+ "updated": "2026-11-04T13:30:16Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Je voudrais que le rafraichissement du tableau soit plus fluide : temps réel, et sans recharger toute la page à chaque fois. Idéalement avec des animations.",
+   "images": [],
+   "at": "2026-11-04T13:30:16Z"
+  },
+  {
+   "who": "agent",
+   "text": "Aujourd'hui, le tableau se met déjà à jour tout seul, mais ce n'est pas du vrai temps réel.\n\n- **Fréquence :** il va chercher les nouveautés toutes les 15 secondes environ. Il ralentit s'il y a un souci de connexion et se met en pause quand l'onglet est caché.\n- **Redessin :** quand quelque chose change, tout le tableau est redessiné d'un coup, sans recharger la page. Une carte déplacée ou modifiée peut donc « sauter ».\n- **Animations :** il y a déjà un halo coloré sur une carte qui change de colonne, avec une petite notification. Rien n'est animé pour les cartes qui apparaissent, disparaissent ou glissent d'une colonne à l'autre.\n\nJe l'ai lu dans le code. Je n'ai pas vu de test qui couvre la fluidité.\n\nJe te propose donc deux améliorations :\n- Ne mettre à jour que les cartes qui ont changé, sans tout redessiner.\n- Animer les cartes qui apparaissent, disparaissent ou glissent vers leur nouvelle colonne, en respectant le réglage « réduire les animations ».\n\nPour le vrai temps réel, la source des données ne nous prévient pas quand quelque chose change. On peut seulement raccourcir l'intervalle, mais ça sature vite la limite d'appels autorisée. Je garde donc un rafraîchissement rapproché plutôt qu'un temps réel strict. Si tu veux de l'instantané, il faudrait un relais côté serveur, ce qui est un chantier plus gros.",
+   "at": "2026-11-04T13:30:16Z",
+   "issues": [
+    {
+     "title": "Tableau plus fluide : mise à jour ciblée et animations",
+     "url": "https://github.com/phoibe/factory/issues/52",
+     "kind": "feature"
+    }
+   ]
+  }
+ ]
+}
