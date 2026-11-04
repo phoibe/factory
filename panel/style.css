@@ -146,3 +146,12 @@ input, select, textarea { font-size: 16px; }
 /* A double tap on iPhone zooms the page in (to 107 %), after which it slides sideways: turn that off.
    Pinch-to-zoom still works. */
 html { touch-action: manipulation; }
+
+/* Header buttons keep their words whole; on a phone the project picker takes its own row and the buttons
+   share the next one. */
+.top button, .top .button { overflow-wrap: normal; white-space: nowrap; }
+@media (max-width: 600px) {
+  nav { flex-wrap: wrap; }
+  nav select { flex: 1 1 100%; }
+  nav button, nav .button { flex: 1 1 auto; text-align: center; }
+}
