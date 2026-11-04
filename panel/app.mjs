@@ -262,7 +262,7 @@ function card(c, lane, minutes, now, moved) {
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EASE = 'cubic-bezier(.16, 1, .3, 1)';
-const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]')].map((n) => [Number(n.dataset.number), n]));
+const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]:not(.leaving)')].map((n) => [Number(n.dataset.number), n]));
 const onScreen = (r) => r.bottom > 0 && r.top < innerHeight;
 
 // FLIP: slide each card from where it was to where it is now (fade in place when either spot is off-screen).
@@ -309,16 +309,29 @@ function drawBoard() {
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
+  const prevSigs = live.sigs;
   live.sigs = new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig]));
+  const oldIndex = new Map([...oldCards].map(([n, node]) => [n, [...node.parentNode.children].indexOf(node)]));
   // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
-  for (const [n, node] of freshCards) if (oldCards.has(n) && !changes.changed.includes(n)) node.replaceWith(oldCards.get(n));
+  // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
+  for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
+  // The halo lasts 2.4 s; the class goes away after it, so that moving the node later does not replay it.
+  for (const n of movedSet) { const node = freshCards.get(n); if (node) setTimeout(() => node.classList.remove('moved'), 2500); }
   // Cards that left stay in place, fading, then the space closes smoothly.
-  const leaving = [];
+  const leaving = [], restore = [];
   if (!reduced()) for (const n of changes.removed) {
     const node = oldCards.get(n), laneClass = [...node.closest('.lane').classList].find((c) => c.startsWith('lane-'));
-    const grid = holder.querySelector(`.${laneClass} .tickets`);
-    if (!grid) continue;
-    grid.insertBefore(node, grid.children[[...node.parentNode.children].indexOf(node)] || null);
+    const laneEl = holder.querySelector(`.${laneClass}`);
+    if (!laneEl) continue;
+    let grid = laneEl.querySelector('.tickets');
+    if (!grid) { // the lane is now empty: keep a grid for the dying card until it is gone
+      const empty = laneEl.querySelector('.lane-empty');
+      grid = el('div', { class: 'tickets' });
+      empty.replaceWith(grid);
+      restore.push({ grid, empty });
+    }
+    node.classList.add('leaving');
+    grid.insertBefore(node, grid.children[oldIndex.get(n)] || null);
     leaving.push(node);
   }
   const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && board.querySelector('.pulse-bar');
@@ -330,6 +343,7 @@ function drawBoard() {
     if (leaving.length) setTimeout(() => {
       const mid = rectsOf(board);
       for (const node of leaving) node.remove();
+      for (const { grid, empty } of restore) if (!grid.children.length && grid.isConnected) grid.replaceWith(empty);
       flip(mid);
     }, 300);
   }
