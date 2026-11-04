@@ -156,7 +156,7 @@ guide_existing_routine() {
 routine() {
   say "3. Routine Claude (le moteur des agents)"
   local url token
-  if [ -f "$ROUTINE_FILE" ]; then
+  if [ -f "$ROUTINE_FILE" ] && [ "${ROUTINE_REPLACE:-}" != 1 ]; then
     # shellcheck disable=SC1090
     . "$ROUTINE_FILE"
     url=${FACTORY_ROUTINE_URL:-}; token=${FACTORY_ROUTINE_TOKEN:-}
@@ -172,7 +172,8 @@ routine() {
     case "$url" in https://*) ;; *) die "Cette URL ne ressemble pas à celle d'une routine (elle commence par https://)." ;; esac
     [ -n "$token" ] || die "Jeton vide."
     mkdir -p "$CONFIG_DIR"; umask 077
-    printf 'FACTORY_ROUTINE_URL=%q\nFACTORY_ROUTINE_TOKEN=%q\n' "$url" "$token" > "$ROUTINE_FILE"
+    # Write beside the old file, then swap: the saved token is only replaced once the new one is complete.
+    printf 'FACTORY_ROUTINE_URL=%q\nFACTORY_ROUTINE_TOKEN=%q\n' "$url" "$token" > "$ROUTINE_FILE.new" && mv "$ROUTINE_FILE.new" "$ROUTINE_FILE"
     ok "Gardés sur cet ordinateur ($ROUTINE_FILE) : on ne te les redemandera plus"
   fi
   FACTORY_ROUTINE_URL=$url; FACTORY_ROUTINE_TOKEN=$token
@@ -190,7 +191,9 @@ routine() {
 # ---- Labels et skills ----------------------------------------------------------------------------
 first_sync() {
   say "4. Labels et skills de la factory"
-  local i=0 run=""
+  local i=0 run="" before
+  # The last run listed before we dispatch may be an old, green one: remember it to wait for a newer one.
+  before=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
   until gh workflow run factory-sync.yml -R "$REPO" >/dev/null 2>&1; do
     i=$((i + 1)); [ "$i" -gt 15 ] && die "GitHub n'a pas encore activé les workflows du dépôt. Relance le script dans une minute."
     sleep 4
@@ -200,6 +203,7 @@ first_sync() {
     i=$((i + 1)); [ "$i" -gt 15 ] && break
     sleep 3
     run=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+    [ "$run" = "$before" ] && run=""
   done
   if [ -n "$run" ] && gh run watch "$run" -R "$REPO" --exit-status >/dev/null 2>&1; then
     ok "Labels créés et skills installés"
@@ -294,11 +298,10 @@ choose_existing() {
 
 # Range une nouvelle URL ou un nouveau jeton de routine dans tous les projets de la factory.
 update_token_everywhere() {
-  rm -f "$ROUTINE_FILE"
   local repos line n=0
   repos=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
   REPO="(tous tes projets)"; ROUTINE_HAS_REPO=1
-  ROUTINE_SECRETS_ONLY=1 routine
+  ROUTINE_REPLACE=1 ROUTINE_SECRETS_ONLY=1 routine
   for line in $repos; do
     gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 || continue
     printf '%s' "$FACTORY_ROUTINE_URL"   | gh secret set FACTORY_ROUTINE_URL   -R "$line" >/dev/null
