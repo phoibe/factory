@@ -5,6 +5,7 @@ import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, tim
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { parisMidnight, runsToday, runsText } from './runs.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -670,8 +671,32 @@ async function start() {
     return show('login');
   }
   refreshStable().catch(() => {});
+  refreshRuns();
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
+}
+
+// Agent starts of the day, all projects together, refreshed every 5 minutes (the routines have a daily limit).
+let runsTimer = null;
+async function refreshRuns() {
+  clearTimeout(runsTimer);
+  runsTimer = setTimeout(refreshRuns, 5 * 60_000);
+  if (!token || !projects.length) return;
+  const from = parisMidnight();
+  try {
+    const counts = await mapLimit(projects, 2, async (p) => {
+      const events = [];
+      for (let page = 1; page <= 5; page++) {
+        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        events.push(...batch);
+        if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
+      }
+      return runsToday(events);
+    });
+    $('runs').textContent = runsText(counts.reduce((a, b) => a + b, 0));
+    $('runs').hidden = false;
+    $('runs-sep').hidden = false;
+  } catch { /* the next try is in 5 minutes */ }
 }
 
 // « Déclarer stable »: projects follow the factory's `stable` branch; this shows how far main is ahead of it.
