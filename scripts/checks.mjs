@@ -34,6 +34,11 @@ export function summary(results) {
   return ['### Contrôles automatiques', '', '| Contrôle | Résultat |', '| --- | --- |', ...rows].join('\n');
 }
 
+// The factory repository: no package.json, but its own scripts and test suite.
+export function isFactoryRepo(dir) {
+  return ['scripts/relay.mjs', 'packs/catalog.json', 'test'].every((f) => existsSync(join(dir, f)));
+}
+
 function main() {
   const args = process.argv.slice(2);
   const ci = args.indexOf('--config');
@@ -44,6 +49,15 @@ function main() {
   try { raw = JSON.parse(readFileSync(cfgPath, 'utf8')); } catch { console.log('::warning::Règles illisibles, valeurs par défaut utilisées.'); }
   const { config } = resolveConfig(raw, catalog);
   const pkgPath = join(projectDir, 'package.json');
+  if (!existsSync(pkgPath) && isFactoryRepo(projectDir)) {
+    // The factory itself has no app: its own check is its Node test suite.
+    console.log('::group::Tests');
+    const status = spawnSync('node', ['--test'], { cwd: projectDir, stdio: 'inherit', env: { ...process.env, CI: 'true' } }).status;
+    console.log('::endgroup::');
+    if (status !== 0) console.log('::error::Tests : échec');
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary([{ label: 'Tests', status: status === 0 ? 'pass' : 'fail' }]) + '\n');
+    process.exit(status === 0 ? 0 : 1);
+  }
   if (!existsSync(pkgPath)) {
     console.log("::error::Pas de package.json : il n'y a pas encore d'application à contrôler.");
     process.exit(1);
