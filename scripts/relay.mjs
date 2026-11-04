@@ -455,18 +455,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     log(`checks ${result} -> ${next}`);
     if (next === 'merge') return mergePr(prNumber, pr.head.sha);
     if (next === 'acceptance') {
+      // No preview, nothing to try: the spec and any captures were already validated, so it goes live (owner's rule).
+      if (!(await hasPreviews(prNumber))) {
+        await gh.comment(prNumber, say("Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester et tu as déjà validé la spec (et les captures s'il y en avait) : je mets en ligne directement."));
+        return mergePr(prNumber, pr.head.sha);
+      }
       // The preview can take minutes to appear: the card moves to « Teste la preview » only with the message.
-      const previews = await hasPreviews(prNumber);
-      const url = previews ? await previewUrl(pr.head.sha, prNumber) : null;
+      const url = await previewUrl(pr.head.sha, prNumber);
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
-      const ask = "Réponds « ok » pour mettre en ligne, ou décris ce qui ne va pas.";
-      const text = !previews
-        ? `Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester. Lis le paragraphe « Pour toi » en haut de la PR (et les captures s'il y en a) pour vérifier que c'est bien ce que tu voulais. ${ask}`
-        : `Les contrôles automatiques sont tous verts ✅\n\n${url
-          ? `Tu peux tester la nouvelle version ici : ${url}`
-          : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README)."}\n\nVérifie les critères d'acceptation de la spec. ${ask}`;
-      await gh.comment(prNumber, say(text));
+      const where = url
+        ? `Tu peux tester la nouvelle version ici : ${url}`
+        : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README).";
+      await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅\n\n${where}\n\nVérifie les critères d'acceptation de la spec. Réponds « ok » pour mettre en ligne, ou décris ce qui ne va pas.`));
       return;
     }
     if (next === 'fix') {
