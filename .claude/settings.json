@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.factory/scripts/journal.mjs\""
+            "command": "for d in \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR\"/*; do if [ -f \"$d/.factory/scripts/journal.mjs\" ]; then exec node \"$d/.factory/scripts/journal.mjs\"; fi; done; exit 0"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.factory/scripts/journal.mjs\""
+            "command": "for d in \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR\"/*; do if [ -f \"$d/.factory/scripts/journal.mjs\" ]; then exec node \"$d/.factory/scripts/journal.mjs\"; fi; done; exit 0"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.factory/scripts/journal.mjs\""
+            "command": "for d in \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR\"/*; do if [ -f \"$d/.factory/scripts/journal.mjs\" ]; then exec node \"$d/.factory/scripts/journal.mjs\"; fi; done; exit 0"
           }
         ]
       }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.factory/scripts/gate.mjs\""
+            "command": "for d in \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR\"/*; do if [ -f \"$d/.factory/scripts/gate.mjs\" ]; then exec node \"$d/.factory/scripts/gate.mjs\"; fi; done; exit 0"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.factory/scripts/gate.mjs\""
+            "command": "for d in \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR\"/*; do if [ -f \"$d/.factory/scripts/gate.mjs\" ]; then exec node \"$d/.factory/scripts/gate.mjs\"; fi; done; exit 0"
           }
         ]
       }
