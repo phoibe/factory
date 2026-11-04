@@ -5,6 +5,7 @@ import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, tim
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { startCountdown } from './countdown.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -362,8 +363,9 @@ function flip(before) {
 const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
 // The « À vous » card: everything that waits for an answer, oldest first. Only its « go » buttons are blue.
-async function answerGo(c, btn) {
-  btn.disabled = true;
+// A « go » waits 5 seconds and can be cancelled; nothing is stored, so leaving the page cancels it.
+const pendingGo = new Map();
+async function sendGo(c, btn) {
   try {
     await api(`/repos/${current.repo.full_name}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
     toast('« go » envoyé. La construction démarre.');
@@ -371,7 +373,27 @@ async function answerGo(c, btn) {
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
     btn.disabled = false;
+    btn.textContent = 'go';
+    btn.classList.remove('undo');
   }
+}
+const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
+function answerGo(c, btn) {
+  const running = pendingGo.get(c.number);
+  if (running) { running.cancel(); pendingGo.delete(c.number); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', `go pour #${c.number} ${c.title}`); return; }
+  btn.classList.add('undo');
+  btn.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`);
+  pendingGo.set(c.number, startCountdown({
+    seconds: 5,
+    tick: (n) => { const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
+    done: () => { pendingGo.delete(c.number); const b = goBtn(c, btn); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; sendGo(c, b); },
+  }));
+}
+
+function skeleton() {
+  const bar = (w) => el('span', { class: 'sk-bar', style: `width:${w}` });
+  const box = () => el('div', { class: 'sk-card' }, bar('40%'), bar('85%'), bar('60%'));
+  return el('div', { class: 'skeleton', role: 'status', 'aria-label': 'Chargement' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), box(), box(), box());
 }
 
 function youCard(yours, headline, sub) {
@@ -388,7 +410,7 @@ function youCard(yours, headline, sub) {
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
-        ? el('button', { type: 'button', class: 'go', 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.target) }, 'go')
+        ? el('button', { type: 'button', class: 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? 'Annuler' : 'go')
         : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
     status);
 }
@@ -511,7 +533,7 @@ function drawSite() {
 
 async function renderBoard() {
   drawSite();
-  if (live.repo !== current.repo.full_name) $('board').replaceChildren(el('p', { class: 'muted board-loading' }, 'Chargement…'));
+  if (live.repo !== current.repo.full_name) $('board').replaceChildren(skeleton());
   clearTimeout(live.timer);
   await refresh();
 }
@@ -840,10 +862,11 @@ async function refreshChat() {
   chat.busy = true;
   const repo = chat.repo;
   try {
-    if (chat.server) { await refreshServerChat(); drawChat(); return; }
+    if (chat.server) { await refreshServerChat(); chat.error = false; drawChat(); return; }
     const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
     if (chat.repo !== repo) return;
     chat.list = conversations(list);
+    chat.error = false;
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
@@ -859,7 +882,8 @@ async function refreshChat() {
     }
     drawChat();
   } catch (err) {
-    if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+    chat.error = true;
+    if (!$('chat').hidden) drawChatList();
   } finally {
     chat.busy = false;
     scheduleChat();
@@ -956,7 +980,8 @@ function drawLive() {
 
 function drawChatList() {
   const items = $('chat-items');
-  if (!chat.list) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  if (!chat.list && chat.error) return items.replaceChildren(el('li', { class: 'chat-error', role: 'alert' }, el('strong', {}, 'Impossible de charger les discussions'), el('button', { type: 'button', class: 'secondary', onclick: () => { chat.error = false; drawChatList(); refreshChat(); } }, 'Réessayer')));
+  if (!chat.list) return items.replaceChildren(el('li', { class: 'sk-chat', role: 'status', 'aria-label': 'Chargement' }, el('span', { class: 'sk-bar', style: 'width:70%' }), el('span', { class: 'sk-bar', style: 'width:50%' })));
   if (!chat.list.length) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Aucune conversation pour l\'instant.'));
   const open = chat.list.filter((c) => c.state === 'open');
   const done = chat.list.filter((c) => c.state !== 'open');
@@ -1317,3 +1342,15 @@ function showWidthReport(force) {
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }
 setTimeout(() => showWidthReport(new URLSearchParams(location.search).has('largeur')), 4000);
+
+// On a phone the secondary actions fold into « Plus »; on a computer they stay where they were.
+const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({ node, home: node.parentNode, next: node.nextSibling }));
+const phoneMq = matchMedia('(max-width: 600px)');
+function placeMenu() {
+  const menu = $('more-menu');
+  if (phoneMq.matches) menuItems.forEach(({ node }) => menu.append(node));
+  else menuItems.slice().reverse().forEach(({ node, home, next }) => home.insertBefore(node, next && next.parentNode === home ? next : null));
+  $('more').open = !phoneMq.matches;
+}
+placeMenu();
+phoneMq.addEventListener('change', placeMenu);
