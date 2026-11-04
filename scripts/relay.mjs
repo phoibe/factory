@@ -88,9 +88,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   const outputs = {};
   const liveLabels = async (n) => names((await gh.getIssue(n))?.labels);
 
-  async function inFlight() {
+  // `freed`: an issue whose build just ended. GitHub's issue list can still show its old label for a few
+  // seconds, which used to keep its place taken until the next 20-minute tick.
+  async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
-    return (open || []).filter((i) => !i.pull_request).length;
+    return (open || []).filter((i) => !i.pull_request && i.number !== freed).length;
   }
 
   async function lockStart(number) {
@@ -185,8 +187,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  async function dequeue() {
-    let free = config.maxParallel - (await inFlight());
+  async function dequeue({ freed = null } = {}) {
+    let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     for (const issue of queued) {
@@ -230,7 +232,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
-    await dequeue();
+    await dequeue({ freed: issue });
   }
 
   async function previewUrl(sha, prNumber, { attempts = 15, delayMs = 20_000 } = {}) {
@@ -330,7 +332,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'dequeue':
-        await dequeue();
+        await dequeue({ freed: ev.kind === 'issue' ? n : null });
         break;
       default:
         break;
