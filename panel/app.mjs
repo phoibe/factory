@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
 import { resolveConfig } from './config-core.mjs';
 
 const API = 'https://api.github.com';
@@ -268,7 +268,7 @@ async function refresh() {
     if (issues.changed || closed.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
     live.failures++;
-    if (!live.issues) $('board').replaceChildren(el('p', { class: 'board-error' }, `GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`));
+    if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
     live.busy = false;
     drawStatus();
@@ -359,6 +359,38 @@ function flip(before) {
 }
 const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
+// The « À vous » card: everything that waits for an answer, oldest first. Only its « go » buttons are blue.
+async function answerGo(c, btn) {
+  btn.disabled = true;
+  try {
+    await api(`/repos/${current.repo.full_name}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
+    toast('« go » envoyé. La construction démarre.');
+    await refresh();
+  } catch (e) {
+    toast(`Envoi impossible : ${e.message}`);
+    btn.disabled = false;
+  }
+}
+
+function youCard(yours, headline, sub) {
+  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }));
+  if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
+  return el('section', { class: 'you-card', 'aria-label': 'À vous' },
+    el('p', { class: 'headline' }, headline),
+    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: `you-item${c.column === 'blocked' ? ' blocked' : ''}` },
+      el('div', { class: 'you-what' },
+        el('span', { class: 'num' }, `#${c.number}`),
+        el('a', { class: 'you-title', 'data-key': String(c.number), href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
+        c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
+        el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
+      c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
+      live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
+      c.reply === 'go'
+        ? el('button', { type: 'button', class: 'go', 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.target) }, 'go')
+        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
+    status);
+}
+
 function drawBoard() {
   const board = $('board');
   const now = Date.now();
@@ -379,20 +411,19 @@ function drawBoard() {
   // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
   minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
-  const n = byLane.yours.length;
+  const yours = yoursList(cards);
+  const n = yours.length;
   const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
     : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
-    : 'Lancez-vous avec « Nouvelle feature ».';
+    : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
   const fresh = [
-    el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
-      el('div', {}, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub)),
-      el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
-    ...LANES.filter(([id]) => cards.length || id === 'yours').map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
+    youCard(yours, headline, sub),
+    ...LANES.filter(([id]) => id !== 'yours' && cards.length).map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
@@ -404,6 +435,7 @@ function drawBoard() {
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
         : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
+  const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
@@ -432,8 +464,9 @@ function drawBoard() {
     grid.insertBefore(node, grid.children[oldIndex.get(n)] || null);
     leaving.push(node);
   }
-  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.pulse-bar');
+  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
   if (!unchanged) {
+    live.yoursSig = yoursSig;
     board.replaceChildren(...holder.childNodes);
     flip(before);
     if (!reduced()) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
@@ -548,7 +581,7 @@ function renderRules() {
   });
   const dirty = JSON.stringify(c) !== current.saved;
   const bar = el('div', { class: 'savebar' },
-    el('button', { type: 'submit', disabled: !dirty }, 'Enregistrer'),
+    el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   form.replaceChildren(site, engine, stages, checks, ...packs, bar);
@@ -1102,7 +1135,7 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  chat.live = { text: '', status: files.length ? 'Envoie les images…' : 'Envoi…' };
+  chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];

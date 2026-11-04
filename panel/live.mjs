@@ -82,3 +82,11 @@ export function timeLine(e) {
   const text = rangeText(e.nextLow, e.nextHigh);
   return `${text[0].toUpperCase()}${text.slice(1)} avant la suite`;
 }
+
+// What waits for the owner, oldest wait first. reply 'go' = a plain « go » answers it; 'open' = needs text or a look.
+export function yoursList(cards) {
+  return cards
+    .filter((c) => laneFor(c) === 'yours')
+    .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
+    .map((c) => ({ ...c, reply: c.column === 'spec' ? 'go' : 'open' }));
+}
