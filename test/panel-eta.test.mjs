@@ -40,7 +40,7 @@ test('an item waiting for the owner never guesses the owner time', () => {
   const evs = [ev(4, 'labeled', 'factory:visual-review', 0)];
   const e = estimate({ number: 4, labels: ['factory:visual-review'], column: 'visual', pull_request: {} }, evs, DEFAULT_MINUTES, T0 + 5 * 60_000);
   assert.deepEqual([e.status, e.next, e.endAt, e.total], ['yours', null, null, 6 + 2]);
-  assert.match(etaText(e), /^Attend ta réponse depuis 5 min · ensuite ~8 min/);
+  assert.match(etaText(e), /^Attend votre réponse depuis 5 min · ensuite ~8 min/);
 });
 
 test('bugs skip grilling and spec, queued items only say they wait for a slot, overruns are admitted', () => {
@@ -56,7 +56,7 @@ test('etaText and humanMinutes read naturally', () => {
   assert.equal(humanMinutes(65), '1 h 05');
   assert.equal(humanMinutes(120), '2 h');
   const text = etaText({ status: 'working', since: 3, nextLow: 10, nextHigh: 16, next: 13, total: 50, endAt: T0 });
-  assert.equal(text, "entre 10 et 16 min avant l'étape suivante (hors tes réponses)");
+  assert.equal(text, "entre 10 et 16 min avant l'étape suivante (hors vos réponses)");
   assert.match(etaText({ status: 'working', overrun: true }), /^Plus long que prévu/);
 });
 

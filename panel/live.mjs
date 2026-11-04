@@ -11,10 +11,10 @@ const STEPS = [
   { id: 'acceptance', name: 'Recette' },
 ];
 const ACTIONS = {
-  grilling: 'Réponds aux questions',
+  grilling: 'Répondez aux questions',
   spec: 'Valide la spec',
   visual: 'Valide les captures',
-  acceptance: 'Teste la preview',
+  acceptance: 'Testez la preview',
   blocked: "Débloque l'agent",
 };
 

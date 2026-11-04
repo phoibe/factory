@@ -19,15 +19,15 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Grilling', "L'agent te pose des questions pour clarifier la feature avant d'écrire la spec."],
-  ['specReview', 'Valider chaque spec', "Coché : tu valides chaque spec par « go ». Décoché : l'agent lance la construction seul et ne te demande ton accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
+  ['grilling', 'Grilling', "L'agent vous pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
   ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
-  ['screenshots', 'Captures avant/après', "Tu valides l'apparence avant les contrôles."],
+  ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
   ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, failles.'],
-  ['acceptance', 'Recette', 'Tu testes la preview avant la mise en ligne.'],
+  ['acceptance', 'Recette', 'Vous testez la preview avant la mise en ligne.'],
 ];
 const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
@@ -107,7 +107,7 @@ async function loadProjects() {
     return file ? { repo: r, file } : null;
   });
   if (failed.length) {
-    toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Je réessaie dans 30 s.`);
+    toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
     setTimeout(() => reloadProjects().catch(() => {}), 30_000);
   }
   return found.filter(Boolean);
@@ -169,7 +169,7 @@ async function openProject(fullName) {
 // answer is a 304 that GitHub does not count against the hourly limit.
 const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
-  ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
+  ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
   ['queued', 'En file d\'attente', 'La file est vide.'],
 ];
@@ -326,11 +326,11 @@ function drawBoard() {
   minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
   const n = byLane.yours.length;
-  const headline = n ? (n === 1 ? '1 chose t\'attend' : `${n} choses t'attendent`)
+  const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
     : cards.length ? 'Rien ne t\'attend' : 'Aucune feature en cours';
   const sub = cards.length
-    ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent tes réponses.'
-    : 'Lance-toi avec « Nouvelle feature ».';
+    ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
+    : 'Lancez-vous avec « Nouvelle feature ».';
   const focusKey = document.activeElement?.dataset?.key;
   board.replaceChildren(
     el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
@@ -401,7 +401,7 @@ function renderRules() {
         update(next);
       } }));
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
-    ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans ton abonnement (limite de lancements par jour).'],
+    ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans votre abonnement (limite de lancements par jour).'],
       ['github-actions', 'GitHub Actions', 'Machines GitHub, illimitées sur un dépôt public, 2 000 minutes/mois en privé.']]
       .map(([v, t, d]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
@@ -478,7 +478,7 @@ async function start() {
     }
     store.del(TOKEN_KEY);
     token = null;
-    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifie-le et réessaie.`;
+    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -536,7 +536,7 @@ async function openPhone() {
   qr.addData(link);
   qr.make();
   $('phone-qr').innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
-  $('phone-copy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Lien copié. Ouvre-le sur ton téléphone.'), () => toast('Copie impossible : scanne le code.'));
+  $('phone-copy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Lien copié. Ouvrez-le sur votre téléphone.'), () => toast('Copie impossible : scannez le code.'));
   $('phone').showModal();
 }
 
@@ -554,7 +554,7 @@ $('general-review').addEventListener('click', () => startGeneralReview());
 // Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
 async function startGeneralReview() {
   if (!current) return;
-  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que tu valideras comme une feature.")) return;
+  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que vous validerez comme une feature.")) return;
   const btn = $('general-review');
   btn.disabled = true;
   try {
@@ -796,8 +796,8 @@ function drawChat() {
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
   if (isNew) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
-      el('p', { class: 'intro-title' }, 'Parle à l\'agent de ton appli'),
-      el('p', { class: 'muted' }, 'Pose une question sur son fonctionnement, propose une idée ou décris un problème. L\'agent lit le code pour te répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
+      el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
+      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème. L\'agent lit le code pour vous répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
       examples()));
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
@@ -807,8 +807,8 @@ function drawChat() {
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
         el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
       : status === 'late'
-        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoie ton message un peu plus tard.')
-        : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écris un message pour la reprendre.') : null;
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
     $('chat-close').hidden = status === 'closed';
   } else {
@@ -828,14 +828,14 @@ function drawServerChat(isNew) {
   $('chat-close').hidden = entry?.state === 'closed';
   if (isNew) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
-      el('p', { class: 'intro-title' }, 'Parle à l\'agent de ton appli'),
-      el('p', { class: 'muted' }, 'Pose une question sur son fonctionnement, propose une idée ou décris un problème, avec une capture si tu veux. L\'agent lit le code et te répond en quelques secondes. Il peut ensuite en faire une feature ou un bug.'),
+      el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
+      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème, avec une capture si vous le souhaitez. L\'agent lit le code et vous répond en quelques secondes. Il peut ensuite en faire une feature ou un bug.'),
       examples()));
   } else if (chat.conv || chat.live) {
     const messages = serverMessages(chat.conv);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const tail = chat.live ? liveBubble()
-      : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écris un message pour la reprendre.') : null;
+      : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
   } else {
     list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
@@ -844,7 +844,7 @@ function drawServerChat(isNew) {
 }
 
 function selectConversation(n) {
-  if (chat.live && n !== chat.open) return toast('Attends la fin de la réponse en cours.');
+  if (chat.live && n !== chat.open) return toast('Attendez la fin de la réponse en cours.');
   chat.open = n;
   chat.pending = null;
   if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
@@ -950,7 +950,7 @@ async function sendChat(text, withImages = true) {
   } catch (e) {
     chat.pending = null;
     drawChat();
-    toast(`Message non envoyé : ${e.message}. Ton texte est toujours là, réessaie.`);
+    toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
     btn.disabled = false;
   }
@@ -1012,7 +1012,7 @@ async function sendToServer(text, files, withImages) {
   } catch (e) {
     if (!$('chat-input').value) $('chat-input').value = text;
     autosize();
-    toast(`L'agent n'a pas pu répondre : ${e.message}. Ton message est remis dans la zone de saisie : renvoie-le.`);
+    toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
   } finally {
     chat.pending = null;
     chat.live = null;

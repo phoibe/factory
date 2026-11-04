@@ -176,11 +176,11 @@ export function humanMinutes(m) {
   return r ? `${h} h ${String(r).padStart(2, '0')}` : `${h} h`;
 }
 
-// One line about time, e.g. « entre 20 et 40 min avant l'étape suivante (hors tes réponses) ».
+// One line about time, e.g. « entre 20 et 40 min avant l'étape suivante (hors vos réponses) ».
 export function etaText(e) {
   const since = e.since !== null && e.since !== undefined ? ` depuis ${humanMinutes(e.since)}` : '';
   if (e.status === 'queued') return `En file${since} : démarre dès qu'une place se libère`;
-  if (e.status === 'yours') return `Attend ta réponse${since} · ensuite ~${humanMinutes(e.total)} de travail jusqu'à la fin`;
-  if (e.overrun) return "Plus long que prévu · nouvelle estimation en cours (hors tes réponses)";
-  return `${rangeText(e.nextLow, e.nextHigh)} avant l'étape suivante (hors tes réponses)`;
+  if (e.status === 'yours') return `Attend votre réponse${since} · ensuite ~${humanMinutes(e.total)} de travail jusqu'à la fin`;
+  if (e.overrun) return "Plus long que prévu · nouvelle estimation en cours (hors vos réponses)";
+  return `${rangeText(e.nextLow, e.nextHigh)} avant l'étape suivante (hors vos réponses)`;
 }
