@@ -134,6 +134,9 @@ def upsert_index(index, conv):
     return sorted([index_entry(conv)] + rest, key=lambda e: e.get("updated") or "", reverse=True)
 
 
+MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
+
+
 def build_prompt(conv, message, image_files):
     parts = []
     history = conv.get("messages") or []
@@ -143,7 +146,16 @@ def build_prompt(conv, message, image_files):
             who = "[Propriétaire]" if m["who"] == "me" else "[Toi]"
             extra = f" ({len(m['images'])} image(s) jointe(s))" if m.get("images") else ""
             lines.append(f"{who} {m.get('text', '')}{extra}")
-        parts.append("Conversation jusqu'ici :\n" + "\n\n".join(lines))
+        kept, size = [], 0
+        for line in reversed(lines):
+            if kept and size + len(line) > MAX_PROMPT_CHARS:
+                break
+            kept.append(line)
+            size += len(line)
+        kept.reverse()
+        if len(kept) < len(lines):
+            kept.insert(0, "(les premiers messages de la conversation ont été omis)")
+        parts.append("Conversation jusqu'ici :\n" + "\n\n".join(kept))
     parts.append("Nouveau message du propriétaire :\n" + (message or "(seulement des images)"))
     if image_files:
         parts.append("Images jointes à ce message (ouvre-les avec Read avant de répondre) :\n" + "\n".join(image_files))
