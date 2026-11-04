@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, mergeConfig } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -123,12 +123,6 @@ test('chatServerUrl only accepts a Modal address or localhost', () => {
   assert.equal(chatServerUrl('https://me--factory-chat-web.modal.run'), 'https://me--factory-chat-web.modal.run');
   assert.equal(chatServerUrl('http://localhost:8000'), 'http://localhost:8000');
   for (const bad of ['https://evil.example', 'https://x.modal.run.evil.example', 'https://evil.example/.modal.run', 'http://x.modal.run', '', null]) assert.equal(chatServerUrl(bad), null);
-});
-
-test('allPages reads every page of a list', async () => {
-  const pages = [Array(100).fill(1), Array(100).fill(2), Array(5).fill(3)];
-  assert.equal((await allPages(async (p) => pages[p - 1])).length, 205);
-  assert.equal((await allPages(async () => Array(100).fill(1), 3)).length, 300);
 });
 
 test('mergeConfig keeps changes made elsewhere and applies only the local ones', () => {

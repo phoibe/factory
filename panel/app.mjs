@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
+import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, fromOwnerOrFactory } from './lib.mjs?v=16';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
@@ -245,13 +245,13 @@ async function refresh() {
       const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(() => null) : { data: [] };
       if (!before) continue;
       const url = c.pull_request ? previewFrom(res.data) : null;
-      const target = focusComment(res.data);
+      const target = focusComment(res.data.filter(fromOwnerOrFactory));
       const session = sessionFrom([...before.data, ...res.data]);
       if (live.sessions.get(c.number) !== session) {
         live.sessions.set(c.number, session);
         previewsChanged = true;
       }
-      const plan = parseEstimate([...before.data, ...res.data]);
+      const plan = parseEstimate([...before.data, ...res.data].filter(fromOwnerOrFactory)); // a stranger's comment must not set the estimate
       if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
         live.plans.set(c.number, plan);
         previewsChanged = true;
@@ -557,6 +557,7 @@ async function saveRules(e) {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
+  if (!fresh) throw new Error('factory.config.json introuvable');
   if (fresh.sha !== current.file.sha) {
     const theirs = resolveConfig(JSON.parse(fromBase64(fresh.content)), catalog, defaults).config;
     current.config = mergeConfig(JSON.parse(current.saved), current.config, theirs);

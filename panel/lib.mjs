@@ -140,17 +140,6 @@ export function sessionFrom(comments) {
 // only a Modal address (or a local one, for development) is accepted.
 export const chatServerUrl = (url) => (/^(https:\/\/[a-z0-9-]+\.modal\.run|http:\/\/localhost:\d+)$/.test(String(url || '')) ? url : null);
 
-// All pages of a GitHub list (100 per page), up to `max` pages. `get(page)` returns one page's array.
-export async function allPages(get, max = 10) {
-  const out = [];
-  for (let page = 1; page <= max; page++) {
-    const batch = await get(page);
-    out.push(...batch);
-    if (batch.length < 100) break;
-  }
-  return out;
-}
-
 // Rules saved while someone else changed the file meanwhile: keep their changes and apply only what this
 // session changed (compared with `base`, the version it loaded). On the same setting, this session wins.
 export function mergeConfig(base, mine, theirs) {
