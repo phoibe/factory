@@ -1,0 +1,20 @@
+{
+ "id": "20261104-142222-wxwnr",
+ "title": "J'ai 2 slots paramétrés, il y a une seule feature en cours et les…",
+ "state": "open",
+ "created": "2026-11-04T14:22:22Z",
+ "updated": "2026-11-04T14:23:02Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "J'ai 2 slots paramétrés, il y a une seule feature en cours et les autres restent en attente. Pourquoi ?",
+   "images": [],
+   "at": "2026-11-04T14:23:02Z"
+  },
+  {
+   "who": "agent",
+   "text": "Sur le papier, deux fonctionnent en même temps. Je ne vois pas ton tableau en direct, donc je ne peux pas dire laquelle des causes ci-dessous est la tienne.\n\n**Ce que j'ai lu dans le code :**\n- Une place est prise dès qu'une feature est en construction, et elle reste prise jusqu'à la validation finale de la recette et la fusion. Si une feature attend ton « ok » ou est bloquée, elle garde sa place.\n- Une feature ne passe « en attente de place » qu'après ton go sur sa fiche. Avant ça, elle attend simplement ta validation, ce qui n'a rien à voir avec les places.\n- La file d'attente ne repart que dans deux cas : quand une feature est fusionnée, ou quand une fiche ou sa proposition de changement est fermée. Il n'y a pas de vérification régulière en arrière-plan.\n\n**Les causes probables, de la plus à la moins vraisemblable :**\n1. Les autres attendent ton go sur leur fiche, et non une place. Elles n'ont alors pas encore été lancées.\n2. Une place s'est libérée sans passer par une fusion ou une fermeture, par exemple si une fiche a été abandonnée ou son étiquette retirée à la main. Dans ce cas, personne ne relance la file, et les features en attente restent coincées alors qu'une place est libre.\n3. Une deuxième feature compte comme « en construction » mais est bloquée. Elle occupe sa place sans avancer, et il n'en reste qu'une seule pour le reste.\n\n**Ma certitude :** le réglage à 2 places et le fonctionnement de la file sont lus dans le code. Je n'ai pas vérifié l'état réel de tes fiches.\n\nDis-moi le numéro ou le titre de celles qui attendent, et je regarde dans quel cas tu es.\n\nSi tu as constaté le cas 2, c'est un vrai défaut : la file devrait se relancer d'elle-même quand une place est libre. Dis-moi si tu veux que j'en fasse un bug.",
+   "at": "2026-11-04T14:23:02Z"
+  }
+ ]
+}
