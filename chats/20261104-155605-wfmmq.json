@@ -3,7 +3,7 @@
  "title": "Suite à la PR85, on devrait piocher automatiquement des issues.…",
  "state": "open",
  "created": "2026-11-04T15:56:05Z",
- "updated": "2026-11-04T15:58:12Z",
+ "updated": "2026-11-04T16:00:16Z",
  "messages": [
   {
    "who": "me",
@@ -26,6 +26,24 @@
    "who": "agent",
    "text": "Compris : un tour de contrôle toutes les 10 minutes, c'est trop lent pour toi. Tu veux que ça tombe à 1 minute maximum. Aujourd'hui, d'après ce que j'ai lu, la factory ne regarde qu'une fois toutes les 10 minutes. Une place qui se libère peut donc rester vide jusqu'à 10 minutes avant qu'une nouvelle fiche soit prise. Passer à 1 minute est a priori simple, mais je n'ai pas vérifié s'il y a une contrainte derrière ce délai, comme une limite d'appels ou un coût. C'est lu dans le code, pas testé.\n\nÇa ne règle pas forcément ton problème de départ. Si rien n'est piché du tout, la cause est plus probablement une des raisons que je t'ai listées : places pleines, fiche qui attend ta réponse, label qui écarte la fiche. Raccourcir le délai ne fait que rendre la pioche plus réactive.\n\nTu veux que j'en fasse une fiche ?",
    "at": "2026-11-04T15:58:12Z"
+  },
+  {
+   "who": "me",
+   "text": "oui",
+   "images": [],
+   "at": "2026-11-04T16:00:16Z"
+  },
+  {
+   "who": "agent",
+   "text": "C'est noté, je crée la fiche.",
+   "at": "2026-11-04T16:00:16Z",
+   "issues": [
+    {
+     "title": "Piocher les fiches toutes les minutes au maximum",
+     "url": "https://github.com/phoibe/factory/issues/91",
+     "kind": "feature"
+    }
+   ]
   }
  ]
 }
