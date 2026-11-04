@@ -3,6 +3,8 @@ import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
+import { watchNumbers } from './numbers.mjs';
+import { setupTabs } from './tabs.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -585,7 +587,7 @@ async function saveRules(e) {
 function selectTab(name) {
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
-    $(t).hidden = name !== t;
+    $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
   }
   if (name === 'chat') openChat(); else clearTimeout(chat.timer);
 }
@@ -1229,6 +1231,8 @@ for (const t of ['dragover', 'drop']) {
 $('chat-close').addEventListener('click', () => closeConversation());
 $('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
 
+setupTabs(document.querySelector('.tabs'));
+watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));

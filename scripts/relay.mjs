@@ -140,14 +140,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify(payload) });
       } catch (e) {
-        await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécris ton message dans quelques minutes ; si ça se répète, vérifie que le workflow « Factory » est activé (onglet Actions).", String(e));
+        await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécrivez votre message dans quelques minutes ; si ça se répète, vérifiez que le workflow « Factory » est activé (onglet Actions).", String(e));
       }
       return;
     }
     if (!env.FACTORY_ROUTINE_URL || !env.FACTORY_ROUTINE_TOKEN) {
       await fail("Je n'ai pas pu lancer l'agent : je ne trouve pas les secrets de la routine Claude **dans ce dépôt**.\n\n"
-        + `Ouvre https://github.com/${repo}/settings/secrets/actions (la page des secrets de ce dépôt-ci, pas de factory-template) `
-        + 'et crée, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écris « réessaie » ici.', 'routine secrets missing');
+        + `Ouvrez https://github.com/${repo}/settings/secrets/actions (la page des secrets de ce dépôt-ci, pas de factory-template) `
+        + 'et créez, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écrivez « réessaie » ici.', 'routine secrets missing');
     }
     const res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
       method: 'POST',
@@ -163,7 +163,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (!res.ok) {
       const detail = await res.text();
       await fail(`Je n'ai pas pu lancer l'agent (la routine Claude a répondu ${res.status}). `
-        + "Ça arrive quand la limite quotidienne de lancements est atteinte. Réécris ton dernier message plus tard (rien n'a changé entre-temps), ou passe ce projet sur le moteur « GitHub Actions » dans le panneau.",
+        + "Ça arrive quand la limite quotidienne de lancements est atteinte. Réécrivez votre dernier message plus tard (rien n'a changé entre-temps), ou passez ce projet sur le moteur « GitHub Actions » dans le panneau.",
       `routine fire failed: ${res.status} ${detail}`);
     }
     const body = await res.json().catch(() => ({}));
@@ -191,7 +191,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       log(`fire failed: ${e}`);
       for (const l of [L.checks, L.fixing, L.acceptance]) if (pr) await gh.removeLabel(pr, l);
       if (issue) await gh.addLabels(issue, [L.blocked]);
-      await gh.comment(issue || pr, say(`${why}, mais je n'ai pas pu lancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Réponds « réessaie » ici quand tu veux relancer.`));
+      await gh.comment(issue || pr, say(`${why}, mais je n'ai pas pu lancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`));
       return false;
     }
   }
@@ -216,7 +216,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(issue.number, L.queued);
       await gh.removeLabel(issue.number, L.resumeQueued);
       await gh.addLabels(issue.number, [L.building]);
-      await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec ta réponse." : "Une place s'est libérée : je démarre la construction."));
+      await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
     }
     if (free > 0 && !failed) await autoPick(free, freed);
@@ -284,12 +284,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion' }))) return;
         for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
         await gh.addLabels(prNumber, [L.fixing]);
-        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté.")}`);
+        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}`);
         return;
       }
       for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       if (issue) await gh.addLabels(issue, [L.blocked]);
-      await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dis-moi « réessaie » une fois la règle ajustée, ou fusionne la PR toi-même.`));
+      await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dites-moi « réessaie » une fois la règle ajustée, ou fusionne la PR vous-même.`));
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
@@ -338,13 +338,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (updates >= MAX_BRANCH_UPDATES) {
         await gh.removeLabel(item.number, L.checks);
         if (issue) await gh.addLabels(issue, [L.blocked]);
-        await gh.comment(issue || item.number, say(`La PR #${item.number} est en conflit avec la version en ligne et l'agent n'a pas réussi à la remettre à jour. Réponds « réessaie » ici pour une nouvelle tentative.`));
+        await gh.comment(issue || item.number, say(`La PR #${item.number} est en conflit avec la version en ligne et l'agent n'a pas réussi à la remettre à jour. Répondez « réessaie » ici pour une nouvelle tentative.`));
         continue;
       }
       if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: item.number, why: 'La branche est en conflit avec la version en ligne' }))) continue;
       await gh.removeLabel(item.number, L.checks);
       await gh.addLabels(item.number, [L.fixing]);
-      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté pour l'instant.")}`);
+      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté pour l'instant.")}`);
     }
   }
 
@@ -517,7 +517,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.removeLabel(prNumber, L.checks);
         await gh.addLabels(prNumber, [L.fixing]);
         const steps = catchUp.map((s) => STEP_NAMES[s]).join(' et ');
-        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de ton côté pour l'instant. Si ça change l'apparence, je te remontrerai les captures.`)}`);
+        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de votre côté pour l'instant. Si ça change l'apparence, je vous remontrerai les captures.`)}`);
         return;
       }
     }
@@ -532,17 +532,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (next === 'acceptance') {
       // No preview, nothing to try: the spec and any captures were already validated, so it goes live (owner's rule).
       if (!(await hasPreviews(prNumber))) {
-        await gh.comment(prNumber, say("Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester et tu as déjà validé la spec (et les captures s'il y en avait) : je mets en ligne directement."));
+        await gh.comment(prNumber, say("Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester et vous avez déjà validé la spec (et les captures s'il y en avait) : je mets en ligne directement."));
         return mergePr(prNumber, pr.head.sha);
       }
-      // The preview can take minutes to appear: the card moves to « Teste la preview » only with the message.
+      // The preview can take minutes to appear: the card moves to « Testez la preview » only with the message.
       const url = await previewUrl(pr.head.sha, prNumber);
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
       const where = url
-        ? `Tu peux tester la nouvelle version ici : ${url}`
-        : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README).";
-      await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅\n\n${where}\n\nVérifie les critères d'acceptation de la spec. Réponds « ok » pour mettre en ligne, ou décris ce qui ne va pas.`));
+        ? `Vous pouvez tester la nouvelle version ici : ${url}`
+        : "Je n'ai pas trouvé de preview pour cette PR. Vérifiez que Vercel est bien connecté au dépôt (voir le README).";
+      await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅\n\n${where}\n\nVérifiez les critères d'acceptation de la spec. Répondez « ok » pour mettre en ligne, ou décrivez ce qui ne va pas.`));
       return;
     }
     if (next === 'fix') {
@@ -551,14 +551,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.addLabels(prNumber, [L.fixing]);
       const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
       const what = timedOut ? 'Les contrôles automatiques ont tourné trop longtemps (un test bloqué), je les ai arrêtés' : 'Un contrôle automatique a échoué';
-      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de ton côté.`)}`);
+      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}`);
       return;
     }
     // blocked: the next failure count starts again from zero once the owner unblocks it.
     for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
     if (issueNumber) await gh.addLabels(issueNumber, [L.blocked]);
     await gh.comment(prNumber, `${CHECKS_RESET_MARKER}\n${say("Les contrôles restent rouges : j'ai mis la construction en pause et expliqué la situation sur l'issue.")}`);
-    await gh.comment(issueNumber || prNumber, say(`Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Tu peux répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
+    await gh.comment(issueNumber || prNumber, say(`Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Vous pouvez répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
   }
 
   // End of an agent run on GitHub Actions. Releases the lock if the agent did not, and asks for a replay of

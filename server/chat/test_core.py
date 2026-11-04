@@ -20,7 +20,7 @@ class StreamTest(unittest.TestCase):
         ev = line({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Grep", "input": {"pattern": "minuit"}}]}})
         self.assertEqual(events_from_line(ev), [{"type": "reset"}, {"type": "status", "text": "Cherche dans le code…"}])
         ev = line({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/tmp/chat/a.jpg"}}]}})
-        self.assertEqual(events_from_line(ev)[1], {"type": "status", "text": "Regarde ton image…"})
+        self.assertEqual(events_from_line(ev)[1], {"type": "status", "text": "Je regarde votre image…"})
 
     def test_the_result_line_carries_the_final_answer(self):
         ev = line({"type": "result", "subtype": "success", "result": "Oui.", "is_error": False})
@@ -51,7 +51,7 @@ class IssueBlockTest(unittest.TestCase):
 
 class CreationNeedsAnExplicitActionTest(unittest.TestCase):
     def test_a_free_sentence_never_creates_a_ticket_by_itself(self):
-        self.assertIn("Tu veux que j'en fasse une fiche ?", SYSTEM)
+        self.assertIn("Voulez-vous que j'en fasse une fiche ?", SYSTEM)
         self.assertIn("JAMAIS de feature ou de bug de toi-même", SYSTEM)
 
     def test_the_trigger_matches_the_panel_buttons(self):

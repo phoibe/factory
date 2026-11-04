@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
   <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
@@ -61,10 +61,10 @@
           <button id="general-review" type="button" class="button secondary" title="L'agent critique et corrige tous les écrans avec impeccable, puis relit et corrige tout le code.">Review générale</button>
         </div>
       </div>
-      <div class="tabs" role="tablist">
+      <div class="tabs" role="tablist" aria-label="Sections du projet">
         <button role="tab" id="tab-board" aria-selected="true" aria-controls="board">Suivi</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat">Discussion<span id="chat-badge" class="badge" hidden></span></button>
-        <button role="tab" id="tab-rules" aria-selected="false" aria-controls="rules">Règles</button>
+        <button role="tab" id="tab-rules" aria-selected="false" aria-controls="rules-panel">Règles</button>
       </div>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
       <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
@@ -93,7 +93,7 @@
           </form>
         </section>
       </div>
-      <form id="rules" role="tabpanel" aria-labelledby="tab-rules" hidden></form>
+      <div id="rules-panel" role="tabpanel" aria-labelledby="tab-rules" hidden><form id="rules"></form></div>
     </section>
   </main>
   <dialog id="phone" aria-labelledby="phone-title">

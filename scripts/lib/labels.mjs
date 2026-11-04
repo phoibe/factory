@@ -36,7 +36,7 @@ export const LABEL_DEFS = [
   [L.queued, 'c5def5', "En file d'attente"],
   [L.building, '0e8a16', 'En construction'],
   [L.resumeQueued, 'c5def5', "Carte bloquée qui a reçu sa réponse : elle reprend dès qu'une place se libère"],
-  [L.blocked, 'b60205', "Bloqué : l'agent a besoin de toi"],
+  [L.blocked, 'b60205', "Bloqué : l'agent a besoin de vous"],
   [L.running, 'bfdadc', 'Un agent travaille en ce moment'],
   [L.visualReview, 'fbca04', 'Captures avant/après à valider'],
   [L.checks, '5319e7', 'Contrôles automatiques en cours'],

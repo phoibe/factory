@@ -1,9 +1,11 @@
+@font-face { font-family: Geist; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
 :root {
   --bg: #fbfbfa; --surface: #ffffff; --text: #0e0f11; --muted: #5f6368; --line: #e6e6e3;
   --accent: #1850e8; --accent-text: #ffffff; --you: #1850e8; --you-bg: #eaf0ff; --ok: #1a7f4b; --danger: #c62828;
   --surface-2: #f4f4f2; --track: #e6e6e3; --work: #5f6368; --you-line: #b9cbfa; --danger-bg: #fdecea;
   --shadow: none;
-  --radius: 14px; color-scheme: light;
+  --radius: 14px; --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -251,3 +253,10 @@ html { touch-action: manipulation; }
 .issue-chip strong { color: var(--you); }
 .issue-chip:hover { border-color: var(--you); }
 .badge[hidden] { display: none; }
+
+/* ---- Mono Numbers Rule: every figure is set in Geist Mono (see numbers.mjs for the text figures) ---- */
+.num, .count, .badge, .ticket-top, .eta, .live, .finished .when, .conv-meta, .meta, #project-sub { font-family: var(--mono); }
+.num { font-size: .92em; letter-spacing: -.01em; }
+.count, .badge { font-weight: 500; }
+/* Keyboard focus is always visible, also on the tabs and the conversations. */
+.tabs button:focus-visible, .conv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

@@ -13,7 +13,7 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Ce que tu attendais
+      label: Ce que vous attendiez
     validations:
       required: true
   - type: textarea
