@@ -73,6 +73,8 @@ test('panel screens have no axe violations, in the light and the dark theme', as
             await page.click(`#${tab}`);
           }
           await page.waitForSelector(ready, { state: 'visible', timeout: 15000 });
+          // Cards fade in: measuring contrast mid-fade gives false failures, so wait for finite animations to end.
+          await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))));
           await page.evaluate(axeSource);
           const result = await page.evaluate(() => axe.run());
           for (const v of result.violations) found.push(`${name} (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
