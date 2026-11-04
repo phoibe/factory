@@ -344,3 +344,32 @@ test("the owner's pasted screenshots are copied for the agent and listed in its 
   const payload = JSON.parse(JSON.parse(sent[0].init.body).text);
   assert.deepEqual(payload.attachments, [`attachments/5/${id}.png`]);
 });
+
+test('blocked cards do not hold a place; a blocked card answered while full goes to the queue, then resumes', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.blocked] }, { number: 4, labels: [L.feature, L.building, L.blocked] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [L.feature, L.building, L.blocked], text: 'réessaie', fromOwner: true });
+  assert.equal(action.type, 'queue');
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.queued));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 3 && /file d'attente/.test(c[2])));
+  // A place frees up: the card resumes (not a fresh build).
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.building));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.resumeQueued));
+});
+
+test('a blocked card with a free place resumes right away', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.blocked] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [L.feature, L.building, L.blocked], text: 'réessaie', fromOwner: true });
+  assert.equal(action.stage, 'resume');
+  assert.equal(sent.length, 1);
+});

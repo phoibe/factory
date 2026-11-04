@@ -85,7 +85,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   async function inFlight() {
     const open = await gh.listIssues({ labels: L.building });
-    return (open || []).filter((i) => !i.pull_request).length;
+    // A blocked card has given up its place: it needs a free one again when the owner answers.
+    return (open || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.blocked)).length;
   }
 
   async function lockStart(number) {
@@ -176,15 +177,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
+      const resumed = labels.includes(L.resumeQueued);
       try {
-        await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build', issue: issue.number, quiet: true });
+        await fireAgent({ stage: resumed ? 'resume' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build', issue: issue.number, quiet: true });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
         break;
       }
       await gh.removeLabel(issue.number, L.queued);
+      await gh.removeLabel(issue.number, L.resumeQueued);
       await gh.addLabels(issue.number, [L.building]);
-      await gh.comment(issue.number, say("Une place s'est libérée : je démarre la construction."));
+      await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec ta réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
     }
   }

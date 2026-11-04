@@ -50,6 +50,8 @@ function startIssue(ev, config, ctx) {
 function onIssue(ev, config, ctx) {
   if (ev.event === 'issues') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'issue fermée' };
+    // A card that gets blocked gives up its place: the queue can move on.
+    if (ev.action === 'labeled' && ev.addedLabel === L.blocked && has(ev.labels, L.building)) return { type: 'dequeue', reason: 'carte bloquée : sa place est libre' };
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (ev.action === 'labeled' && ev.openedRecently) return ignore("label posé à l'ouverture : l'ouverture s'en charge");
@@ -59,7 +61,14 @@ function onIssue(ev, config, ctx) {
     return startIssue(ev, config, ctx);
   }
   // A comment on an issue.
-  if (has(ev.labels, L.blocked)) return fire('resume', { remove: [L.blocked] });
+  if (has(ev.labels, L.blocked)) {
+    // A blocked card gives up its place (it is not counted in flight): coming back, it needs one again. Only a card
+    // that was building is limited; the foundation never waits, and a card blocked before the build holds no place.
+    if (has(ev.labels, L.building) && !has(ev.labels, L.project) && ctx.inFlight >= config.maxParallel) {
+      return { type: 'queue', add: [L.queued, L.resumeQueued], remove: [L.blocked, L.building], reason: 'carte bloquée qui reprend, factory pleine' };
+    }
+    return fire('resume', { remove: [L.blocked] });
+  }
   if (has(ev.labels, L.grilling)) return fire(grillStage(ev.labels));
   if (has(ev.labels, L.specReview)) {
     if (has(ev.labels, L.project)) {
