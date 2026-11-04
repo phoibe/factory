@@ -60,6 +60,9 @@ test('installs the journal hook and keeps the project settings', () => {
   assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'echo mine');
   assert.equal(s.hooks.PostToolUse[1].matcher, 'Skill|Bash');
   assert.equal(s.hooks.UserPromptSubmit.length, 1);
+  assert.match(s.hooks.PreToolUse[0].hooks[0].command, /gate\.mjs/);
+  assert.equal(s.hooks.Stop.length, 1);
+  assert.ok(existsSync(join(dir, '.factory/scripts/gate.mjs')));
   assert.ok(existsSync(join(dir, '.factory/scripts/journal.mjs')));
   assert.ok(existsSync(join(dir, '.factory/scripts/journal-check.mjs')) && existsSync(join(dir, '.factory/scripts/fabrication.mjs')));
 });

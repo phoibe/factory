@@ -12,15 +12,20 @@ const STAGE_LABELS = {
   screenshots: 'captures avant/après', checks: 'contrôles automatiques', acceptance: 'recette',
 };
 
-const HOOK_COMMAND = 'node "$CLAUDE_PROJECT_DIR/.factory/scripts/journal.mjs"';
-const HOOK_EVENTS = { UserPromptSubmit: null, PostToolUse: 'Skill|Bash', PostToolUseFailure: 'Bash' };
+const hookCommand = (script) => `node "$CLAUDE_PROJECT_DIR/.factory/scripts/${script}"`;
+// The journal records what the agent does; the gate refuses to let a PR move on while a step is missing.
+const FACTORY_HOOKS = [
+  ['UserPromptSubmit', null, 'journal.mjs'], ['PostToolUse', 'Skill|Bash', 'journal.mjs'], ['PostToolUseFailure', 'Bash', 'journal.mjs'],
+  ['PreToolUse', 'Bash|mcp__github__.*', 'gate.mjs'], ['Stop', null, 'gate.mjs'],
+];
+const isFactoryHook = (g) => (g.hooks || []).some((h) => /\.factory\/scripts\/(journal|gate)\.mjs/.test(String(h.command || '')));
 
-// Adds the journal hook to the project's Claude Code settings, keeping everything else in the file.
+// Adds the factory hooks to the project's Claude Code settings, keeping everything else in the file.
 export function withJournalHook(settings = {}) {
-  const hooks = { ...(settings.hooks || {}) };
-  for (const [event, matcher] of Object.entries(HOOK_EVENTS)) {
-    const others = (hooks[event] || []).filter((g) => !(g.hooks || []).some((h) => String(h.command || '').includes('.factory/scripts/journal.mjs')));
-    hooks[event] = [...others, { ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: HOOK_COMMAND }] }];
+  const hooks = {};
+  for (const [event, groups] of Object.entries(settings.hooks || {})) hooks[event] = groups.filter((g) => !isFactoryHook(g));
+  for (const [event, matcher, script] of FACTORY_HOOKS) {
+    hooks[event] = [...(hooks[event] || []), { ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: hookCommand(script) }] }];
   }
   return { ...settings, hooks };
 }
@@ -64,7 +69,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
     writeFileSync(join(outDir, 'stages', f), render(readFileSync(join(factoryDir, 'agent/stages', f), 'utf8'), vars));
   }
   cpSync(join(factoryDir, 'agent/scripts/shots.mjs'), join(outDir, 'scripts/shots.mjs'));
-  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
+  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');
