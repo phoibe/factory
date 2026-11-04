@@ -625,3 +625,22 @@ test('autoPick: an urgent bug beats an urgent feature and a plain bug', async ()
   const { started } = await runPick([fi(1, L.feature, L.urgent), fi(2, L.bug), fi(3, L.bug, L.urgent)], { ...pickConfig, maxParallel: 1 });
   assert.deepEqual(started.map((p) => p.issue), [3]);
 });
+
+test('autoPick: a picked card waiting for the owner holds its place', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(3, L.bug)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started, []);
+});
+
+test('autoPick skips a card that already has an open PR', async () => {
+  const pr = { number: 50, labels: [L.checks], pull_request: {}, body: 'Closes #1', created_at: '2026-01-05T00:00:00Z' };
+  const { started } = await runPick([fi(1, L.bug), fi(2, L.bug), pr], { ...pickConfig, maxParallel: 5 });
+  assert.deepEqual(started.map((p) => p.issue), [2]);
+});
+
+test('autoPick skips the card whose build just ended', async () => {
+  const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...pickConfig, maxParallel: 5 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue({ freed: 1 });
+  assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [2]);
+});

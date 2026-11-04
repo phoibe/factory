@@ -214,21 +214,31 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec ta réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
     }
-    if (free > 0 && !failed) await autoPick(free);
+    if (free > 0 && !failed) await autoPick(free, freed);
   }
 
   // With the autoPick setting on, free slots and an empty queue: starts existing issues, urgent first,
   // then bugs, then the rest, oldest first. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
-  async function autoPick(free) {
+  async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
     const SKIP = [L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     // A picked feature still waiting for the owner's answers: no more features until it moves on.
-    const waiting = (await open(L.autoPicked)).some((i) => [L.grilling, L.specReview].some((l) => names(i.labels).includes(l)));
+    const waitingList = (await open(L.autoPicked)).filter((i) => i.number !== freed && [L.grilling, L.specReview].some((l) => names(i.labels).includes(l)));
+    const waiting = waitingList.length > 0;
+    // A picked card that waits for the owner still holds its place.
+    free -= waitingList.length;
+    if (free <= 0) return;
+    // A card that already has an open PR is not new work; neither is the one whose build just ended.
+    const withPr = new Set();
+    for (const l of [L.visualReview, L.checks, L.acceptance, L.fixing]) {
+      for (const i of (await gh.listIssues({ labels: l })) || []) if (i.pull_request) { const n = linkedIssue(i.body); if (n) withPr.add(n); }
+    }
     const seen = new Set();
     const candidates = [...(await open(L.bug)), ...(await open(L.feature))].filter((i) => !seen.has(i.number) && seen.add(i.number))
-      .filter((i) => !names(i.labels).some((l) => SKIP.includes(l)));
+      .filter((i) => !names(i.labels).some((l) => SKIP.includes(l)))
+      .filter((i) => i.number !== freed && !withPr.has(i.number));
     const rank = (i) => (names(i.labels).includes(L.urgent) ? 0 : 2) + (names(i.labels).includes(L.bug) ? 0 : 1);
     candidates.sort((a, b) => rank(a) - rank(b) || Date.parse(a.created_at) - Date.parse(b.created_at) || a.number - b.number);
     let stopFeatures = waiting;
