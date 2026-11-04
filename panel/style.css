@@ -353,3 +353,14 @@ button.go:focus-visible { outline-color: var(--text); }
 .sk-chat { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
 .chat-error { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--danger); border-radius: 10px; background: var(--danger-bg); }
 .chat-error strong { color: var(--danger); }
+button.go { min-width: 9.5em; font-variant-numeric: tabular-nums; }
+.chat-error { border-color: var(--line); }
+@media (max-width: 600px) {
+  .more[open] { flex-basis: 100%; }
+  .more-menu { position: relative; }
+  .more-menu #logout { margin-top: 8px; border-top: 1px solid var(--line); }
+}
+.ticket:has(.main:focus-visible) { outline-color: var(--text); }
+details summary { color: var(--text); }
+.more > summary { margin-top: 0; padding: 8px 14px; }
+.sk-bar { background: color-mix(in srgb, var(--muted) 22%, var(--surface)); }

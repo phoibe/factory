@@ -91,6 +91,7 @@ async function api(path, init = {}) {
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
   $('nav').hidden = id === 'login';
+  if (typeof placeMenu === 'function') placeMenu();
 }
 
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
@@ -365,6 +366,7 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 // The « À vous » card: everything that waits for an answer, oldest first. Only its « go » buttons are blue.
 // A « go » waits 5 seconds and can be cancelled; nothing is stored, so leaving the page cancels it.
 const pendingGo = new Map();
+const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
 async function sendGo(c, btn) {
   try {
     await api(`/repos/${current.repo.full_name}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
@@ -372,6 +374,7 @@ async function sendGo(c, btn) {
     await refresh();
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
+    sentGo.delete(c.number);
     btn.disabled = false;
     btn.textContent = 'go';
     btn.classList.remove('undo');
@@ -380,20 +383,22 @@ async function sendGo(c, btn) {
 const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
 function answerGo(c, btn) {
   const running = pendingGo.get(c.number);
-  if (running) { running.cancel(); pendingGo.delete(c.number); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', `go pour #${c.number} ${c.title}`); return; }
+  if (running) { running.cancel(); pendingGo.delete(c.number); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); return; }
   btn.classList.add('undo');
-  btn.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`);
-  pendingGo.set(c.number, startCountdown({
+  toast('« go » part dans 5 s. Touchez le bouton pour annuler.');
+  const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
-    done: () => { pendingGo.delete(c.number); const b = goBtn(c, btn); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; sendGo(c, b); },
-  }));
+    tick: (n) => { const h = pendingGo.get(c.number); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); },
+    done: () => { pendingGo.delete(c.number); const b = goBtn(c, null); if (!b) return; sentGo.add(c.number); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; sendGo(c, b); },
+  });
+  handle.left = 5;
+  pendingGo.set(c.number, handle);
 }
 
 function skeleton() {
   const bar = (w) => el('span', { class: 'sk-bar', style: `width:${w}` });
   const box = () => el('div', { class: 'sk-card' }, bar('40%'), bar('85%'), bar('60%'));
-  return el('div', { class: 'skeleton', role: 'status', 'aria-label': 'Chargement' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), box(), box(), box());
+  return el('div', { class: 'skeleton', role: 'status' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), box(), box(), box());
 }
 
 function youCard(yours, headline, sub) {
@@ -410,7 +415,7 @@ function youCard(yours, headline, sub) {
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
-        ? el('button', { type: 'button', class: 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? 'Annuler' : 'go')
+        ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
         : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
     status);
 }
@@ -795,12 +800,12 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   if (!$('chat').hidden) openChat();
@@ -882,8 +887,8 @@ async function refreshChat() {
     }
     drawChat();
   } catch (err) {
-    chat.error = true;
-    if (!$('chat').hidden) drawChatList();
+    if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
+    else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
   } finally {
     chat.busy = false;
     scheduleChat();
@@ -980,8 +985,8 @@ function drawLive() {
 
 function drawChatList() {
   const items = $('chat-items');
-  if (!chat.list && chat.error) return items.replaceChildren(el('li', { class: 'chat-error', role: 'alert' }, el('strong', {}, 'Impossible de charger les discussions'), el('button', { type: 'button', class: 'secondary', onclick: () => { chat.error = false; drawChatList(); refreshChat(); } }, 'Réessayer')));
-  if (!chat.list) return items.replaceChildren(el('li', { class: 'sk-chat', role: 'status', 'aria-label': 'Chargement' }, el('span', { class: 'sk-bar', style: 'width:70%' }), el('span', { class: 'sk-bar', style: 'width:50%' })));
+  if (!chat.list && chat.error) return items.replaceChildren(el('li', {}, el('div', { class: 'chat-error', role: 'alert' }, el('strong', {}, 'Impossible de charger les discussions'), el('span', { class: 'muted' }, 'Vérifiez votre connexion.'), el('button', { type: 'button', class: 'secondary', onclick: () => { chat.error = false; drawChatList(); refreshChat(); } }, 'Réessayer'))));
+  if (!chat.list) return items.replaceChildren(el('li', { class: 'sk-chat' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), el('span', { class: 'sk-bar', style: 'width:70%' }), el('span', { class: 'sk-bar', style: 'width:50%' })));
   if (!chat.list.length) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Aucune conversation pour l\'instant.'));
   const open = chat.list.filter((c) => c.state === 'open');
   const done = chat.list.filter((c) => c.state !== 'open');
@@ -1348,9 +1353,14 @@ const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({
 const phoneMq = matchMedia('(max-width: 600px)');
 function placeMenu() {
   const menu = $('more-menu');
-  if (phoneMq.matches) menuItems.forEach(({ node }) => menu.append(node));
+  // The menu lives in the project view: with no project shown, the items stay in the header.
+  if (phoneMq.matches && !$('project-view').hidden) menuItems.forEach(({ node }) => menu.append(node));
   else menuItems.slice().reverse().forEach(({ node, home, next }) => home.insertBefore(node, next && next.parentNode === home ? next : null));
-  $('more').open = !phoneMq.matches;
+  $('more').open = !(phoneMq.matches && !$('project-view').hidden);
 }
 placeMenu();
 phoneMq.addEventListener('change', placeMenu);
+// Tapping outside, Escape or an action closes « Plus » on a phone.
+const closeMore = () => { if (phoneMq.matches) $('more').open = false; };
+document.addEventListener('click', (e) => { if (!$('more').contains(e.target) || e.target.closest('#more-menu a, #more-menu button')) closeMore(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });

@@ -26,10 +26,11 @@
       <p>Le panneau a besoin d'un jeton GitHub pour lire vos projets et enregistrer vos règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
       <p class="tip">Déjà connecté sur votre ordinateur ? Là-bas, cliquez sur <strong>Sur mon téléphone</strong> et scannez le code avec ce téléphone : rien à recopier.</p>
       <ol>
-        <li>Ouvrez <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la page de création de jeton sur GitHub</a>.</li>
+        <li>Ouvrez <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la page de création de jeton sur GitHub</a> (elle s'ouvre dans un nouvel onglet).</li>
         <li>Dans « Token name », écrivez « factory panneau ». Dans « Expiration », choisissez 1 an.</li>
         <li>Dans « Repository access », choisissez « All repositories ».</li>
-        <li>Plus bas, dans la boîte « Repositories » (pas « Account »), cliquez sur « Add permissions » et cochez « Contents », « Issues » et « Pull requests ».</li>
+        <li>Plus bas, dans la boîte « Repositories » (pas « Account »), cliquez sur « Add permissions ».</li>
+        <li>Cochez « Contents », « Issues » et « Pull requests ».</li>
         <li>Mettez « Contents » et « Issues » sur « Read and write ». « Pull requests » reste sur « Read-only ».</li>
         <li>Cliquez sur « Generate token », copiez le jeton et collez-le ici.</li>
       </ol>
@@ -101,7 +102,7 @@
   </main>
   <dialog id="phone" aria-labelledby="phone-title">
     <h2 id="phone-title">Ouvrir le panneau sur votre téléphone</h2>
-    <p>Scannez ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté, et le reste.</p>
+    <p>Scannez ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté.</p>
     <div id="phone-qr"></div>
     <p class="muted small">Ce code contient votre jeton GitHub : ne le montrez à personne. Astuce : une fois ouvert, ajoutez la page à l'écran d'accueil.</p>
     <div class="dialog-actions">
