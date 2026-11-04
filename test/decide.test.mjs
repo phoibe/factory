@@ -201,3 +201,19 @@ test('a question issue is answered right away, never queued, and each follow-up 
   assert.equal(follow.stage, 'question');
   assert.equal(decide(ev({ event: 'issues', action: 'opened', labels: [L.question], fromOwner: false }), config, ctx).type, 'ignore');
 });
+
+test('a spec published with auto-go starts the build when the spec run ends', () => {
+  const end = ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.specReview, L.autoGo] });
+  const a = decide(end, config, { inFlight: 0 });
+  assert.equal(a.type, 'fire');
+  assert.equal(a.stage, 'build');
+  assert.deepEqual(a.remove, [L.specReview, L.autoGo]);
+  assert.deepEqual(a.add, [L.building]);
+  assert.equal(decide(end, config, { inFlight: 2 }).type, 'queue');
+});
+
+test('without auto-go, or with a pending owner message, the spec still waits', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.specReview] }), config, { inFlight: 0 }).type, 'ignore');
+  assert.equal(decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.specReview, L.autoGo, L.pending] }), config, { inFlight: 0 }).type, 'replay');
+  assert.equal(decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.autoGo, labels: [L.feature, L.building] }), config, { inFlight: 0 }).type, 'ignore');
+});

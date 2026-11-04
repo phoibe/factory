@@ -100,7 +100,14 @@ function onPr(ev) {
 export function decide(ev, config, ctx) {
   if (ev.kind === 'dispatch') return ev.payload ? { type: 'agent', reason: 'lancement de l\'agent sur GitHub Actions' } : ignore('rien à lancer');
   if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
-    return ev.removedLabel === L.running && has(ev.labels, L.pending) ? { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" } : ignore('label retiré');
+    if (ev.removedLabel !== L.running) return ignore('label retiré');
+    if (has(ev.labels, L.pending)) return { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" };
+    // Spec published without asking for a « go » (spec validation turned off): it starts like an approved one.
+    if (has(ev.labels, L.autoGo) && has(ev.labels, L.specReview)) {
+      if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [L.specReview, L.autoGo], reason: 'spec lancée sans validation, factory pleine' };
+      return fire('build', { add: [L.building], remove: [L.specReview, L.autoGo], reason: 'spec lancée sans validation (réglage)' });
+    }
+    return ignore('label retiré');
   }
   const isComment = ev.event === 'issue_comment' || ev.event === 'pull_request_review';
   if (isComment) {

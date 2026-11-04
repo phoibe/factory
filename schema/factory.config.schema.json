@@ -12,7 +12,7 @@
     "stages": {
       "type": "object",
       "properties": {
-        "grilling": { "type": "boolean" }, "plan": { "type": "boolean" }, "tdd": { "type": "boolean" },
+        "grilling": { "type": "boolean" }, "specReview": { "type": "boolean" }, "plan": { "type": "boolean" }, "tdd": { "type": "boolean" },
         "review": { "type": "boolean" }, "designPass": { "type": "boolean" }, "screenshots": { "type": "boolean" },
         "checks": { "type": "boolean" }, "acceptance": { "type": "boolean" }
       },
