@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from './lib.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl } from './lib.mjs';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -122,6 +122,7 @@ async function openProject(fullName) {
     ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
     : "À faire une fois, avant la première feature : vision, design et stack.";
   $('new-question').href = `${base}/issues/new?template=question.yml`;
+  $('issues-link').href = issuesUrl(base);
   show('project-view');
   renderRules();
   await renderBoard();

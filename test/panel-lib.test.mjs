@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from '../panel/lib.mjs';
+import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -56,4 +56,9 @@ test('focusComment opens the card on the latest message from a person or the age
   assert.equal(focusComment([c('phoibe', 1), c('phoibe', 2), c('vercel[bot]', 3, 'Bot'), c('github-actions[bot]', 4, 'Bot')]), 'https://github.com/o/r/issues/1#issuecomment-2');
   assert.equal(focusComment([c('vercel[bot]', 3, 'Bot')]), null);
   assert.equal(focusComment([]), null);
+});
+
+test('issuesUrl points to the full list of open issues of the project', () => {
+  assert.equal(issuesUrl('https://github.com/phoibe/habitudes'), 'https://github.com/phoibe/habitudes/issues');
+  assert.equal(issuesUrl('https://github.com/phoibe/habitudes/'), 'https://github.com/phoibe/habitudes/issues');
 });

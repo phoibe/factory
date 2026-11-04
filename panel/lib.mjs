@@ -86,3 +86,6 @@ export function focusComment(comments) {
   const last = [...(comments || [])].reverse().find((c) => c.user?.type !== 'Bot' && !/\[bot\]$/.test(c.user?.login || ''));
   return last?.html_url || null;
 }
+
+// Plain list of the project's open issues (GitHub's default view, no filter).
+export const issuesUrl = (repoUrl) => `${repoUrl.replace(/\/+$/, '')}/issues`;
