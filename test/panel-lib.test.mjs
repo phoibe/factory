@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom } from '../panel/lib.mjs';
+import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -49,4 +49,11 @@ test('previewFrom finds the latest preview link of a PR', () => {
   assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: 'Tu peux tester la nouvelle version ici : https://c.vercel.app\n\nVérifie' }]), 'https://c.vercel.app');
   assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: '[Preview](https://evil.example)' }]), null);
   assert.equal(previewFrom([]), null);
+});
+
+test('focusComment opens the card on the latest message from a person or the agent, not a bot', () => {
+  const c = (login, id, type = 'User') => ({ user: { login, type }, html_url: `https://github.com/o/r/issues/1#issuecomment-${id}` });
+  assert.equal(focusComment([c('phoibe', 1), c('phoibe', 2), c('vercel[bot]', 3, 'Bot'), c('github-actions[bot]', 4, 'Bot')]), 'https://github.com/o/r/issues/1#issuecomment-2');
+  assert.equal(focusComment([c('vercel[bot]', 3, 'Bot')]), null);
+  assert.equal(focusComment([]), null);
 });

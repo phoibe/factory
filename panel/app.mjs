@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom } from './lib.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from './lib.mjs';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -127,7 +127,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -160,7 +160,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), prev: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -173,13 +173,20 @@ async function refresh() {
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
-    // Preview links of the PRs on the board, read from their comments (Vercel bot or the factory's message).
+    // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
+    // and the message the card should open on, instead of the top of the issue.
     let previewsChanged = false;
-    for (const pr of boardItems(live.issues).filter((c) => c.pull_request)) {
-      const res = await cachedGet(`/repos/${repo}/issues/${pr.number}/comments?per_page=100`).catch(() => null);
+    for (const c of boardItems(live.issues)) {
+      const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
+      const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(() => null) : { data: [] };
       if (!res) continue;
-      const url = previewFrom(res.data);
-      if (live.previews.get(pr.number) !== url) { live.previews.set(pr.number, url); previewsChanged = true; }
+      const url = c.pull_request ? previewFrom(res.data) : null;
+      const target = focusComment(res.data);
+      if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
+        live.previews.set(c.number, url);
+        live.targets.set(c.number, target);
+        previewsChanged = true;
+      }
     }
     if (live.repo !== repo) return;
     live.last = Date.now();
@@ -237,7 +244,7 @@ function card(c, lane, minutes, now, moved) {
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
-    el('h3', {}, el('a', { class: 'main', href: c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
+    el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
     preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
       testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
