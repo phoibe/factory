@@ -2,8 +2,8 @@ import json
 import unittest
 
 from core import (
-    ASK_BLOCK, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation,
-    add_exchange, index_entry, upsert_index, visible_text,
+    ASK_BLOCK, MAX_PROMPT_CHARS, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation,
+    add_exchange, index_entry, MAX_ISSUES, CID_RE, upsert_index, visible_text,
 )
 
 
@@ -76,6 +76,16 @@ class PromptTest(unittest.TestCase):
         self.assertIn("Et en voyage ?", prompt)
         self.assertIn("/tmp/chat/c1/a.jpg", prompt)
 
+    def test_a_very_long_conversation_keeps_only_the_recent_messages(self):
+        conv = new_conversation("c1", "Début", now="2026-11-04T10:00:00Z")
+        for i in range(200):
+            add_exchange(conv, {"text": f"question {i} " + "x" * 2000, "images": []}, f"réponse {i} " + "y" * 2000, now="2026-11-04T10:01:00Z")
+        prompt = build_prompt(conv, "Et maintenant ?", [])
+        self.assertLess(len(prompt), MAX_PROMPT_CHARS + 2000)
+        self.assertIn("réponse 199", prompt)
+        self.assertNotIn("question 0 ", prompt)
+        self.assertIn("Et maintenant ?", prompt)
+
     def test_first_message_has_no_history(self):
         prompt = build_prompt(new_conversation("c1", "Bonjour"), "Bonjour", [])
         self.assertNotIn("Conversation jusqu'ici", prompt)
@@ -104,6 +114,22 @@ class AccessTest(unittest.TestCase):
         self.assertIsNotNone(check_access("phoibe", "intrus", "phoibe/habitudes"))
         self.assertIsNotNone(check_access("phoibe", "phoibe", "autre/depot"))
         self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/../x"))
+
+    def test_dot_names_are_not_projects(self):
+        self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/."))
+        self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/.."))
+
+
+class LimitsTest(unittest.TestCase):
+    def test_an_answer_never_opens_more_than_the_cap(self):
+        text = "".join(f'<creer-issue type="bug" titre="T{i}">corps</creer-issue>' for i in range(MAX_ISSUES + 5))
+        _, issues = extract_issues(text)
+        self.assertEqual(len(issues), MAX_ISSUES)
+
+    def test_conversation_ids_cannot_climb_out_of_the_chats_folder(self):
+        self.assertIsNone(CID_RE.match("../index"))
+        self.assertIsNone(CID_RE.match("a/b"))
+        self.assertTrue(CID_RE.match("abc123_-"))
 
 
 if __name__ == "__main__":

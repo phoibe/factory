@@ -1,11 +1,12 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=3';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
+import { parisMidnight, runsToday, runsText } from './runs.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -22,10 +23,10 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Grilling', "L'agent vous pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['grilling', 'Questions préalables', "L'agent vous pose des questions pour clarifier la demande avant d'écrire la spec."],
   ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
-  ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
+  ['tdd', 'Tests avant le code', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
@@ -33,7 +34,7 @@ const STAGES = [
   ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
 ];
 const CHECKS = [
-  ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
+  ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
 ];
 
 // A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
@@ -291,9 +292,7 @@ function drawStatus() {
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
-  s.querySelector('.live-text').textContent = down
-    ? 'Connexion à GitHub perdue · nouvel essai automatique'
-    : `En direct · à jour ${agoText(Date.now() - live.last)}`;
+  s.querySelector('.live-text').textContent = statusText(live.failures, Date.now() - live.last);
 }
 
 function stepTrack(c) {
@@ -304,6 +303,10 @@ function stepTrack(c) {
       Array.from({ length: p.total }, (_, i) => el('li', { class: i < p.index ? 'done' : i === p.index ? 'now' : '' }))),
     el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
 }
+
+// The button names what it asks for, not a generic « Répondre ».
+const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
+const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -327,7 +330,7 @@ function card(c, lane, minutes, now, moved) {
   const testIt = c.column === 'acceptance' && !running;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
@@ -402,7 +405,7 @@ function skeleton() {
 }
 
 function youCard(yours, headline, sub) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }));
+  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
   return el('section', { class: 'you-card', 'aria-label': 'À vous' },
     el('p', { class: 'headline' }, headline),
@@ -416,7 +419,7 @@ function youCard(yours, headline, sub) {
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
         ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
-        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
+        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column))))),
     status);
 }
 
@@ -663,7 +666,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim());
-  if (unsaved) return toast('Une nouvelle version du tableau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
   location.reload();
 }
 function watchVersion() {
@@ -693,8 +696,32 @@ async function start() {
     return show('login');
   }
   refreshStable().catch(() => {});
+  refreshRuns();
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
+}
+
+// Agent starts of the day, all projects together, refreshed every 5 minutes (the routines have a daily limit).
+let runsTimer = null;
+async function refreshRuns() {
+  clearTimeout(runsTimer);
+  runsTimer = setTimeout(refreshRuns, 5 * 60_000);
+  if (!token || !projects.length) return;
+  const from = parisMidnight();
+  try {
+    const counts = await mapLimit(projects, 2, async (p) => {
+      const events = [];
+      for (let page = 1; page <= 5; page++) {
+        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        events.push(...batch);
+        if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
+      }
+      return runsToday(events);
+    });
+    $('runs').textContent = runsText(counts.reduce((a, b) => a + b, 0));
+    $('runs').hidden = false;
+    $('runs-sep').hidden = false;
+  } catch { /* the next try is in 5 minutes */ }
 }
 
 // « Déclarer stable »: projects follow the factory's `stable` branch; this shows how far main is ahead of it.
@@ -724,7 +751,6 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
-    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -1174,6 +1200,7 @@ async function sendChat(text, withImages = true) {
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 }

@@ -57,6 +57,14 @@ export function agoText(ms) {
   return `il y a ${Math.floor(s / 60)} min`;
 }
 
+// Text of the « En direct » line. It must never be empty: the line changes height when its text arrives,
+// which pushes every card down after they were measured for the slide animation.
+export function statusText(failures, ms) {
+  return failures > 0
+    ? 'Connexion à GitHub perdue · nouvel essai automatique'
+    : `En direct · à jour ${agoText(ms)}`;
+}
+
 // Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.
 export const pollDelay = (failures, idle = false) => Math.min((idle ? 30_000 : 8_000) * 2 ** failures, 300_000);
 

@@ -14,7 +14,7 @@
     <nav id="nav" hidden>
       <select id="project" aria-label="Projet"></select>
       <a class="button ghost" data-menu href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip" title="Deux fichiers à double-cliquer sur votre Mac : créer un nouveau projet, ou mettre dans la factory un projet déjà commencé.">Outils Mac</a>
-      <button id="stable" data-menu class="ghost" type="button" hidden title="Les projets suivent la version stable de la factory. Ce bouton y ajoute les derniers changements, si ses tests passent.">Déclarer stable</button>
+      <button id="stable" data-menu class="ghost" type="button" hidden title="Les projets suivent la version stable de la factory. Elle avance toute seule une heure après un changement si tout va bien ; ce bouton la fait avancer tout de suite, si les tests passent.">Déclarer stable</button>
       <button id="phone-open" data-menu class="ghost" type="button">Sur mon téléphone</button>
       <button id="logout" data-menu class="ghost" type="button">Se déconnecter</button>
     </nav>
@@ -54,7 +54,7 @@
         <div>
           <h1 id="project-name"></h1>
           <p id="project-sub" class="muted"></p>
-          <p class="site-line" data-menu><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a></p>
+          <p class="site-line" data-menu><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a><span id="runs-sep" class="sep" aria-hidden="true" hidden>·</span><a id="runs" class="quiet-link" href="https://claude.ai/code/routines" target="_blank" rel="noopener" title="Tous projets confondus. La limite de lancements par jour de votre abonnement se voit sur la page des routines Claude." hidden></a></p>
         </div>
         <div class="actions">
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle fonctionnalité</a>
@@ -111,6 +111,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=25"></script>
+  <script type="module" src="app.mjs?v=27"></script>
 </body>
 </html>
