@@ -344,3 +344,12 @@ test("the owner's pasted screenshots are copied for the agent and listed in its 
   const payload = JSON.parse(JSON.parse(sent[0].init.body).text);
   assert.deepEqual(payload.attachments, [`attachments/5/${id}.png`]);
 });
+
+test("the owner's answer on a blocked PR unblocks its issue too", async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.building, L.blocked] }], prs: [{ number: 15, body: 'Closes #5', head: { sha: 'abc' }, labels: [L.blocked] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  const { action } = await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 15, labels: [L.blocked], text: "c'est réglé", fromOwner: true });
+  assert.equal(action.stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 15 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 5 && c[2] === L.blocked));
+});
