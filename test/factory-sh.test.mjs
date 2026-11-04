@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -85,4 +85,27 @@ test('when GitHub refuses to list the app installations, it gives a working link
   assert.doesNotMatch(out, /pas pu ajouter le dépôt/);
   assert.doesNotMatch(out, /installations\/\{/);
   assert.match(out, /C'est prêt/);
+});
+
+test('choice 3 keeps the saved token when the new one is rejected', () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory'));
+  const file = join(cfg, 'factory', 'routine');
+  writeFileSync(file, 'FACTORY_ROUTINE_URL=https://old.test/fire\nFACTORY_ROUTINE_TOKEN=old-token\n');
+  assert.throws(() => run([], ['3', 'o', 'pas-une-url', 'nouveau'], { XDG_CONFIG_HOME: cfg }));
+  assert.ok(existsSync(file), 'the saved token file must survive a typo');
+  assert.match(readFileSync(file, 'utf8'), /old-token/);
+});
+
+test('a failed first sync is reported even if an older sync succeeded', () => {
+  // The fake lists run 6 (an old green one) before the dispatch, then 7 (the new one) after.
+  const { out } = run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_RUN_WATCH_FAILS: '7' });
+  assert.match(out, /La synchro n'a pas fini en vert/);
+  assert.doesNotMatch(out, /Labels créés et skills installés/);
+});
+
+test('first sync waits for the run it just started, not an older one', () => {
+  const { log } = run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', '']);
+  assert.match(log, /run watch 7 /);
+  assert.doesNotMatch(log, /run watch 6 /);
 });

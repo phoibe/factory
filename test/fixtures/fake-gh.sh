@@ -11,9 +11,11 @@ case "$1 $2" in
   "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE" ;;
   "api user/installations") echo "${FAKE_INSTALLATIONS:-42 all}" ;;
   "secret set") cat > /dev/null ;;
-  "workflow run") ;;
-  "run list") echo 7 ;;
-  "run watch") ;;
+  "workflow run") touch "$FAKE_GH_LOG.dispatched" ;;
+  # An old run (6) exists until a workflow is dispatched; then the new one (7) appears, one listing later.
+  # GitHub is slow to list a freshly dispatched run: the first listing after it still shows the old one.
+  "run list") if [ -f "$FAKE_GH_LOG.dispatched" ] && [ -f "$FAKE_GH_LOG.listed" ]; then echo 7; else [ -f "$FAKE_GH_LOG.dispatched" ] && touch "$FAKE_GH_LOG.listed"; echo 6; fi ;;
+  "run watch") [ "$3" = "${FAKE_RUN_WATCH_FAILS:-}" ] && exit 1; exit 0 ;;
   "issue create") echo "https://github.com/phoibe/x/issues/1" ;;
   "repo list") printf 'phoibe/factory\nphoibe/habitudes\nphoibe/vieux-site\n' ;;
   *)
