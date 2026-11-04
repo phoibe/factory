@@ -1,0 +1,20 @@
+{
+ "id": "20261104-155230-q3u57",
+ "title": "Je voudrais avoir un lien direct vers la page des issues github du…",
+ "state": "open",
+ "created": "2026-11-04T15:52:30Z",
+ "updated": "2026-11-04T15:53:05Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Je voudrais avoir un lien direct vers la page des issues github du projet courant sur le tableau",
+   "images": [],
+   "at": "2026-11-04T15:53:05Z"
+  },
+  {
+   "who": "agent",
+   "text": "Non, aujourd'hui il n'y a pas de lien direct vers la liste des issues GitHub du projet sur le tableau.\n\nCe que tu as déjà, ce sont trois boutons pour créer une nouvelle fonctionnalité, un bug ou un projet. Chaque carte du tableau a aussi son propre lien. Il n'existe pas de lien général qui ouvre la liste complète des issues du projet que tu as sélectionné.\n\nCe que j'ai lu dans le code du tableau, sans test dédié. L'adresse du projet courant est déjà connue pour les boutons de création, donc ajouter ce lien semble simple.\n\nTu veux que j'en fasse une fiche ?",
+   "at": "2026-11-04T15:53:05Z"
+  }
+ ]
+}
