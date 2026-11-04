@@ -17,7 +17,8 @@ except ImportError:  # pragma: no cover
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
 import json, sys
 args = sys.argv
-prompt = args[args.index("-p") + 1]
+prompt = sys.stdin.read()  # the prompt travels on stdin: a long conversation does not fit in an argument
+assert len(args[args.index("-p") + 1]) < 200, "the prompt must not be an argument"
 open(args[0] + ".prompt", "w").write(prompt)
 def out(o): print(json.dumps(o), flush=True)
 out({"type": "system", "subtype": "init"})
@@ -35,6 +36,7 @@ class FakeGitHub:
         self.files = {}
         self.issues = []
         self.branches = set()
+        self.fail_saves = False
 
     def __call__(self, request):
         path, method = request.url.path, request.method
@@ -52,6 +54,8 @@ class FakeGitHub:
             return httpx.Response(201, json={"html_url": "https://github.com/phoibe/habitudes/issues/7", "number": 7})
         if "/contents/" in path:
             name = path.split("/contents/", 1)[1]
+            if method == "PUT" and self.fail_saves:
+                return httpx.Response(500, json={})
             if method == "PUT":
                 body = json.loads(request.content)
                 self.files[name] = base64.b64decode(body["content"])
@@ -120,6 +124,25 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(events[-1]["type"], "done")
         self.assertIn("[Toi] Non, pas encore.", open(self.claude + ".prompt").read())
         self.assertEqual(len(json.loads(self.gh.files[f"chats/{cid}.json"])["messages"]), 4)
+
+    def test_a_very_long_conversation_still_gets_an_answer(self):
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Début"})
+        cid = events[-1]["conversation"]["id"]
+        conv = json.loads(self.gh.files[f"chats/{cid}.json"])
+        conv["messages"] = [{"who": "me", "text": "x" * 20000, "at": ""} for _ in range(30)]  # ~600 KB of history
+        self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et ensuite ?"})
+        self.assertEqual(events[-1]["type"], "done", events)
+        self.assertGreater(len(open(self.claude + ".prompt").read()), 500000)
+
+    def test_a_failed_save_after_creating_an_issue_does_not_ask_to_send_again(self):
+        self.gh.fail_saves = True
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+        kinds = [e["type"] for e in events]
+        self.assertNotIn("error", kinds, events)  # an error makes the panel offer to resend: a second issue
+        self.assertEqual(len(self.gh.issues), 1)
+        self.assertEqual(kinds[-1], "done")
+        self.assertIs(events[-1]["saved"], False)
 
 
 if __name__ == "__main__":

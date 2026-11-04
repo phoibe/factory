@@ -62,7 +62,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove('show'), 4000);
+  toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
@@ -1137,8 +1137,11 @@ async function sendToServer(text, files, withImages) {
           chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
             { who: 'agent', text: answer?.text || '', issues: answer?.issues || [], at: c.updated });
           for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
-          if (chat.repo === repo) chat.open = c.id;
-          chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
+          if (e.saved === false) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+          else {
+            if (chat.repo === repo) chat.open = c.id;
+            chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
+          }
         }
       }
       drawLive();
