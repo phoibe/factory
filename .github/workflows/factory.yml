@@ -11,7 +11,7 @@ on:
     types: [submitted]
   # Safety net: restarts the queue when a place was freed without an event the queue listens to.
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   # Used by the factory itself to start an agent on GitHub Actions (runner "github-actions").
   workflow_dispatch:
     inputs:
