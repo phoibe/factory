@@ -5,7 +5,7 @@ captures avant/après, des contrôles automatiques, une preview, puis une mise e
 n'intervient qu'en français, à trois portes : la spec, les captures, la recette.
 
 - **Panneau** : https://phoibe.github.io/factory/ (règles de chaque projet et suivi)
-- **Nouveau projet** : https://github.com/phoibe/factory-template (le README y explique la mise en route)
+- **Nouveau projet ou projet existant** : [télécharger les outils Mac](https://github.com/phoibe/factory/releases/latest/download/factory-outils.zip) (deux fichiers à double-cliquer, voir `outils/`) ; le README de https://github.com/phoibe/factory-template explique la mise en route
 - **Conception** : [docs/design.md](docs/design.md)
 
 ## Comment ça marche
