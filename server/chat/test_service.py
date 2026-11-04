@@ -110,6 +110,8 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(answer["text"], "Non, pas encore.")
         self.assertEqual(answer["issues"], [{"title": "Exporter mes données", "url": "https://github.com/phoibe/habitudes/issues/7", "kind": "feature"}])
         self.assertEqual(self.gh.issues[0]["labels"], ["factory:feature"])
+        # A feature only joins the list: the agent marker keeps the factory from starting it at once.
+        self.assertTrue(self.gh.issues[0]["body"].startswith("<!-- factory-agent -->"), self.gh.issues[0]["body"])
         prompt = open(self.claude + ".prompt").read()
         self.assertIn("Je peux exporter ?", prompt)
         self.assertIn("1-a.jpg", prompt)

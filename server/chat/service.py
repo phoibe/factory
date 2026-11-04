@@ -214,9 +214,13 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             created = []
             for issue in wanted:
                 label = "factory:bug" if issue["kind"] == "bug" else "factory:feature"
+                body = f"{issue['body']}\n\n_Demandé depuis le chat du tableau de suivi._"
+                if issue["kind"] != "bug":
+                    # The agent marker makes the factory leave a new feature in the list instead of starting it
+                    # at once: it is picked later by the queue rules. A bug still starts right away.
+                    body = f"<!-- factory-agent -->\n{body}"
                 made = await gh.send("POST", "/repos/{repo}/issues", {
-                    "title": issue["title"], "labels": [label],
-                    "body": f"{issue['body']}\n\n_Demandé depuis le chat du tableau de suivi._"})
+                    "title": issue["title"], "labels": [label], "body": body})
                 created.append({**issue, "url": made["html_url"], "number": made["number"]})
             add_exchange(conv, {"text": message, "images": images}, text, now_iso(), created)
             yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
