@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -67,4 +67,40 @@ test('sessionFrom reads the link to the agent session from the factory comment',
   const note = { body: "<!-- factory-session -->\n<!-- factory-agent -->\nDernier lancement de l'agent : **Construction**, à 14:05. [Voir ce qu'il fait](https://claude.ai/code/session_01ABC)" };
   assert.equal(sessionFrom([{ body: 'ok' }, note]), 'https://claude.ai/code/session_01ABC');
   assert.equal(sessionFrom([{ body: 'ok' }]), null);
+});
+
+const pr = (number, merged_at, body = `Closes #${number - 100}`, title = `T${number}`) => ({ number, merged_at, body, title, html_url: `https://github.com/o/r/pull/${number}` });
+
+test('« Terminé » is the last column and needs nothing from the owner', () => {
+  assert.deepEqual(COLUMNS.at(-1), { id: 'done', title: 'Terminé' });
+  assert.equal(columnFor(['factory:feature']), null);
+});
+
+test('doneItems keeps merged requests only, newest first, and opens the original issue', () => {
+  const out = doneItems([
+    pr(110, '2026-11-01T10:00:00Z'),
+    pr(111, null), // closed without a merge
+    pr(112, '2026-11-03T10:00:00Z', 'no link to a request'),
+    pr(113, '2026-11-02T10:00:00Z', 'Résumé\n\nFixes #7'),
+  ]);
+  assert.deepEqual(out.map((d) => d.number), [113, 110]);
+  assert.equal(out[0].issue, 7);
+  assert.equal(out[0].url, 'https://github.com/o/r/issues/7');
+});
+
+test('doneItems keeps only the 10 most recent whatever their age', () => {
+  const pulls = Array.from({ length: 14 }, (_, i) => pr(200 + i, new Date(Date.UTC(2025, 0, 1 + i)).toISOString()));
+  const out = doneItems(pulls);
+  assert.equal(out.length, 10);
+  assert.equal(out[0].number, 213);
+  assert.deepEqual(doneItems(null), []);
+});
+
+test('doneAgo speaks French', () => {
+  const now = Date.parse('2026-11-04T15:00:00');
+  assert.equal(doneAgo('2026-11-04T14:59:50', now), "à l'instant");
+  assert.equal(doneAgo('2026-11-04T14:30:00', now), 'il y a 30 min');
+  assert.equal(doneAgo('2026-11-04T12:30:00', now), 'il y a 2 h');
+  assert.equal(doneAgo('2026-11-03T20:00:00', now), 'hier');
+  assert.match(doneAgo('2026-11-03T08:00:00', Date.parse('2026-11-10T15:00:00')), /^le 3 nov/);
 });

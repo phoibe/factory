@@ -8,6 +8,7 @@ export const COLUMNS = [
   { id: 'checks', title: 'Contrôles', label: 'factory:checks' },
   { id: 'acceptance', title: 'Recette', label: 'factory:acceptance', yours: true },
   { id: 'blocked', title: 'Bloqué', label: 'factory:blocked', yours: true },
+  { id: 'done', title: 'Terminé' }, // no label: a merged item has left the pipeline, see doneItems
 ];
 const PRIORITY = ['blocked', 'acceptance', 'visual', 'checks', 'spec', 'grilling', 'queued', 'building'];
 
@@ -37,6 +38,36 @@ export function boardItems(items) {
   return items
     .map((it) => ({ ...it, column: columnFor(it.labels) }))
     .filter((it) => it.column && !(linked.has(it.number) && !it.labels.includes('factory:blocked')));
+}
+
+// How many finished items the « Terminé » column keeps.
+export const DONE_LIMIT = 10;
+
+// The « Terminé » column, from closed pull requests: only the merged ones that close a request
+// (feature, bug or project; questions have no PR), most recently merged first, at most `limit`.
+// Closed without a merge (abandoned) never counts. Each item opens the original request.
+export function doneItems(pulls, limit = DONE_LIMIT) {
+  return (pulls || [])
+    .filter((p) => p.merged_at)
+    .map((p) => {
+      const m = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.exec(p.body || '');
+      return m ? { number: p.number, issue: Number(m[1]), title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${m[1]}`) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
+    .slice(0, limit);
+}
+
+// « il y a 2 h », « hier » or « le 3 nov. » for the finish date of a done item.
+export function doneAgo(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  const ms = now - t;
+  if (!(ms >= 0) || ms < 60_000) return "à l'instant";
+  if (ms < 3_600_000) return `il y a ${Math.floor(ms / 60_000)} min`;
+  const day = (x) => new Date(x).toDateString();
+  if (day(t) === day(now)) return `il y a ${Math.floor(ms / 3_600_000)} h`;
+  if (day(t) === day(now - 86_400_000)) return 'hier';
+  return `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
 }
 
 export function toggleSkill(config, packId, skillId, on) {
