@@ -82,9 +82,9 @@ export function summarize(runs, { stages = {}, ui = false } = {}) {
   }
   const missing = missingSkills(runs, { stages, ui });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
-  if (!runs.some((r) => ['build', 'bugfix', 'foundation', 'audit'].includes(r.stage))) {
-    alerts.push("Aucun journal de construction dans cette PR : impossible de prouver les skills utilisés.");
-  }
+  // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
+  const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit'].includes(r.stage))
+    ? null : "_Pas de journal de construction dans cette PR : les skills utilisés n'ont pas pu être vérifiés._";
   const tdd = runs.filter((r) => expectations(r.stage, stages, ui).some((e) => e.tdd));
   const proof = tdd.length && tdd.every(redThenGreen) ? 'oui ✅ (un test a d\'abord échoué, puis est passé)' : tdd.length ? 'non ⚠️' : '—';
   const body = [
@@ -98,6 +98,7 @@ export function summarize(runs, { stages = {}, ui = false } = {}) {
     `**Preuve TDD** : ${proof}`,
     '',
     alerts.length ? `### ⚠️ Alertes\n\n${alerts.map((a) => `- ${a}`).join('\n')}` : '**Alertes** : aucune ✅',
+    ...(note ? ['', note] : []),
   ].join('\n');
   return { body, alerts, missing: missing.map((m) => m.skill) };
 }
