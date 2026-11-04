@@ -112,3 +112,21 @@ test('flip uses shouldSlide, so no card is animated for a tiny shift', async () 
   const body = src.slice(src.indexOf('function flip('), src.indexOf('const rectsOf'));
   assert.match(body, /shouldSlide\(a, b\)/);
 });
+
+test('withoutTimes ignores the text of time elements but not other changes', async () => {
+  const { withoutTimes } = await import('../panel/live.mjs');
+  const a = '<article><span class="since" data-time="">depuis 2 min</span><h3>T</h3><p class="eta" data-time="">~5 min restantes</p></article>';
+  const b = '<article><span class="since" data-time="">depuis 10 min</span><h3>T</h3><p class="eta" data-time="">~4 min restantes</p></article>';
+  assert.equal(withoutTimes(a), withoutTimes(b));
+  assert.notEqual(withoutTimes(a), withoutTimes(b.replace('<h3>T', '<h3>U')));
+  assert.notEqual(withoutTimes(a), withoutTimes(a.replace('data-time=""', '')));
+});
+
+test('syncTimes copies time texts in place and leaves other nodes alone', async () => {
+  const { syncTimes } = await import('../panel/live.mjs');
+  const mk = (...t) => ({ querySelectorAll: () => t });
+  const a = { textContent: 'depuis 2 min' }, b = { textContent: '~5 min' };
+  syncTimes(mk(a, b), mk({ textContent: 'depuis 3 min' }, { textContent: '~5 min' }));
+  assert.equal(a.textContent, 'depuis 3 min');
+  assert.equal(b.textContent, '~5 min');
+});

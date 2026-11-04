@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide } from './live.mjs?v=4';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=5';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -331,19 +331,19 @@ function card(c, lane, minutes, now, moved) {
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
-      e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
+      e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
     preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
       testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
     stepTrack(c),
-    el('p', { class: 'eta' }, timeLine(e)),
+    el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only once the factory is done with it: while an agent catches the step up, there is nothing for you to see.
     // Not on the captures either: they come right after the catch-up, and the summary is only refreshed after the checks.
     c.labels.includes('factory:skills-alert') && lane === 'yours' && c.column !== 'visual'
       ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null);
-  article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
+  article.dataset.sig = withoutTimes(article.outerHTML); // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
   return article;
 }
@@ -431,7 +431,7 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}:${doneAgo(d.mergedAt, now)}`).join('|') : null;
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}`).join('|') : null;
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
@@ -465,7 +465,7 @@ function drawBoard() {
       live.done.length
         ? el('div', { class: 'tickets' }, live.done.map((d) => el('article', { class: 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
-          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
+          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
         : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
   const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
   const holder = el('div', {}, ...fresh);
@@ -479,6 +479,9 @@ function drawBoard() {
   const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
   // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
   // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
+  // Their clocks are brought up to date in place.
+  for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) syncTimes(oldCards.get(n), node);
+  if (unchanged && board.querySelectorAll('[data-time]').length === holder.querySelectorAll('[data-time]').length) syncTimes(board, holder); // done column included
   if (!unchanged) for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
   // The halo lasts 2.4 s; the class goes away after it, so that moving the node later does not replay it.
   for (const n of movedSet) { const node = freshCards.get(n); if (node) setTimeout(() => node.classList.remove('moved'), 2500); }
