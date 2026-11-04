@@ -15,6 +15,7 @@ function fakeGh(state) {
     dispatch: async (wf, ref, inputs) => calls.push(['dispatch', wf, ref, inputs]),
     react: async (id, c) => calls.push(['react', id, c]),
     getPr: async (n) => state.prs.find((p) => p.number === n),
+    listPulls: async () => state.prs.filter((p) => p.state !== 'closed'),
     listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
     listComments: async (n) => state.comments?.[n] || [],
     listEvents: async (n) => state.events?.[n] || [],
@@ -398,7 +399,7 @@ test("the owner's pasted screenshots are copied for the agent and listed in its 
 test('blocked cards do not hold a place; a blocked card answered while full goes to the queue, then resumes', async () => {
   const gh = fakeGh({
     issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.blocked] }, { number: 4, labels: [L.feature, L.building, L.blocked] }],
-    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }],
+    prs: [],
   });
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -408,8 +409,9 @@ test('blocked cards do not hold a place; a blocked card answered while full goes
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.queued));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.blocked));
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 3 && /file d'attente/.test(c[2])));
-  // A place frees up: the card resumes (not a fresh build).
-  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  // A place frees up (card 1 opens its PR): the card resumes (not a fresh build).
+  gh.getPr = async () => ({ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [] });
+  await relay.handle({ kind: 'pr', event: 'pull_request', action: 'opened', number: 10, labels: [], fromOwner: true, open: true });
   assert.equal(payloadOf(sent[0].init.body).stage, 'resume');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 3 && c[2] === L.building));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 3 && c[2] === L.resumeQueued));
@@ -670,4 +672,31 @@ test('autoPick skips the card whose build just ended', async () => {
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...pickConfig, maxParallel: 5 }, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.dequeue({ freed: 1 });
   assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [2]);
+});
+
+test('a card whose PR is open no longer holds a place (owner rule: the place frees once the PR is open)', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.specReview] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.visualReview] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [L.feature, L.specReview], text: 'go', fromOwner: true });
+  assert.equal(action.type, 'fire');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
+});
+
+test('opening a PR starts the oldest queued card at once', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }],
+    // GitHub's PR list can lag a few seconds behind the opened event: the PR is not listed yet.
+    prs: [],
+  });
+  gh.getPr = async () => ({ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'pull_request', action: 'opened', number: 10, labels: [], fromOwner: true, open: true });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
+  assert.equal(payloadOf(sent[0].init.body).issue, 4);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
 });
