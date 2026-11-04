@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
-import { resolveConfig } from './lib/config.mjs';
+import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
@@ -26,6 +26,11 @@ const CHECKS_TIMEOUT_MS = 28 * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 export const PROJECT_WORKFLOW = 'factory.yml';
 export const MAX_BRANCH_UPDATES = 2;
+// A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
+export const IDLE_MINUTES = 30;
+const HEAL_MARKER = '<!-- factory-heal -->';
+// The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
+const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr.head?.ref || '')?.[1]) || null;
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -348,6 +353,89 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
+  // It only speaks to the owner when it cannot repair (a card that stops twice without finishing).
+  async function heal(ownerLogin) {
+    const closed = (await gh.listClosedPulls?.().catch(() => null)) || [];
+    await closeMerged(closed);
+    await relaunchIdle(closed, ownerLogin);
+    await releaseStaleLocks(ownerLogin);
+  }
+
+  const lastRunningAt = async (n) => {
+    const last = ((await gh.listEvents(n)) || []).filter((e) => ['labeled', 'unlabeled'].includes(e.event) && e.label?.name === L.running).pop();
+    return last ? Date.parse(last.created_at) : null;
+  };
+
+  // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
+  async function closeMerged(closed) {
+    for (const pr of closed.filter((p) => p.merged_at)) {
+      const n = linkedIssue(pr.body);
+      const issue = n && (await gh.getIssue(n));
+      if (!issue || issue.state !== 'open' || issue.pull_request) continue;
+      const labels = names(issue.labels);
+      if (!labels.some((l) => l.startsWith('factory:'))) continue;
+      // Reopened by the owner after the merge: there is more to do on it.
+      const events = (await gh.listEvents(n)) || [];
+      if (events.some((e) => e.event === 'reopened' && Date.parse(e.created_at) > Date.parse(pr.merged_at))) continue;
+      for (const l of [L.building, L.blocked, L.running, L.queued, L.pending]) if (labels.includes(l)) await gh.removeLabel(n, l);
+      await gh.closeIssue(n);
+      log(`guard: #${n} closed, its PR #${pr.number} was merged`);
+    }
+  }
+
+  async function relaunchIdle(closed, ownerLogin) {
+    const building = ((await gh.listIssues({ labels: L.building })) || []).filter((i) => !i.pull_request);
+    if (!building.length) return;
+    const linked = new Set([...((await gh.listPulls?.().catch(() => null)) || []), ...closed].flatMap((p) => [linkedIssue(p.body), branchIssue(p)]).filter(Boolean));
+    for (const item of building) {
+      const n = item.number;
+      if (linked.has(n)) continue; // it has a PR (open: the PR steps move it; closed by the owner: on purpose)
+      const labels = await liveLabels(n);
+      if (!labels.includes(L.building) || [L.blocked, L.queued].some((l) => labels.includes(l))) continue;
+      if (labels.includes(L.running)) {
+        if (await lockFresh(n, labels)) continue;
+        await gh.removeLabel(n, L.running); // the agent died without releasing its lock
+        if (labels.includes(L.pending)) {
+          await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: n, labels: [] }, { ownerLogin });
+          continue;
+        }
+      } else {
+        if (labels.includes(L.pending)) continue;
+        const at = await lastRunningAt(n);
+        if (at === null || now() - at < IDLE_MINUTES * 60_000) continue;
+      }
+      const heals = ((await gh.listComments(n)) || []).filter((c) => (c.body || '').includes(HEAL_MARKER)).length;
+      if (heals >= 1) {
+        await gh.addLabels(n, [L.blocked]);
+        await gh.comment(n, `${HEAL_MARKER}\n${say("L'agent s'est arrêté deux fois avant d'avoir fini, sans ouvrir de PR ni poser de question. Je mets la carte de côté pour qu'elle ne bloque pas la file. Répondez « réessaie » ici pour le relancer.")}`);
+        log(`guard: #${n} blocked after a second stop`);
+        continue;
+      }
+      const stage = labels.includes(L.project) ? 'foundation' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build';
+      try {
+        await fireAgent({ stage, issue: n, extra: { relaunch: true }, quiet: true });
+      } catch (e) {
+        log(`guard: relaunch of #${n} failed: ${e}`);
+        break; // the routine does not start: no use trying the others now
+      }
+      await gh.comment(n, `${HEAL_MARKER}\n${say("L'agent s'était arrêté avant d'avoir fini : je le relance là où il en était. Rien à faire de votre côté.")}`);
+      log(`guard: #${n} relaunched (${stage})`);
+    }
+  }
+
+  // A lock older than the agent's time limit on any other card (grilling, PR fix…): the agent is gone. Released the
+  // way the agent would have, so messages written meanwhile are handled.
+  async function releaseStaleLocks(ownerLogin) {
+    for (const item of (await gh.listIssues({ labels: L.running })) || []) {
+      const labels = await liveLabels(item.number);
+      if (!labels.includes(L.running) || (await lockFresh(item.number, labels))) continue;
+      await gh.removeLabel(item.number, L.running);
+      log(`guard: stale lock released on #${item.number}`);
+      await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: item.number, labels: [] }, { ownerLogin });
+    }
+  }
+
   // A project has previews when something other than GitHub Pages (Vercel, Netlify…) deploys it, or when the
   // Vercel bot already comments. The factory itself, for one, has none: nothing to wait for or to test there.
   async function hasPreviews(prNumber) {
@@ -396,7 +484,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
     if (ev.kind !== 'none' && ev.number) {
-      ev = { ...ev, labels: await liveLabels(ev.number) }; // webhook labels can be stale
+      const live = await gh.getIssue(ev.number);
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed' }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
@@ -417,6 +506,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    // A finished card (merged, closed) never starts over: a message written during its last run, or afterwards,
+    // would otherwise send a closed issue back to grilling.
+    if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
+      log('closed issue: nothing is started');
+      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     const applyLabels = async () => {
       for (const l of action.remove || []) await gh.removeLabel(n, l);
@@ -453,6 +549,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'dequeue':
+        if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
         // A PR merged by hand (or any closed one): the PRs still waiting may now be in conflict.
         if (ev.kind === 'tick' || ev.kind === 'pr') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
@@ -486,7 +583,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return Object.assign(alerts, { missing, ui: uiChanged(changed) });
   }
 
-  async function report({ result, pr: prNumber, runId, sha, started = null, now = Date.now() }) {
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now() }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
@@ -494,7 +591,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
     // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
     // A run cancelled without a known start time never got going: it was replaced too.
-    if (result === 'cancelled' && !(started && now - started * 1000 >= CHECKS_TIMEOUT_MS)) {
+    if (result === 'cancelled' && !(started && nowMs - started * 1000 >= CHECKS_TIMEOUT_MS)) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
     const timedOut = result === 'cancelled';
@@ -592,8 +689,9 @@ async function main() {
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const file = await gh.getContent('factory.config.json');
-  const raw = file ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')) : {};
-  const { config, warnings } = resolveConfig(raw, catalog);
+  const parsed = parseRawConfig(file ? Buffer.from(file.content, 'base64').toString('utf8') : null);
+  const { config, warnings } = resolveConfig(parsed.raw, catalog);
+  if (parsed.warning) warnings.push(parsed.warning);
   for (const w of warnings) console.log(`::warning::${w}`);
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
