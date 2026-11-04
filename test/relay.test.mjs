@@ -23,6 +23,7 @@ function fakeGh(state) {
     addLabels: async (n, ls) => { calls.push(['add', n, ...ls]); const i = issue(n); if (i) { i.labels = i.labels || []; i.labels.push(...ls); } },
     removeLabel: async (n, l) => { calls.push(['remove', n, l]); const i = issue(n); if (i) i.labels = (i.labels || []).filter((x) => x !== l); },
     merge: async (n) => calls.push(['merge', n]),
+    closeIssue: async (n) => { calls.push(['close', n]); const i = issue(n); if (i) i.open = false; },
     deployments: async () => [{ id: 1 }],
     recentDeployments: async () => state.deployments || [{ id: 1, environment: 'Preview' }],
     deploymentStatuses: async () => [{ state: 'success', environment_url: 'https://preview.example' }],
@@ -699,4 +700,11 @@ test('opening a PR starts the oldest queued card at once', async () => {
   assert.equal(payloadOf(sent[0].init.body).stage, 'build');
   assert.equal(payloadOf(sent[0].init.body).issue, 4);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
+});
+
+test('a merge by the factory closes the linked issue (GitHub does not when the workflow token merges)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1));
 });
