@@ -18,6 +18,10 @@ export const L = {
   pending: 'factory:pending',
   skillsAlert: 'factory:skills-alert',
   autoGo: 'factory:auto-go',
+  release: 'factory:release',
+  noPick: 'factory:no-pick',
+  urgent: 'factory:urgent',
+  autoPicked: 'factory:auto-picked',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -40,6 +44,9 @@ export const LABEL_DEFS = [
   [L.fixing, 'e99695', "Correction en cours après un contrôle rouge"],
   [L.pending, 'bfdadc', "Message reçu pendant qu'un agent travaillait, traité juste après"],
   [L.autoGo, 'c2e0c6', 'Spec publiée sans validation demandée : la construction démarre seule'],
+  [L.noPick, 'ededed', 'Ne jamais piocher cette fiche automatiquement'],
+  [L.urgent, 'e11d48', 'Fiche à piocher en premier par la factory'],
+  [L.autoPicked, 'c2e0c6', "La factory a pris cette fiche d'elle-même (place libre)"],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 

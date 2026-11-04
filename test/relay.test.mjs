@@ -542,3 +542,86 @@ test('a PR merged by hand also unsticks the PRs it put in conflict', async () =>
   await relay.handle({ kind: 'pr', event: 'pull_request', action: 'closed', number: 10, labels: [], fromOwner: true });
   assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
 });
+
+// ---- auto-pick ----
+const pickConfig = { ...config, autoPick: true, stages: { grilling: true, acceptance: true } };
+async function runPick(issues, cfg = pickConfig) {
+  const gh = fakeGh({ issues, prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: cfg, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  const started = sent.map((s) => payloadOf(s.init.body));
+  return { gh, started };
+}
+const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+
+test('autoPick off: a free slot and an open issue start nothing', async () => {
+  const { started } = await runPick([fi(1, L.feature)], { ...pickConfig, autoPick: false });
+  assert.equal(started.length, 0);
+});
+
+test('autoPick picks a bug before an older feature, and comments on it', async () => {
+  const { gh, started } = await runPick([fi(1, L.feature), fi(2, L.bug)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[2, 'bugfix']]);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.building)));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.autoPicked)));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 2 && /prise d'elle-même/.test(c[2])));
+});
+
+test('autoPick: urgent goes first, a feature starts by grilling and holds back other features', async () => {
+  const { started } = await runPick([fi(1, L.feature), fi(2, L.bug), fi(3, L.feature, L.urgent), fi(4, L.feature, L.urgent)], { ...pickConfig, maxParallel: 3 });
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[3, 'grilling'], [2, 'bugfix']]);
+});
+
+test('autoPick never takes held, running, waiting, question, project or release issues', async () => {
+  const issues = [fi(1, L.feature, L.noPick), fi(2, L.question), fi(3, L.project), fi(4, 'factory:release'), fi(5, L.feature, L.grilling),
+    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement')];
+  const { started } = await runPick(issues, { ...pickConfig, maxParallel: 20 });
+  assert.deepEqual(started, []);
+});
+
+test('autoPick takes nothing when the factory is full', async () => {
+  const { started } = await runPick([fi(1, L.building), fi(2, L.building), fi(3, L.bug)]);
+  assert.equal(started.length, 0);
+});
+
+test('autoPick starts the queue first and picks only for the slots left', async () => {
+  const { started } = await runPick([fi(5, L.feature, L.queued), fi(1, L.bug), fi(2, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [5, 1]);
+});
+
+test('autoPick stops picking features while an auto-picked one waits for the owner', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature), fi(3, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [3]);
+});
+
+test('autoPick takes the oldest bug first when several tie', async () => {
+  const { started } = await runPick([fi(7, L.bug), fi(3, L.bug), fi(5, L.bug)]);
+  assert.deepEqual(started.map((p) => p.issue), [3, 5]);
+});
+
+test('autoPick: a failed start releases the claim and stops', async () => {
+  const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: pickConfig, env, log: quiet,
+    fetchImpl: async () => ({ ok: false, status: 429, text: async () => 'limit' }) });
+  await relay.dequeue();
+  const issue = (await gh.getIssue(1)).labels.map((l) => l.name);
+  assert.deepEqual(issue, [L.bug]);
+  assert.equal(gh.calls.filter((c) => c[0] === 'comment' && /prise d'elle-même/.test(c[2] || '')).length, 0);
+});
+
+test('autoPick with grilling off starts the spec once and never re-picks that issue', async () => {
+  const cfg = { ...pickConfig, stages: { grilling: false, acceptance: true } };
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked), fi(2, L.feature)], cfg);
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[2, 'spec']]);
+});
+
+test('autoPick: an auto-picked spec waiting for validation also holds back other features', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.specReview), fi(2, L.feature)]);
+  assert.deepEqual(started, []);
+});
+
+test('autoPick: an urgent bug beats an urgent feature and a plain bug', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.urgent), fi(2, L.bug), fi(3, L.bug, L.urgent)], { ...pickConfig, maxParallel: 1 });
+  assert.deepEqual(started.map((p) => p.issue), [3]);
+});
