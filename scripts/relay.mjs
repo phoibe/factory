@@ -47,7 +47,10 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   if (eventName === 'workflow_dispatch') {
     const payload = p.inputs?.payload || '';
     let replay = null;
-    try { replay = JSON.parse(payload).replay || null; } catch {}
+    let tick = false;
+    try { ({ replay = null, tick = false } = JSON.parse(payload) || {}); } catch {}
+    // Sent by the panel when the number of parallel features goes up, so the new place is used at once.
+    if (tick === true) return { ...base, kind: 'tick', number: null, labels: [], fromOwner: false };
     if (replay) return { ...base, kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: Number(replay), labels: [] };
     return { ...base, kind: 'dispatch', payload, labels: [] };
   }
