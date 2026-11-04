@@ -223,14 +223,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const taken = await inFlight(freed);
     const waiting = ((await gh.listIssues({ labels: L.autoPicked })) || [])
       .filter((i) => !i.pull_request && i.number !== freed)
-      .filter((i) => { const l = names(i.labels); return l.includes(L.grilling) || l.includes(L.specReview) || l.includes(L.queued); });
+      .filter((i) => !names(i.labels).includes(L.building)); // picked, not building yet: waits for the owner
     let free = config.maxParallel - taken - waiting.length;
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued })) || []).filter((i) => !i.pull_request);
     if (queued.length) return;
     const open = (await gh.listIssues({ sort: 'created', direction: 'asc' })) || [];
+    // A card that already has an open PR is not new work; neither is the one whose build just ended.
+    const withPr = new Set(open.filter((i) => i.pull_request).map((i) => linkedIssue(i.body)).filter(Boolean));
     for (const issue of pickOrder(open)) {
       if (free <= 0) break;
+      if (issue.number === freed || withPr.has(issue.number)) continue;
       const labels = await liveLabels(issue.number);
       if (!isPickable(labels)) continue; // the owner or another run took it meanwhile
       const direct = labels.includes(L.bug) || labels.includes(L.audit);
@@ -242,9 +245,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         break;
       }
       const add = [L.autoPicked, ...(direct ? [L.building] : config.stages.grilling ? [L.grilling] : [])];
-      await gh.addLabels(issue.number, add);
-      await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."
+      try {
+        await gh.addLabels(issue.number, add);
+        await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."
         + (direct ? '' : ' Je commence par vous poser mes questions.')));
+      } catch (e) { log(`auto-pick labels failed: ${e}`); }
       free -= 1;
     }
   }

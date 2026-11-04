@@ -603,3 +603,26 @@ test('autoPick on: two free slots start two cards, not more', async () => {
   await relay.handle(tick);
   assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [1, 2]);
 });
+
+test('autoPick on: the card just merged and a card with an open PR are not started again', async () => {
+  const gh = fakeGh({
+    issues: [mk(1, [L.bug]), mk(2, [L.bug]), mk(3, [L.bug])],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }, { number: 11, body: 'Closes #2', labels: [L.checks] }],
+  });
+  const stale = gh.listIssues;
+  gh.listIssues = async (q) => (q.labels ? stale(q) : [...await stale(q), { number: 11, labels: [{ name: L.checks }], pull_request: {}, body: 'Closes #2', created_at: '2026-01-11T00:00:00Z' }]);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: onConfig, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [3]);
+});
+
+test('autoPick on with the questions step off: the picked feature still keeps its place', async () => {
+  const cfg = { ...onConfig, maxParallel: 1, stages: { ...config.stages, grilling: false } };
+  const gh = fakeGh({ issues: [mk(1, [L.feature]), mk(2, [L.feature])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: cfg, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  await relay.handle(tick);
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[1, 'spec']]);
+});
