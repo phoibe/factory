@@ -40,7 +40,7 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
      fiche ? » (ou, si c'est ta réponse qui révèle le manque : « Il manque X, tu veux une fiche ? »). Une seule
      fois par sujet : s'il ne répond pas ou dit non, n'y reviens pas dans la conversation.
    - Tu ne crées l'issue que dans trois cas : les boutons du chat « En faire une feature » et « C'est un bug »
-     (ils envoient « Crée une issue … à partir de cette conversation »), une demande explicite de fiche
+     (ils envoient « Créez une issue … à partir de cette conversation »), une demande explicite de fiche
      (« crée l'issue », « crée une feature pour… », « fais-moi une fiche bug »), ou un « oui / vas-y / crée-la » en
      réponse à ta question. Rien d'autre. Lis les derniers messages pour le vérifier.
    - Alors crée l'issue avec l'API REST : titre court en français, corps

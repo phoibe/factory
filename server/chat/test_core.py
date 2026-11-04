@@ -54,8 +54,15 @@ class CreationNeedsAnExplicitActionTest(unittest.TestCase):
         self.assertIn("Tu veux que j'en fasse une fiche ?", SYSTEM)
         self.assertIn("JAMAIS de feature ou de bug de toi-même", SYSTEM)
 
+    def test_the_trigger_matches_the_panel_buttons(self):
+        import pathlib, re
+        chat = (pathlib.Path(__file__).parents[2] / "panel" / "chat.mjs").read_text()
+        for m in re.findall(r"'(Créez une issue[^']*)'", chat):
+            self.assertIn(m.split(" « ")[0], SYSTEM)
+            self.assertIn("à partir de cette conversation", m)
+
     def test_only_buttons_an_explicit_request_or_a_yes_count(self):
-        for needle in ("Crée une issue", "oui", "Une seule fois"):
+        for needle in ("Créez une issue", "vas-y", "Une seule fois"):
             self.assertIn(needle, SYSTEM)
 
 

@@ -8,5 +8,7 @@ test('the question stage creates a ticket only on an explicit action of the owne
   assert.match(stage, /\*\*jamais\*\* une issue de toi-même/);
   assert.match(stage, /Tu\s+veux\s+que\s+j'en\s+fasse\s+une\s+fiche\s+\?/);
   assert.match(stage, /Une\s+seule\s+fois/);
-  assert.doesNotMatch(stage, /Crée quand même l'issue/);
+  assert.match(stage, /Créez une issue/);
+  assert.doesNotMatch(stage, /Crée une issue/);
+  assert.doesNotMatch(stage, /Une demande floue \? Crée quand même/);
 });
