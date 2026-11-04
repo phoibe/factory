@@ -248,6 +248,29 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // GitHub runs no pull_request workflow for a PR in conflict with main: a PR waiting for its checks would
+  // wait forever. The regular tick finds those PRs and has the agent bring the branch up to date.
+  async function unstickConflicts() {
+    const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
+    for (const item of waiting) {
+      if (names(item.labels).includes(L.running)) continue;
+      const pr = await gh.getPr(item.number);
+      if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
+      const updates = ((await gh.listComments(item.number)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
+      const issue = linkedIssue(pr.body);
+      if (updates >= MAX_BRANCH_UPDATES) {
+        await gh.removeLabel(item.number, L.checks);
+        if (issue) await gh.addLabels(issue, [L.blocked]);
+        await gh.comment(issue || item.number, say(`La PR #${item.number} est en conflit avec la version en ligne et l'agent n'a pas réussi à la remettre à jour. Réponds « réessaie » ici pour une nouvelle tentative.`));
+        continue;
+      }
+      if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: item.number, why: 'La branche est en conflit avec la version en ligne' }))) continue;
+      await gh.removeLabel(item.number, L.checks);
+      await gh.addLabels(item.number, [L.fixing]);
+      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de ton côté pour l'instant.")}`);
+    }
+  }
+
   async function previewUrl(sha, prNumber, { attempts = 15, delayMs = 20_000 } = {}) {
     for (let i = 0; i < attempts; i++) {
       for (const d of (await gh.deployments(sha).catch(() => [])) || []) {
@@ -345,6 +368,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'dequeue':
+        if (ev.kind === 'tick') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
         break;
       default:
