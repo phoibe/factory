@@ -58,7 +58,9 @@ Issue / commentaire / PR ──► GitHub Actions (relay.yml) ──► decide()
 ## Développement
 
 ```
-node --test                       # tous les tests (aucune dépendance)
+npm test                          # tous les tests (aucune dépendance d'exécution)
+npm run typecheck && npm run lint && npm run build
+npm install && npm run test:a11y  # accessibilité du panneau (Playwright + axe-core, outils de développement)
 node scripts/vendor.mjs           # recopie les skills aux commits de packs/sources.json
 node scripts/vendor.mjs --latest  # passe chaque pack à sa dernière version
 node scripts/sync.mjs ../projet   # installe la factory dans un projet local
