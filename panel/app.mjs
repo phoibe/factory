@@ -167,7 +167,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -200,9 +200,9 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
-    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=50`).catch(() => ({ data: null, changed: false }));
+    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
       for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
@@ -213,7 +213,7 @@ async function refresh() {
     }
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
-    if (closed.data) live.done = doneItems(closed.data);
+    if (closed.data) { live.done = doneItems(closed.data); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
     // and the message the card should open on, instead of the top of the issue.
@@ -344,10 +344,10 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.done.map((d) => d.number).join(',');
-  const doneChanged = live.doneSig !== null && live.doneSig !== doneSig;
-  if (live.doneSig !== null) {
-    const known = new Set(live.doneSig.split(','));
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}:${doneAgo(d.mergedAt, now)}`).join('|') : null;
+  const doneChanged = doneSig !== null && live.doneSig !== doneSig;
+  if (live.doneSig != null) {
+    const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
     for (const d of live.done) if (!known.has(String(d.number))) toast(`« ${d.title} » : ${COLUMNS.find((c) => c.id === 'done').title}`);
   }
   live.doneSig = doneSig;
