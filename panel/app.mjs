@@ -62,7 +62,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove('show'), 4000);
+  toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
 async function api(path, init = {}) {
@@ -1112,7 +1112,7 @@ async function sendToServer(text, files, withImages) {
           chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
             { who: 'agent', text: answer?.text || '', issues: answer?.issues || [], at: c.updated });
           for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
-          if (e.saved === false) toast('La réponse est là, mais la conversation n\'a pas pu être enregistrée : elle ne sera pas dans la liste. Ne renvoyez pas votre message.');
+          if (e.saved === false) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
           else {
             if (chat.repo === repo) chat.open = c.id;
             chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
