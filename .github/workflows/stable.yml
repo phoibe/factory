@@ -34,8 +34,8 @@ jobs:
           node scripts/stable.mjs notes > "$RUNNER_TEMP/notes.md"
           tag=$(node scripts/stable.mjs tag)
           git tag "$tag"
-          git push origin "$tag"
-          git push --force origin HEAD:refs/heads/stable
+          for i in 1 2 3 4; do { git push origin "$tag" || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; } && break; [ $i = 4 ] && exit 1; echo "GitHub a refusé l'envoi, nouvel essai dans $((i*10)) s"; sleep $((i*10)); done
+          for i in 1 2 3 4; do git push --force origin HEAD:refs/heads/stable && break; [ $i = 4 ] && exit 1; echo "GitHub a refusé l'envoi, nouvel essai dans $((i*10)) s"; sleep $((i*10)); done
           gh release create "$tag" --title "Version stable $tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Tell the owner
