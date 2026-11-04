@@ -400,3 +400,15 @@ test('a bare « Approve » review counts as an approval, a review with only inli
   assert.equal(mk({ body: '', state: 'commented' }).text, '');
   assert.equal(mk({ body: 'Change le titre', state: 'commented' }).text, 'Change le titre');
 });
+
+test('checks cancelled early by a newer run on the same commit are not a hung test', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const now = Date.now();
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: now / 1000 - 120, now });
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: now / 1000 - 31 * 60, now });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
+});

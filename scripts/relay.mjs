@@ -18,6 +18,8 @@ const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design' };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Just under the checks job's timeout-minutes (30) in relay.yml.
+const CHECKS_TIMEOUT_MS = 28 * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 export const PROJECT_WORKFLOW = 'factory.yml';
 export const MAX_BRANCH_UPDATES = 2;
@@ -353,11 +355,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return Object.assign(alerts, { missing });
   }
 
-  async function report({ result, pr: prNumber, runId, sha }) {
+  async function report({ result, pr: prNumber, runId, sha, started = null, now = Date.now() }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
+    // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
+    // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
+    if (result === 'cancelled' && started && now - started * 1000 < CHECKS_TIMEOUT_MS) {
+      return log('checks replaced by a newer run on the same commit: it reports instead');
+    }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
     let missing = [];
@@ -385,9 +392,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     log(`checks ${result} -> ${next}`);
     if (next === 'merge') return mergePr(prNumber, pr.head.sha);
     if (next === 'acceptance') {
+      // The preview can take minutes to appear: the card moves to « Teste la preview » only with the message.
+      const url = await previewUrl(pr.head.sha, prNumber);
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
-      const url = await previewUrl(pr.head.sha, prNumber);
       const where = url
         ? `Tu peux tester la nouvelle version ici : ${url}`
         : "Je n'ai pas trouvé de preview pour cette PR. Vérifie que Vercel est bien connecté au dépôt (voir le README).";
@@ -449,7 +457,7 @@ async function main() {
     const payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
     await relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin });
   } else if (command === 'report') {
-    await relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha') });
+    await relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null });
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {
