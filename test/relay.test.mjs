@@ -429,6 +429,7 @@ test('a project without those workflows still merges cleanly', async () => {
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /fusionné/.test(c[2])));
+});
 
 test("a merge frees its place even while GitHub's issue list still shows the old label", async () => {
   const gh = fakeGh({
