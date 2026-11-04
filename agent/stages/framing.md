@@ -3,6 +3,13 @@
 But : une vision commune du produit et un choix de stack, validés par le propriétaire, avant toute feature.
 Cette étape a lieu une fois par projet, sur l'issue « Nouveau projet » (label `factory:project`).
 
+**Projet déjà cadré ?** Si `PRODUCT.md` (ou `docs/PRODUCT.md`) existe déjà, c'est une **révision du
+cadrage** : ne repose aucune question déjà réglée. Demande d'abord, en une question, ce que le propriétaire
+veut changer (vision, usages, périmètre, design, stack), puis ne pose que les questions que ce changement
+ouvre (questionnaire design et direction visuelle seulement si le design change ; stack seulement si elle
+change). La fiche publiée à la fin est la fiche complète mise à jour, avec en tête une section
+**Ce qui change** (une ligne par changement).
+
 ## Les questions (rounds de grilling)
 
 1. Charge le skill `grilling` et applique-le **en asynchrone** : un round = un commentaire, puis tu termines.

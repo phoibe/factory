@@ -3,6 +3,21 @@
 Le propriétaire a validé la fiche projet (dernier commentaire `<!-- factory-brief -->` de l'issue).
 Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seulement le socle.
 
+**Révision d'un projet déjà cadré** (`PRODUCT.md` ou `docs/PRODUCT.md` existe déjà sur `main`) : ne refais
+**pas** les fondations. À la place :
+
+1. Branche `claude/issue-<n>-revision` depuis `main`.
+2. Mets à jour `PRODUCT.md` à la racine d'après la nouvelle fiche (déplace `docs/PRODUCT.md` s'il existe) ;
+   si le design change, mets à jour `DESIGN.md` et `.impeccable/` (étape 3 ci-dessous) ; si la stack
+   change, mets à jour `stack` dans `factory.config.json`. Ne touche pas au code de l'appli.
+3. Pour chaque changement qui demande du code (nouvelle feature, design à appliquer aux écrans, changement
+   de stack), ouvre une issue comme à l'étape 9 ci-dessous ; une feature déjà couverte par une issue
+   ouverte n'en a pas besoin, complète plutôt cette issue d'un commentaire.
+4. PR comme à l'étape 7 (résumé « La fiche produit mise à jour : … »), sans captures : mets directement
+   `factory:checks` sur la PR. Poste sur l'issue le lien de la PR et la liste des issues créées.
+
+Sinon (premier cadrage), suis les étapes ci-dessous.
+
 1. **Branche** `claude/issue-<n>-foundation` depuis `main`.
 2. **Fiche produit** : écris `PRODUCT.md` à la racine (en français), reprise fidèle de la fiche validée, au
    format du skill `impeccable` (`reference/init.md`, étape 4 : commentaire de schéma compris, plateforme,
