@@ -1,0 +1,13 @@
+name: Poser une question
+description: Une question sur l'appli (comment elle se comporte, si un cas est prévu). Tu peux aussi y demander une feature ou signaler un bug, l'agent crée l'issue lui-même.
+title: "Question : "
+labels: ["factory:question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Ta question
+      description: Avec tes mots, comme tu la poserais à un collègue.
+      placeholder: "Que se passe-t-il si je coche une habitude juste avant minuit, puis que j'ouvre l'appli le lendemain sur mon téléphone ?"
+    validations:
+      required: true

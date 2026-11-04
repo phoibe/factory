@@ -1,0 +1,17 @@
+# Installs the skills and agent instructions chosen in factory.config.json (edited from the panel).
+name: Factory sync
+on:
+  push:
+    branches: [main]
+    paths: [factory.config.json]
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    uses: phoibe/factory/.github/workflows/sync.yml@stable

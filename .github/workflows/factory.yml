@@ -1,0 +1,36 @@
+# The software factory. All the logic lives in phoibe/factory; this file only forwards events to it.
+name: Factory
+on:
+  issues:
+    types: [opened, labeled, unlabeled, closed]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
+  pull_request_review:
+    types: [submitted]
+  # Used by the factory itself to start an agent on GitHub Actions (runner "github-actions").
+  workflow_dispatch:
+    inputs:
+      payload:
+        description: Run description (JSON), written by the factory
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  deployments: read
+  id-token: write
+  actions: write
+
+jobs:
+  factory:
+    # Cheap filters, so that label changes and the agent's own messages cost no Actions minutes.
+    if: >-
+      (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature' || github.event.label.name == 'factory:bug' || github.event.label.name == 'factory:project' || github.event.label.name == 'factory:question' || github.event.label.name == 'factory:audit') &&
+      (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'factory:checks') &&
+      ((github.event_name != 'issues' && github.event_name != 'pull_request') || github.event.action != 'unlabeled' || github.event.label.name == 'factory:running') &&
+      (github.event_name != 'issue_comment' || !contains(github.event.comment.body, '<!-- factory-agent -->'))
+    uses: phoibe/factory/.github/workflows/relay.yml@stable
+    secrets: inherit

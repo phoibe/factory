@@ -1,0 +1,23 @@
+name: Signaler un bug
+description: Quelque chose ne marche pas comme prévu.
+title: "Bug : "
+labels: ["factory:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Ce qui se passe
+      placeholder: "Quand je coche une habitude, la série revient à zéro."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ce que tu attendais
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Où et comment le reproduire (facultatif)
+      description: La page, le téléphone ou l'ordinateur, les étapes.

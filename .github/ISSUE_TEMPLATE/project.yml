@@ -1,0 +1,24 @@
+name: Cadrage du projet (nouveau ou révision)
+description: Avant la première feature, ou plus tard pour changer la vision, le périmètre, le design ou la stack. L'agent ne refait jamais les fondations d'un projet déjà cadré.
+title: "Cadrage : "
+labels: ["factory:project"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Ton idée d'appli, ou ce que tu veux changer
+      description: "Nouveau projet : pour qui, pour quoi faire, en vrac, avec tes mots. Révision : ce que tu veux changer et pourquoi."
+      placeholder: "Une appli pour suivre mes habitudes : je coche ce que j'ai fait chaque jour et je vois mes séries."
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Contraintes ou envies (facultatif)
+      description: Sur mobile surtout ? Des comptes ? Des données à partager ?
+  - type: textarea
+    id: look
+    attributes:
+      label: Le look que tu imagines (facultatif)
+      description: Des applis, sites ou objets dont tu aimes l'allure, et ceux que tu n'aimes pas. L'agent te posera de toute façon ses questions design.
+      placeholder: "J'aime le calme de Things et les couleurs de Duolingo ; je n'aime pas les applis bancaires grises."

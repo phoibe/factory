@@ -1,0 +1,18 @@
+name: Nouvelle feature
+description: Décris une idée en quelques lignes, l'agent te posera ses questions ici.
+title: "Feature : "
+labels: ["factory:feature"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Ton idée
+      description: Ce que tu veux pouvoir faire, avec tes mots. Pas besoin d'être complet.
+      placeholder: "Je veux pouvoir cocher mes habitudes chaque jour et voir ma série en cours."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Pourquoi (facultatif)
+      description: À quoi ça te servira, pour aider l'agent à faire les bons choix.
