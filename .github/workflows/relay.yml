@@ -114,12 +114,15 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.head.outputs.sha }}
+      started: ${{ steps.head.outputs.started }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refs/pull/${{ needs.decide.outputs.pr }}/head
       - id: head
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
       - name: Rules from the default branch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -164,7 +167,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }}
+      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }} --started ${{ needs.checks.outputs.started }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
