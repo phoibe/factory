@@ -350,7 +350,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.removeLabel(prNumber, L.checks);
         await gh.addLabels(prNumber, [L.fixing]);
         const steps = catchUp.map((s) => STEP_NAMES[s]).join(' et ');
-        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de ton côté.`)}`);
+        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de ton côté pour l'instant. Si ça change l'apparence, je te remontrerai les captures.`)}`);
         return;
       }
     }
