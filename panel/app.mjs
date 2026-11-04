@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=3';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide } from './live.mjs?v=4';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -358,7 +358,7 @@ function flip(before) {
   if (reduced()) return;
   for (const [n, node] of cardsOf($('board'))) {
     const a = before.get(n), b = node.getBoundingClientRect();
-    if (!a || (a.top === b.top && a.left === b.left)) continue;
+    if (!a || !shouldSlide(a, b)) continue;
     node.animate(onScreen(a) && onScreen(b)
       ? [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: 'none' }]
       : [{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: EASE });

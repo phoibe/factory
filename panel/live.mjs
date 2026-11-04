@@ -98,3 +98,8 @@ export function yoursList(cards) {
     .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
     .map((c) => ({ ...c, reply: c.column === 'spec' ? 'go' : 'open' }));
 }
+
+// A card slides only when it moved by a real distance. A text that changes length ("il y a 2 min" → "il y a 3 min")
+// shifts the cards below by a few pixels: that must not animate.
+export const SLIDE_MIN_PX = 8;
+export const shouldSlide = (a, b) => Math.abs(a.top - b.top) >= SLIDE_MIN_PX || Math.abs(a.left - b.left) >= SLIDE_MIN_PX;
