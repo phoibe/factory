@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Before/after screenshots for factory PRs.
 //   node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/settings --out /tmp/shots/after
+//        [--dark-class dark | --dark-attr data-theme=dark]   (only for a dark theme switched by the app, not by the browser)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
+// Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
+// Publish builds one side-by-side image (before left, after right) per screen, size and theme.
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -29,35 +32,113 @@ function loadPlaywright() {
   return createRequire(join(globalRoot, 'noop.js'))('playwright');
 }
 
-async function capture({ baseUrl, routes, out }) {
+export const DARK_SUFFIX = 'sombre';
+
+// Parses --dark-class / --dark-attr into a description of how the app switches to its dark theme.
+export function darkToggle({ 'dark-class': cls, 'dark-attr': attr } = {}) {
+  if (typeof cls === 'string' && cls) return { kind: 'class', value: cls };
+  if (typeof attr === 'string' && attr) {
+    const [name, ...rest] = attr.split('=');
+    return { kind: 'attr', name, value: rest.join('=') || 'dark' };
+  }
+  return null;
+}
+
+// True when two screenshots (PNG buffers) differ, i.e. the dark theme changes the page.
+export function differs(a, b) {
+  return !Buffer.from(a).equals(Buffer.from(b));
+}
+
+async function capture({ baseUrl, routes, out, toggle }) {
+  const { chromium } = loadPlaywright();
+  mkdirSync(out, { recursive: true });
+  const browser = await chromium.launch();
+  const shoot = async (viewport, scheme, applyToggle) => {
+    const context = await browser.newContext({ viewport, colorScheme: scheme });
+    if (applyToggle && toggle) {
+      await context.addInitScript(({ toggle }) => {
+        const root = document.documentElement;
+        if (toggle.kind === 'class') root.classList.add(toggle.value);
+        else root.setAttribute(toggle.name, toggle.value);
+      }, { toggle });
+    }
+    const page = await context.newPage();
+    const shots = {};
+    for (const route of routes) {
+      await page.goto(new URL(route, baseUrl).toString(), { waitUntil: 'networkidle' });
+      shots[route] = await page.screenshot({ fullPage: true });
+    }
+    await context.close();
+    return shots;
+  };
+  let darkFound = false;
+  try {
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      const light = await shoot(viewport, 'light', false);
+      const dark = await shoot(viewport, 'dark', true);
+      for (const route of routes) {
+        writeFileSync(join(out, `${slug(route)}--${name}.png`), light[route]);
+        if (differs(light[route], dark[route])) {
+          darkFound = true;
+          writeFileSync(join(out, `${slug(route)}--${name}--${DARK_SUFFIX}.png`), dark[route]);
+        }
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  console.error(darkFound
+    ? 'dark theme detected: dark screenshots written (suffix --sombre)'
+    : 'no dark theme detected: light screenshots only. If the app has a dark theme switched by a button/class, rerun with --dark-class or --dark-attr; if you cannot find how, say so in the PR.');
+}
+
+// Light screenshots first, then dark ones, each sorted by name.
+export function orderFiles(files) {
+  const isDark = (f) => f.endsWith(`--${DARK_SUFFIX}.png`);
+  return [...files].sort((a, b) => Number(isDark(a)) - Number(isDark(b)) || a.localeCompare(b));
+}
+
+export function sideBySideHtml({ beforeUri, afterUri }) {
+  const col = (title, body) => `<div class="c"><div class="t">${title}</div>${body}</div>`;
+  const before = beforeUri ? `<img src="${beforeUri}">` : '<div class="n">nouvel écran</div>';
+  return `<!doctype html><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font:600 16px system-ui,sans-serif;color:#222}
+.r{display:flex;gap:16px;padding:16px;align-items:flex-start;width:max-content}
+.c{display:flex;flex-direction:column;gap:8px}.t{text-transform:uppercase;font-size:13px;letter-spacing:.05em;color:#555}
+img{display:block;border:1px solid #ccc}.n{display:flex;align-items:center;justify-content:center;min-width:240px;min-height:160px;border:2px dashed #bbb;color:#888;font-style:italic;padding:24px}
+</style><div class="r">${col('Avant', before)}${col('Après', `<img src="${afterUri}">`)}</div>`;
+}
+
+const dataUri = (file) => `data:image/png;base64,${readFileSync(file).toString('base64')}`;
+
+// Writes one side-by-side image (before left, after right) per screenshot of `after` into `out`.
+export async function compose({ before, after, out }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
   const browser = await chromium.launch();
   try {
-    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
-      const page = await browser.newPage({ viewport });
-      for (const route of routes) {
-        await page.goto(new URL(route, baseUrl).toString(), { waitUntil: 'networkidle' });
-        await page.screenshot({ path: join(out, `${slug(route)}--${name}.png`), fullPage: true });
-      }
-      await page.close();
+    const page = await browser.newPage();
+    for (const f of readdirSync(after).filter((x) => x.endsWith('.png'))) {
+      const b = before && join(before, f);
+      const html = sideBySideHtml({ beforeUri: b && existsSync(b) ? dataUri(b) : null, afterUri: dataUri(join(after, f)) });
+      await page.setContent(html, { waitUntil: 'load' });
+      await page.locator('.r').screenshot({ path: join(out, f) });
     }
   } finally {
     await browser.close();
   }
 }
 
-export function markdownTable({ repo, dir, files, hasBefore }) {
-  const url = (kind, f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/${kind}/${f}?raw=true`;
-  const rows = files.map((f) => {
-    const label = f.replace(/\.png$/, '').replace('--', ' · ');
-    const before = hasBefore ? `![avant](${url('before', f)})` : '_nouvel écran_';
-    return `| ${label} | ${before} | ![après](${url('after', f)}) |`;
+export function markdownTable({ repo, dir, files }) {
+  const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
+  const rows = orderFiles(files).map((f) => {
+    const label = f.replace(/\.png$/, '').replace(/--/g, ' · ');
+    return `| ${label} | ![avant · après](${url(f)}) |`;
   });
-  return ['| Écran | Avant | Après |', '| --- | --- | --- |', ...rows].join('\n');
+  return ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n');
 }
 
-function publish({ pr, before, after }) {
+async function publish({ pr, before, after }) {
   const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const repo = git(['config', '--get', 'remote.origin.url']).replace(/^.*github\.com[:/]/, '').replace(/\.git$/, '');
   const dir = `pr-${pr}/${new Date().toISOString().replace(/[:.]/g, '-')}`;
@@ -71,23 +152,22 @@ function publish({ pr, before, after }) {
     git(['checkout', '--orphan', ASSETS_BRANCH], wt);
     git(['rm', '-rf', '--quiet', '.'], wt);
   }
-  if (before && existsSync(before)) cpSync(before, join(wt, dir, 'before'), { recursive: true });
-  cpSync(after, join(wt, dir, 'after'), { recursive: true });
+  await compose({ before: before && existsSync(before) ? before : null, after, out: join(wt, dir, 'compare') });
   git(['add', '.'], wt);
   git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
   git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt);
   git(['worktree', 'remove', '--force', wt]);
   const files = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-  return markdownTable({ repo, dir, files, hasBefore: Boolean(before && existsSync(before)) });
+  return markdownTable({ repo, dir, files });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   if (cmd === 'capture') {
-    await capture({ baseUrl: args['base-url'], routes: String(args.routes || '/').split(','), out: args.out });
+    await capture({ baseUrl: args['base-url'], routes: String(args.routes || '/').split(','), out: args.out, toggle: darkToggle(args) });
   } else if (cmd === 'publish') {
-    console.log(publish({ pr: args.pr, before: args.before, after: args.after }));
+    console.log(await publish({ pr: args.pr, before: args.before, after: args.after }));
   } else {
     console.error('usage: shots.mjs capture|publish ...');
     process.exit(2);
