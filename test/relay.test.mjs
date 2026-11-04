@@ -444,3 +444,24 @@ test("a merge frees its place even while GitHub's issue list still shows the old
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
 });
+
+test('the regular tick sends a PR stuck in conflict (no checks can start) to a branch update', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'abc' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 61 && c[2] === L.checks));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 61 && /conflit/.test(c[2])));
+});
+
+test('the regular tick leaves a mergeable PR in its checks alone', async () => {
+  const gh = fakeGh({ issues: [{ number: 61, labels: [L.checks], pull_request: {} }], prs: [{ number: 61, state: 'open', mergeable_state: 'clean', body: '', head: { sha: 'abc' } }] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(sent.length, 0);
+});
