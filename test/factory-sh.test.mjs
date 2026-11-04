@@ -28,6 +28,9 @@ test('adopter installs the factory files, secrets, sync and framing issue', () =
   const files = execFileSync('git', ['--git-dir', remote, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
   for (const f of ['.github/workflows/factory.yml', '.github/ISSUE_TEMPLATE/project.yml', 'factory.config.json', 'CLAUDE.md', 'package.json']) assert.ok(files.includes(f), f);
   assert.match(log, /secret set FACTORY_ROUTINE_URL -R phoibe\/mon-appli/);
+  // HTTPS with the gh login, never SSH (no key on the owner's Mac).
+  assert.match(log, /auth setup-git/);
+  assert.match(log, /repo clone https:\/\/github\.com\/phoibe\/mon-appli\.git /);
   assert.match(log, /workflow run factory-sync.yml -R phoibe\/mon-appli/);
   assert.match(log, /issue create -R phoibe\/mon-appli --title Cadrage : mon-appli --label factory:project/);
   assert.match(readFileSync(join(cfg, 'factory/routine'), 'utf8'), /FACTORY_ROUTINE_TOKEN=sk-secret/);
