@@ -1,0 +1,20 @@
+{
+ "id": "20261104-160416-ps85g",
+ "title": "Quand tu crées une fiche feature, tu la lances tout de suite. Je…",
+ "state": "open",
+ "created": "2026-11-04T16:04:16Z",
+ "updated": "2026-11-04T16:04:29Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Quand tu crées une fiche feature, tu la lances tout de suite. Je veux simplement qu'elle soit ajoutée à la liste des issues, et sera gérée selon les règles de priorisation de piochage",
+   "images": [],
+   "at": "2026-11-04T16:04:29Z"
+  },
+  {
+   "who": "agent",
+   "text": "Compris : tu veux qu'une nouvelle fiche feature s'ajoute simplement à la liste, sans démarrer tout de suite, et qu'elle soit reprise plus tard selon les règles de priorité.\n\nDe mon côté, je ne fais que rédiger la fiche. Je ne lance rien et je ne décide d'aucun ordre de passage. Si elle démarre aussitôt après sa création, ça vient du fonctionnement de la factory, pas de moi. Je ne peux pas le changer d'ici, car je ne peux que lire le projet. Je n'ai rien vérifié dans le code à ce sujet, donc je ne sais pas ce qui déclenche ce démarrage.\n\nTu veux que j'en fasse une fiche pour que la création d'une feature la place seulement dans la liste, sans lancement immédiat ?",
+   "at": "2026-11-04T16:04:29Z"
+  }
+ ]
+}
