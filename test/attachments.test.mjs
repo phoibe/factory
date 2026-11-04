@@ -53,3 +53,14 @@ test('a failed download is skipped, the run still starts', async () => {
   const paths = await mirrorAttachments({ gh, fetchImpl: async () => ({ ok: false, status: 404 }), numbers: [15], owner: 'phoibe' });
   assert.deepEqual(paths, []);
 });
+
+test('images sent from the panel chat are already on the branch: listed, never downloaded', async () => {
+  const gh = { ...fakeGh({ branch: true }),
+    getIssueHtml: async () => ({ user: { login: 'phoibe' }, body: 'Vois\n<!-- factory-image: attachments/chat/1-a.jpg -->', body_html: '' }),
+    listCommentsHtml: async () => [
+      { user: { login: 'phoibe' }, body: '<!-- factory-image: attachments/chat/2-b.png -->', body_html: '' },
+      { user: { login: 'someone' }, body: '<!-- factory-image: attachments/chat/3-c.png -->', body_html: '' },
+    ] };
+  const paths = await mirrorAttachments({ gh, fetchImpl: async () => assert.fail('no download'), numbers: [15], owner: 'phoibe' });
+  assert.deepEqual(paths, ['attachments/chat/1-a.jpg', 'attachments/chat/2-b.png']);
+});

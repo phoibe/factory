@@ -1,5 +1,5 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=10';
-import { LABEL as CHAT_LABEL, ASK, chatMessages, chatStatus, titleFrom, markdown, conversations, unread } from './chat.mjs?v=10';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=11';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock } from './chat.mjs?v=11';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -556,7 +556,8 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {} };
+const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map() };
+const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
@@ -610,7 +611,7 @@ async function refreshChat() {
       chat.issue = issue;
       chat.comments = comments;
       // The pending message shows until GitHub lists it.
-      if (chat.pending && chatMessages(issue, comments).some((m) => m.who === 'me' && m.text === chat.pending.text)) chat.pending = null;
+      if (chat.pending && chatMessages(issue, comments).some((m) => m.who === 'me' && m.text === chat.pending.text && (m.images?.length || 0) === chat.pending.previews.length)) chat.pending = null;
       markSeen(issue);
     }
     drawChat();
@@ -662,9 +663,29 @@ function richText(text) {
   });
 }
 
+// Images live on the attachments branch; a private repository serves them only with the token, so each is
+// fetched once and shown from a local copy.
+function chatImage(path) {
+  const img = el('img', { alt: 'Image envoyée', loading: 'lazy' });
+  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener' }, img);
+  const show = (url) => { img.src = url; link.href = url; };
+  if (path.startsWith('blob:')) { show(path); return link; }
+  if (!chat.images.has(path)) {
+    chat.images.set(path, fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${ATTACHMENTS_BRANCH}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+    }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status)))).then((b) => URL.createObjectURL(b))
+      .catch(() => { chat.images.delete(path); return null; }));
+  }
+  chat.images.get(path).then((url) => { if (url) show(url); else link.classList.add('broken'); });
+  return link;
+}
+
 function bubble(m) {
+  const pics = (m.images || []).map(chatImage);
+  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
   return el('li', { class: `msg ${m.who}` },
-    el('div', { class: 'bubble' }, m.who === 'agent' ? richText(m.text) : m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l]))),
+    pics.length ? el('div', { class: 'shots' }, pics) : null,
+    text.length ? el('div', { class: 'bubble' }, text) : null,
     el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
 }
 
@@ -703,7 +724,7 @@ function drawChat() {
       el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)))));
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
-    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, at: null });
+    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
@@ -731,27 +752,92 @@ function selectConversation(n) {
   if (n === 'new' || matchMedia('(pointer: fine)').matches) $('chat-input').focus();
 }
 
-async function sendChat(text) {
+// The attachments branch holds images only (never merged); it is created on the first image.
+async function ensureAttachmentsBranch(repo) {
+  if (await api(`/repos/${repo}/branches/${ATTACHMENTS_BRANCH}`)) return;
+  const tree = await api(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
+    { path: 'README.md', mode: '100644', type: 'blob', content: "# Pièces jointes\n\nImages envoyées par le propriétaire (chat du tableau, issues, PR), pour que l'agent puisse les voir. Ne pas fusionner.\n" },
+    { path: 'vercel.json', mode: '100644', type: 'blob', content: '{ "git": { "deploymentEnabled": false } }\n' },
+  ] }) });
+  const commit = await api(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message: 'chore(factory): attachments branch', tree: tree.sha, parents: [] }) });
+  await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${ATTACHMENTS_BRANCH}`, sha: commit.sha }) }).catch((e) => {
+    if (e.status !== 422) throw e; // 422: created meanwhile
+  });
+}
+
+// Photos are scaled down to 1600 px and saved as JPEG: enough to read a screenshot, light to send.
+async function shrink(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.88));
+  const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(blob); });
+  return data.split(',')[1];
+}
+
+async function uploadImages(repo, files) {
+  if (!files.length) return [];
+  await ensureAttachmentsBranch(repo);
+  const paths = [];
+  for (const f of files) {
+    const path = imagePath('image/jpeg');
+    await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `chore(factory): chat image ${path}`, content: await shrink(f.file), branch: ATTACHMENTS_BRANCH }) });
+    chat.images.set(path, Promise.resolve(f.url)); // already on screen: no download
+    paths.push(path);
+  }
+  return paths;
+}
+
+function addImages(files) {
+  const images = [...files].filter((f) => f.type.startsWith('image/'));
+  if (!images.length) return;
+  const room = MAX_IMAGES - chat.files.length;
+  if (images.length > room) toast(`${MAX_IMAGES} images au plus par message.`);
+  for (const file of images.slice(0, Math.max(0, room))) chat.files.push({ file, url: URL.createObjectURL(file) });
+  drawPendingImages();
+}
+
+function drawPendingImages() {
+  const box = $('chat-pending');
+  box.hidden = !chat.files.length;
+  box.replaceChildren(...chat.files.map((f, i) => el('div', { class: 'pending-image' },
+    el('img', { src: f.url, alt: `Image ${i + 1} à envoyer` }),
+    el('button', { type: 'button', class: 'remove', 'aria-label': `Retirer l'image ${i + 1}`, onclick: () => { chat.files.splice(i, 1); drawPendingImages(); } }, '×'))));
+}
+
+async function sendChat(text, withImages = true) {
   text = text.trim();
-  if (!text || !current) return;
+  const files = withImages ? [...chat.files] : [];
+  if ((!text && !files.length) || !current) return;
   const repo = chat.repo;
   const btn = $('chat-send');
   btn.disabled = true;
   try {
+    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    const paths = await uploadImages(repo, files);
+    const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
     if (typeof chat.open !== 'number') {
-      const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text), labels: [CHAT_LABEL], body: text }) });
+      const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
       chat.open = issue.number;
       chat.issue = issue;
       chat.comments = [];
       markSeen(issue);
     } else {
-      chat.pending = { text };
-      drawChat();
       if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
-      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body: text }) });
+      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
     }
-    $('chat-input').value = '';
-    autosize();
+    if (withImages) {
+      $('chat-input').value = '';
+      chat.files = [];
+      drawPendingImages();
+      autosize();
+    }
     clearTimeout(chat.timer);
     chat.etags.clear();
     await refreshChat();
@@ -794,8 +880,21 @@ $('chat-input').addEventListener('keydown', (e) => {
 });
 $('chat-new').addEventListener('click', () => selectConversation('new'));
 $('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
-$('chat-feature').addEventListener('click', () => sendChat(ASK.feature));
-$('chat-bug').addEventListener('click', () => sendChat(ASK.bug));
+$('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));
+$('chat-bug').addEventListener('click', () => sendChat(ASK.bug, false));
+$('chat-attach').addEventListener('click', () => $('chat-file').click());
+$('chat-file').addEventListener('change', (e) => { addImages(e.target.files); e.target.value = ''; });
+$('chat-input').addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); addImages(files); }
+});
+for (const t of ['dragover', 'drop']) {
+  document.querySelector('.chat-thread').addEventListener(t, (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    e.preventDefault();
+    if (t === 'drop') addImages(e.dataTransfer.files);
+  });
+}
 $('chat-close').addEventListener('click', () => closeConversation());
 $('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
 

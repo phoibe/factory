@@ -90,3 +90,22 @@ test('unread: a conversation updated since it was last opened, unless the owner 
   assert.equal(unread(c, { 3: 1 }), true); // one more comment since then
   assert.equal(unread(c, { 3: 2 }), false);
 });
+
+test('images sent from the chat: listed apart from the text, written with a marker the relay reads', async () => {
+  const { imageBlock, splitImages } = await import('../panel/chat.mjs');
+  const block = imageBlock('phoibe/habitudes', 'attachments/chat/1-a.jpg');
+  assert.match(block, /<!-- factory-image: attachments\/chat\/1-a\.jpg -->/);
+  assert.match(block, /!\[capture\]\(https:\/\/github\.com\/phoibe\/habitudes\/blob\/factory-attachments\/attachments\/chat\/1-a\.jpg\?raw=true\)/);
+  const body = `Regarde ça\n\n${block}\n${imageBlock('phoibe/habitudes', 'attachments/chat/2-b.png')}`;
+  assert.deepEqual(splitImages(body), { text: 'Regarde ça', images: ['attachments/chat/1-a.jpg', 'attachments/chat/2-b.png'] });
+  const issue = { body, created_at: 't', html_url: 'u', user: { login: 'phoibe' } };
+  assert.deepEqual(chatMessages(issue, []), [{ who: 'me', text: 'Regarde ça', images: ['attachments/chat/1-a.jpg', 'attachments/chat/2-b.png'], at: 't', url: 'u' }]);
+  // An image alone is a message too.
+  assert.equal(chatMessages({ ...issue, body: block }, [])[0].text, '');
+});
+
+test('imagePath: one unique, safe path per image', async () => {
+  const { imagePath } = await import('../panel/chat.mjs');
+  assert.equal(imagePath('image/png', 1700000000000, 'k3x'), 'attachments/chat/1700000000000-k3x.png');
+  assert.equal(imagePath('image/jpeg', 1, 'a'), 'attachments/chat/1-a.jpg');
+});

@@ -21,14 +21,35 @@ export function cleanBody(body) {
     .replace(/\r\n/g, '\n')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\n+---\n+_(?:Généré par|Message automatique)[^\n]*_\s*$/, '')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+// ---- Images -------------------------------------------------------------------------------------
+// An image sent from the chat is stored on the `factory-attachments` branch (the agent reads it there). The
+// message carries a hidden marker with its path, which the relay passes to the agent, and a normal Markdown
+// image so that it also shows on GitHub.
+export const ATTACHMENTS_BRANCH = 'factory-attachments';
+const IMAGE_MARK = /<!-- factory-image: (attachments\/[\w./-]+) -->/g;
+const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+
+export const imagePath = (type, now = Date.now(), rand = Math.random().toString(36).slice(2, 8)) =>
+  `attachments/chat/${now}-${rand}.${EXT[type] || 'jpg'}`;
+
+export const imageBlock = (repo, path) =>
+  `<!-- factory-image: ${path} -->\n![capture](https://github.com/${repo}/blob/${ATTACHMENTS_BRANCH}/${path}?raw=true)`;
+
+export function splitImages(body) {
+  const images = [...String(body || '').matchAll(IMAGE_MARK)].map((m) => m[1]);
+  const text = cleanBody(String(body || '').replace(/^!\[capture\]\(https:\/\/github\.com\/[^)\s]+\/blob\/factory-attachments\/[^)\s]+\)\s*$/gm, ''));
+  return { text, images };
 }
 
 export function chatMessages(issue, comments = []) {
   const out = [];
   const push = (who, body, item) => {
-    const text = cleanBody(body);
-    if (text) out.push({ who, text, at: item.created_at, url: item.html_url });
+    const { text, images } = splitImages(body);
+    if (text || images.length) out.push({ who, text, ...(images.length ? { images } : {}), at: item.created_at, url: item.html_url });
   };
   push((issue.body || '').includes(AGENT_MARKER) ? 'agent' : 'me', issue.body, issue);
   for (const c of comments) {

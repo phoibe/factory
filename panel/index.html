@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <header class="top">
@@ -81,9 +81,12 @@
             </div>
           </header>
           <ol id="chat-messages" class="messages" aria-live="polite"></ol>
+          <div id="chat-pending" class="pending-images" hidden></div>
           <form id="chat-form" class="composer">
+            <input id="chat-file" type="file" accept="image/*" multiple hidden>
+            <button id="chat-attach" type="button" class="ghost" aria-label="Ajouter une image" title="Ajouter une image (tu peux aussi coller une capture dans le message)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5.5-5.5L5 20"/></svg></button>
             <label for="chat-input" class="visually-hidden">Ton message</label>
-            <textarea id="chat-input" rows="1" placeholder="Écris ton message…" required></textarea>
+            <textarea id="chat-input" rows="1" placeholder="Écris ton message…"></textarea>
             <button id="chat-send" type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
           </form>
         </section>
@@ -102,6 +105,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=10"></script>
+  <script type="module" src="app.mjs?v=11"></script>
 </body>
 </html>
