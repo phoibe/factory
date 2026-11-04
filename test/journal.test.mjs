@@ -34,3 +34,10 @@ test('a file written with a heredoc that mentions vitest is not a test run', () 
   assert.ok(isTestCommand(`${write}\nnpx vitest run tests/a.test.ts`));
   assert.ok(!isTestCommand("python3 - <<'E'\nprint('npx vitest')\nE"));
 });
+
+test('a green node --test run (« # fail 0 ») is not read as a failure', () => {
+  const ok = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 12\n# fail 0', stderr: '' } });
+  assert.equal(ok.ok, true);
+  const ko = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 11\n# fail 1', stderr: '' } });
+  assert.equal(ko.ok, false);
+});
