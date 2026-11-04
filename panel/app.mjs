@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from './lib.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=9';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -79,6 +79,9 @@ function show(id) {
   $('nav').hidden = id === 'login';
 }
 
+// A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
+// a project). Repositories are checked a few at a time: firing one request per repository at once can trip
+// GitHub's anti-abuse limit, and the refused ones then silently vanished from the list.
 async function loadProjects() {
   const repos = [];
   for (let page = 1; page <= 5; page++) {
@@ -86,11 +89,43 @@ async function loadProjects() {
     repos.push(...batch);
     if (batch.length < 100) break;
   }
-  const found = await Promise.all(repos.filter((r) => !r.archived).map(async (r) => {
-    const file = await api(`/repos/${r.full_name}/contents/factory.config.json`).catch(() => null);
+  const failed = [];
+  const configOf = async (r) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await api(`/repos/${r.full_name}/contents/factory.config.json`);
+      } catch (err) {
+        if (err.status === 401) throw err;
+        if (attempt >= 2) { failed.push(r.name); return null; }
+        await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
+      }
+    }
+  };
+  const found = await mapLimit(projectCandidates(repos), 4, async (r) => {
+    const file = await configOf(r);
     return file ? { repo: r, file } : null;
-  }));
+  });
+  if (failed.length) {
+    toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Je réessaie dans 30 s.`);
+    setTimeout(() => reloadProjects().catch(() => {}), 30_000);
+  }
   return found.filter(Boolean);
+}
+
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// After a partial load: picks up the projects GitHub did not answer for, without leaving the current one.
+async function reloadProjects() {
+  const fresh = await loadProjects();
+  if (fresh.length <= projects.length) return;
+  projects = fresh;
+  if (current) renderProjectSelect(); else await openProject(store.get(PROJECT_KEY));
 }
 
 function renderProjectSelect() {

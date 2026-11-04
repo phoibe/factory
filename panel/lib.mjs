@@ -86,3 +86,7 @@ export function focusComment(comments) {
   const last = [...(comments || [])].reverse().find((c) => c.user?.type !== 'Bot' && !/\[bot\]$/.test(c.user?.login || ''));
   return last?.html_url || null;
 }
+
+// The repositories worth checking for a factory.config.json: not archived, and not a template (the factory's
+// template holds one too, but it is the model new projects are copied from, not a project).
+export const projectCandidates = (repos) => repos.filter((r) => !r.archived && !r.is_template);
