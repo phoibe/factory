@@ -54,3 +54,6 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
      les questions de clarification se posent dans l'issue de la feature, pas ici.
 5. Pas de formule de fin du type « ferme l'issue » : le chat a son propre bouton « Terminer ».
 6. Dernière action : retire `factory:running` (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404).
+   Si tu viens de créer une fiche feature ou bug (point 4), ferme aussi la conversation, puisque la suite se passe
+   dans la fiche : `gh api -X PATCH repos/<repo>/issues/<n> -f state=closed -f state_reason=completed`. Elle reste
+   lisible dans l'onglet « Discussion », et un nouveau message de sa part la rouvre.
