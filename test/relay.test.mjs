@@ -470,3 +470,34 @@ test('the regular tick leaves a mergeable PR in its checks alone', async () => {
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   assert.equal(sent.length, 0);
 });
+
+test('right after the factory merges a PR, a PR it put in conflict goes to a branch update', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.building] }, { number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [
+      { number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] },
+      { number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'def' }, labels: [L.checks] },
+    ],
+  });
+  // GitHub has not computed mergeability yet on the first read.
+  const getPr = gh.getPr;
+  let reads = 0;
+  gh.getPr = async (n) => (n === 61 && reads++ === 0 ? { ...(await getPr(n)), mergeable_state: 'unknown' } : getPr(n));
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(sent.some((s) => payloadOf(s.init.body).stage === 'update-branch' && payloadOf(s.init.body).pr === 61));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
+});
+
+test('a PR merged by hand also unsticks the PRs it put in conflict', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'def' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'pull_request', action: 'closed', number: 10, labels: [], fromOwner: true });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+});

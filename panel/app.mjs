@@ -449,7 +449,7 @@ async function saveRules(e) {
   const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
-  // More places: ask the factory to look at the queue now instead of at its next 20-minute check.
+  // More places: ask the factory to look at the queue now instead of at its next regular check.
   if (current.config.maxParallel > (before || 0)) {
     api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
       method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),

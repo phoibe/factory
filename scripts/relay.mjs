@@ -92,7 +92,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   const liveLabels = async (n) => names((await gh.getIssue(n))?.labels);
 
   // `freed`: an issue whose build just ended. GitHub's issue list can still show its old label for a few
-  // seconds, which used to keep its place taken until the next 20-minute tick.
+  // seconds, which used to keep its place taken until the next regular tick.
   async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
     return (open || []).filter((i) => !i.pull_request && i.number !== freed).length;
@@ -237,6 +237,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
     await dequeue({ freed: issue });
+    await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
   }
 
   // A merge made with the workflow's own token starts no workflow, so the panel deploy (GitHub Pages) and the
@@ -251,14 +252,25 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // Right after a push to main GitHub has not computed mergeability yet ("unknown"): ask again for a while.
+  async function settledPr(number, { attempts = 6, delayMs = 5_000 } = {}) {
+    let pr = await gh.getPr(number);
+    for (let i = 1; i < attempts && pr?.state === 'open' && (!pr.mergeable_state || pr.mergeable_state === 'unknown'); i++) {
+      await sleep(delayMs);
+      pr = await gh.getPr(number);
+    }
+    return pr;
+  }
+
   // GitHub runs no pull_request workflow for a PR in conflict with main: a PR waiting for its checks would
-  // wait forever. The regular tick finds those PRs and has the agent bring the branch up to date.
+  // wait forever. Checked right after every merge (that is when a PR falls into conflict) and on every tick.
   async function unstickConflicts() {
     const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
     for (const item of waiting) {
       if (names(item.labels).includes(L.running)) continue;
-      const pr = await gh.getPr(item.number);
+      const pr = await settledPr(item.number);
       if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
+      if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       const updates = ((await gh.listComments(item.number)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
       const issue = linkedIssue(pr.body);
       if (updates >= MAX_BRANCH_UPDATES) {
@@ -371,8 +383,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'dequeue':
-        if (ev.kind === 'tick') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
+        // A PR merged by hand (or any closed one): the PRs still waiting may now be in conflict.
+        if (ev.kind === 'tick' || ev.kind === 'pr') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
         break;
       default:
         break;
