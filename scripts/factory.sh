@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Met un projet dans la software factory, sans rien faire à la main (ou presque).
 #
-#   Nouveau projet :        bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/main/scripts/factory.sh) nouveau mon-appli
-#   Projet déjà commencé :  bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/main/scripts/factory.sh) adopter mon-appli
+#   bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/main/scripts/factory.sh)
+#
+# Le script pose ses questions (nouveau projet ou projet existant, nom…) puis fait tout.
+# Raccourcis possibles : « … factory.sh) nouveau mon-appli » ou « … factory.sh) adopter mon-appli ».
 #
 # Il faut seulement l'outil GitHub `gh` (connecté) ; Node.js en plus pour brancher Vercel automatiquement.
 # Compatible avec le bash de macOS (3.2).
@@ -22,6 +24,7 @@ ask()  { local a; printf '%s ' "$1" >&2; read -r a </dev/tty; printf '%s' "$a"; 
 usage() {
   cat <<'EOF'
 Utilisation :
+  factory.sh                   pose ses questions puis fait tout (le plus simple)
   factory.sh nouveau <nom>     crée un nouveau projet depuis le modèle de la factory
   factory.sh adopter <nom>     fait entrer dans la factory un projet déjà commencé
 <nom> peut être « mon-appli » (sur ton compte) ou « compte/mon-appli ».
@@ -204,12 +207,59 @@ $extra"
   ok "Cadrage lancé : $url"
 }
 
+# Questions posées quand le script est lancé sans arguments.
+choose_mode() {
+  say "Bienvenue dans la software factory 👋"
+  echo "  1) Créer un nouveau projet"
+  echo "  2) Faire entrer dans la factory un projet déjà commencé (déjà sur GitHub)"
+  local c
+  while :; do
+    c=$(ask "  Ton choix (1 ou 2) :")
+    case "$c" in 1) MODE=nouveau; return ;; 2) MODE=adopter; return ;; esac
+    echo "  Réponds 1 ou 2."
+  done
+}
+
+choose_name() {
+  local n
+  while :; do
+    n=$(ask "  Nom du projet (court, sans espace ni accent, ex. mes-recettes) :")
+    n=$(printf '%s' "$n" | tr ' ' '-')
+    case "$n" in ''|*[!A-Za-z0-9._-]*) echo "  Lettres, chiffres et tirets seulement." ;; *) NAME=$n; return ;; esac
+  done
+}
+
+# Liste tes dépôts qui n'ont pas encore la factory, et te fait choisir par numéro.
+choose_existing() {
+  local list i=0 c line
+  list=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
+  [ -n "$list" ] || { choose_name; return; }
+  say "Quel projet faire entrer dans la factory ?"
+  for line in $list; do
+    case "${line#*/}" in factory|factory-template) continue ;; esac
+    gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 && continue
+    i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
+    eval "CHOICE_$i=\$line"
+  done
+  [ "$i" -gt 0 ] || die "Tous tes dépôts sont déjà dans la factory. Pour un nouveau projet, relance et choisis 1."
+  while :; do
+    c=$(ask "  Numéro du projet (1 à $i) :")
+    case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "NAME=\$CHOICE_$c"; return; fi ;; esac
+    echo "  Réponds par un numéro de la liste."
+  done
+}
+
 main() {
-  [ $# -ge 2 ] || usage
-  MODE=$1
-  case "$MODE" in nouveau|adopter) ;; *) usage ;; esac
+  MODE=${1:-}; NAME=${2:-}
+  case "$MODE" in nouveau|adopter|'') ;; *) usage ;; esac
   need_gh
-  REPO=$(full_name "$2")
+  [ -n "$MODE" ] || choose_mode
+  if [ -z "$NAME" ]; then
+    if [ "$MODE" = nouveau ]; then choose_name; else choose_existing; fi
+  fi
+  REPO=$(full_name "$NAME")
+  say "Projet : $REPO ($([ "$MODE" = nouveau ] && echo 'nouveau' || echo 'déjà commencé'))"
+  case "$(ask "  On y va ? (O/n)")" in n|N|non) echo "  Rien n'a été fait."; exit 0 ;; esac
   if [ "$MODE" = nouveau ]; then create_repo; else install_into_existing; fi
   claude_access
   routine

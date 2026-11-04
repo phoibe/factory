@@ -15,8 +15,12 @@ case "$1 $2" in
   "run list") echo 7 ;;
   "run watch") ;;
   "issue create") echo "https://github.com/phoibe/x/issues/1" ;;
+  "repo list") printf 'phoibe/factory\nphoibe/habitudes\nphoibe/vieux-site\n' ;;
   *)
     case "$*" in
+      *phoibe/habitudes/contents/factory.config.json*) echo '{}' ;;
+      *phoibe/factory-template/contents/factory.config.json*) echo '{}' ;;
+      *contents/factory.config.json*) [ -f "$FAKE_GH_LOG.created" ] && echo '{}' || exit 1 ;;
       *contents/CLAUDE.md*) printf '# Instructions for Claude\n\nRead .factory/AGENT.md first.\n' ;;
       *contents/*) echo "content of ${*##*contents/}" ;;
     esac ;;
