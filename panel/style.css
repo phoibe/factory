@@ -307,3 +307,60 @@ button.go:focus-visible { outline-color: var(--text); }
 .count, .badge { font-weight: 500; }
 /* Keyboard focus is always visible, also on the tabs and the conversations. */
 .tabs button:focus-visible, .conv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---- Issue 123: phone header, cancellable go, reserved blue, calm loading ---- */
+/* Blue is for what waits for an answer: links are ink and underlined, focus rings are ink. */
+a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+a.button { text-decoration: none; }
+.brand, .ticket .main, .you-title { text-decoration: none; }
+.you-title { text-decoration: underline; }
+.ticket .session, #site { color: var(--text); }
+button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
+#chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
+#chat-send { background: var(--text); border-color: var(--text); color: var(--bg); }
+.row input[type=checkbox], .row input[type=radio] { accent-color: var(--text); }
+::selection { background: color-mix(in srgb, var(--text) 18%, transparent); }
+.ticket.yours:hover, .ticket:hover, .issue-chip:hover { border-color: var(--muted); }
+.track li.done { background: var(--muted); }
+.track li.now, .ticket.yours .track li.now { background: var(--text); }
+.cta { color: var(--text); }
+.lane-yours .count { background: var(--text); color: var(--bg); }
+.issue-chip { border-color: var(--line); background: var(--surface-2); }
+#login-form button[type=submit] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+#login ol { padding-left: 20px; } #login li { margin-bottom: 6px; }
+button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
+button.go:focus-visible { outline-color: var(--text); }
+
+/* « Plus » menu: invisible plumbing on a computer, a folding menu on a phone. */
+.more { display: contents; }
+.more > summary { display: none; }
+.more-menu { display: contents; }
+@media (max-width: 600px) {
+  .more { display: block; flex: 1 1 0; min-width: 6.5rem; position: relative; }
+  .more > summary { display: block; list-style: none; text-align: center; cursor: pointer; }
+  .more > summary::-webkit-details-marker { display: none; }
+  .more-menu { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  .more-menu .button, .more-menu button { width: 100%; text-align: center; }
+  .more-menu .site-line { flex-direction: column; align-items: stretch; }
+  .actions #new-feature { flex: 3 1 0; white-space: nowrap; }
+  .more[open] { flex-basis: 100%; }
+}
+
+/* Calm loading: grey card shapes, no animation. */
+.skeleton { display: grid; gap: 12px; }
+.sk-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.sk-bar { display: block; height: 12px; border-radius: 6px; background: var(--track); }
+.sk-chat { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+.chat-error { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--danger); border-radius: 10px; background: var(--danger-bg); }
+.chat-error strong { color: var(--danger); }
+button.go { min-width: 9.5em; font-variant-numeric: tabular-nums; }
+.chat-error { border-color: var(--line); }
+@media (max-width: 600px) {
+  .more[open] { flex-basis: 100%; }
+  .more-menu { position: relative; }
+  .more-menu #logout { margin-top: 8px; border-top: 1px solid var(--line); }
+}
+.ticket:has(.main:focus-visible) { outline-color: var(--text); }
+details summary { color: var(--text); }
+.more > summary { margin-top: 0; padding: 8px 14px; }
+.sk-bar { background: color-mix(in srgb, var(--muted) 22%, var(--surface)); }
