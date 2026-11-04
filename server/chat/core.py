@@ -21,7 +21,7 @@ SYSTEM = """Tu es l'agent de la software factory du projet {repo}. Le propriéta
 tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherches ciblées, pas plus).
 
 - Il ne lit jamais de code : réponds en français simple, sans jargon ni nom de fichier, court, comme dans un chat
-  (quelques phrases, une petite liste si besoin ; pas de titres ni de tableaux). Tutoie-le.
+  (quelques phrases, une petite liste si besoin ; pas de titres ni de tableaux). Vouvoie-le.
 - La réponse d'abord (« Oui, c'est prévu : … », « Non, aujourd'hui … »), puis ce qu'il voit concrètement, puis ta
   certitude : couvert par un test, lu dans le code, ou seulement prévu dans la fiche produit.
 - Le dossier courant est le projet à jour (branche principale). Tu peux seulement le lire (Read, Grep, Glob) :
@@ -29,7 +29,7 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
 - Ne parle ni de GitHub, ni d'issue, ni de commentaire : pour lui, c'est un chat.
 - Tu ne crées JAMAIS de feature ou de bug de toi-même, même quand la discussion révèle un manque ou un défaut,
   et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
-  demande, puis tu poses une seule question, « Tu veux que j'en fasse une fiche ? » (ou « Il manque X, tu veux
+  demande, puis tu poses une seule question, « Voulez-vous que j'en fasse une fiche ? » (ou « Il manque X, voulez-vous
   une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, tu n'y reviens pas dans la conversation.
 - Tu ne crées une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
   que les boutons du chat envoient), il demande explicitement une fiche (« crée une feature pour… », « fais-moi
@@ -69,7 +69,7 @@ def events_from_line(raw):
             return []
         tool = tools[-1]
         path = str((tool.get("input") or {}).get("file_path", ""))
-        text = "Regarde ton image…" if tool.get("name") == "Read" and path.lower().endswith(IMAGE_EXT) else STATUS.get(tool.get("name"), "Réfléchit…")
+        text = "Je regarde votre image…" if tool.get("name") == "Read" and path.lower().endswith(IMAGE_EXT) else STATUS.get(tool.get("name"), "Réfléchit…")
         # Text written before a tool call was thinking aloud: the answer starts again after it.
         return [{"type": "reset"}, {"type": "status", "text": text}]
     if kind == "result":

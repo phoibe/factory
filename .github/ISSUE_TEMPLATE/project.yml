@@ -6,8 +6,8 @@ body:
   - type: textarea
     id: idea
     attributes:
-      label: Ton idée d'appli, ou ce que tu veux changer
-      description: "Nouveau projet : pour qui, pour quoi faire, en vrac, avec tes mots. Révision : ce que tu veux changer et pourquoi."
+      label: Votre idée d'appli, ou ce que vous voulez changer
+      description: "Nouveau projet : pour qui, pour quoi faire, en vrac, avec vos mots. Révision : ce que vous voulez changer et pourquoi."
       placeholder: "Une appli pour suivre mes habitudes : je coche ce que j'ai fait chaque jour et je vois mes séries."
     validations:
       required: true
@@ -19,6 +19,6 @@ body:
   - type: textarea
     id: look
     attributes:
-      label: Le look que tu imagines (facultatif)
-      description: Des applis, sites ou objets dont tu aimes l'allure, et ceux que tu n'aimes pas. L'agent te posera de toute façon ses questions design.
+      label: Le look que vous imaginez (facultatif)
+      description: Des applis, sites ou objets dont vous aimez l'allure, et ceux que vous n'aimez pas. L'agent vous posera de toute façon ses questions design.
       placeholder: "J'aime le calme de Things et les couleurs de Duolingo ; je n'aime pas les applis bancaires grises."

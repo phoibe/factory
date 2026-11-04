@@ -63,8 +63,8 @@ image, et ne dis jamais que tu n'y as pas accès sans avoir essayé. Ne fusionne
   _Généré par [Claude Code](https://claude.ai/code) · software factory_
   ```
 - Écris tes commentaires dans un fichier puis publie-les avec `-F body=@fichier` (voir « API GitHub »).
-- Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Réponds « go » pour lancer la
-  construction », « Réponds « ok » si les captures te conviennent »).
+- Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Répondez « go » pour lancer la
+  construction », « Répondez « ok » si les captures vous conviennent »).
 
 ## API GitHub
 
