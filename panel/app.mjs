@@ -419,9 +419,41 @@ async function start() {
     $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifie-le et réessaie.`;
     return show('login');
   }
+  refreshStable().catch(() => {});
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
 }
+
+// « Déclarer stable »: projects follow the factory's `stable` branch; this shows how far main is ahead of it.
+const FACTORY_REPO = 'phoibe/factory';
+let stableChanges = [];
+async function refreshStable() {
+  const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
+  stableChanges = (cmp?.commits || []).map((c) => c.commit.message.split('\n')[0]).filter((s) => !s.startsWith('chore(factory)'));
+  const btn = $('stable');
+  btn.hidden = !cmp || cmp.ahead_by === 0;
+  btn.textContent = `Déclarer stable (${cmp?.ahead_by || 0})`;
+}
+
+$('stable').addEventListener('click', async () => {
+  const list = stableChanges.slice(-8).map((s) => `• ${s}`).join('\n');
+  if (!confirm(`Déclarer stable la version en cours de la factory ?\n\n${list}\n\nSes tests sont relancés d'abord : s'ils sont rouges, rien ne change. Sinon tous les projets prennent cette version à leur prochain run.`)) return;
+  const btn = $('stable');
+  btn.disabled = true;
+  try {
+    const issue = await api(`/repos/${FACTORY_REPO}/issues`, {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Déclarer stable', labels: ['factory:release'], body: `Demandé depuis le tableau.\n\n${list}` }),
+    });
+    toast('Tests en cours : la version stable sera prête dans 2 minutes environ');
+    if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
+    btn.hidden = true;
+  } catch (e) {
+    toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $('login-form').addEventListener('submit', (e) => {
   e.preventDefault();

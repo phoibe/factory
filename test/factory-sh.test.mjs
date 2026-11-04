@@ -40,9 +40,10 @@ test('nouveau creates the repository from the template', () => {
 });
 
 test('with no arguments, it asks what to do and lists only projects without the factory', () => {
-  const { out, log } = run([], ['2', '1', '', 'o', 'https://example.test/fire', 'tok', '', '', '']);
+  const { out, log } = run([], ['2', '2', '', 'o', 'https://example.test/fire', 'tok', '', '', '']);
   assert.match(out, /1\) Créer un nouveau projet/);
-  assert.match(out, / 1\) vieux-site/);
+  assert.match(out, / 1\) factory/); // the factory itself can be adopted
+  assert.match(out, / 2\) vieux-site/);
   assert.doesNotMatch(out, /\) habitudes/);
   assert.match(log, /issue create -R phoibe\/vieux-site/);
 });
@@ -65,4 +66,11 @@ test('choice 3 puts the new routine token in every factory project', () => {
   const { log } = run([], ['3', 'o', 'https://example.test/fire', 'nouveau-jeton']);
   assert.match(log, /secret set FACTORY_ROUTINE_TOKEN -R phoibe\/habitudes/);
   assert.doesNotMatch(log, /secret set FACTORY_ROUTINE_TOKEN -R phoibe\/vieux-site/);
+});
+
+test('adopting the factory itself skips Vercel (its board is on GitHub Pages)', () => {
+  const { out, log } = run(['adopter', 'factory'], ['', 'o', 'https://example.test/fire', 'tok', '', '']);
+  assert.match(out, /Pas besoin de Vercel/);
+  assert.match(out, /C'est prêt/);
+  assert.match(log, /issue create -R phoibe\/factory --title Cadrage : factory/);
 });
