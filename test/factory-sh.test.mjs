@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 
 const SCRIPT = resolve('scripts/factory.sh');
 
-function run(args, answers) {
+function run(args, answers, extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'factory-sh-'));
   const bin = join(dir, 'bin');
   mkdirSync(bin);
@@ -17,7 +17,7 @@ function run(args, answers) {
   const log = join(dir, 'gh.log');
   writeFileSync(log, '');
   // The script reads its answers from /dev/tty; `script` gives it one fed from our input.
-  const env = { ...process.env, PATH: `${bin}:/usr/bin:/bin`, FAKE_GH_LOG: log, FAKE_REMOTE: remote, XDG_CONFIG_HOME: join(dir, 'cfg'), HOME: dir };
+  const env = { ...process.env, PATH: `${bin}:/usr/bin:/bin`, FAKE_GH_LOG: log, FAKE_REMOTE: remote, XDG_CONFIG_HOME: join(dir, 'cfg'), HOME: dir, ...extraEnv };
   const out = execFileSync('script', ['-qec', `bash ${SCRIPT} ${args.join(' ')}`.trim(), '/dev/null'], { env, input: answers.join('\n') + '\n', encoding: 'utf8', timeout: 60_000 });
   return { out, log: readFileSync(log, 'utf8'), remote, cfg: join(dir, 'cfg') };
 }
@@ -76,4 +76,13 @@ test('adopting the factory itself skips Vercel (its board is on GitHub Pages)', 
   assert.match(out, /Pas besoin de Vercel/);
   assert.match(out, /C'est prêt/);
   assert.match(log, /issue create -R phoibe\/factory --title Cadrage : factory/);
+});
+
+test('when GitHub refuses to list the app installations, it gives a working link, never the error text', () => {
+  const { out } = run(['adopter', 'mon-appli'], ['', 'o', 'https://api.anthropic.com/v1/claude_code/routines/trig_x/fire', 'sk-secret', '', '', ''],
+    { FAKE_INSTALLATIONS: '{"message":"You must authenticate with an access token authorized to a GitHub App in order to list installations"}' });
+  assert.match(out, /https:\/\/github\.com\/settings\/installations\s/);
+  assert.doesNotMatch(out, /pas pu ajouter le dépôt/);
+  assert.doesNotMatch(out, /installations\/\{/);
+  assert.match(out, /C'est prêt/);
 });

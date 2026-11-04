@@ -9,7 +9,7 @@ case "$1 $2" in
     case " $* " in *defaultBranchRef*) echo main ;; esac ;;
   "repo create") touch "$FAKE_GH_LOG.created" ;;
   "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE" ;;
-  "api user/installations") echo "42 all" ;;
+  "api user/installations") echo "${FAKE_INSTALLATIONS:-42 all}" ;;
   "secret set") cat > /dev/null ;;
   "workflow run") ;;
   "run list") echo 7 ;;
