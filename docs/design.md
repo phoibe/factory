@@ -48,6 +48,7 @@ automatique. Questions à Pierre seulement si le comportement attendu est flou. 
 ## Garde-fous
 
 - Features en parallèle par projet : réglable dans le panneau, 2 par défaut ; le reste en file.
+- Pioche automatique (réglage `autoPick`, désactivé par défaut) : quand des places sont libres et la file vide, la factory démarre une fiche ouverte (`factory:urgent` d'abord, puis bugs, puis la plus ancienne). `factory:no-pick` l'exclut ; les fiches question, projet, release, audit ou en attente du propriétaire ne sont jamais prises. Si une feature piochée attend les réponses du propriétaire, aucune autre feature n'est piochée.
 - L'agent ne crée jamais de compte, n'ajoute jamais de service payant ni de clé ; il les demande dans l'issue.
 - Skills figés à un commit ; PR mensuelle de mise à jour. Dans un pack, chaque skill s'active séparément.
 - Français avec Pierre ; anglais pour le code et les commits.

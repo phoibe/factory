@@ -7,6 +7,7 @@
     "version": { "const": 1 },
     "runner": { "enum": ["claude-cloud", "github-actions"], "description": "Où tournent les agents" },
     "maxParallel": { "type": "integer", "minimum": 1, "description": "Features en parallèle" },
+    "autoPick": { "type": "boolean", "description": "Piocher automatiquement dans les fiches existantes quand des places sont libres" },
     "stack": { "type": "string", "description": "Stack technique par défaut" },
     "siteUrl": { "type": "string", "pattern": "^https://\\S+$", "description": "Adresse du site en ligne" },
     "stages": {

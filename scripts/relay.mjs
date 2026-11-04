@@ -195,6 +195,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
+    let failed = false;
     for (const issue of queued) {
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
@@ -204,6 +205,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await fireAgent({ stage: resumed ? 'resume' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build', issue: issue.number, quiet: true });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
+        failed = true;
         break;
       }
       await gh.removeLabel(issue.number, L.queued);
@@ -211,6 +213,43 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.addLabels(issue.number, [L.building]);
       await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec ta réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
+    }
+    if (free > 0 && !failed) await autoPick(free);
+  }
+
+  // With the autoPick setting on, free slots and an empty queue: starts existing issues, urgent first,
+  // then bugs, then the rest, oldest first. Never touches issues that wait for the owner or are held back.
+  async function autoPick(free) {
+    if (!config.autoPick) return;
+    const SKIP = [L.noPick, L.question, L.project, L.audit, 'factory:release', L.grilling, L.specReview, L.queued,
+      L.building, L.blocked, L.running, L.pending];
+    const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
+    // A picked feature still waiting for the owner's answers: no more features until it moves on.
+    const waiting = (await open(L.autoPicked)).some((i) => [L.grilling, L.specReview].some((l) => names(i.labels).includes(l)));
+    const seen = new Set();
+    const candidates = [...(await open(L.bug)), ...(await open(L.feature))].filter((i) => !seen.has(i.number) && seen.add(i.number))
+      .filter((i) => !names(i.labels).some((l) => SKIP.includes(l)));
+    const rank = (i) => (names(i.labels).includes(L.urgent) ? 0 : names(i.labels).includes(L.bug) ? 1 : 2);
+    candidates.sort((a, b) => rank(a) - rank(b) || Date.parse(a.created_at) - Date.parse(b.created_at) || a.number - b.number);
+    let stopFeatures = waiting;
+    for (const issue of candidates) {
+      if (free <= 0) break;
+      const labels = await liveLabels(issue.number);
+      if (labels.some((l) => SKIP.includes(l))) continue; // another run took it
+      const isBug = labels.includes(L.bug);
+      if (!isBug && stopFeatures) continue;
+      const grilling = !isBug && config.stages.grilling;
+      const stage = isBug ? 'bugfix' : grilling ? 'grilling' : 'spec';
+      try {
+        await fireAgent({ stage, issue: issue.number, quiet: true });
+      } catch (e) {
+        log(`auto-pick fire failed: ${e}`);
+        break;
+      }
+      await gh.addLabels(issue.number, [...(isBug ? [L.building] : grilling ? [L.grilling] : []), L.autoPicked]);
+      await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."));
+      free -= 1;
+      if (!isBug) stopFeatures = true;
     }
   }
 

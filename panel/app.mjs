@@ -310,6 +310,7 @@ function card(c, lane, minutes, now, moved) {
       testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
     stepTrack(c),
     el('p', { class: 'eta' }, timeLine(e)),
+    c.labels.includes('factory:auto-picked') ? el('p', { class: 'muted' }, 'Prise par la factory d\'elle-même (place libre)') : null,
     c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR).') : null);
   article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
@@ -485,7 +486,10 @@ function renderRules() {
       el('div', {}, el('label', { for: 'maxParallel' }, 'Features en parallèle'),
         el('p', {}, 'Les suivantes attendent en file.'),
         el('input', { type: 'number', id: 'maxParallel', min: '1', max: '10', value: String(c.maxParallel),
-          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))));
+          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))),
+    el('div', { class: 'row' }, checkbox('autoPick', c.autoPick === true, (on) => update(setPath(c, 'autoPick', on))),
+      el('div', {}, el('label', { for: 'autoPick' }, 'Piocher automatiquement dans les fiches existantes'),
+        el('p', {}, 'Quand des places sont libres et que la file est vide, la factory prend elle-même une fiche ouverte (urgentes, puis bugs, puis la plus ancienne). Étiquette « ne pas piocher » pour en exclure une.'))));
   const stages = el('fieldset', {}, el('legend', {}, 'Étapes'),
     STAGES.map(([k, t, d]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
       el('div', {}, el('label', { for: `stage-${k}` }, t), el('p', {}, d)))));
