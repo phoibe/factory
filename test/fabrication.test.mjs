@@ -46,3 +46,8 @@ test('uiChanged ignores tests', () => {
   assert.equal(uiChanged(['src/app/page.tsx']), true);
   assert.equal(uiChanged(['src/app/page.test.tsx', 'src/lib/streak.ts']), false);
 });
+
+test('a general review must show the design pass and the code review, whatever the toggles', async () => {
+  const { expectations } = await import('../scripts/lib/fabrication.mjs');
+  assert.deepEqual(expectations('audit', { designPass: false, review: false }, false).map((e) => e.skill), ['impeccable', 'requesting-code-review']);
+});

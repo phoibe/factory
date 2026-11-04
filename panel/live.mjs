@@ -18,9 +18,9 @@ const ACTIONS = {
   blocked: "Débloque l'agent",
 };
 
-// The steps an item goes through. Bugs have no questions and no spec.
+// The steps an item goes through. Bugs and general reviews have no questions and no spec.
 export function stepsFor(labels) {
-  return labels.includes('factory:bug') ? STEPS.slice(2) : STEPS;
+  return labels.includes('factory:bug') || labels.includes('factory:audit') ? STEPS.slice(2) : STEPS;
 }
 
 // Where the card stands in its flow, or null when it cannot be told (a blocked item with no other state).

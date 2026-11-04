@@ -6,6 +6,10 @@ import { resolveConfig } from './config-core.mjs';
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
 const PROJECT_KEY = 'factory.project';
+const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
+  '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
+  '2. Revue de code générale de toute l\'appli, puis correction.', '',
+  'Ce qui demande une vraie nouvelle feature devient une issue à part.'].join('\n');
 const $ = (id) => document.getElementById(id);
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -229,7 +233,7 @@ function stepTrack(c) {
 
 function card(c, lane, minutes, now, moved) {
   const e = estimate(c, live.events, minutes, now);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : 'Feature';
+  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Feature';
   const blocked = c.column === 'blocked';
   const running = c.labels.includes('factory:running');
   const status = lane === 'yours'
@@ -451,6 +455,28 @@ $('site').addEventListener('click', (e) => {
 $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project').addEventListener('change', (e) => openProject(e.target.value));
+$('general-review').addEventListener('click', () => startGeneralReview());
+
+// Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
+async function startGeneralReview() {
+  if (!current) return;
+  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que tu valideras comme une feature.")) return;
+  const btn = $('general-review');
+  btn.disabled = true;
+  try {
+    const issue = await api(`/repos/${current.repo.full_name}/issues`, {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Review générale de l\'appli', labels: ['factory:audit'], body: REVIEW_BODY }),
+    });
+    toast('Review générale lancée');
+    if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
+    await renderBoard();
+  } catch (e) {
+    toast(`Impossible de lancer la review : ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
