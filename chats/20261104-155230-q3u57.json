@@ -3,7 +3,7 @@
  "title": "Je voudrais avoir un lien direct vers la page des issues github du…",
  "state": "open",
  "created": "2026-11-04T15:52:30Z",
- "updated": "2026-11-04T15:53:05Z",
+ "updated": "2026-11-04T15:54:35Z",
  "messages": [
   {
    "who": "me",
@@ -15,6 +15,24 @@
    "who": "agent",
    "text": "Non, aujourd'hui il n'y a pas de lien direct vers la liste des issues GitHub du projet sur le tableau.\n\nCe que tu as déjà, ce sont trois boutons pour créer une nouvelle fonctionnalité, un bug ou un projet. Chaque carte du tableau a aussi son propre lien. Il n'existe pas de lien général qui ouvre la liste complète des issues du projet que tu as sélectionné.\n\nCe que j'ai lu dans le code du tableau, sans test dédié. L'adresse du projet courant est déjà connue pour les boutons de création, donc ajouter ce lien semble simple.\n\nTu veux que j'en fasse une fiche ?",
    "at": "2026-11-04T15:53:05Z"
+  },
+  {
+   "who": "me",
+   "text": "Créez une issue « Nouvelle feature » à partir de cette conversation, puis donnez-moi le lien.",
+   "images": [],
+   "at": "2026-11-04T15:54:35Z"
+  },
+  {
+   "who": "agent",
+   "text": "C'est parti, je crée la fiche. Le lien apparaîtra juste sous ce message.",
+   "at": "2026-11-04T15:54:35Z",
+   "issues": [
+    {
+     "title": "Lien direct vers les issues GitHub du projet sur le tableau",
+     "url": "https://github.com/phoibe/factory/issues/89",
+     "kind": "feature"
+    }
+   ]
   }
  ]
 }
