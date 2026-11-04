@@ -110,6 +110,13 @@ async function openProject(fullName) {
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
   $('new-project').href = `${base}/issues/new?template=project.yml`;
+  // An already framed project gets « Revoir le cadrage »: the agent then updates the brief, never the foundations.
+  const r = current.repo.full_name;
+  const framed = (await Promise.all(['PRODUCT.md', 'docs/PRODUCT.md'].map((f) => api(`/repos/${r}/contents/${f}`).catch(() => null)))).some(Boolean);
+  $('new-project').textContent = framed ? 'Revoir le cadrage' : 'Cadrer le projet';
+  $('new-project').title = framed
+    ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
+    : "À faire une fois, avant la première feature : vision, design et stack.";
   $('new-question').href = `${base}/issues/new?template=question.yml`;
   show('project-view');
   renderRules();

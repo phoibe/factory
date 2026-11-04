@@ -3,6 +3,27 @@
 But : une vision commune du produit et un choix de stack, validés par le propriétaire, avant toute feature.
 Cette étape a lieu une fois par projet, sur l'issue « Nouveau projet » (label `factory:project`).
 
+**Projet commencé sans la factory ?** S'il n'y a pas de fiche produit mais que le dépôt contient déjà une
+application (un `package.json`, du code source), c'est une **adoption** :
+
+- Lis d'abord le code (et lance l'appli si tu peux) pour comprendre ce qu'elle fait déjà. Ton premier round
+  commence par **Ce que j'ai compris** : à quoi sert l'appli, pour qui, ses écrans et ses fonctions actuels,
+  en langage simple. Puis ne pose que les questions sur ce que le code ne dit pas (le but, ce qui vient
+  ensuite, ce qui est hors sujet).
+- **Design** : propose de garder le look actuel (impeccable le documentera tel quel) ou d'en choisir un
+  nouveau ; seulement dans ce cas, passe par le questionnaire design et la direction visuelle.
+- **Stack** : garde celle en place. N'en propose une autre que si le propriétaire le demande ou si elle
+  empêche vraiment un besoin décidé.
+- La fiche finale décrit l'appli telle qu'elle est plus ce qui vient ensuite ; « Première version » devient
+  **Prochaines features**.
+
+**Projet déjà cadré ?** Si `PRODUCT.md` (ou `docs/PRODUCT.md`) existe déjà, c'est une **révision du
+cadrage** : ne repose aucune question déjà réglée. Demande d'abord, en une question, ce que le propriétaire
+veut changer (vision, usages, périmètre, design, stack), puis ne pose que les questions que ce changement
+ouvre (questionnaire design et direction visuelle seulement si le design change ; stack seulement si elle
+change). La fiche publiée à la fin est la fiche complète mise à jour, avec en tête une section
+**Ce qui change** (une ligne par changement).
+
 ## Les questions (rounds de grilling)
 
 1. Charge le skill `grilling` et applique-le **en asynchrone** : un round = un commentaire, puis tu termines.
