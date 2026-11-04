@@ -1,4 +1,5 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=9';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=10';
+import { LABEL as CHAT_LABEL, ASK, chatMessages, chatStatus, titleFrom, markdown, conversations, unread } from './chat.mjs?v=10';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -156,8 +157,8 @@ async function openProject(fullName) {
   $('new-project').title = framed
     ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
     : "À faire une fois, avant la première feature : vision, design et stack.";
-  $('new-question').href = `${base}/issues/new?template=question.yml`;
   show('project-view');
+  resetChat();
   renderRules();
   await renderBoard();
   if (!live.tick) startLive();
@@ -431,10 +432,11 @@ async function saveRules(e) {
 }
 
 function selectTab(name) {
-  $('tab-board').setAttribute('aria-selected', String(name === 'board'));
-  $('tab-rules').setAttribute('aria-selected', String(name === 'rules'));
-  $('board').hidden = name !== 'board';
-  $('rules').hidden = name !== 'rules';
+  for (const t of ['board', 'chat', 'rules']) {
+    $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
+    $(t).hidden = name !== t;
+  }
+  if (name === 'chat') openChat(); else clearTimeout(chat.timer);
 }
 
 async function start() {
@@ -544,7 +546,261 @@ async function startGeneralReview() {
     btn.disabled = false;
   }
 }
+// ---- Discussion -------------------------------------------------------------------------------
+// A chat with the agent. Each conversation is a `factory:question` issue, which is what wakes the agent up;
+// the owner only ever sees the chat. While an answer is awaited the conversation is checked every 4 s,
+// otherwise every 15 s, with ETags so that unchanged answers cost nothing.
+const SEEN_KEY = 'factory.chat.seen';
+const EXAMPLES = [
+  'Que se passe-t-il si je ferme l\'appli au milieu d\'une saisie ?',
+  'Je voudrais pouvoir exporter mes données.',
+  'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
+];
+const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {} };
+
+function resetChat() {
+  clearTimeout(chat.timer);
+  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null });
+  try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
+  $('chat').classList.remove('viewing');
+  if (!$('chat').hidden) openChat();
+}
+
+function markSeen(issue) {
+  chat.seen[issue.number] = issue.comments || 0;
+  store.set(`${SEEN_KEY}.${chat.repo}`, JSON.stringify(chat.seen));
+}
+
+async function chatGet(path) {
+  const hit = chat.etags.get(path);
+  const res = await fetch(API + path, {
+    cache: 'no-store',
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
+  });
+  if (res.status === 304 && hit) return hit.data;
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  const etag = res.headers.get('etag');
+  if (etag) chat.etags.set(path, { etag, data });
+  return data;
+}
+
+async function openChat() {
+  if (!current) return;
+  if (chat.repo !== current.repo.full_name) return resetChat();
+  drawChat();
+  await refreshChat();
+}
+
+async function refreshChat() {
+  if (chat.busy) return;
+  chat.busy = true;
+  const repo = chat.repo;
+  try {
+    const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
+    if (chat.repo !== repo) return;
+    chat.list = conversations(list);
+    if (typeof chat.open === 'number') {
+      const n = chat.open;
+      const issue = await chatGet(`/repos/${repo}/issues/${n}`);
+      const pages = Math.max(1, Math.ceil((issue.comments || 0) / 100));
+      const comments = [];
+      for (let p = 1; p <= pages; p++) comments.push(...await chatGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${p}`));
+      if (chat.repo !== repo || chat.open !== n) return;
+      chat.issue = issue;
+      chat.comments = comments;
+      // The pending message shows until GitHub lists it.
+      if (chat.pending && chatMessages(issue, comments).some((m) => m.who === 'me' && m.text === chat.pending.text)) chat.pending = null;
+      markSeen(issue);
+    }
+    drawChat();
+  } catch (err) {
+    if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+  } finally {
+    chat.busy = false;
+    scheduleChat();
+  }
+}
+
+function scheduleChat() {
+  clearTimeout(chat.timer);
+  if (document.hidden || $('chat').hidden || !current) return;
+  const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
+  chat.timer = setTimeout(refreshChat, waiting ? 4000 : 15_000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return clearTimeout(chat.timer);
+  if (current && !$('chat').hidden) refreshChat();
+});
+
+const timeOf = (iso) => {
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+};
+
+function inlineNodes(parts) {
+  return parts.map((p) => {
+    if (p.t === 'text') return p.v;
+    if (p.t === 'br') return el('br');
+    if (p.t === 'code') return el('code', {}, p.v);
+    if (p.t === 'b') return el('strong', {}, inlineNodes(p.c));
+    if (p.t === 'i') return el('em', {}, inlineNodes(p.c));
+    if (p.t === 'a') return el('a', { href: p.href, target: '_blank', rel: 'noopener' }, inlineNodes(p.c));
+    return null;
+  });
+}
+
+function richText(text) {
+  return markdown(text).map((b) => {
+    if (b.type === 'p') return el('p', {}, inlineNodes(b.inline));
+    if (b.type === 'quote') return el('blockquote', {}, inlineNodes(b.inline));
+    if (b.type === 'pre') return el('pre', {}, b.v);
+    return el(b.type, {}, b.items.map((it) => el('li', {}, inlineNodes(it))));
+  });
+}
+
+function bubble(m) {
+  return el('li', { class: `msg ${m.who}` },
+    el('div', { class: 'bubble' }, m.who === 'agent' ? richText(m.text) : m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l]))),
+    el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+}
+
+function drawChatList() {
+  const items = $('chat-items');
+  if (!chat.list) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  if (!chat.list.length) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Aucune conversation pour l\'instant.'));
+  const open = chat.list.filter((c) => c.state === 'open');
+  const done = chat.list.filter((c) => c.state !== 'open');
+  const row = (c) => {
+    const thinking = c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
+    const fresh = unread(c, chat.seen) && chat.open !== c.number;
+    return el('li', {},
+      el('button', { type: 'button', class: `conv${chat.open === c.number ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === c.number ? 'true' : false, onclick: () => selectConversation(c.number) },
+        el('span', { class: 'conv-title' }, c.title),
+        el('span', { class: 'conv-meta' }, thinking ? el('span', { class: 'typing-dot', 'aria-hidden': 'true' }) : null,
+          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated_at))));
+  };
+  items.replaceChildren(...open.map(row), ...(done.length ? [el('li', { class: 'chat-sep' }, 'Terminées')] : []), ...done.map(row));
+  const n = open.filter((c) => unread(c, chat.seen)).length;
+  $('chat-badge').hidden = !n;
+  $('chat-badge').textContent = String(n);
+}
+
+function drawChat() {
+  drawChatList();
+  const isNew = chat.open === 'new' || chat.open == null;
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '…';
+  $('chat-tools').hidden = isNew || !chat.issue;
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  if (isNew) {
+    list.replaceChildren(el('li', { class: 'chat-intro' },
+      el('p', { class: 'intro-title' }, 'Parle à l\'agent de ton appli'),
+      el('p', { class: 'muted' }, 'Pose une question sur son fonctionnement, propose une idée ou décris un problème. L\'agent lit le code pour te répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
+      el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)))));
+  } else if (chat.issue && chat.issue.number === chat.open) {
+    const messages = chatMessages(chat.issue, chat.comments);
+    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, at: null });
+    const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
+    const tail = status === 'thinking'
+      ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+      : status === 'late'
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoie ton message un peu plus tard.')
+        : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écris un message pour la reprendre.') : null;
+    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    $('chat-close').hidden = status === 'closed';
+  } else {
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  }
+  if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+}
+
+function selectConversation(n) {
+  chat.open = n;
+  chat.pending = null;
+  if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
+  $('chat').classList.add('viewing');
+  drawChat();
+  const list = $('chat-messages');
+  list.scrollTop = list.scrollHeight;
+  if (n !== 'new') { clearTimeout(chat.timer); refreshChat(); }
+  if (n === 'new' || matchMedia('(pointer: fine)').matches) $('chat-input').focus();
+}
+
+async function sendChat(text) {
+  text = text.trim();
+  if (!text || !current) return;
+  const repo = chat.repo;
+  const btn = $('chat-send');
+  btn.disabled = true;
+  try {
+    if (typeof chat.open !== 'number') {
+      const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text), labels: [CHAT_LABEL], body: text }) });
+      chat.open = issue.number;
+      chat.issue = issue;
+      chat.comments = [];
+      markSeen(issue);
+    } else {
+      chat.pending = { text };
+      drawChat();
+      if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
+      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body: text }) });
+    }
+    $('chat-input').value = '';
+    autosize();
+    clearTimeout(chat.timer);
+    chat.etags.clear();
+    await refreshChat();
+  } catch (e) {
+    chat.pending = null;
+    drawChat();
+    toast(`Message non envoyé : ${e.message}. Ton texte est toujours là, réessaie.`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function closeConversation() {
+  if (typeof chat.open !== 'number') return;
+  try {
+    await api(`/repos/${chat.repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
+    chat.etags.clear();
+    toast('Conversation rangée dans « Terminées »');
+    $('chat').classList.remove('viewing');
+    await refreshChat();
+  } catch (e) {
+    toast(`Impossible de terminer la conversation : ${e.message}`);
+  }
+}
+
+function autosize() {
+  const t = $('chat-input');
+  t.style.height = 'auto';
+  t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+}
+
+$('chat-form').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('chat-input').value); });
+$('chat-input').addEventListener('input', autosize);
+// Enter sends on a computer (Shift+Enter for a new line); on a phone, Enter is a new line and the button sends.
+$('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+    e.preventDefault();
+    $('chat-form').requestSubmit();
+  }
+});
+$('chat-new').addEventListener('click', () => selectConversation('new'));
+$('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
+$('chat-feature').addEventListener('click', () => sendChat(ASK.feature));
+$('chat-bug').addEventListener('click', () => sendChat(ASK.bug));
+$('chat-close').addEventListener('click', () => closeConversation());
+$('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
+
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
+$('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <header class="top">
@@ -55,15 +55,39 @@
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle feature</a>
           <a id="new-bug" class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
           <a id="new-project" class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
-          <a id="new-question" class="button secondary" target="_blank" rel="noopener" title="Une question sur l'appli. Tu peux aussi y demander une feature ou signaler un bug : l'agent crée l'issue lui-même.">Poser une question</a>
+          <button id="new-question" type="button" class="button secondary" title="Discute avec l'agent : une question sur l'appli, une idée de feature ou un bug. Il peut en faire une feature ou un bug pour toi.">Discuter avec l'agent</button>
           <button id="general-review" type="button" class="button secondary" title="L'agent critique et corrige tous les écrans avec impeccable, puis relit et corrige tout le code.">Review générale</button>
         </div>
       </div>
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-board" aria-selected="true" aria-controls="board">Suivi</button>
+        <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat">Discussion<span id="chat-badge" class="badge" hidden></span></button>
         <button role="tab" id="tab-rules" aria-selected="false" aria-controls="rules">Règles</button>
       </div>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
+      <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+        <aside class="chat-list" aria-label="Conversations">
+          <button id="chat-new" type="button">Nouvelle conversation</button>
+          <ul id="chat-items"></ul>
+        </aside>
+        <section class="chat-thread" aria-labelledby="chat-title">
+          <header class="chat-head">
+            <button id="chat-back" type="button" class="ghost" aria-label="Retour aux conversations">←</button>
+            <h2 id="chat-title">Nouvelle conversation</h2>
+            <div class="chat-tools" id="chat-tools">
+              <button id="chat-feature" type="button" class="secondary small-btn" title="L'agent crée une feature à partir de ce que vous vous êtes dit. Elle suit ensuite son parcours habituel (questions, spec, construction).">En faire une feature</button>
+              <button id="chat-bug" type="button" class="secondary small-btn" title="L'agent crée un bug à partir de ce que vous vous êtes dit, et la correction démarre.">C'est un bug</button>
+              <button id="chat-close" type="button" class="ghost small-btn" title="Range la conversation dans « Terminées ». Tu pourras la rouvrir en y écrivant.">Terminer</button>
+            </div>
+          </header>
+          <ol id="chat-messages" class="messages" aria-live="polite"></ol>
+          <form id="chat-form" class="composer">
+            <label for="chat-input" class="visually-hidden">Ton message</label>
+            <textarea id="chat-input" rows="1" placeholder="Écris ton message…" required></textarea>
+            <button id="chat-send" type="submit" aria-label="Envoyer"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </form>
+        </section>
+      </div>
       <form id="rules" role="tabpanel" aria-labelledby="tab-rules" hidden></form>
     </section>
   </main>
@@ -78,6 +102,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=9"></script>
+  <script type="module" src="app.mjs?v=10"></script>
 </body>
 </html>
