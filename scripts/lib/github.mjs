@@ -66,6 +66,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     putContent: (path, branch, base64, message) => request('PUT', `/repos/{repo}/contents/${path}`, { message, content: base64, branch }),
     updateComment: (id, body) => request('PATCH', `/repos/{repo}/issues/comments/${id}`, { body }),
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
+    recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),
   };
 }

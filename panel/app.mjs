@@ -27,7 +27,7 @@ const STAGES = [
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
   ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, failles.'],
-  ['acceptance', 'Recette', 'Vous testez la preview avant la mise en ligne.'],
+  ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
 ];
 const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
@@ -289,7 +289,8 @@ function card(c, lane, minutes, now, moved) {
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running;
   const status = lane === 'yours'
-    ? el('p', { class: 'cta' }, actionFor(c.column), el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
+    ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
+      el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
