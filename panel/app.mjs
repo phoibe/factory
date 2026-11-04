@@ -1,5 +1,5 @@
 import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=10';
-import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
 
@@ -166,7 +166,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), plans: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -199,7 +199,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), plans: new Map(), prev: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -221,6 +221,11 @@ async function refresh() {
       if (!res) continue;
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
+      const plan = parseEstimate(res.data);
+      if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
+        live.plans.set(c.number, plan);
+        previewsChanged = true;
+      }
       if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
         live.previews.set(c.number, url);
         live.targets.set(c.number, target);
@@ -267,7 +272,9 @@ function stepTrack(c) {
 }
 
 function card(c, lane, minutes, now, moved) {
-  const e = estimate(c, live.events, minutes, now);
+  const plan = live.plans.get(c.number);
+  const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
+  const e = estimate(c, live.events, typical, now, plan);
   const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Feature';
   const running = c.labels.includes('factory:running');
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
@@ -301,7 +308,10 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const minutes = stageMinutes(live.events, now);
+  const sizes = Object.fromEntries([...live.plans].filter(([, p]) => p).map(([n, p]) => [n, p.size]));
+  const minutes = { ...stageMinutes(live.events, now) };
+  // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
+  minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
   const n = byLane.yours.length;
   const headline = n ? (n === 1 ? '1 chose t\'attend' : `${n} choses t'attendent`)
