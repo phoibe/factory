@@ -3,7 +3,7 @@
  "title": "La PR 90 aurait du générer des captures et me les faire valider",
  "state": "open",
  "created": "2026-11-04T16:07:27Z",
- "updated": "2026-11-04T16:07:42Z",
+ "updated": "2026-11-04T16:08:51Z",
  "messages": [
   {
    "who": "me",
@@ -15,6 +15,24 @@
    "who": "agent",
    "text": "Oui, tu as raison de t'y attendre. Les captures sont activées dans les réglages, et la PR 90 ajoute un lien sur le panneau, donc l'apparence change. Le parcours prévu est : l'agent prend des captures avant/après (clair et sombre), les publie, te les montre et attend ton « ok » avant de continuer.\n\nDans ce que je peux consulter, je ne vois aucune trace de captures pour cette PR. Le journal de travail de l'agent n'en mentionne pas. Je ne peux pas voir l'historique de la PR elle-même, donc je ne sais pas si elle a sauté l'étape ou si elle a été validée autrement. Je n'ai pas non plus trouvé la raison. C'est donc une lecture du code et des réglages, sans test qui le confirme.\n\nTu veux que j'en fasse une fiche ?",
    "at": "2026-11-04T16:07:42Z"
+  },
+  {
+   "who": "me",
+   "text": "Créez une issue « Signaler un bug » à partir de cette conversation, puis donnez-moi le lien.",
+   "images": [],
+   "at": "2026-11-04T16:08:51Z"
+  },
+  {
+   "who": "agent",
+   "text": "C'est parti, je crée la fiche de bug. Tu en auras le lien juste en dessous de ce message.",
+   "at": "2026-11-04T16:08:51Z",
+   "issues": [
+    {
+     "title": "La PR 90 n'a pas généré de captures à faire valider",
+     "url": "https://github.com/phoibe/factory/issues/96",
+     "kind": "bug"
+    }
+   ]
   }
  ]
 }
