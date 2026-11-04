@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink } from '../panel/lib.mjs';
+import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -41,4 +41,12 @@ test('a phone link carries the token in the fragment and is read back once', () 
   assert.equal(tokenFromHash(new URL(link).hash), 'github_pat_ABC_123');
   assert.equal(tokenFromHash('#autre'), null);
   assert.equal(tokenFromHash(''), null);
+});
+
+test('previewFrom finds the latest preview link of a PR', () => {
+  const vercel = (url) => ({ user: { login: 'vercel[bot]' }, body: `| habitudes | ✅ Ready ([Inspect](https://vercel.com/x)) | [Visit Preview](${url}) |` });
+  assert.equal(previewFrom([vercel('https://a.vercel.app'), vercel('https://b.vercel.app')]), 'https://b.vercel.app');
+  assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: 'Tu peux tester la nouvelle version ici : https://c.vercel.app\n\nVérifie' }]), 'https://c.vercel.app');
+  assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: '[Preview](https://evil.example)' }]), null);
+  assert.equal(previewFrom([]), null);
 });

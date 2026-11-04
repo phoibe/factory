@@ -66,3 +66,16 @@ export function tokenFromHash(hash) {
 
 // Link that signs a phone in with the same token.
 export const phoneLink = (pageUrl, token) => `${pageUrl.split('#')[0]}#jeton=${token}`;
+
+// Preview link of a PR, from its comments (oldest first): the Vercel bot's latest "[Preview](…)"
+// or "[Visit Preview](…)" link, else the factory's « Tu peux tester … ici : https://… » message.
+export function previewFrom(comments) {
+  for (const c of [...(comments || [])].reverse()) {
+    const body = c.body || '';
+    const m = c.user?.login === 'vercel[bot]'
+      ? /\[(?:Visit )?Preview\]\((https:\/\/[^)\s]+)\)/.exec(body)
+      : /tester la nouvelle version ici : (https:\/\/\S+)/.exec(body);
+    if (m) return m[1];
+  }
+  return null;
+}

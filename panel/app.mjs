@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink } from './lib.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom } from './lib.mjs';
 import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -119,7 +119,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -152,7 +152,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], prev: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), prev: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -165,9 +165,18 @@ async function refresh() {
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
+    // Preview links of the PRs on the board, read from their comments (Vercel bot or the factory's message).
+    let previewsChanged = false;
+    for (const pr of boardItems(live.issues).filter((c) => c.pull_request)) {
+      const res = await cachedGet(`/repos/${repo}/issues/${pr.number}/comments?per_page=100`).catch(() => null);
+      if (!res) continue;
+      const url = previewFrom(res.data);
+      if (live.previews.get(pr.number) !== url) { live.previews.set(pr.number, url); previewsChanged = true; }
+    }
+    if (live.repo !== repo) return;
     live.last = Date.now();
     live.failures = 0;
-    if (issues.changed || ev.changed || first) drawBoard();
+    if (issues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('p', { class: 'board-error' }, `GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`));
@@ -214,12 +223,16 @@ function card(c, lane, minutes, now, moved) {
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente')
       : null;
-  return el('a', { class: `ticket ${lane}${blocked ? ' blocked' : ''}${moved ? ' moved' : ''}`, href: c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) },
+  const preview = live.previews.get(c.number);
+  const testIt = c.column === 'acceptance' && !running;
+  return el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}${moved ? ' moved' : ''}` },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
-    el('h3', {}, c.title),
-    status,
+    el('h3', {}, el('a', { class: 'main', href: c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
+    testIt && preview ? null : status,
+    preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
+      testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
     stepTrack(c),
     el('p', { class: 'eta' }, timeLine(e)),
     c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR).') : null);
@@ -262,7 +275,24 @@ function startLive() {
   live.tick = setInterval(() => { drawStatus(); if (++n % 12 === 0 && live.issues && !$('board').hidden) drawBoard(); }, 5000);
 }
 
+function drawSite() {
+  const url = current.config.siteUrl || current.repo.homepage || '';
+  const a = $('site');
+  if (url) {
+    a.href = url;
+    a.textContent = `${url.replace(/^https:\/\//, '').replace(/\/$/, '')} ↗`;
+    a.target = '_blank';
+    a.classList.remove('add');
+  } else {
+    a.href = '#site-url';
+    a.textContent = 'Ajouter l\'adresse du site en ligne';
+    a.removeAttribute('target');
+    a.classList.add('add');
+  }
+}
+
 async function renderBoard() {
+  drawSite();
   if (live.repo !== current.repo.full_name) $('board').replaceChildren(el('p', { class: 'muted board-loading' }, 'Chargement…'));
   clearTimeout(live.timer);
   await refresh();
@@ -282,6 +312,17 @@ function renderRules() {
   const c = current.config;
   const update = (next) => { current.config = next; renderRules(); };
   const form = $('rules');
+  const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
+    el('label', { for: 'site-url' }, 'Adresse du site'),
+    el('p', { class: 'muted' }, 'Le lien affiché sous le nom du projet. Sur Vercel : le domaine de production, par exemple https://habitudes.vercel.app.'),
+    el('input', { type: 'url', id: 'site-url', placeholder: 'https://…', value: c.siteUrl || '', inputmode: 'url',
+      onchange: (e) => {
+        const v = e.target.value.trim();
+        if (v && !/^https:\/\/\S+$/.test(v)) { toast('L\'adresse doit commencer par https://'); return; }
+        const next = structuredClone(c);
+        if (v) next.siteUrl = v; else delete next.siteUrl;
+        update(next);
+      } }));
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
     ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans ton abonnement (limite de lancements par jour).'],
       ['github-actions', 'GitHub Actions', 'Machines GitHub, illimitées sur un dépôt public, 2 000 minutes/mois en privé.']]
@@ -316,7 +357,7 @@ function renderRules() {
     el('button', { type: 'submit', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
-  form.replaceChildren(engine, stages, checks, ...packs, bar);
+  form.replaceChildren(site, engine, stages, checks, ...packs, bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 
@@ -331,6 +372,7 @@ async function saveRules(e) {
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
   renderRules();
+  drawSite();
   toast('Règles enregistrées. Elles s\'appliquent dans une minute environ.');
 }
 
@@ -385,6 +427,12 @@ async function openPhone() {
   $('phone').showModal();
 }
 
+$('site').addEventListener('click', (e) => {
+  if (!$('site').classList.contains('add')) return;
+  e.preventDefault();
+  selectTab('rules');
+  $('site-url')?.focus();
+});
 $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project').addEventListener('change', (e) => openProject(e.target.value));
