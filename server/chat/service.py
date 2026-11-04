@@ -184,9 +184,12 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 limit=16 * 1024 * 1024)
-            proc.stdin.write(build_prompt(conv, message, files).encode())
-            await proc.stdin.drain()
-            proc.stdin.close()
+            try:
+                proc.stdin.write(build_prompt(conv, message, files).encode())
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # claude exited early: its own error is read below
             draft, shown, final, failed = "", "", None, False
             async for raw in proc.stdout:
                 for e in events_from_line(raw.decode(errors="replace")):
@@ -229,13 +232,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             yield ev({"type": "error", "message": str(e)[:300]})
         finally:
             # The panel left (or the answer failed): the agent must not go on running on the owner's subscription.
-            if proc is not None and proc.returncode is None:
-                try:
+            try:
+                if proc is not None and proc.returncode is None:
                     proc.kill()
                     await proc.wait()
-                except ProcessLookupError:
-                    pass
-            await gh.close()
+            except ProcessLookupError:
+                pass
+            finally:
+                await gh.close()
 
     async def save(gh, conv):
         await gh.ensure_branch(BRANCH, {"README.md": BRANCH_README, "vercel.json": VERCEL_OFF})
