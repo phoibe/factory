@@ -16,7 +16,24 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
 4. PR comme à l'étape 7 (résumé « La fiche produit mise à jour : … »), sans captures : mets directement
    `factory:checks` sur la PR. Poste sur l'issue le lien de la PR et la liste des issues créées.
 
-Sinon (premier cadrage), suis les étapes ci-dessous.
+**Adoption d'un projet commencé sans la factory** (du code existe mais pas de fiche produit sur `main`) :
+ne refais **pas** l'appli et ne change pas son comportement.
+
+1. Branche `claude/issue-<n>-adoption` depuis la branche par défaut.
+2. Écris `PRODUCT.md` (étape 2 ci-dessous) d'après la fiche validée, et `stack` dans `factory.config.json`.
+3. **Design** : si le look actuel est gardé, skill `impeccable`, commande `document` (`reference/document.md`)
+   pour écrire `DESIGN.md` et `.impeccable/design.json` à partir des écrans existants. Si un nouveau look a
+   été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
+   design » au lieu de toucher aux écrans ici.
+4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
+   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil), et
+   `vercel.json` avec le framework s'il n'y est pas. Si un contrôle échoue à cause du code existant, corrige
+   ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
+5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
+6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
+   directement `factory:checks` ; sinon fais les captures (étape 8).
+
+Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
 
 1. **Branche** `claude/issue-<n>-foundation` depuis `main`.
 2. **Fiche produit** : écris `PRODUCT.md` à la racine (en français), reprise fidèle de la fiche validée, au
