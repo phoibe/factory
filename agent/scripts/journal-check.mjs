@@ -49,7 +49,9 @@ export function report(files, readFile, stages, opts) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  // Run from the project's folder (node .factory/scripts/journal-check.mjs), which is the right clone even
+  // when the routine serves several projects.
+  const root = process.cwd();
   const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
   try {
     const cfg = join(root, '.factory/config.resolved.json');

@@ -8,6 +8,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { branchFiles, problems } from './journal-check.mjs';
+import { sessionRoot } from './run-root.mjs';
 
 export const MAX_DENIALS = 3;
 const HEREDOC = /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g;
@@ -58,8 +59,8 @@ export function decide(input, { files, read, stages, sessionText }) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
-    const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
     const session = String(input.session_id || 'session').replace(/[^\w-]/g, '').slice(0, 36);
+    const root = sessionRoot(session, process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd());
     const sessionPath = join(root, '.factory/journal', `${session}.jsonl`);
     if (existsSync(sessionPath)) {
       const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
@@ -67,8 +68,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const stages = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')).stages || {} : {};
       const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
       const res = decide(input, { files: branchFiles(git), read, stages, sessionText: read(`.factory/journal/${session}.jsonl`) });
+      const id = input.tool_use_id ? String(input.tool_use_id) : null;
+      const counted = id && read(`.factory/journal/${session}.jsonl`).includes(`"id":${JSON.stringify(id)}`);
       if (res) {
-        appendFileSync(sessionPath, JSON.stringify({ t: new Date().toISOString(), kind: 'gate', event: input.hook_event_name }) + '\n');
+        // Each clone's settings carry the hook: the same refusal reached twice counts once.
+        if (!counted) appendFileSync(sessionPath, JSON.stringify({ t: new Date().toISOString(), kind: 'gate', event: input.hook_event_name, ...(id ? { id } : {}) }) + '\n');
         process.stdout.write(JSON.stringify(res.out));
       }
     }

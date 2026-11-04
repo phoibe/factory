@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "runner": "claude-cloud",
+  "maxParallel": 3,
+  "stack": "JavaScript sans dépendance (modules Node.js et navigateur), tests intégrés node --test, GitHub Actions et GitHub Pages pour le panneau",
+  "stages": {
+    "grilling": true,
+    "specReview": false,
+    "plan": true,
+    "tdd": true,
+    "review": true,
+    "designPass": true,
+    "screenshots": true,
+    "checks": true,
+    "acceptance": true
+  },
+  "review": {
+    "maxLoops": 3
+  },
+  "checks": {
+    "typecheck": true,
+    "lint": true,
+    "test": true,
+    "build": true,
+    "a11y": true,
+    "audit": true
+  },
+  "skills": {
+    "superpowers": {
+      "enabled": true,
+      "skills": {
+        "brainstorming": false,
+        "diagnosing-superpowers": false,
+        "dispatching-parallel-agents": true,
+        "executing-plans": true,
+        "finishing-a-development-branch": false,
+        "receiving-code-review": true,
+        "requesting-code-review": true,
+        "subagent-driven-development": true,
+        "systematic-debugging": true,
+        "test-driven-development": true,
+        "using-git-worktrees": false,
+        "using-superpowers": false,
+        "verification-before-completion": true,
+        "writing-plans": true,
+        "writing-skills": false
+      }
+    },
+    "matt-pocock": {
+      "enabled": true,
+      "skills": {
+        "grill-me": false,
+        "grilling": true,
+        "handoff": false,
+        "teach": false,
+        "to-questionnaire": false,
+        "wait-what": false,
+        "writing-for-agents": false,
+        "ask-matt": false,
+        "code-review": false,
+        "codebase-design": false,
+        "diagnosing-bugs": false,
+        "domain-modeling": false,
+        "grill-with-docs": false,
+        "implement": false,
+        "implement-spec": false,
+        "improve-codebase-architecture": false,
+        "pr": false,
+        "prototype": false,
+        "research": false,
+        "retro": false,
+        "setup-matt-pocock-skills": false,
+        "tdd": false,
+        "to-spec": true,
+        "to-tickets": false,
+        "triage": false,
+        "wayfinder": false,
+        "wizard": false
+      }
+    },
+    "impeccable": {
+      "enabled": true,
+      "skills": {
+        "impeccable": true
+      }
+    }
+  }
+}

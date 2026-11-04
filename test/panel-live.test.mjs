@@ -26,8 +26,8 @@ test('laneFor sorts cards into what waits for the owner, what agents do, and the
 });
 
 test('actionFor names what the owner has to do', () => {
-  assert.equal(actionFor('grilling'), 'Réponds aux questions');
-  assert.equal(actionFor('acceptance'), 'Teste la preview');
+  assert.equal(actionFor('grilling'), 'Répondez aux questions');
+  assert.equal(actionFor('acceptance'), 'Testez la preview');
   assert.equal(actionFor('building'), null);
 });
 
@@ -54,7 +54,8 @@ test('pollDelay is 8 s when active, 30 s when idle, and backs off after failures
 
 test('timeLine gives one short line per lane', () => {
   const clock = () => '00:17';
-  assert.equal(timeLine({ status: 'working', next: 28, total: 40, endAt: 1 }, clock), "~28 min avant l'étape suivante · fin vers 00:17");
+  assert.equal(timeLine({ status: 'working', nextLow: 20, nextHigh: 40, next: 28, total: 40, endAt: 1 }, clock), 'Entre 20 et 40 min avant la suite');
+  assert.equal(timeLine({ status: 'working', overrun: true, nextLow: 0, nextHigh: 0 }, clock), 'Plus long que prévu · nouvelle estimation en cours');
   assert.equal(timeLine({ status: 'yours', total: 61 }, clock), 'Ensuite ~1 h 01 de travail des agents');
   assert.equal(timeLine({ status: 'queued' }, clock), "Démarre dès qu'une place se libère");
 });

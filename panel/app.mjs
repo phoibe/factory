@@ -1,5 +1,6 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment } from './lib.mjs';
-import { stageMinutes, estimate, humanMinutes } from './eta.mjs';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=13';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
 
@@ -18,15 +19,15 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Grilling', "L'agent te pose des questions pour clarifier la feature avant d'écrire la spec."],
-  ['specReview', 'Valider chaque spec', "Coché : tu valides chaque spec par « go ». Décoché : l'agent lance la construction seul et ne te demande ton accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
+  ['grilling', 'Grilling', "L'agent vous pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
   ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
-  ['screenshots', 'Captures avant/après', "Tu valides l'apparence avant les contrôles."],
+  ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
   ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, failles.'],
-  ['acceptance', 'Recette', 'Tu testes la preview avant la mise en ligne.'],
+  ['acceptance', 'Recette', 'Vous testez la preview avant la mise en ligne.'],
 ];
 const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
@@ -79,6 +80,9 @@ function show(id) {
   $('nav').hidden = id === 'login';
 }
 
+// A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
+// a project). Repositories are checked a few at a time: firing one request per repository at once can trip
+// GitHub's anti-abuse limit, and the refused ones then silently vanished from the list.
 async function loadProjects() {
   const repos = [];
   for (let page = 1; page <= 5; page++) {
@@ -86,11 +90,43 @@ async function loadProjects() {
     repos.push(...batch);
     if (batch.length < 100) break;
   }
-  const found = await Promise.all(repos.filter((r) => !r.archived).map(async (r) => {
-    const file = await api(`/repos/${r.full_name}/contents/factory.config.json`).catch(() => null);
+  const failed = [];
+  const configOf = async (r) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await api(`/repos/${r.full_name}/contents/factory.config.json`);
+      } catch (err) {
+        if (err.status === 401) throw err;
+        if (attempt >= 2) { failed.push(r.name); return null; }
+        await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
+      }
+    }
+  };
+  const found = await mapLimit(projectCandidates(repos), 4, async (r) => {
+    const file = await configOf(r);
     return file ? { repo: r, file } : null;
-  }));
+  });
+  if (failed.length) {
+    toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
+    setTimeout(() => reloadProjects().catch(() => {}), 30_000);
+  }
   return found.filter(Boolean);
+}
+
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// After a partial load: picks up the projects GitHub did not answer for, without leaving the current one.
+async function reloadProjects() {
+  const fresh = await loadProjects();
+  if (fresh.length <= projects.length) return;
+  projects = fresh;
+  if (current) renderProjectSelect(); else await openProject(store.get(PROJECT_KEY));
 }
 
 function renderProjectSelect() {
@@ -121,8 +157,8 @@ async function openProject(fullName) {
   $('new-project').title = framed
     ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
     : "À faire une fois, avant la première feature : vision, design et stack.";
-  $('new-question').href = `${base}/issues/new?template=question.yml`;
   show('project-view');
+  resetChat();
   renderRules();
   await renderBoard();
   if (!live.tick) startLive();
@@ -131,9 +167,9 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null, sigs: null, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
-  ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
+  ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
   ['queued', 'En file d\'attente', 'La file est vide.'],
 ];
@@ -164,7 +200,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), prev: null, sigs: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -184,8 +220,21 @@ async function refresh() {
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(() => null) : { data: [] };
       if (!res) continue;
+      // The agent's estimate may sit on the page before the last one on a long thread.
+      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(() => null) : { data: [] };
+      if (!before) continue;
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
+      const session = sessionFrom([...before.data, ...res.data]);
+      if (live.sessions.get(c.number) !== session) {
+        live.sessions.set(c.number, session);
+        previewsChanged = true;
+      }
+      const plan = parseEstimate([...before.data, ...res.data]);
+      if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
+        live.plans.set(c.number, plan);
+        previewsChanged = true;
+      }
       if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
         live.previews.set(c.number, url);
         live.targets.set(c.number, target);
@@ -232,15 +281,21 @@ function stepTrack(c) {
 }
 
 function card(c, lane, minutes, now, moved) {
-  const e = estimate(c, live.events, minutes, now);
+  const plan = live.plans.get(c.number);
+  const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
+  const e = estimate(c, live.events, typical, now, plan);
   const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Feature';
-  const blocked = c.column === 'blocked';
   const running = c.labels.includes('factory:running');
+  // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
+  const blocked = c.column === 'blocked' && !running;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, actionFor(c.column), el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
-        running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente')
+        running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
+        running && live.sessions.get(c.number)
+          ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
+          : null)
       : null;
   const preview = live.previews.get(c.number);
   const testIt = c.column === 'acceptance' && !running;
@@ -286,21 +341,24 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const minutes = stageMinutes(live.events, now);
+  const sizes = Object.fromEntries([...live.plans].filter(([, p]) => p).map(([n, p]) => [n, p.size]));
+  const minutes = { ...stageMinutes(live.events, now) };
+  // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
+  minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
   const n = byLane.yours.length;
-  const headline = n ? (n === 1 ? '1 chose t\'attend' : `${n} choses t'attendent`)
-    : cards.length ? 'Rien ne t\'attend' : 'Aucune feature en cours';
+  const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
+    : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
   const sub = cards.length
-    ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent tes réponses.'
-    : 'Lance-toi avec « Nouvelle feature ».';
+    ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
+    : 'Lancez-vous avec « Nouvelle feature ».';
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
   const fresh = [
     el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
       el('div', {}, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub)),
-      el('p', { class: 'live', role: 'status' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
+      el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
     ...LANES.filter(([id]) => cards.length || id === 'yours').map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
@@ -417,7 +475,7 @@ function renderRules() {
         update(next);
       } }));
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
-    ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans ton abonnement (limite de lancements par jour).'],
+    ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans votre abonnement (limite de lancements par jour).'],
       ['github-actions', 'GitHub Actions', 'Machines GitHub, illimitées sur un dépôt public, 2 000 minutes/mois en privé.']]
       .map(([v, t, d]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
@@ -462,22 +520,33 @@ async function saveRules(e) {
     method: 'PUT',
     body: JSON.stringify({ message: 'chore(factory): update rules from the panel', content: toBase64(body), sha: fresh.sha }),
   });
+  const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
+  // More places: ask the factory to look at the queue now instead of at its next 20-minute check.
+  if (current.config.maxParallel > (before || 0)) {
+    api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
+      method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
+    }).catch(() => {});
+  }
   renderRules();
   drawSite();
   toast('Règles enregistrées. Elles s\'appliquent dans une minute environ.');
 }
 
 function selectTab(name) {
-  $('tab-board').setAttribute('aria-selected', String(name === 'board'));
-  $('tab-rules').setAttribute('aria-selected', String(name === 'rules'));
-  $('board').hidden = name !== 'board';
-  $('rules').hidden = name !== 'rules';
+  for (const t of ['board', 'chat', 'rules']) {
+    $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
+    $(t).hidden = name !== t;
+  }
+  if (name === 'chat') openChat(); else clearTimeout(chat.timer);
 }
 
 async function start() {
-  [catalog, defaults] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json())]);
+  let server;
+  [catalog, defaults, server] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json()),
+    fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+  chat.server = /^(https:\/\/[\w.-]+|http:\/\/localhost:\d+)$/.test(server?.url || '') ? server.url : null;
   if (!token) return show('login');
   try {
     projects = await loadProjects();
@@ -490,7 +559,7 @@ async function start() {
     }
     store.del(TOKEN_KEY);
     token = null;
-    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifie-le et réessaie.`;
+    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -525,6 +594,7 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -536,7 +606,11 @@ $('login-form').addEventListener('submit', (e) => {
   $('login-error').textContent = '';
   start();
 });
-$('logout').addEventListener('click', () => { store.del(TOKEN_KEY); token = null; show('login'); });
+$('logout').addEventListener('click', () => {
+  store.del(TOKEN_KEY); token = null; projects = []; current = null;
+  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+  show('login');
+});
 function loadScript(src) {
   return new Promise((ok, ko) => document.head.append(el('script', { src, onload: ok, onerror: ko })));
 }
@@ -548,7 +622,7 @@ async function openPhone() {
   qr.addData(link);
   qr.make();
   $('phone-qr').innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
-  $('phone-copy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Lien copié. Ouvre-le sur ton téléphone.'), () => toast('Copie impossible : scanne le code.'));
+  $('phone-copy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Lien copié. Ouvrez-le sur votre téléphone.'), () => toast('Copie impossible : scannez le code.'));
   $('phone').showModal();
 }
 
@@ -560,13 +634,13 @@ $('site').addEventListener('click', (e) => {
 });
 $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
 $('phone-close').addEventListener('click', () => $('phone').close());
-$('project').addEventListener('change', (e) => openProject(e.target.value));
+$('project').addEventListener('change', (e) => openProject(e.target.value).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); if (current) $('project').value = current.repo.full_name; }));
 $('general-review').addEventListener('click', () => startGeneralReview());
 
 // Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
 async function startGeneralReview() {
   if (!current) return;
-  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que tu valideras comme une feature.")) return;
+  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que vous validerez comme une feature.")) return;
   const btn = $('general-review');
   btn.disabled = true;
   try {
@@ -583,7 +657,528 @@ async function startGeneralReview() {
     btn.disabled = false;
   }
 }
+// ---- Discussion -------------------------------------------------------------------------------
+// A chat with the agent. Two ways to reach it:
+// - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within
+//   seconds; conversations are JSON files on the project's `factory-chat` branch;
+// - otherwise, each conversation is a `factory:question` issue that wakes the agent's routine (a minute or
+//   more). While an answer is awaited it is checked every 4 s, otherwise every 15 s, with ETags.
+// Either way the owner only ever sees the chat.
+const SEEN_KEY = 'factory.chat.seen';
+const EXAMPLES = [
+  'Que se passe-t-il si je ferme l\'appli au milieu d\'une saisie ?',
+  'Je voudrais pouvoir exporter mes données.',
+  'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
+];
+const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
+const MAX_IMAGES = 4;
+
+function resetChat() {
+  clearTimeout(chat.timer);
+  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
+  try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
+  $('chat').classList.remove('viewing');
+  if (!$('chat').hidden) openChat();
+}
+
+function markSeen(issue) {
+  chat.seen[issue.number] = issue.comments || 0;
+  store.set(`${SEEN_KEY}.${chat.repo}`, JSON.stringify(chat.seen));
+}
+
+async function chatGet(path) {
+  const hit = chat.etags.get(path);
+  const res = await fetch(API + path, {
+    cache: 'no-store',
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
+  });
+  if (res.status === 304 && hit) return hit.data;
+  if (!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  const etag = res.headers.get('etag');
+  if (etag) chat.etags.set(path, { etag, data });
+  return data;
+}
+
+async function openChat() {
+  if (!current) return;
+  if (chat.repo !== current.repo.full_name) return resetChat();
+  // Wakes the chat server up while the owner types (it sleeps when unused).
+  if (chat.server && Date.now() - chat.warmed > 60_000) { chat.warmed = Date.now(); fetch(`${chat.server}/health`).catch(() => {}); }
+  drawChat();
+  await refreshChat();
+}
+
+// A JSON file of the `factory-chat` branch, or null.
+async function branchJson(path) {
+  const res = await fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`, {
+    cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+async function refreshServerChat() {
+  const repo = chat.repo;
+  const index = await branchJson('index.json');
+  if (chat.repo !== repo) return;
+  chat.list = serverList(index);
+  const id = chat.open;
+  if (id && id !== 'new' && !chat.live) {
+    const conv = await branchJson(`chats/${id}.json`);
+    if (chat.repo === repo && chat.open === id && !chat.live) chat.conv = conv;
+  }
+}
+
+async function refreshChat() {
+  if (chat.busy) return;
+  chat.busy = true;
+  const repo = chat.repo;
+  try {
+    if (chat.server) { await refreshServerChat(); drawChat(); return; }
+    const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
+    if (chat.repo !== repo) return;
+    chat.list = conversations(list);
+    if (typeof chat.open === 'number') {
+      const n = chat.open;
+      const issue = await chatGet(`/repos/${repo}/issues/${n}`);
+      const pages = Math.max(1, Math.ceil((issue.comments || 0) / 100));
+      const comments = [];
+      for (let p = 1; p <= pages; p++) comments.push(...await chatGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${p}`));
+      if (chat.repo !== repo || chat.open !== n) return;
+      chat.issue = issue;
+      chat.comments = comments;
+      // The pending message shows until GitHub lists it.
+      if (chat.pending && chatMessages(issue, comments).some((m) => m.who === 'me' && m.text === chat.pending.text && (m.images?.length || 0) === chat.pending.previews.length)) chat.pending = null;
+      markSeen(issue);
+    }
+    drawChat();
+  } catch (err) {
+    if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+  } finally {
+    chat.busy = false;
+    scheduleChat();
+  }
+}
+
+function scheduleChat() {
+  clearTimeout(chat.timer);
+  if (document.hidden || $('chat').hidden || !current) return;
+  if (chat.server) { chat.timer = setTimeout(refreshChat, 30_000); return; } // only picks up other devices' messages
+  const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
+  chat.timer = setTimeout(refreshChat, waiting ? 4000 : 15_000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return clearTimeout(chat.timer);
+  if (current && !$('chat').hidden) refreshChat();
+});
+
+const timeOf = (iso) => {
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+};
+
+function inlineNodes(parts) {
+  return parts.map((p) => {
+    if (p.t === 'text') return p.v;
+    if (p.t === 'br') return el('br');
+    if (p.t === 'code') return el('code', {}, p.v);
+    if (p.t === 'b') return el('strong', {}, inlineNodes(p.c));
+    if (p.t === 'i') return el('em', {}, inlineNodes(p.c));
+    if (p.t === 'a') return el('a', { href: p.href, target: '_blank', rel: 'noopener' }, inlineNodes(p.c));
+    return null;
+  });
+}
+
+function richText(text) {
+  return markdown(text).map((b) => {
+    if (b.type === 'p') return el('p', {}, inlineNodes(b.inline));
+    if (b.type === 'quote') return el('blockquote', {}, inlineNodes(b.inline));
+    if (b.type === 'pre') return el('pre', {}, b.v);
+    return el(b.type, {}, b.items.map((it) => el('li', {}, inlineNodes(it))));
+  });
+}
+
+// Images live on the attachments branch; a private repository serves them only with the token, so each is
+// fetched once and shown from a local copy.
+function chatImage(path) {
+  const img = el('img', { alt: 'Image envoyée', loading: 'lazy' });
+  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener' }, img);
+  const show = (url) => { img.src = url; link.href = url; };
+  if (path.startsWith('blob:')) { show(path); return link; }
+  if (!chat.images.has(path)) {
+    chat.images.set(path, fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${ATTACHMENTS_BRANCH}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+    }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status)))).then((b) => URL.createObjectURL(b))
+      .catch(() => { chat.images.delete(path); return null; }));
+  }
+  chat.images.get(path).then((url) => { if (url) show(url); else link.classList.add('broken'); });
+  return link;
+}
+
+function bubble(m) {
+  const pics = (m.images || []).map(chatImage);
+  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
+  return el('li', { class: `msg ${m.who}` },
+    pics.length ? el('div', { class: 'shots' }, pics) : null,
+    text.length ? el('div', { class: 'bubble' }, text) : null,
+    ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
+      el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Feature créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
+    el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+}
+
+// The answer being written by the chat server, updated in place as it streams.
+function liveBubble() {
+  const live = chat.live;
+  return el('li', { class: 'msg agent', id: 'live-bubble' },
+    live.text
+      ? el('div', { class: 'bubble' }, richText(live.text))
+      : el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+    el('span', { class: 'meta' }, live.status || 'Réfléchit…'));
+}
+
+function drawLive() {
+  const node = $('live-bubble');
+  if (!node || !chat.live) return drawChat();
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+  node.replaceWith(liveBubble());
+  if (stick) list.scrollTop = list.scrollHeight;
+}
+
+function drawChatList() {
+  const items = $('chat-items');
+  if (!chat.list) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  if (!chat.list.length) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Aucune conversation pour l\'instant.'));
+  const open = chat.list.filter((c) => c.state === 'open');
+  const done = chat.list.filter((c) => c.state !== 'open');
+  const row = (c) => {
+    const key = chat.server ? c.id : c.number;
+    const thinking = chat.server ? Boolean(chat.live) && chat.open === key : c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
+    const fresh = !chat.server && unread(c, chat.seen) && chat.open !== key;
+    return el('li', {},
+      el('button', { type: 'button', class: `conv${chat.open === key ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === key ? 'true' : false, onclick: () => selectConversation(key) },
+        el('span', { class: 'conv-title' }, c.title),
+        el('span', { class: 'conv-meta' }, thinking ? el('span', { class: 'typing-dot', 'aria-hidden': 'true' }) : null,
+          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated || c.updated_at))));
+  };
+  items.replaceChildren(...open.map(row), ...(done.length ? [el('li', { class: 'chat-sep' }, 'Terminées')] : []), ...done.map(row));
+  const n = chat.server ? 0 : open.filter((c) => unread(c, chat.seen)).length;
+  $('chat-badge').hidden = !n;
+  $('chat-badge').textContent = String(n);
+}
+
+function drawChat() {
+  drawChatList();
+  const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
+  if (chat.server) return drawServerChat(isNew);
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '…';
+  $('chat-tools').hidden = isNew || !chat.issue;
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  if (isNew) {
+    list.replaceChildren(el('li', { class: 'chat-intro' },
+      el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
+      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème. L\'agent lit le code pour vous répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
+      examples()));
+  } else if (chat.issue && chat.issue.number === chat.open) {
+    const messages = chatMessages(chat.issue, chat.comments);
+    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
+    const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
+    const tail = status === 'thinking'
+      ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+      : status === 'late'
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
+    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    $('chat-close').hidden = status === 'closed';
+  } else {
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  }
+  if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+}
+
+const examples = () => el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)));
+
+function drawServerChat(isNew) {
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+  const entry = chat.list?.find((c) => c.id === chat.open);
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '…');
+  $('chat-tools').hidden = isNew || !chat.conv;
+  $('chat-close').hidden = entry?.state === 'closed';
+  if (isNew) {
+    list.replaceChildren(el('li', { class: 'chat-intro' },
+      el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
+      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème, avec une capture si vous le souhaitez. L\'agent lit le code et vous répond en quelques secondes. Il peut ensuite en faire une feature ou un bug.'),
+      examples()));
+  } else if (chat.conv || chat.live) {
+    const messages = serverMessages(chat.conv);
+    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
+    const tail = chat.live ? liveBubble()
+      : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
+    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+  } else {
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  }
+  if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+}
+
+function selectConversation(n) {
+  if (chat.live && n !== chat.open) return toast('Attendez la fin de la réponse en cours.');
+  chat.open = n;
+  chat.pending = null;
+  if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
+  if (chat.conv?.id !== n) chat.conv = null;
+  $('chat').classList.add('viewing');
+  drawChat();
+  const list = $('chat-messages');
+  list.scrollTop = list.scrollHeight;
+  if (n !== 'new') { clearTimeout(chat.timer); refreshChat(); }
+  if (n === 'new' || matchMedia('(pointer: fine)').matches) $('chat-input').focus();
+}
+
+// The attachments branch holds images only (never merged); it is created on the first image.
+async function ensureAttachmentsBranch(repo) {
+  if (await api(`/repos/${repo}/branches/${ATTACHMENTS_BRANCH}`)) return;
+  const tree = await api(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
+    { path: 'README.md', mode: '100644', type: 'blob', content: "# Pièces jointes\n\nImages envoyées par le propriétaire (chat du tableau, issues, PR), pour que l'agent puisse les voir. Ne pas fusionner.\n" },
+    { path: 'vercel.json', mode: '100644', type: 'blob', content: '{ "git": { "deploymentEnabled": false } }\n' },
+  ] }) });
+  const commit = await api(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message: 'chore(factory): attachments branch', tree: tree.sha, parents: [] }) });
+  await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${ATTACHMENTS_BRANCH}`, sha: commit.sha }) }).catch((e) => {
+    if (e.status !== 422) throw e; // 422: created meanwhile
+  });
+}
+
+// Photos are scaled down to 1600 px and saved as JPEG: enough to read a screenshot, light to send.
+async function shrink(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.88));
+  const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(blob); });
+  return data.split(',')[1];
+}
+
+async function uploadImages(repo, files) {
+  if (!files.length) return [];
+  await ensureAttachmentsBranch(repo);
+  const paths = [];
+  for (const f of files) {
+    const path = imagePath('image/jpeg');
+    await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `chore(factory): chat image ${path}`, content: await shrink(f.file), branch: ATTACHMENTS_BRANCH }) });
+    chat.images.set(path, Promise.resolve(f.url)); // already on screen: no download
+    paths.push(path);
+  }
+  return paths;
+}
+
+function addImages(files) {
+  const images = [...files].filter((f) => f.type.startsWith('image/'));
+  if (!images.length) return;
+  const room = MAX_IMAGES - chat.files.length;
+  if (images.length > room) toast(`${MAX_IMAGES} images au plus par message.`);
+  for (const file of images.slice(0, Math.max(0, room))) chat.files.push({ file, url: URL.createObjectURL(file) });
+  drawPendingImages();
+}
+
+function drawPendingImages() {
+  const box = $('chat-pending');
+  box.hidden = !chat.files.length;
+  box.replaceChildren(...chat.files.map((f, i) => el('div', { class: 'pending-image' },
+    el('img', { src: f.url, alt: `Image ${i + 1} à envoyer` }),
+    el('button', { type: 'button', class: 'remove', 'aria-label': `Retirer l'image ${i + 1}`, onclick: () => { chat.files.splice(i, 1); drawPendingImages(); } }, '×'))));
+}
+
+async function sendChat(text, withImages = true) {
+  text = text.trim();
+  const files = withImages ? [...chat.files] : [];
+  if ((!text && !files.length) || !current) return;
+  if (chat.sending) return;
+  if (chat.server) return sendToServer(text, files, withImages);
+  const repo = chat.repo;
+  const btn = $('chat-send');
+  btn.disabled = true;
+  chat.sending = true;
+  try {
+    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    const paths = await uploadImages(repo, files);
+    const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
+    if (typeof chat.open !== 'number') {
+      const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
+      chat.open = issue.number;
+      chat.issue = issue;
+      chat.comments = [];
+      markSeen(issue);
+    } else {
+      if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
+      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+    }
+    if (withImages) {
+      $('chat-input').value = '';
+      chat.files = [];
+      drawPendingImages();
+      autosize();
+    }
+    clearTimeout(chat.timer);
+    chat.etags.clear();
+    await refreshChat();
+  } catch (e) {
+    chat.pending = null;
+    drawChat();
+    toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Sends a message to the chat server and shows the answer as it is written.
+async function sendToServer(text, files, withImages) {
+  if (chat.live) return;
+  const repo = chat.repo;
+  const btn = $('chat-send');
+  btn.disabled = true;
+  const isNew = !chat.open || chat.open === 'new';
+  chat.pending = { text, previews: files.map((f) => f.url) };
+  chat.live = { text: '', status: files.length ? 'Envoie les images…' : 'Envoi…' };
+  if (withImages) {
+    $('chat-input').value = '';
+    chat.files = [];
+    drawPendingImages();
+    autosize();
+  }
+  drawChat();
+  let answer = null;
+  try {
+    const paths = await uploadImages(repo, files);
+    const res = await fetch(`${chat.server}/chat`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const { events, rest } = ndjson(buffer + decoder.decode(value, { stream: true }));
+      buffer = rest;
+      for (const e of events) {
+        if (e.type === 'status') chat.live.status = e.text;
+        else if (e.type === 'delta') { chat.live.text += e.text; chat.live.status = 'Écrit…'; }
+        else if (e.type === 'draft') chat.live.text = e.text;
+        else if (e.type === 'reset') chat.live.text = '';
+        else if (e.type === 'answer') answer = e;
+        else if (e.type === 'error') throw new Error(e.message);
+        else if (e.type === 'done') {
+          const c = e.conversation;
+          chat.conv = chat.conv || { id: c.id, title: c.title, messages: [] };
+          chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
+            { who: 'agent', text: answer?.text || '', issues: answer?.issues || [], at: c.updated });
+          for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
+          if (chat.repo === repo) chat.open = c.id;
+          chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
+        }
+      }
+      drawLive();
+    }
+    if (!answer) throw new Error('la réponse a été coupée');
+  } catch (e) {
+    if (!$('chat-input').value) $('chat-input').value = text;
+    autosize();
+    toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
+  } finally {
+    chat.pending = null;
+    chat.live = null;
+    btn.disabled = false;
+    drawChat();
+    if (answer?.issues?.length) renderBoard().catch(() => {});
+  }
+}
+
+// In server mode, « Terminer » only marks the conversation in the branch's index.
+async function closeServerConversation() {
+  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`);
+  const index = JSON.parse(fromBase64(meta.content)).map((c) => (c.id === chat.open ? { ...c, state: 'closed' } : c));
+  await api(`/repos/${chat.repo}/contents/index.json`, { method: 'PUT', body: JSON.stringify({
+    message: 'chore(factory): chat index', branch: CHAT_BRANCH, sha: meta.sha, content: toBase64(JSON.stringify(index, null, 1) + '\n') }) });
+}
+
+async function closeConversation() {
+  if (chat.server && chat.open && chat.open !== 'new') {
+    try {
+      await closeServerConversation();
+      toast('Conversation rangée dans « Terminées »');
+      $('chat').classList.remove('viewing');
+      await refreshChat();
+    } catch (e) {
+      toast(`Impossible de terminer la conversation : ${e.message}`);
+    }
+    return;
+  }
+  if (typeof chat.open !== 'number') return;
+  try {
+    await api(`/repos/${chat.repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
+    chat.etags.clear();
+    toast('Conversation rangée dans « Terminées »');
+    $('chat').classList.remove('viewing');
+    await refreshChat();
+  } catch (e) {
+    toast(`Impossible de terminer la conversation : ${e.message}`);
+  }
+}
+
+function autosize() {
+  const t = $('chat-input');
+  t.style.height = 'auto';
+  t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+}
+
+$('chat-form').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('chat-input').value); });
+$('chat-input').addEventListener('input', autosize);
+// Enter sends on a computer (Shift+Enter for a new line); on a phone, Enter is a new line and the button sends.
+$('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+    e.preventDefault();
+    $('chat-form').requestSubmit();
+  }
+});
+$('chat-new').addEventListener('click', () => selectConversation('new'));
+$('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
+$('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));
+$('chat-bug').addEventListener('click', () => sendChat(ASK.bug, false));
+$('chat-attach').addEventListener('click', () => $('chat-file').click());
+$('chat-file').addEventListener('change', (e) => { addImages(e.target.files); e.target.value = ''; });
+$('chat-input').addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); addImages(files); }
+});
+for (const t of ['dragover', 'drop']) {
+  document.querySelector('.chat-thread').addEventListener(t, (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    e.preventDefault();
+    if (t === 'drop') addImages(e.dataTransfer.files);
+  });
+}
+$('chat-close').addEventListener('click', () => closeConversation());
+$('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
+
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
+$('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));
@@ -608,7 +1203,7 @@ function showWidthReport(force) {
   if (!wide && !force) return;
   document.getElementById('width-report')?.remove();
   document.body.append(el('div', { id: 'width-report', style: 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9;background:#000;color:#fff;border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,monospace' },
-    el('p', { style: 'margin:0 0 6px;font-weight:700' }, 'La page est plus large que l\'écran : fais une capture et envoie-la à Claude.'),
+    el('p', { style: 'margin:0 0 6px;font-weight:700' }, 'La page est plus large que l\'écran : faites une capture et envoyez-la à Claude.'),
     el('pre', { style: 'margin:0;max-height:35vh;overflow:auto;white-space:pre-wrap' }, text),
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }

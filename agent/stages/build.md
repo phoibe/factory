@@ -2,6 +2,12 @@
 
 Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`). Construis-la jusqu'à une PR.
 
+0. **Estimation de durée.** Avant de commencer, évalue honnêtement la taille de la feature (`small`, `medium` ou `large`)
+   et le temps de travail réaliste qu'il te reste, en minutes, sous forme de fourchette (ni marge de sécurité excessive, ni
+   vœu pieux ; le haut ne dépasse pas 2,5 fois le bas). Publie-la en commentaire sur l'issue, avec en 2e ligne le marqueur
+   `<!-- factory-estimate size=<taille> min=<bas> max=<haut> -->` et une phrase en français pour le propriétaire
+   (ex. « Je pense que c'est une petite feature : entre 20 et 40 min »). Le tableau lit ce marqueur. Si en cours de route
+   tu dépasses le haut de ta fourchette, publie une nouvelle estimation (même format) pour ce qu'il reste à faire.
 1. **Branche** `claude/issue-<n>-<mot-clé>` depuis `main`.
 2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `PRODUCT.md` (sans fiche produit, choisis-la avec les critères de `.factory/stages/framing.md`), avec dès le
    départ les scripts npm `typecheck`, `lint`, `test`, `build` et `test:a11y` (Playwright + axe-core sur les

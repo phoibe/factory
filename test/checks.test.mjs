@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planChecks, summary } from '../scripts/checks.mjs';
+import { planChecks, summary, isFactoryRepo } from '../scripts/checks.mjs';
 
 const all = { typecheck: true, lint: true, test: true, build: true, a11y: true, audit: true };
 
@@ -17,4 +17,9 @@ test('a missing script is reported, a disabled check is skipped', () => {
 
 test('summary is in French', () => {
   assert.match(summary([{ label: 'Tests', status: 'missing', script: 'test' }]), /script npm « test » absent/);
+});
+
+test('the factory repository is recognised as having no app but its own tests', () => {
+  assert.equal(isFactoryRepo(new URL('..', import.meta.url).pathname), true);
+  assert.equal(isFactoryRepo('/nonexistent-dir'), false);
 });

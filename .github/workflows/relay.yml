@@ -21,7 +21,7 @@ jobs:
     concurrency:
       group: factory-decide-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number || (github.event.inputs.payload && fromJSON(github.event.inputs.payload).replay) || github.run_id }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
@@ -54,7 +54,7 @@ jobs:
   agent:
     needs: decide
     if: needs.decide.outputs.agent == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: write
@@ -82,7 +82,7 @@ jobs:
   release:
     needs: [decide, agent]
     if: always() && needs.decide.outputs.agent == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       issues: write
@@ -108,18 +108,21 @@ jobs:
     concurrency:
       group: factory-checks-${{ github.repository }}-${{ needs.decide.outputs.pr }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
     outputs:
       sha: ${{ steps.head.outputs.sha }}
+      started: ${{ steps.head.outputs.started }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refs/pull/${{ needs.decide.outputs.pr }}/head
       - id: head
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
       - name: Rules from the default branch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,11 +146,11 @@ jobs:
 
   report:
     needs: [decide, checks]
-    if: always() && needs.decide.outputs.checks == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'failure')
+    if: always() && needs.decide.outputs.checks == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'failure' || needs.checks.result == 'cancelled')
     concurrency:
       group: factory-report-${{ github.repository }}-${{ needs.decide.outputs.pr }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
@@ -164,7 +167,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }}
+      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }} --started ${{ needs.checks.outputs.started }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}

@@ -1,6 +1,6 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
 import { COLUMNS, columnFor } from './lib.mjs';
-import { humanMinutes } from './eta.mjs';
+import { humanMinutes, rangeText } from './eta.mjs';
 
 const STEPS = [
   { id: 'grilling', name: 'Questions' },
@@ -11,11 +11,11 @@ const STEPS = [
   { id: 'acceptance', name: 'Recette' },
 ];
 const ACTIONS = {
-  grilling: 'Réponds aux questions',
-  spec: 'Valide la spec',
-  visual: 'Valide les captures',
-  acceptance: 'Teste la preview',
-  blocked: "Débloque l'agent",
+  grilling: 'Répondez aux questions',
+  spec: 'Validez la spec',
+  visual: 'Validez les captures',
+  acceptance: 'Testez la preview',
+  blocked: "Débloquez l'agent",
 };
 
 // The steps an item goes through. Bugs and general reviews have no questions and no spec.
@@ -75,8 +75,10 @@ export function cardChanges(prev, next) {
 }
 
 // One short line about time, from estimate() in eta.mjs.
-export function timeLine(e, clock = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })) {
+export function timeLine(e) {
   if (e.status === 'queued') return "Démarre dès qu'une place se libère";
   if (e.status === 'yours') return `Ensuite ~${humanMinutes(e.total)} de travail des agents`;
-  return `~${humanMinutes(e.next)} avant l'étape suivante · fin vers ${clock(e.endAt)}`;
+  if (e.overrun) return 'Plus long que prévu · nouvelle estimation en cours';
+  const text = rangeText(e.nextLow, e.nextHigh);
+  return `${text[0].toUpperCase()}${text.slice(1)} avant la suite`;
 }

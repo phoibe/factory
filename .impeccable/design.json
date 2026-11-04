@@ -1,0 +1,21 @@
+{
+  "name": "Factory",
+  "direction": "Atelier monochrome",
+  "shades": {
+    "signal-blue": ["#eaf0ff", "#c9d8ff", "#6c93ff", "#1850e8", "#0f3bb5"],
+    "neutral": ["#fbfbfa", "#f1f1ee", "#e6e6e3", "#9aa0a6", "#5f6368", "#2a2c30", "#0e0f11"]
+  },
+  "shadows": {
+    "floating": "0 1px 2px rgb(0 0 0 / .05), 0 4px 12px rgb(0 0 0 / .06)"
+  },
+  "motion": {
+    "duration": { "fast": "120ms", "base": "180ms" },
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "reducedMotion": "no transition"
+  },
+  "breakpoints": { "tablet": "720px", "desktop": "1100px" },
+  "components": {
+    "button-primary": { "height": "44px", "focus": "2px solid signal-blue, offset 2px" },
+    "card-you": { "role": "ce qui attend une réponse, une seule par écran, en tête de page" }
+  }
+}
