@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -46,7 +46,7 @@ test('a phone link carries the token in the fragment and is read back once', () 
 test('previewFrom finds the latest preview link of a PR', () => {
   const vercel = (url) => ({ user: { login: 'vercel[bot]' }, body: `| habitudes | ✅ Ready ([Inspect](https://vercel.com/x)) | [Visit Preview](${url}) |` });
   assert.equal(previewFrom([vercel('https://a.vercel.app'), vercel('https://b.vercel.app')]), 'https://b.vercel.app');
-  assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: 'Tu peux tester la nouvelle version ici : https://c.vercel.app\n\nVérifie' }]), 'https://c.vercel.app');
+  assert.equal(previewFrom([{ user: { login: 'phoibe' }, author_association: 'OWNER', body: 'Tu peux tester la nouvelle version ici : https://c.vercel.app\n\nVérifie' }]), 'https://c.vercel.app');
   assert.equal(previewFrom([{ user: { login: 'phoibe' }, body: '[Preview](https://evil.example)' }]), null);
   assert.equal(previewFrom([]), null);
 });
@@ -69,7 +69,7 @@ test('projectCandidates skips archived repositories and templates', () => {
 });
 
 test('sessionFrom reads the link to the agent session from the factory comment', () => {
-  const note = { body: "<!-- factory-session -->\n<!-- factory-agent -->\nDernier lancement de l'agent : **Construction**, à 14:05. [Voir ce qu'il fait](https://claude.ai/code/session_01ABC)" };
+  const note = { user: { login: 'github-actions[bot]' }, body: "<!-- factory-session -->\n<!-- factory-agent -->\nDernier lancement de l'agent : **Construction**, à 14:05. [Voir ce qu'il fait](https://claude.ai/code/session_01ABC)" };
   assert.equal(sessionFrom([{ body: 'ok' }, note]), 'https://claude.ai/code/session_01ABC');
   assert.equal(sessionFrom([{ body: 'ok' }]), null);
 });
@@ -108,4 +108,33 @@ test('doneAgo speaks French', () => {
   assert.equal(doneAgo('2026-11-04T12:30:00', now), 'il y a 2 h');
   assert.equal(doneAgo('2026-11-03T20:00:00', now), 'hier');
   assert.match(doneAgo('2026-11-03T08:00:00', Date.parse('2026-11-10T15:00:00')), /^le 3 nov/);
+});
+
+test('previewFrom and sessionFrom ignore links planted by a stranger on a public project', () => {
+  const planted = { user: { login: 'stranger' }, author_association: 'NONE', body: 'Tu peux tester la nouvelle version ici : https://evil.example' };
+  assert.equal(previewFrom([planted]), null);
+  assert.equal(previewFrom([{ user: { login: 'github-actions[bot]' }, body: 'Tu peux tester la nouvelle version ici : https://ok.vercel.app' }, planted]), 'https://ok.vercel.app');
+  const body = '<!-- factory-session -->\nVoir [ici](https://claude.ai/code/session_1)';
+  assert.equal(sessionFrom([{ user: { login: 'stranger' }, body }]), null);
+  assert.equal(sessionFrom([{ user: { login: 'github-actions[bot]' }, body }]), 'https://claude.ai/code/session_1');
+});
+
+test('chatServerUrl only accepts a Modal address or localhost', () => {
+  assert.equal(chatServerUrl('https://me--factory-chat-web.modal.run'), 'https://me--factory-chat-web.modal.run');
+  assert.equal(chatServerUrl('http://localhost:8000'), 'http://localhost:8000');
+  for (const bad of ['https://evil.example', 'https://x.modal.run.evil.example', 'https://evil.example/.modal.run', 'http://x.modal.run', '', null]) assert.equal(chatServerUrl(bad), null);
+});
+
+test('allPages reads every page of a list', async () => {
+  const pages = [Array(100).fill(1), Array(100).fill(2), Array(5).fill(3)];
+  assert.equal((await allPages(async (p) => pages[p - 1])).length, 205);
+  assert.equal((await allPages(async () => Array(100).fill(1), 3)).length, 300);
+});
+
+test('mergeConfig keeps changes made elsewhere and applies only the local ones', () => {
+  const base = { maxParallel: 2, stages: { tdd: true, plan: true }, siteUrl: '' };
+  const mine = { ...base, stages: { tdd: false, plan: true } };
+  const theirs = { ...base, maxParallel: 5, stages: { tdd: true, plan: false } };
+  assert.deepEqual(mergeConfig(base, mine, theirs), { maxParallel: 5, stages: { tdd: false, plan: false }, siteUrl: '' });
+  assert.deepEqual(mergeConfig(base, base, theirs), theirs);
 });
