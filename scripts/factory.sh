@@ -44,6 +44,8 @@ need_gh() {
     gh auth login --web --git-protocol https </dev/tty
   fi
   OWNER_LOGIN=$(gh api user --jq .login)
+  # Clones and pushes go over HTTPS with the gh login, so no SSH key is ever needed.
+  gh auth setup-git >/dev/null 2>&1 || true
 }
 
 full_name() { case "$1" in */*) printf '%s' "$1" ;; *) printf '%s/%s' "$OWNER_LOGIN" "$1" ;; esac; }
@@ -72,7 +74,7 @@ install_into_existing() {
   local branch work f dest
   branch=$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)
   work=$(mktemp -d)
-  gh repo clone "$REPO" "$work/repo" -- --quiet --depth 1 --branch "$branch"
+  gh repo clone "https://github.com/$REPO.git" "$work/repo" -- --quiet --depth 1 --branch "$branch"
   for f in $TEMPLATE_FILES; do
     dest="$work/repo/$f"; mkdir -p "$(dirname "$dest")"
     gh api -H 'Accept: application/vnd.github.raw' "repos/$TEMPLATE/contents/$f" > "$dest"
@@ -216,7 +218,7 @@ vercel_setup() {
   if [ "$REPO" = "$OWNER_LOGIN/factory" ]; then ok "Pas besoin de Vercel : le tableau de la factory est publié par GitHub Pages"; return; fi
   if command -v npx >/dev/null 2>&1; then
     work=$(mktemp -d)
-    gh repo clone "$REPO" "$work/repo" -- --quiet --depth 1 >/dev/null 2>&1 || true
+    gh repo clone "https://github.com/$REPO.git" "$work/repo" -- --quiet --depth 1 >/dev/null 2>&1 || true
     if ( cd "$work/repo" \
          && { npx --yes vercel@latest whoami >/dev/null 2>&1 || npx --yes vercel@latest login </dev/tty; } \
          && npx --yes vercel@latest link --yes --project "$name" >/dev/null 2>&1 \
