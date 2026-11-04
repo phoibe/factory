@@ -3,7 +3,7 @@ import unittest
 
 from core import (
     ASK_BLOCK, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation,
-    add_exchange, index_entry, upsert_index, visible_text,
+    add_exchange, index_entry, MAX_ISSUES, CID_RE, upsert_index, visible_text,
 )
 
 
@@ -104,6 +104,22 @@ class AccessTest(unittest.TestCase):
         self.assertIsNotNone(check_access("phoibe", "intrus", "phoibe/habitudes"))
         self.assertIsNotNone(check_access("phoibe", "phoibe", "autre/depot"))
         self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/../x"))
+
+    def test_dot_names_are_not_projects(self):
+        self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/."))
+        self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/.."))
+
+
+class LimitsTest(unittest.TestCase):
+    def test_an_answer_never_opens_more_than_the_cap(self):
+        text = "".join(f'<creer-issue type="bug" titre="T{i}">corps</creer-issue>' for i in range(MAX_ISSUES + 5))
+        _, issues = extract_issues(text)
+        self.assertEqual(len(issues), MAX_ISSUES)
+
+    def test_conversation_ids_cannot_climb_out_of_the_chats_folder(self):
+        self.assertIsNone(CID_RE.match("../index"))
+        self.assertIsNone(CID_RE.match("a/b"))
+        self.assertTrue(CID_RE.match("abc123_-"))
 
 
 if __name__ == "__main__":

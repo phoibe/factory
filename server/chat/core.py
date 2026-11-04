@@ -8,7 +8,9 @@ import json
 import re
 
 BRANCH = "factory-chat"
-REPO_RE = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$")
+REPO_RE = re.compile(r"^[A-Za-z0-9-]+/(?!\.{1,2}$)[A-Za-z0-9._-]+$")
+CID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_ISSUES = 3  # one answer never opens more tickets than this (each one starts factory work)
 
 ASK_BLOCK = """Pour créer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
 <creer-issue type="feature" titre="Titre court en français">
@@ -85,7 +87,8 @@ def extract_issues(text):
     issues = [
         {"kind": "bug" if k.strip() == "bug" else "feature", "title": t.strip(), "body": b.strip()}
         for k, t, b in BLOCK_RE.findall(text or "")
-    ]
+        if t.strip()
+    ][:MAX_ISSUES]
     return BLOCK_RE.sub("", text or "").strip(), issues
 
 

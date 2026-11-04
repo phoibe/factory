@@ -138,3 +138,19 @@ test('mergeConfig keeps changes made elsewhere and applies only the local ones',
   assert.deepEqual(mergeConfig(base, mine, theirs), { maxParallel: 5, stages: { tdd: false, plan: false }, siteUrl: '' });
   assert.deepEqual(mergeConfig(base, base, theirs), theirs);
 });
+
+test('toBase64 handles large content without overflowing the stack', () => {
+  const big = 'é'.repeat(300000);
+  assert.equal(fromBase64(toBase64(big)), big);
+});
+
+test('a pull request closing several issues hides and finishes all of them', () => {
+  const items = [
+    { number: 1, labels: ['factory:feature', 'factory:building'] },
+    { number: 2, labels: ['factory:feature', 'factory:building'] },
+    { number: 9, labels: ['factory:acceptance'], pull_request: {}, body: 'Closes #1, closes #2' },
+  ];
+  assert.deepEqual(boardItems(items).map((i) => i.number), [9]);
+  const done = doneItems([{ number: 5, merged_at: '2026-01-01T00:00:00Z', body: 'Closes #1, closes #2', title: 'T', html_url: 'https://github.com/o/r/pull/5' }]);
+  assert.deepEqual(done.map((d) => d.issue), [1, 2]);
+});

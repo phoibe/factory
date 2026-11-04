@@ -21,10 +21,10 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Grilling', "L'agent vous pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['grilling', 'Questions préalables', "L'agent vous pose des questions pour clarifier la demande avant d'écrire la spec."],
   ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
-  ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
+  ['tdd', 'Tests avant le code', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
@@ -32,7 +32,7 @@ const STAGES = [
   ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
 ];
 const CHECKS = [
-  ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
+  ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
 ];
 
 // A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
@@ -303,6 +303,10 @@ function stepTrack(c) {
     el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
 }
 
+// The button names what it asks for, not a generic « Répondre ».
+const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
+const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
@@ -325,7 +329,7 @@ function card(c, lane, minutes, now, moved) {
   const testIt = c.column === 'acceptance' && !running;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
@@ -389,7 +393,7 @@ function youCard(yours, headline, sub) {
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
         ? el('button', { type: 'button', class: 'go', 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.target) }, 'go')
-        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
+        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column))))),
     status);
 }
 
@@ -636,7 +640,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim());
-  if (unsaved) return toast('Une nouvelle version du tableau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
   location.reload();
 }
 function watchVersion() {
@@ -697,7 +701,6 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
-    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -1144,6 +1147,7 @@ async function sendChat(text, withImages = true) {
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 }
