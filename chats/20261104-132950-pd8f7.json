@@ -3,7 +3,7 @@
  "title": "Je voudrais que le rafraichissement du tableau soit plus fluide :…",
  "state": "open",
  "created": "2026-11-04T13:29:50Z",
- "updated": "2026-11-04T13:32:03Z",
+ "updated": "2026-11-04T13:33:27Z",
  "messages": [
   {
    "who": "me",
@@ -33,6 +33,24 @@
    "who": "agent",
    "text": "C'est noté : je ne crée plus de demande de feature ou de bug de moi-même. Si une discussion fait apparaître un manque ou un défaut, je te le dis en une phrase et je te demande si tu veux une fiche. Je n'en crée une que si tu déclenches l'action avec les boutons prévus, ou si tu me le demandes clairement.\n\nJe n'ai pas pu garder cette consigne en mémoire pour les prochaines conversations, car l'écriture est désactivée ici. Tu devras peut-être me la rappeler plus tard.\n\nPour la fluidité du tableau, rien n'est créé. Tu veux que j'en fasse une feature, ou tu préfères utiliser le bouton toi-même ?",
    "at": "2026-11-04T13:32:03Z"
+  },
+  {
+   "who": "me",
+   "text": "Si, une feature a bien été créée pour la fluidité du tableau. Pour la règle de ne pas créer de feature de ton propre chef, créées une feature dédiée$",
+   "images": [],
+   "at": "2026-11-04T13:33:27Z"
+  },
+  {
+   "who": "agent",
+   "text": "Tu as raison, je me suis trompé : la fiche pour la fluidité du tableau existe bien, je ne la recrée pas.\n\nPour la règle, je te crée une fiche dédiée : la factory ne doit plus transformer une discussion en feature ou en bug sans que tu l'aies demandé avec les boutons prévus.",
+   "at": "2026-11-04T13:33:27Z",
+   "issues": [
+    {
+     "title": "Ne créer une feature ou un bug que sur action explicite du propriétaire",
+     "url": "https://github.com/phoibe/factory/issues/53",
+     "kind": "feature"
+    }
+   ]
   }
  ]
 }
