@@ -21,6 +21,11 @@ export function imageSources(html = '') {
   return out;
 }
 
+// Images sent from the panel's chat: already on the branch, their paths are in hidden markers.
+export function panelImages(body = '') {
+  return [...String(body || '').matchAll(/<!-- factory-image: (attachments\/[\w./-]+) -->/g)].map((m) => m[1]);
+}
+
 // attachments/<issue>/<asset id>.<ext>: the same image always lands on the same path.
 export function attachmentPath(number, url) {
   const file = new URL(url).pathname.split('/').pop();
@@ -34,8 +39,8 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
   const items = [];
   for (const n of numbers.filter(Boolean)) {
     const issue = await gh.getIssueHtml(n);
-    if (issue) items.push({ n, user: issue.user?.login, html: issue.body_html });
-    for (const c of (await gh.listCommentsHtml(n)) || []) items.push({ n, user: c.user?.login, html: c.body_html });
+    if (issue) items.push({ n, user: issue.user?.login, html: issue.body_html, body: issue.body });
+    for (const c of (await gh.listCommentsHtml(n)) || []) items.push({ n, user: c.user?.login, html: c.body_html, body: c.body });
     if (isPr(n)) {
       for (const c of (await gh.listReviewCommentsHtml(n)) || []) items.push({ n, user: c.user?.login, html: c.body_html });
       for (const r of (await gh.listReviewsHtml(n)) || []) items.push({ n, user: r.user?.login, html: r.body_html });
@@ -43,6 +48,7 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
   }
   const wanted = [];
   for (const it of items.filter((i) => i.user === owner)) {
+    for (const path of panelImages(it.body)) if (!wanted.some((w) => w.path === path)) wanted.push({ path, url: null });
     for (const url of imageSources(it.html)) {
       const path = attachmentPath(it.n, url);
       if (!wanted.some((w) => w.path === path)) wanted.push({ path, url });
@@ -53,6 +59,7 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
   if (!(await gh.getBranch(ATTACHMENTS_BRANCH))) await gh.createOrphanBranch(ATTACHMENTS_BRANCH, BRANCH_FILES);
   const paths = [];
   for (const { path, url } of recent) {
+    if (!url) { paths.push(path); continue; } // sent from the panel: already there
     try {
       if (!(await gh.getContent(path, ATTACHMENTS_BRANCH))) {
         const res = await fetchImpl(url);

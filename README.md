@@ -39,6 +39,7 @@ Issue / commentaire / PR ──► GitHub Actions (relay.yml) ──► decide()
 | `defaults/`, `schema/` | Règles par défaut d'un projet et leur schéma |
 | `scripts/` | Orchestrateur (`relay.mjs`), décisions (`lib/decide.mjs`), synchro, contrôles, mise à jour des skills |
 | `panel/` | Panneau web statique (GitHub Pages) |
+| `server/chat/` | Serveur du chat du panneau (Modal) : répond en direct avec Claude Code, en lecture seule |
 | `.github/workflows/` | Workflows réutilisables appelés par les projets, CI, Pages, mise à jour mensuelle |
 
 ## Mise en route de la factory elle-même (une seule fois)
@@ -47,6 +48,10 @@ Issue / commentaire / PR ──► GitHub Actions (relay.yml) ──► decide()
    chaque modification de `panel/`.
 2. **Settings** → **Actions** → **General** → coche **Allow GitHub Actions to create and approve pull
    requests**, pour la PR mensuelle des skills.
+3. Facultatif, pour un chat qui répond en quelques secondes : secrets `MODAL_TOKEN_ID` et `MODAL_TOKEN_SECRET`
+   (compte [Modal](https://modal.com), Settings → API Tokens) et `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`).
+   Le workflow du panneau déploie alors `server/chat` et le panneau l'utilise. Sans eux, chaque message du chat
+   passe par une issue `factory:question` et la routine de l'agent (une minute ou plus).
 
 ## Limites connues
 
