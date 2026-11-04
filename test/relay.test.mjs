@@ -53,6 +53,10 @@ test('eventFromPayload trusts pushes by the Claude app on PRs', () => {
   assert.equal(ev.fromOwner, true);
 });
 
+test('a scheduled event becomes a tick', () => {
+  assert.equal(eventFromPayload('schedule', {}).kind, 'tick');
+});
+
 test('a grilling answer fires the routine with the payload and locks the issue', async () => {
   const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
   const sent = [];

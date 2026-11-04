@@ -155,6 +155,11 @@ test('closing a PR or an issue advances the queue', () => {
   assert.equal(decide(ev({ event: 'issues', action: 'closed', labels: [L.feature] }), config, ctx).type, 'dequeue');
 });
 
+test('a freed place advances the queue: building label removed, or the periodic tick', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.building, labels: [L.feature] }), config, ctx).type, 'dequeue');
+  assert.equal(decide({ kind: 'tick', event: 'schedule', labels: [] }, config, ctx).type, 'dequeue');
+});
+
 test('afterChecks routes green and red results', () => {
   const base = { acceptanceOn: true, isBug: false, failures: 0, maxLoops: 3 };
   assert.equal(afterChecks({ ...base, result: 'success' }), 'acceptance');
