@@ -35,7 +35,9 @@ EOF
 # ---- Prérequis ------------------------------------------------------------------------------------
 need_gh() {
   if ! command -v gh >/dev/null 2>&1; then
-    die "L'outil GitHub « gh » n'est pas installé. Sur Mac : brew install gh   puis relance ce script."
+    command -v brew >/dev/null 2>&1 || die "Il faut d'abord Homebrew (https://brew.sh : une ligne à coller dans le Terminal), puis relance ce script."
+    case "$(ask "L'outil GitHub « gh » manque. Je l'installe maintenant ? (O/n)")" in n|N|non) die "Sans « gh », je ne peux rien faire." ;; esac
+    brew install gh
   fi
   if ! gh auth status >/dev/null 2>&1; then
     say "Connexion à GitHub (une seule fois)"
