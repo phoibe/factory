@@ -296,6 +296,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await afterMerge(prNumber);
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
+    // A merge made with the workflow's token does not close the issues the PR names (« Closes #n »): close it here.
+    if (issue) await gh.closeIssue(issue).catch((e) => log(`close #${issue}: ${e.message}`));
     await dequeue({ freed: issue });
     await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
   }
