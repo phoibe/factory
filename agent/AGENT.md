@@ -19,7 +19,10 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
 3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
-4. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
+4. Si le JSON contient `"relaunch": true`, ton run précédent sur cette issue s'est arrêté avant la fin, sans PR
+   ni question. Repars de sa branche `claude/issue-<n>-…` si elle existe (et de son plan dans `docs/plans/`),
+   au lieu de tout recommencer. Termine comme prévu : une PR, ou une question avec `factory:blocked`.
+5. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
    tu mets le bon label et tu termines. Sa réponse relancera un nouveau run.
 
 ## Règles de la factory pour ce projet
