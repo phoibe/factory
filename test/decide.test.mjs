@@ -255,6 +255,29 @@ test('an agent run that leaves an open PR at no step sends it back to the checks
   assert.equal(decide(end({ labels: [], open: false }), config, ctx).type, 'ignore');
 });
 
+test('a blocked card coming back queues when the limit is reached, and resumes when a place is free', () => {
+  const e = ev({ labels: [L.feature, L.building, L.blocked], text: 'voici la clé' });
+  const full = decide(e, config, { ...ctx, inFlight: 2 });
+  assert.deepEqual([full.type, full.add, full.remove], ['queue', [L.queued, L.resumeQueued], [L.blocked, L.building]]);
+  const free = decide(e, config, { ...ctx, inFlight: 1 });
+  assert.deepEqual([free.type, free.stage, free.remove], ['fire', 'resume', [L.blocked]]);
+  const bug = decide(ev({ labels: [L.bug, L.building, L.blocked], text: 'réessaie' }), config, { ...ctx, inFlight: 2 });
+  assert.equal(bug.type, 'queue');
+});
+
+test('only a return from a block is limited: other messages and blocks outside the build are not', () => {
+  assert.equal(decide(ev({ labels: [L.feature, L.building], text: 'corrige ça' }), config, { ...ctx, inFlight: 2 }).stage, 'feedback');
+  assert.equal(decide(ev({ labels: [L.feature, L.grilling, L.blocked], text: 'x' }), config, { ...ctx, inFlight: 2 }).stage, 'resume');
+  assert.equal(decide(ev({ labels: [L.project, L.building, L.blocked], text: 'x' }), config, { ...ctx, inFlight: 2 }).stage, 'resume');
+  assert.equal(decide(ev({ kind: 'pr', labels: [L.blocked], text: 'ok' }), config, { ...ctx, inFlight: 2 }).stage, 'resume');
+});
+
+test('a card getting blocked frees its place for the queue', () => {
+  const blocked = ev({ event: 'issues', action: 'labeled', addedLabel: L.blocked, labels: [L.feature, L.building, L.blocked] });
+  assert.equal(decide(blocked, config, ctx).type, 'dequeue');
+  assert.equal(decide({ ...blocked, labels: [L.feature, L.grilling, L.blocked] }, config, ctx).type, 'ignore');
+});
+
 test('an empty review or comment on a PR waiting for the owner launches no agent', () => {
   for (const label of [L.acceptance, L.visualReview]) {
     const a = decide(ev({ kind: 'pr', event: 'pull_request_review', labels: [label], text: '' }), config, ctx);
