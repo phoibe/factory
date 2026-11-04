@@ -4,3 +4,6 @@
 {"t":"2026-11-04T19:00:13.707Z","kind":"skill","name":"writing-plans","id":"toolu_01TYT5du5VoSoJdiozjMhNsy"}
 {"t":"2026-11-04T19:00:13.943Z","kind":"skill","name":"test-driven-development","id":"toolu_01MyDpYp2A19bW3jLqfybYFT"}
 {"t":"2026-11-04T19:00:14.061Z","kind":"skill","name":"requesting-code-review","id":"toolu_01HN79R25uQEWLUjHPNbDfmd"}
+{"t":"2026-11-04T19:00:35.658Z","kind":"skill","name":"receiving-code-review","id":"toolu_0174M4o8PP3cadaYp4F1uMM1"}
+{"t":"2026-11-04T19:00:35.818Z","kind":"skill","name":"verification-before-completion","id":"toolu_01WURmHrVVypEohLPYSWkeko"}
+{"t":"2026-11-04T19:01:39.930Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; for s in typecheck lint build; do npm run $s >/dev/null 2>&1; echo $s $?; done; node .factory/scripts/journal-check.mjs 2>&1 | tail -5","ok":true,"id":"toolu_01UCEo48zkHgUgTL55Df8o8m"}
