@@ -57,8 +57,22 @@ export function agoText(ms) {
   return `il y a ${Math.floor(s / 60)} min`;
 }
 
-// Seconds between two refreshes: 15 s, doubled after each failure, at most 5 min.
-export const pollDelay = (failures) => Math.min(15_000 * 2 ** failures, 300_000);
+// Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.
+export const pollDelay = (failures, idle = false) => Math.min((idle ? 30_000 : 8_000) * 2 ** failures, 300_000);
+
+export const IDLE_AFTER = 120_000;
+export const isIdle = (lastActivity, now) => now - lastActivity >= IDLE_AFTER;
+
+// Compares two Maps number -> signature (null = nothing drawn yet).
+export function cardChanges(prev, next) {
+  const added = [], removed = [], changed = [];
+  for (const [n, sig] of next) {
+    if (!prev || !prev.has(n)) added.push(n);
+    else if (prev.get(n) !== sig) changed.push(n);
+  }
+  if (prev) for (const n of prev.keys()) if (!next.has(n)) removed.push(n);
+  return { added, removed, changed };
+}
 
 // One short line about time, from estimate() in eta.mjs.
 export function timeLine(e, clock = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })) {
