@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from '../panel/live.mjs';
+import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
   assert.deepEqual(stepsFor(['factory:feature']).map((s) => s.id), ['grilling', 'spec', 'building', 'visual', 'checks', 'acceptance']);
@@ -70,4 +70,16 @@ test('cardChanges tells added, removed and changed cards, and nothing when ident
   assert.deepEqual(cardChanges(prev, new Map([[1, 'a'], [3, 'x'], [4, 'd']])), { added: [4], removed: [2], changed: [3] });
   assert.deepEqual(cardChanges(prev, new Map(prev)), { added: [], removed: [], changed: [] });
   assert.deepEqual(cardChanges(null, prev).added, [1, 2, 3]);
+});
+
+test('yoursList puts the oldest wait first, and only the spec step is a plain « go »', () => {
+  const item = (number, column, updated_at, labels = []) => ({ number, column, updated_at, labels });
+  const list = yoursList([
+    item(3, 'acceptance', '2026-11-04T12:00:00Z'),
+    item(1, 'spec', '2026-11-04T09:00:00Z'),
+    item(2, 'visual', '2026-11-04T10:00:00Z', ['factory:running']),
+    item(4, 'building', '2026-11-04T08:00:00Z'),
+    item(5, 'grilling', '2026-11-04T11:00:00Z'),
+  ]);
+  assert.deepEqual(list.map((c) => [c.number, c.reply]), [[1, 'go'], [5, 'open'], [3, 'open']]);
 });
