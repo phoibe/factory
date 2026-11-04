@@ -53,3 +53,10 @@ test('a general review must show the design pass and the code review, whatever t
   const { expectations } = await import('../scripts/lib/fabrication.mjs');
   assert.deepEqual(expectations('audit', { designPass: false, review: false }, false).map((e) => e.skill), ['impeccable', 'requesting-code-review']);
 });
+
+test('a cache-busting ?v=N bump is not a visual change (no design pass expected)', () => {
+  const bump = { filename: 'panel/index.html', patch: '@@ -1 +1 @@\n-  <script type="module" src="app.mjs?v=16"></script>\n+  <script type="module" src="app.mjs?v=17"></script>' };
+  assert.equal(uiChanged([bump, { filename: 'panel/app.mjs', patch: '+x' }]), false);
+  assert.equal(uiChanged([{ filename: 'panel/index.html', patch: '-<p>a</p>\n+<p>b</p>' }]), true);
+  assert.equal(uiChanged(['panel/index.html']), true);
+});
