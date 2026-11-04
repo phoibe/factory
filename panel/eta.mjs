@@ -66,7 +66,7 @@ const MARKER = /<!--\s*factory-estimate\s+size=(\w+)\s+min=(\d+)\s+max=(\d+)\s*-
 export function parseEstimate(comments) {
   let best = null;
   for (const c of comments || []) {
-    if (!(c.body || '').includes('<!-- factory-agent -->')) continue; // only the agent's own comments
+    if (!(c.body || '').includes('<!-- factory-agent -->') || c.body.includes('<!-- factory-notified -->')) continue; // only the agent's own comments
     const m = MARKER.exec(c.body || '');
     if (!m || !SIZES.includes(m[1])) continue;
     const at = Date.parse(c.created_at);

@@ -399,12 +399,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         try {
           const events = ((await gh.listEvents(card.number)) || []).filter((e) => e.event === 'labeled' && e.label?.name === card.label);
           const key = `${card.label}@${events.pop()?.id ?? 'x'}`;
-          const mine = ((await gh.listComments(card.number)) || []).find((c) => (c.body || '').includes(NOTIFIED_MARKER));
+          let mine = ((await gh.listComments(card.number)) || []).find((c) => (c.body || '').includes(NOTIFIED_MARKER));
           const keys = notifiedKeys(mine?.body);
           if (keys.includes(key)) continue;
-          if (!(await sendAlert({ topic, message: alertText(project, card.label), click: card.url, fetchImpl }))) { log(`alert #${card.number} not sent`); continue; }
+          // Write the key first: a crash or a failed write after the send would otherwise repeat the alert forever.
           const text = notifiedComment([...keys, key].slice(-10));
-          if (mine) await gh.updateComment(mine.id, text); else await gh.comment(card.number, text);
+          if (mine) await gh.updateComment(mine.id, text); else mine = await gh.comment(card.number, text);
+          if (!(await sendAlert({ topic, message: alertText(project, card.label), click: card.url, fetchImpl }))) {
+            log(`alert #${card.number} not sent`);
+            if (mine?.id) await gh.updateComment(mine.id, notifiedComment(keys)); // retried at the next tick
+          }
         } catch (e) { log(`alert #${card.number}: ${e.message}`); }
       }
     } catch (e) { log(`alerts: ${e.message}`); }
@@ -635,7 +639,7 @@ async function main() {
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
     await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null }));
-    await relay.notifyWaiting(); // the recette may just have started waiting for the owner
+    await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {

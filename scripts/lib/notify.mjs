@@ -41,6 +41,7 @@ export async function sendAlert({ topic, message, click, title = 'Factory', fetc
     const res = await fetchImpl(NTFY_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({ topic, title, message, ...(click ? { click } : {}), priority: 4 }),
     });
     return Boolean(res.ok);

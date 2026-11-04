@@ -6,3 +6,5 @@
 {"t":"2026-11-04T20:58:17.717Z","kind":"skill","name":"test-driven-development","id":"toolu_01Lcmk7oXJVVbkJWmp5soGnr"}
 {"t":"2026-11-04T20:58:17.841Z","kind":"skill","name":"requesting-code-review","id":"toolu_01JuN7y6uuyB2srfoinRXKwg"}
 {"t":"2026-11-04T21:00:26.414Z","kind":"test","cmd":"git stash list | head -2; mv scripts/lib/notify.mjs /tmp/w/notify.mjs && npm test 2>&1 | grep -E \"^# (pass|fail)\"; mv /tmp/w/notify.mjs scripts/lib/notify.mjs && npm test 2>&1 | grep -E \"^# (pass|fail","ok":false,"id":"toolu_01Pwks1AYs8PkWKSwZMGzfc9"}
+{"t":"2026-11-04T21:01:35.431Z","kind":"test","cmd":"gh api repos/phoibe/factory/issues/146/comments --jq '.[].body' 2>&1 | head -120; npm test 2>&1 | tail -15","ok":true,"id":"toolu_01G6xegfTDFkUmLWLw9RjQSb"}
+{"t":"2026-11-04T21:03:59.603Z","kind":"test","cmd":"python3 - <<'EOF'\np='test/notify.test.mjs'\ns=open(p).read()\ns=s.replace(\"comments[n] = [...(comments[n] || []), { id: 99, body }]; },\",\"comments[n] = [...(comments[n] || []), { id: 99, body }]; return","ok":true,"id":"toolu_0154cfRF2MZ9QcPzfQPzAVQy"}

@@ -43,8 +43,8 @@ function setup({ items, events = {}, comments = {}, topic = 'secret-topic', fail
     listIssues: async ({ labels }) => items.filter((i) => i.labels.some((l) => l.name === labels)),
     listEvents: async (n) => events[n] || [],
     listComments: async (n) => comments[n] || [],
-    comment: async (n, body) => { calls.push(['comment', n, body]); comments[n] = [...(comments[n] || []), { id: 99, body }]; },
-    updateComment: async (id, body) => calls.push(['update', id, body]),
+    comment: async (n, body) => { calls.push(['comment', n, body]); comments[n] = [...(comments[n] || []), { id: 99, body }]; return { id: 99, body }; },
+    updateComment: async (id, body) => { calls.push(['update', id, body]); for (const l of Object.values(comments)) { const c = l.find((x) => x.id === id); if (c) c.body = body; } },
   };
   const fetchImpl = async (url, init) => { posted.push(JSON.parse(init.body)); if (fail) throw new Error('down'); return { ok: true }; };
   const relay = createRelay({ gh, repo: 'o/projet', config: { runner: 'claude-cloud', maxParallel: 2, stages: {}, review: { maxLoops: 3 } }, env: topic ? { NTFY_TOPIC: topic } : {}, fetchImpl, log: () => {} });
@@ -81,8 +81,19 @@ test('without NTFY_TOPIC nothing is sent and nothing is written', async () => {
 test('a failed send does not break the relay and is retried at the next tick', async () => {
   const s = setup({ items: [card(1, [L.specReview])], events: { 1: labeledAt(L.specReview) }, fail: true });
   await s.relay.notifyWaiting();
-  assert.equal(s.calls.length, 0);
   assert.equal(s.posted.length, 1);
+  assert.doesNotMatch(s.comments[1].at(-1).body, /specReview|spec-review@/); // key taken back
+  await s.relay.notifyWaiting();
+  assert.equal(s.posted.length, 2); // retried
+});
+
+test('a failed marker write never repeats the alert endlessly: nothing is sent without the key saved', async () => {
+  const s = setup({ items: [card(1, [L.specReview])], events: { 1: labeledAt(L.specReview) } });
+  const gh = { listIssues: async () => [card(1, [L.specReview])], listEvents: async () => labeledAt(L.specReview), listComments: async () => [], comment: async () => { throw new Error('rate limit'); } };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'o/p', config: { runner: 'claude-cloud', maxParallel: 2, stages: {}, review: { maxLoops: 3 } }, env: { NTFY_TOPIC: 't' }, fetchImpl: async () => { sent.push(1); return { ok: true }; }, log: () => {} });
+  await relay.notifyWaiting();
+  assert.equal(sent.length, 0);
 });
 
 test('a tick runs the alerts', async () => {
