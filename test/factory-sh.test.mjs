@@ -92,9 +92,21 @@ test('choice 3 keeps the saved token when the new one is rejected', () => {
   mkdirSync(join(cfg, 'factory'));
   const file = join(cfg, 'factory', 'routine');
   writeFileSync(file, 'FACTORY_ROUTINE_URL=https://old.test/fire\nFACTORY_ROUTINE_TOKEN=old-token\n');
-  assert.throws(() => run([], ['3', 'o', 'pas-une-url', 'nouveau'], { XDG_CONFIG_HOME: cfg }));
+  assert.throws(() => run([], ['3', 'o', 'pas-une-url', 'nouveau'], { XDG_CONFIG_HOME: cfg }),
+    (e) => /ne ressemble pas à celle d'une routine/.test(`${e.stdout}${e.stderr}`));
   assert.ok(existsSync(file), 'the saved token file must survive a typo');
   assert.match(readFileSync(file, 'utf8'), /old-token/);
+  assert.ok(!existsSync(`${file}.new`), 'no temporary file left behind');
+});
+
+test('choice 3 replaces the saved token once the new one is valid', () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory'));
+  const file = join(cfg, 'factory', 'routine');
+  writeFileSync(file, 'FACTORY_ROUTINE_URL=https://old.test/fire\nFACTORY_ROUTINE_TOKEN=old-token\n');
+  run([], ['3', 'o', 'https://new.test/fire', 'new-token'], { XDG_CONFIG_HOME: cfg });
+  assert.match(readFileSync(file, 'utf8'), /FACTORY_ROUTINE_TOKEN=new-token/);
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /old-token/);
 });
 
 test('a failed first sync is reported even if an older sync succeeded', () => {
