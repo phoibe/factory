@@ -10,7 +10,7 @@ for (const [file, mode] of [['outils/Nouveau projet.command', 'nouveau'], ['outi
     assert.match(tracked(file), /^100755 /, 'a double-click needs the executable bit');
     const text = readFileSync(file, 'utf8');
     assert.match(text, /^#!\/bin\/bash\n/);
-    assert.match(text, new RegExp(`raw\\.githubusercontent\\.com/phoibe/factory/main/scripts/factory\\.sh\\) ${mode}\\n`));
+    assert.match(text, new RegExp(`raw\\.githubusercontent\\.com/phoibe/factory/stable/scripts/factory\\.sh\\) ${mode}\\n`));
     execFileSync('bash', ['-n', file]);
   });
 }

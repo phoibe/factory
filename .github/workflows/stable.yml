@@ -1,0 +1,58 @@
+# « Déclarer stable » (button in the panel, or Run workflow here): runs the tests on main and, if they pass,
+# moves the `stable` branch that every project follows to main, with a numbered release listing the changes.
+name: Déclarer stable
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+concurrency:
+  group: factory-stable
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: tests
+        run: node --test
+      - name: Promote
+        id: promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/stable.mjs notes > "$RUNNER_TEMP/notes.md"
+          tag=$(node scripts/stable.mjs tag)
+          git tag "$tag"
+          git push origin "$tag"
+          git push --force origin HEAD:refs/heads/stable
+          gh release create "$tag" --title "Version stable $tag" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Tell the owner
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ github.event.issue.number }}
+          TAG: ${{ steps.promote.outputs.tag }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$TAG" ]; then
+            msg="C'est fait ✅ La version stable est maintenant **$TAG** : tous les projets la prennent à leur prochain run. Le détail des changements : ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
+          else
+            msg="Rien n'a changé ❌ Un test de la factory est rouge, donc la version stable reste la précédente. Le détail : $RUN"
+          fi
+          gh issue comment "$N" --repo "$GITHUB_REPOSITORY" --body "$msg
+
+          ---
+          _Message automatique de la software factory_"
+          gh issue close "$N" --repo "$GITHUB_REPOSITORY"

@@ -213,6 +213,7 @@ first_sync() {
 vercel_setup() {
   say "5. Vercel (aperçu de chaque PR et mise en ligne)"
   local name=${REPO#*/} work
+  if [ "$REPO" = "$OWNER_LOGIN/factory" ]; then ok "Pas besoin de Vercel : le tableau de la factory est publié par GitHub Pages"; return; fi
   if command -v npx >/dev/null 2>&1; then
     work=$(mktemp -d)
     gh repo clone "$REPO" "$work/repo" -- --quiet --depth 1 >/dev/null 2>&1 || true
@@ -279,7 +280,7 @@ choose_existing() {
   [ -n "$list" ] || { choose_name; return; }
   say "Quel projet faire entrer dans la factory ?"
   for line in $list; do
-    case "${line#*/}" in factory|factory-template) continue ;; esac
+    case "${line#*/}" in factory-template) continue ;; esac  # the factory itself can be adopted
     gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 && continue
     i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
     eval "CHOICE_$i=\$line"

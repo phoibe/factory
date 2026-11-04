@@ -1,5 +1,5 @@
 # Packages the double-click setup files (outils/) into a zip attached to the « outils » release, so the
-# owner downloads them in one click: https://github.com/phoibe/factory/releases/latest/download/factory-outils.zip
+# owner downloads them in one click: https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip
 name: Outils
 on:
   push:
@@ -24,6 +24,6 @@ jobs:
           if gh release view outils >/dev/null 2>&1; then
             gh release upload outils factory-outils.zip --clobber
           else
-            gh release create outils factory-outils.zip --latest --title "Outils de la factory (Mac)" \
+            gh release create outils factory-outils.zip --latest=false --title "Outils de la factory (Mac)" \
               --notes "Télécharge factory-outils.zip, décompresse-le, puis double-clique « Nouveau projet » ou « Adopter un projet »."
           fi

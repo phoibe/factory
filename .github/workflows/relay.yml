@@ -6,7 +6,7 @@ on:
       factory_ref:
         description: Branch or tag of phoibe/factory to use
         type: string
-        default: main
+        default: stable
     secrets:
       FACTORY_ROUTINE_URL:
         required: false
