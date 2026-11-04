@@ -268,7 +268,7 @@ async function refresh() {
     if (issues.changed || closed.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
     live.failures++;
-    if (!live.issues) $('board').replaceChildren(el('p', { class: 'board-error' }, `GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`));
+    if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
     live.busy = false;
     drawStatus();
@@ -376,15 +376,16 @@ function youCard(yours, headline, sub) {
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
   return el('section', { class: 'you-card', 'aria-label': 'À vous' },
     el('p', { class: 'headline' }, headline),
-    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: 'you-item' },
+    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: `you-item${c.column === 'blocked' ? ' blocked' : ''}` },
       el('div', { class: 'you-what' },
         el('span', { class: 'num' }, `#${c.number}`),
         el('a', { class: 'you-title', 'data-key': String(c.number), href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
+        c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
         el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
-        ? el('button', { type: 'button', class: 'go', onclick: (e) => answerGo(c, e.target) }, 'go')
+        ? el('button', { type: 'button', class: 'go', 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.target) }, 'go')
         : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
     status);
 }
@@ -415,7 +416,7 @@ function drawBoard() {
     : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
-    : 'Lancez-vous avec « Nouvelle feature ».';
+    : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
@@ -1133,7 +1134,7 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  chat.live = { text: '', status: files.length ? 'Envoie les images…' : 'Envoi…' };
+  chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
