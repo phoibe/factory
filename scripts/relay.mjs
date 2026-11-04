@@ -11,6 +11,7 @@ import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRAN
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
@@ -480,7 +481,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
     // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
     // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
-    if (result === 'cancelled' && started && now - started * 1000 < CHECKS_TIMEOUT_MS) {
+    // A run cancelled without a known start time never got going: it was replaced too.
+    if (result === 'cancelled' && !(started && now - started * 1000 >= CHECKS_TIMEOUT_MS)) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
     const timedOut = result === 'cancelled';
@@ -578,13 +580,15 @@ async function main() {
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
     const payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-    await relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin });
+    // One decision at a time in the whole repository: see lib/lock.mjs.
+    await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
   } else if (command === 'report') {
-    await relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null });
+    // A report may merge and then dequeue: same lock as the decisions.
+    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null }));
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {
-    await relay.dequeue();
+    await withLock(gh.queueLock, () => relay.dequeue());
   } else {
     throw new Error(`unknown command ${command}`);
   }

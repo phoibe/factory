@@ -31,7 +31,36 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return out;
   }
   const enc = encodeURIComponent;
+  // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
+  // points to carries the time it was taken.
+  const LOCK_REF = 'factory/lock';
+  let mine = null; // sha of the lock commit this run created
+  let seen = null; // sha of the lock commit last seen held by someone else
+  const lockSha = async () => (await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
+  const dropIf = async (sha) => {
+    // The refs API has no compare-and-delete: check, then delete (a narrow window, far better than none).
+    if (!sha || (await lockSha()) !== sha) return;
+    try { await request('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+  };
+  const queueLock = {
+    async acquire() {
+      seen = await lockSha();
+      if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
+      const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] });
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree: tree.sha, parents: [] });
+      try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
+      catch (e) { if (String(e).includes('422')) return false; throw e; }
+    },
+    async ageMs() {
+      if (!seen) return null;
+      const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
+      return commit ? Date.now() - Date.parse(commit.committer.date) : null;
+    },
+    release: () => dropIf(mine), // never the lock of the run that took over from us
+    takeOver: () => dropIf(seen),
+  };
   return {
+    queueLock,
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
