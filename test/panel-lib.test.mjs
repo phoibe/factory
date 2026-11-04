@@ -139,6 +139,12 @@ test('mergeConfig keeps changes made elsewhere and applies only the local ones',
   assert.deepEqual(mergeConfig(base, base, theirs), theirs);
 });
 
+test('tabTitle shows the number of waiting cards, and nothing at zero', async () => {
+  const { tabTitle } = await import('../panel/lib.mjs');
+  assert.equal(tabTitle(2), '(2) Factory');
+  assert.equal(tabTitle(0), 'Factory');
+});
+
 test('toBase64 handles large content without overflowing the stack', () => {
   const big = 'é'.repeat(300000);
   assert.equal(fromBase64(toBase64(big)), big);

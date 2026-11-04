@@ -57,7 +57,7 @@ export function chatMessages(issue, comments = []) {
   push((issue.body || '').includes(AGENT_MARKER) ? 'agent' : 'me', issue.body, issue);
   for (const c of comments) {
     const body = c.body || '';
-    if (body.includes(AGENT_MARKER)) push('agent', body, c);
+    if (body.includes(AGENT_MARKER) && !body.includes('<!-- factory-notified -->')) push('agent', body, c);
     else if (!isBot(c.user)) push('me', body, c);
   }
   return out;

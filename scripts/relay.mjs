@@ -13,6 +13,7 @@ import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
+import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -472,7 +473,42 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return all.length ? all.map((m) => m.body).join('\n\n') : null;
   }
 
+  // Phone alert (ntfy) for each card that starts waiting for the owner. One per wait, no reminder: the wait is
+  // identified by the label's latest « labeled » event, kept in a hidden comment on the card. Without
+  // NTFY_TOPIC in the project, nothing happens. Never throws.
+  async function notifyWaiting() {
+    const topic = (env.NTFY_TOPIC || '').trim();
+    if (!topic) return;
+    try {
+      const items = [];
+      for (const label of WAIT_LABELS) items.push(...((await gh.listIssues({ labels: label })) || []));
+      const project = repo.split('/')[1] || repo;
+      for (const card of waitingCards(items)) {
+        try {
+          const events = ((await gh.listEvents(card.number)) || []).filter((e) => e.event === 'labeled' && e.label?.name === card.label);
+          const key = `${card.label}@${events.pop()?.id ?? 'x'}`;
+          let mine = ((await gh.listComments(card.number)) || []).find((c) => (c.body || '').includes(NOTIFIED_MARKER));
+          const keys = notifiedKeys(mine?.body);
+          if (keys.includes(key)) continue;
+          // Write the key first: a crash or a failed write after the send would otherwise repeat the alert forever.
+          const text = notifiedComment([...keys, key].slice(-10));
+          if (mine) await gh.updateComment(mine.id, text); else mine = await gh.comment(card.number, text);
+          if (!(await sendAlert({ topic, message: alertText(project, card.label), click: card.url, fetchImpl }))) {
+            log(`alert #${card.number} not sent`);
+            if (mine?.id) await gh.updateComment(mine.id, notifiedComment(keys)); // retried at the next tick
+          }
+        } catch (e) { log(`alert #${card.number}: ${e.message}`); }
+      }
+    } catch (e) { log(`alerts: ${e.message}`); }
+  }
+
   async function handle(ev, { ownerLogin } = {}) {
+    const result = await handleEvent(ev, { ownerLogin });
+    await notifyWaiting();
+    return result;
+  }
+
+  async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
       outputs.agent = 'true';
       outputs.payload = ev.payload;
@@ -672,7 +708,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, outputs };
+  return { handle, report, dequeue, release, fabrication, notifyWaiting, outputs };
 }
 
 function writeOutputs(outputs) {
@@ -701,6 +737,7 @@ async function main() {
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
     await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null }));
+    await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {
