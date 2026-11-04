@@ -136,6 +136,7 @@ dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
 .site-line { margin: 6px 0 0; }
 #site { font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
+.quiet-link { font-size: 0.875rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; }
 #site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
 
 /* ---- No sideways scroll on phones: long words, links and titles wrap ---- */

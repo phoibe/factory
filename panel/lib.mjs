@@ -118,6 +118,9 @@ export function focusComment(comments) {
   return last?.html_url || null;
 }
 
+// Plain list of the project's open issues (GitHub's default view, no filter).
+export const issuesUrl = (repoUrl) => `${repoUrl.replace(/\/+$/, '')}/issues`;
+
 // The repositories worth checking for a factory.config.json: not archived, and not a template (the factory's
 // template holds one too, but it is the model new projects are copied from, not a project).
 export const projectCandidates = (repos) => repos.filter((r) => !r.archived && !r.is_template);
