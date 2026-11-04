@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
-import { resolveConfig } from './lib/config.mjs';
+import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
@@ -486,7 +486,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return Object.assign(alerts, { missing, ui: uiChanged(changed) });
   }
 
-  async function report({ result, pr: prNumber, runId, sha, started = null, now = Date.now() }) {
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now() }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
@@ -494,7 +494,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
     // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
     // A run cancelled without a known start time never got going: it was replaced too.
-    if (result === 'cancelled' && !(started && now - started * 1000 >= CHECKS_TIMEOUT_MS)) {
+    if (result === 'cancelled' && !(started && nowMs - started * 1000 >= CHECKS_TIMEOUT_MS)) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
     const timedOut = result === 'cancelled';
@@ -592,8 +592,9 @@ async function main() {
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const file = await gh.getContent('factory.config.json');
-  const raw = file ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')) : {};
-  const { config, warnings } = resolveConfig(raw, catalog);
+  const parsed = parseRawConfig(file ? Buffer.from(file.content, 'base64').toString('utf8') : null);
+  const { config, warnings } = resolveConfig(parsed.raw, catalog);
+  if (parsed.warning) warnings.push(parsed.warning);
   for (const w of warnings) console.log(`::warning::${w}`);
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
