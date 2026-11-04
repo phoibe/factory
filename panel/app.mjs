@@ -333,7 +333,8 @@ function card(c, lane, minutes, now, moved) {
     el('p', { class: 'eta' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only once the factory is done with it: while an agent catches the step up, there is nothing for you to see.
-    c.labels.includes('factory:skills-alert') && lane === 'yours'
+    // Not on the captures either: they come right after the catch-up, and the summary is only refreshed after the checks.
+    c.labels.includes('factory:skills-alert') && lane === 'yours' && c.column !== 'visual'
       ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null);
   article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
