@@ -7,6 +7,8 @@ jobs:
   test:
     # Same image as the project checks in relay.yml.
     runs-on: ubuntu-24.04
+    # A hung test used to hold a runner for hours, delaying every other workflow (panel deploys included).
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

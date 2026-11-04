@@ -23,6 +23,9 @@ jobs:
           mkdir -p _site
           cp -r panel/* _site/
           cp packs/catalog.json defaults/factory.config.json scripts/lib/config-core.mjs _site/
+          # The open panels compare this with their own build and reload themselves when a new one is live.
+          sed -i "s/__BUILD__/$GITHUB_SHA/" _site/index.html
+          printf '{ "build": "%s" }\n' "$GITHUB_SHA" > _site/version.json
       # The chat server (server/chat) on Modal, when its secrets are set. The panel finds it in chat-server.json;
       # without it, the chat falls back to the slower path through the agent's routine.
       - uses: actions/setup-python@v5

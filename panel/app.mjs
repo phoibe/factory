@@ -628,7 +628,24 @@ function selectTab(name) {
   if (name === 'chat') openChat(); else clearTimeout(chat.timer);
 }
 
+// A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
+// reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
+const BUILD = document.querySelector('meta[name="build"]')?.content || '';
+async function checkVersion() {
+  if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
+  const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!live?.build || live.build === BUILD) return;
+  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim());
+  if (unsaved) return toast('Une nouvelle version du tableau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  location.reload();
+}
+function watchVersion() {
+  setInterval(checkVersion, 60_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+}
+
 async function start() {
+  watchVersion();
   let server;
   [catalog, defaults, server] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json()),
     fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
