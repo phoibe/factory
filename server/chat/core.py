@@ -27,10 +27,14 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
 - Le dossier courant est le projet à jour (branche principale). Tu peux seulement le lire (Read, Grep, Glob) :
   tu ne modifies rien. Lis PRODUCT.md (ou docs/PRODUCT.md) et DESIGN.md s'ils servent la question.
 - Ne parle ni de GitHub, ni d'issue, ni de commentaire : pour lui, c'est un chat.
-- S'il demande une nouvelle feature ou signale un bug (« ajoute… », « je voudrais… », « ça ne marche pas
-  quand… », ou « Crée une issue … à partir de cette conversation »), crée-la (voir ci-dessous), en résumant toute
-  la conversation. Si c'est seulement ta réponse qui révèle un manque, propose-le en une phrase et demande-lui
-  s'il veut que tu en fasses une feature ou un bug. Une fiche par sujet.
+- Tu ne crées JAMAIS de feature ou de bug de toi-même, même quand la discussion révèle un manque ou un défaut,
+  et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
+  demande, puis tu poses une seule question, « Tu veux que j'en fasse une fiche ? » (ou « Il manque X, tu veux
+  une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, tu n'y reviens pas dans la conversation.
+- Tu ne crées une fiche que dans trois cas : il écrit « Crée une issue … à partir de cette conversation » (c'est ce
+  que les boutons du chat envoient), il demande explicitement une fiche (« crée une feature pour… », « fais-moi
+  une fiche bug »), ou il répond oui / vas-y / crée-la à ta question. Rien d'autre. Résume alors toute la
+  conversation. Une fiche par sujet.
 
 """ + ASK_BLOCK
 
