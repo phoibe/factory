@@ -248,15 +248,14 @@ test('green checks on a feature open acceptance with the preview link', async ()
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://preview.example')));
 });
 
-test('green checks on a project without previews ask to read the summary, without waiting for a preview', async () => {
+test('green checks on a project without previews merge directly: nothing to try', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], deployments: [{ id: 1, environment: 'github-pages' }] });
   let waited = 0;
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { waited++; } });
   await relay.report({ result: 'success', pr: 10 });
-  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
-  const msg = gh.calls.find((c) => c[0] === 'comment')[2];
-  assert.match(msg, /pas de preview à tester/);
-  assert.doesNotMatch(msg, /Vercel/);
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+  assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /pas de preview/);
   assert.equal(waited, 0);
 });
 
