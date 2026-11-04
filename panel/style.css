@@ -115,7 +115,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; }
 .board-error { color: var(--danger); }
 @keyframes ping { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(2.6); opacity: 0; } }
 @keyframes moved { 0% { box-shadow: 0 0 0 3px var(--accent), var(--shadow); } 100% { box-shadow: 0 0 0 0 transparent, var(--shadow); } }
-@media (prefers-reduced-motion: reduce) { .live-dot::after, .dot.on::after { animation: none; } .ticket, .ticket.moved, .cta .arrow { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .live-dot::after, .dot.on::after { animation: none; } .ticket, .cta .arrow { transition: none; } .ticket.moved { animation: none; box-shadow: 0 0 0 3px var(--accent), var(--shadow); } }
 @media (max-width: 600px) { .pulse-bar { padding: 14px 16px; } .tickets { grid-template-columns: 1fr; } .actions .button { flex: 1 1 auto; text-align: center; } }
 
 /* ---- Phone sign-in ---- */

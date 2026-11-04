@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from '../panel/live.mjs';
+import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from '../panel/live.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
   assert.deepEqual(stepsFor(['factory:feature']).map((s) => s.id), ['grilling', 'spec', 'building', 'visual', 'checks', 'acceptance']);
@@ -44,9 +44,11 @@ test('agoText is short and in French', () => {
   assert.equal(agoText(185_000), 'il y a 3 min');
 });
 
-test('pollDelay is 15 s when all is well and backs off after failures, up to 5 min', () => {
-  assert.equal(pollDelay(0), 15_000);
-  assert.equal(pollDelay(1), 30_000);
+test('pollDelay is 8 s when active, 30 s when idle, and backs off after failures, up to 5 min', () => {
+  assert.equal(pollDelay(0), 8_000);
+  assert.equal(pollDelay(0, true), 30_000);
+  assert.equal(pollDelay(1), 16_000);
+  assert.equal(pollDelay(1, true), 60_000);
   assert.equal(pollDelay(10), 300_000);
 });
 
@@ -56,4 +58,16 @@ test('timeLine gives one short line per lane', () => {
   assert.equal(timeLine({ status: 'working', overrun: true, nextLow: 0, nextHigh: 0 }, clock), 'Plus long que prévu · nouvelle estimation en cours');
   assert.equal(timeLine({ status: 'yours', total: 61 }, clock), 'Ensuite ~1 h 01 de travail des agents');
   assert.equal(timeLine({ status: 'queued' }, clock), "Démarre dès qu'une place se libère");
+});
+
+test('isIdle is true after 2 minutes without activity', () => {
+  assert.equal(isIdle(1_000, 1_000 + 119_999), false);
+  assert.equal(isIdle(1_000, 1_000 + 120_000), true);
+});
+
+test('cardChanges tells added, removed and changed cards, and nothing when identical', () => {
+  const prev = new Map([[1, 'a'], [2, 'b'], [3, 'c']]);
+  assert.deepEqual(cardChanges(prev, new Map([[1, 'a'], [3, 'x'], [4, 'd']])), { added: [4], removed: [2], changed: [3] });
+  assert.deepEqual(cardChanges(prev, new Map(prev)), { added: [], removed: [], changed: [] });
+  assert.deepEqual(cardChanges(null, prev).added, [1, 2, 3]);
 });

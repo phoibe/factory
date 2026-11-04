@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=13';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
+import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
 
 const API = 'https://api.github.com';
@@ -167,7 +167,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -200,7 +200,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -258,7 +258,7 @@ async function refresh() {
 function schedule() {
   clearTimeout(live.timer);
   if (document.hidden || $('board').hidden || !current) return;
-  live.timer = setTimeout(refresh, pollDelay(live.failures));
+  live.timer = setTimeout(refresh, pollDelay(live.failures, isIdle(live.activity, Date.now())));
 }
 
 function drawStatus() {
@@ -300,7 +300,7 @@ function card(c, lane, minutes, now, moved) {
       : null;
   const preview = live.previews.get(c.number);
   const testIt = c.column === 'acceptance' && !running;
-  return el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}${moved ? ' moved' : ''}` },
+  const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
@@ -311,7 +311,28 @@ function card(c, lane, minutes, now, moved) {
     stepTrack(c),
     el('p', { class: 'eta' }, timeLine(e)),
     c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR).') : null);
+  article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
+  if (moved) article.classList.add('moved');
+  return article;
 }
+
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EASE = 'cubic-bezier(.16, 1, .3, 1)';
+const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]:not(.leaving)')].map((n) => [Number(n.dataset.number), n]));
+const onScreen = (r) => r.bottom > 0 && r.top < innerHeight;
+
+// FLIP: slide each card from where it was to where it is now (fade in place when either spot is off-screen).
+function flip(before) {
+  if (reduced()) return;
+  for (const [n, node] of cardsOf($('board'))) {
+    const a = before.get(n), b = node.getBoundingClientRect();
+    if (!a || (a.top === b.top && a.left === b.left)) continue;
+    node.animate(onScreen(a) && onScreen(b)
+      ? [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: 'none' }]
+      : [{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: EASE });
+  }
+}
+const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
 function drawBoard() {
   const board = $('board');
@@ -333,7 +354,9 @@ function drawBoard() {
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle feature ».';
   const focusKey = document.activeElement?.dataset?.key;
-  board.replaceChildren(
+  const oldCards = cardsOf(board);
+  const before = rectsOf(board);
+  const fresh = [
     el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
       el('div', {}, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub)),
       el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
@@ -341,7 +364,48 @@ function drawBoard() {
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
-        : el('p', { class: 'lane-empty' }, empty))));
+        : el('p', { class: 'lane-empty' }, empty)))];
+  const holder = el('div', {}, ...fresh);
+  const freshCards = cardsOf(holder);
+  const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
+  const prevSigs = live.sigs;
+  live.sigs = new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig]));
+  const oldIndex = new Map([...oldCards].map(([n, node]) => [n, [...node.parentNode.children].indexOf(node)]));
+  // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
+  // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
+  for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
+  // The halo lasts 2.4 s; the class goes away after it, so that moving the node later does not replay it.
+  for (const n of movedSet) { const node = freshCards.get(n); if (node) setTimeout(() => node.classList.remove('moved'), 2500); }
+  // Cards that left stay in place, fading, then the space closes smoothly.
+  const leaving = [], restore = [];
+  if (!reduced()) for (const n of changes.removed) {
+    const node = oldCards.get(n), laneClass = [...node.closest('.lane').classList].find((c) => c.startsWith('lane-'));
+    const laneEl = holder.querySelector(`.${laneClass}`);
+    if (!laneEl) continue;
+    let grid = laneEl.querySelector('.tickets');
+    if (!grid) { // the lane is now empty: keep a grid for the dying card until it is gone
+      const empty = laneEl.querySelector('.lane-empty');
+      grid = el('div', { class: 'tickets' });
+      empty.replaceWith(grid);
+      restore.push({ grid, empty });
+    }
+    node.classList.add('leaving');
+    grid.insertBefore(node, grid.children[oldIndex.get(n)] || null);
+    leaving.push(node);
+  }
+  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && board.querySelector('.pulse-bar');
+  if (!unchanged) {
+    board.replaceChildren(...holder.childNodes);
+    flip(before);
+    if (!reduced()) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
+    for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
+    if (leaving.length) setTimeout(() => {
+      const mid = rectsOf(board);
+      for (const node of leaving) node.remove();
+      for (const { grid, empty } of restore) if (!grid.children.length && grid.isConnected) grid.replaceWith(empty);
+      flip(mid);
+    }, 300);
+  }
   if (focusKey) board.querySelector(`[data-key="${focusKey}"]`)?.focus();
   drawStatus();
 }
@@ -376,9 +440,19 @@ async function renderBoard() {
   await refresh();
 }
 
+// Any sign of life from the owner brings the 8 s rhythm back (after 2 minutes of calm it slows to 30 s).
+for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart']) {
+  window.addEventListener(type, () => {
+    const wasIdle = isIdle(live.activity, Date.now());
+    live.activity = Date.now();
+    if (wasIdle && current && !document.hidden && !live.busy) schedule();
+  }, { passive: true });
+}
+
 // Coming back to the tab refreshes at once (unless it just did), leaving it pauses the polling.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !current) return clearTimeout(live.timer);
+  live.activity = Date.now();
   if (Date.now() - live.last > 5000) refresh(); else schedule();
 });
 
