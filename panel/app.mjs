@@ -697,7 +697,6 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
-    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -1144,6 +1143,7 @@ async function sendChat(text, withImages = true) {
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 }

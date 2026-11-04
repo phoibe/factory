@@ -27,13 +27,15 @@ export function waitsForOwner(labels) {
   return Boolean(col && COLUMNS.find((c) => c.id === col).yours);
 }
 
+// Every issue number a pull request body closes (« Closes #1, closes #2 »).
+const closedIssues = (body) => [...String(body || '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map((m) => Number(m[1]));
+
 // An issue whose PR is already open shows only once, on the PR's column.
 export function boardItems(items) {
   const linked = new Set();
   for (const it of items) {
     if (!it.pull_request) continue;
-    const m = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.exec(it.body || '');
-    if (m && columnFor(it.labels) && columnFor(it.labels) !== 'building') linked.add(Number(m[1]));
+    if (columnFor(it.labels) && columnFor(it.labels) !== 'building') for (const n of closedIssues(it.body)) linked.add(n);
   }
   return items
     .map((it) => ({ ...it, column: columnFor(it.labels) }))
@@ -49,11 +51,7 @@ export const DONE_LIMIT = 10;
 export function doneItems(pulls, limit = DONE_LIMIT) {
   return (pulls || [])
     .filter((p) => p.merged_at)
-    .map((p) => {
-      const m = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.exec(p.body || '');
-      return m ? { number: p.number, issue: Number(m[1]), title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${m[1]}`) } : null;
-    })
-    .filter(Boolean)
+    .flatMap((p) => closedIssues(p.body).map((n) => ({ number: p.number, issue: n, title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${n}`) })))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
     .slice(0, limit);
 }
@@ -86,7 +84,12 @@ export function setPath(config, path, value) {
 }
 
 // UTF-8 safe base64 for the GitHub Contents API.
-export const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+export function toBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
 export const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
 
 // Token carried by a phone link (#jeton=…). The fragment never reaches a server.
