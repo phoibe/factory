@@ -328,3 +328,19 @@ test('the catch-up happens once: afterwards the PR goes on to acceptance with th
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.skillsAlert));
 });
+
+test("the owner's pasted screenshots are copied for the agent and listed in its payload", async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
+  const id = '7b4bb623-1dff-4e0c-b757-acb063a58ce1';
+  Object.assign(gh, {
+    getIssueHtml: async () => ({ user: { login: 'phoibe' }, body_html: `<img src="https://private-user-images.githubusercontent.com/1/2-${id}.png?jwt=x">` }),
+    listCommentsHtml: async () => [],
+    getBranch: async () => ({}),
+    getContent: async () => ({ sha: '1' }),
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: 'regarde', fromOwner: true });
+  const payload = JSON.parse(JSON.parse(sent[0].init.body).text);
+  assert.deepEqual(payload.attachments, [`attachments/5/${id}.png`]);
+});

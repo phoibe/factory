@@ -1,12 +1,14 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
+const HTML = 'application/vnd.github.full+json';
+
 export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch }) {
-  async function request(method, path, body) {
+  async function request(method, path, body, accept = 'application/vnd.github+json') {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await fetchImpl(url, {
       method,
       headers: {
         authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
+        accept,
         'x-github-api-version': '2022-11-28',
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
@@ -17,11 +19,11 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return res.status === 204 ? null : res.json();
   }
   // Follows the Link header so long histories (events, comments) are read in full.
-  async function paginate(path) {
+  async function paginate(path, accept = 'application/vnd.github+json') {
     const out = [];
     let url = `${api}${path.replace('{repo}', repo)}`;
     while (url) {
-      const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } });
+      const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}`, accept, 'x-github-api-version': '2022-11-28' } });
       if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
       out.push(...(await res.json()));
       url = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get('link') || '')?.[1];
@@ -49,6 +51,19 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     merge: (n, sha) => request('PUT', `/repos/{repo}/pulls/${n}/merge`, { merge_method: 'squash', ...(sha ? { sha } : {}) }),
     getContent: (path, ref) => request('GET', `/repos/{repo}/contents/${path}${ref ? `?ref=${enc(ref)}` : ''}`),
     listPrFiles: (n) => paginate(`/repos/{repo}/pulls/${n}/files?per_page=100`),
+    // With body_html, whose image links are signed for a few minutes (private attachments need no login then).
+    getIssueHtml: (n) => request('GET', `/repos/{repo}/issues/${n}`, undefined, HTML),
+    listCommentsHtml: (n) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`, HTML),
+    listReviewCommentsHtml: (n) => paginate(`/repos/{repo}/pulls/${n}/comments?per_page=100`, HTML),
+    listReviewsHtml: (n) => paginate(`/repos/{repo}/pulls/${n}/reviews?per_page=100`, HTML),
+    getBranch: (name) => request('GET', `/repos/{repo}/git/ref/heads/${enc(name)}`),
+    // A branch with no history, holding only `files` ({path: text}).
+    createOrphanBranch: async (name, files) => {
+      const tree = await request('POST', '/repos/{repo}/git/trees', { tree: Object.entries(files).map(([path, content]) => ({ path, mode: '100644', type: 'blob', content })) });
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'chore(factory): attachments branch', tree: tree.sha, parents: [] });
+      return request('POST', '/repos/{repo}/git/refs', { ref: `refs/heads/${name}`, sha: commit.sha });
+    },
+    putContent: (path, branch, base64, message) => request('PUT', `/repos/{repo}/contents/${path}`, { message, content: base64, branch }),
     updateComment: (id, body) => request('PATCH', `/repos/{repo}/issues/comments/${id}`, { body }),
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),
