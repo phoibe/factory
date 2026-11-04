@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core import (
-    BRANCH, SYSTEM, add_exchange, build_prompt, check_access, events_from_line, extract_issues,
+    BRANCH, CID_RE, SYSTEM, add_exchange, build_prompt, check_access, events_from_line, extract_issues,
     new_conversation, upsert_index, visible_text,
 )
 
@@ -160,6 +160,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
             conv = None
+            if cid and not CID_RE.match(str(cid)):
+                raise ValueError("Conversation inconnue.")
             if cid:
                 conv, _ = await gh.read_json(f"chats/{cid}.json", None)
             conv = conv or new_conversation(new_id(), message, now_iso())

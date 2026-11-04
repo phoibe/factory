@@ -4,7 +4,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveConfig, enabledSkills } from './lib/config.mjs';
+import { resolveConfig, enabledSkills, parseRawConfig } from './lib/config.mjs';
 import { hookCommand } from '../agent/scripts/run-root.mjs';
 
 const FACTORY_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,8 +38,10 @@ const readJson = (p, fallback) => (existsSync(p) ? JSON.parse(readFileSync(p, 'u
 
 export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   const catalog = readJson(join(factoryDir, 'packs/catalog.json'));
-  const raw = readJson(join(projectDir, 'factory.config.json'), {});
-  const { config, warnings } = resolveConfig(raw, catalog);
+  const configPath = join(projectDir, 'factory.config.json');
+  const parsed = parseRawConfig(existsSync(configPath) ? readFileSync(configPath, 'utf8') : null);
+  const { config, warnings } = resolveConfig(parsed.raw, catalog);
+  if (parsed.warning) warnings.push(parsed.warning);
   const skills = enabledSkills(config, catalog);
 
   const skillsDir = join(projectDir, '.claude/skills');
