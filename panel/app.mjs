@@ -1,5 +1,5 @@
-import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=12';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=12';
+import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=13';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -167,7 +167,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), plans: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À toi de jouer', 'Rien ne t\'attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -200,7 +200,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), plans: new Map(), prev: null });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null });
     const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -225,6 +225,11 @@ async function refresh() {
       if (!before) continue;
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
+      const session = sessionFrom([...before.data, ...res.data]);
+      if (live.sessions.get(c.number) !== session) {
+        live.sessions.set(c.number, session);
+        previewsChanged = true;
+      }
       const plan = parseEstimate([...before.data, ...res.data]);
       if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
         live.plans.set(c.number, plan);
@@ -287,7 +292,10 @@ function card(c, lane, minutes, now, moved) {
     ? el('p', { class: 'cta' }, actionFor(c.column), el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
-        running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente')
+        running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
+        running && live.sessions.get(c.number)
+          ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
+          : null)
       : null;
   const preview = live.previews.get(c.number);
   const testIt = c.column === 'acceptance' && !running;

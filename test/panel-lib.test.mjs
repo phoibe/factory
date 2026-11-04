@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from '../panel/lib.mjs';
+import { columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -61,4 +61,10 @@ test('focusComment opens the card on the latest message from a person or the age
 test('projectCandidates skips archived repositories and templates', () => {
   const repos = [{ name: 'habitudes' }, { name: 'factory-template', is_template: true }, { name: 'old', archived: true }, { name: 'factory' }];
   assert.deepEqual(projectCandidates(repos).map((r) => r.name), ['habitudes', 'factory']);
+});
+
+test('sessionFrom reads the link to the agent session from the factory comment', () => {
+  const note = { body: "<!-- factory-session -->\n<!-- factory-agent -->\nDernier lancement de l'agent : **Construction**, à 14:05. [Voir ce qu'il fait](https://claude.ai/code/session_01ABC)" };
+  assert.equal(sessionFrom([{ body: 'ok' }, note]), 'https://claude.ai/code/session_01ABC');
+  assert.equal(sessionFrom([{ body: 'ok' }]), null);
 });

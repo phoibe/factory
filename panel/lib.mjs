@@ -90,3 +90,9 @@ export function focusComment(comments) {
 // The repositories worth checking for a factory.config.json: not archived, and not a template (the factory's
 // template holds one too, but it is the model new projects are copied from, not a project).
 export const projectCandidates = (repos) => repos.filter((r) => !r.archived && !r.is_template);
+
+// The link to the agent's latest Claude session, from the comment the factory keeps on the card.
+export function sessionFrom(comments) {
+  const note = (comments || []).find((c) => (c.body || '').includes('<!-- factory-session -->'));
+  return /\((https:\/\/claude\.ai\/[^)\s]+)\)/.exec(note?.body || '')?.[1] || null;
+}

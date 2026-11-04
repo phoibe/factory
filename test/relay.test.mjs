@@ -31,6 +31,8 @@ function fakeGh(state) {
 const fetchOk = (sink) => async (url, init) => { sink.push({ url, init }); return { ok: true, json: async () => ({ claude_code_session_url: 'https://claude.ai/code/s' }) }; };
 const env = { FACTORY_ROUTINE_URL: 'https://api.anthropic.com/v1/claude_code/routines/trig_x/fire', FACTORY_ROUTINE_TOKEN: 'tok' };
 const quiet = () => {};
+// The routine text is a title line, a blank line, then the JSON payload.
+const payloadOf = (body) => JSON.parse(JSON.parse(body).text.split('\n\n').slice(1).join('\n\n'));
 
 test('linkedIssue finds closing keywords', () => {
   assert.equal(linkedIssue('Résumé\n\nCloses #12'), 12);
@@ -60,7 +62,7 @@ test('a grilling answer fires the routine with the payload and locks the issue',
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 5 && c[2] === L.running));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].init.headers['anthropic-beta'], 'experimental-cc-routine-2026-04-01');
-  assert.deepEqual(JSON.parse(JSON.parse(sent[0].init.body).text), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
 });
 
 test('a fresh lock defers the comment with a reaction', async () => {
@@ -102,7 +104,7 @@ test('acceptance approval merges, frees the issue and starts the oldest queued o
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.building));
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'build');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
 });
 
 test('visual approval asks the workflow to run checks', async () => {
@@ -143,7 +145,7 @@ test('a failed merge sends the branch to update instead of stranding it', async 
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'update-branch');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.fixing));
 });
 
@@ -165,7 +167,7 @@ Spec v1`, created_at: new Date(Date.now() - 5 * 60_000).toISOString() },
   const d = gh.calls.find((c) => c[0] === 'dispatch');
   assert.deepEqual(JSON.parse(d[3].payload), { replay: 3 });
   await relay.handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 3, labels: [] }, { ownerLogin: 'phoibe' });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'build');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'build');
   assert.ok(!(await gh.getIssue(3)).labels.some((l) => l.name === L.pending));
 });
 
@@ -248,7 +250,7 @@ test('red checks fire a fix, then block after maxLoops failures', async () => {
   let gh = fakeGh(state);
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
   state.comments[10] = [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER }));
   gh = fakeGh(state);
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).report({ result: 'failure', pr: 10 });
@@ -260,7 +262,7 @@ test('failures before a reset marker are not counted again', async () => {
     comments: { 10: [{ body: CHECKS_FAILED_MARKER }, { body: CHECKS_FAILED_MARKER }, { body: CHECKS_FAILED_MARKER }, { body: '<!-- factory-checks-reset -->' }] } };
   const sent = [];
   await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
 });
 
 test('eventFromPayload flags issues opened less than a minute ago', () => {
@@ -341,7 +343,7 @@ test("the owner's pasted screenshots are copied for the agent and listed in its 
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: 'regarde', fromOwner: true });
-  const payload = JSON.parse(JSON.parse(sent[0].init.body).text);
+  const payload = payloadOf(sent[0].init.body);
   assert.deepEqual(payload.attachments, [`attachments/5/${id}.png`]);
 });
 
@@ -359,7 +361,7 @@ test('checks stopped by the time limit count as a failure, so the PR never sits 
   const gh = fakeGh(state);
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc' });
-  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /trop longtemps/.test(c[2])));
 });
 
@@ -368,4 +370,21 @@ test('checks cancelled because the PR changed are ignored (a newer run reports)'
   const sent = [];
   await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'old' });
   assert.equal(sent.length, 0);
+});
+
+test('a run is named for the session list and its link is kept in one comment on the card', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/habitudes', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const msg = { kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true };
+  await relay.handle(msg);
+  assert.equal(JSON.parse(sent[0].init.body).text.split('\n')[0], 'habitudes · issue #5 · Questions');
+  const note = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5);
+  assert.match(note[2], /factory-session[\s\S]*Questions[\s\S]*\(https:\/\/claude\.ai\/code\/s\)/);
+  const updated = [];
+  gh.listComments = async () => [{ id: 9, body: note[2] }];
+  gh.updateComment = async (id, body) => updated.push(id);
+  gh.issues = undefined;
+  await relay.handle(msg);
+  assert.deepEqual(updated, [9]);
 });
