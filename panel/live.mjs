@@ -82,6 +82,15 @@ export function cardChanges(prev, next) {
   return { added, removed, changed };
 }
 
+// A card's HTML without the text of its time elements (marked data-time): a clock moving is not a change of the card.
+export const withoutTimes = (html) => html.replace(/(<(\w+)\b[^>]*\bdata-time\b[^>]*>)[^<]*(<\/\2>)/g, '$1$3');
+
+// Copies the text of each time element of `fresh` onto the matching one of `old`, in place.
+export function syncTimes(old, fresh) {
+  const a = old.querySelectorAll('[data-time]'), b = fresh.querySelectorAll('[data-time]');
+  a.forEach((node, i) => { if (b[i] && node.textContent !== b[i].textContent) node.textContent = b[i].textContent; });
+}
+
 // One short line about time, from estimate() in eta.mjs.
 export function timeLine(e) {
   if (e.status === 'queued') return "Démarre dès qu'une place se libère";
