@@ -79,3 +79,10 @@ export function previewFrom(comments) {
   }
   return null;
 }
+
+// Link to the message a card should open on: the latest comment written by a person or by the
+// factory's agent (bots such as Vercel or GitHub Actions are skipped). Null when there is none.
+export function focusComment(comments) {
+  const last = [...(comments || [])].reverse().find((c) => c.user?.type !== 'Bot' && !/\[bot\]$/.test(c.user?.login || ''));
+  return last?.html_url || null;
+}
