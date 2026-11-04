@@ -48,6 +48,11 @@ test('eventFromPayload marks agent comments and the owner', () => {
   assert.deepEqual([prc.kind, prc.fromOwner], ['pr', false]);
 });
 
+test('eventFromPayload turns a dispatched {"tick":true} into a queue check', () => {
+  const ev = eventFromPayload('workflow_dispatch', { inputs: { payload: '{"tick":true}' }, repository: { owner: { login: 'phoibe' } } });
+  assert.equal(ev.kind, 'tick');
+});
+
 test('eventFromPayload trusts pushes by the Claude app on PRs', () => {
   const ev = eventFromPayload('pull_request', { action: 'synchronize', repository: { owner: { login: 'phoibe' } }, sender: { login: 'claude[bot]' }, pull_request: { number: 9, labels: [] } });
   assert.equal(ev.fromOwner, true);
