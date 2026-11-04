@@ -58,7 +58,7 @@ export function markdownTable({ repo, dir, files, hasBefore }) {
 }
 
 function publish({ pr, before, after }) {
-  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'inherit'] }).toString().trim();
+  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const repo = git(['config', '--get', 'remote.origin.url']).replace(/^.*github\.com[:/]/, '').replace(/\.git$/, '');
   const dir = `pr-${pr}/${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const wt = mkdtempSync(join(tmpdir(), 'factory-assets-'));
