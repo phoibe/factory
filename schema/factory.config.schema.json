@@ -8,6 +8,7 @@
     "runner": { "enum": ["claude-cloud", "github-actions"], "description": "Où tournent les agents" },
     "maxParallel": { "type": "integer", "minimum": 1, "description": "Features en parallèle" },
     "stack": { "type": "string", "description": "Stack technique par défaut" },
+    "siteUrl": { "type": "string", "pattern": "^https://\\S+$", "description": "Adresse du site en ligne" },
     "stages": {
       "type": "object",
       "properties": {

@@ -23,6 +23,11 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     checks: boolMap(DEFAULTS.checks, input.checks),
     skills: {},
   };
+  // Address of the live site, shown in the panel. Only https links are kept.
+  if (input.siteUrl !== undefined && input.siteUrl !== '') {
+    if (typeof input.siteUrl === 'string' && /^https:\/\/\S+$/.test(input.siteUrl)) config.siteUrl = input.siteUrl;
+    else warnings.push(`siteUrl invalide (${JSON.stringify(input.siteUrl)}), ignoré`);
+  }
   if (input.runner !== undefined) {
     if (RUNNERS.includes(input.runner)) config.runner = input.runner;
     else warnings.push(`runner "${input.runner}" inconnu, "${DEFAULTS.runner}" utilisé`);

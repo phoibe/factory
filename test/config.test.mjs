@@ -50,3 +50,12 @@ test('stage toggles override defaults', () => {
   assert.equal(config.stages.plan, true);
   assert.equal(config.maxParallel, 4);
 });
+
+test('siteUrl is kept when it is an https link, dropped with a warning otherwise', () => {
+  const ok = resolveConfig({ siteUrl: 'https://habitudes.vercel.app' }, catalog);
+  assert.equal(ok.config.siteUrl, 'https://habitudes.vercel.app');
+  const bad = resolveConfig({ siteUrl: 'javascript:alert(1)' }, catalog);
+  assert.equal(bad.config.siteUrl, undefined);
+  assert.equal(bad.warnings.length, 1);
+  assert.equal(resolveConfig({}, catalog).config.siteUrl, undefined);
+});
