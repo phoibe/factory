@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
 import { resolveConfig } from './config-core.mjs';
 
 const API = 'https://api.github.com';
@@ -379,8 +379,10 @@ function youCard(yours, headline, sub) {
     el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: 'you-item' },
       el('div', { class: 'you-what' },
         el('span', { class: 'num' }, `#${c.number}`),
-        el('a', { class: 'you-title', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
+        el('a', { class: 'you-title', 'data-key': String(c.number), href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
         el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
+      c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
+      live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
         ? el('button', { type: 'button', class: 'go', onclick: (e) => answerGo(c, e.target) }, 'go')
         : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
@@ -431,7 +433,7 @@ function drawBoard() {
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
         : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
-  const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column]));
+  const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
