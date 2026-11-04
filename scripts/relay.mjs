@@ -10,7 +10,10 @@ import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER } from './lib/labels.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
-import { FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
+import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
+
+const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
+const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design' };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
@@ -319,19 +322,33 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const file = await gh.getContent(path, pr.head.sha);
       if (file?.content) texts.push(Buffer.from(file.content, 'base64').toString('utf8'));
     }
-    const { body, alerts } = summarize(parseJournal(texts), { stages: config.stages, ui: uiChanged(files) });
+    const { body, alerts, missing } = summarize(parseJournal(texts), { stages: config.stages, ui: uiChanged(files) });
     const mine = ((await gh.listComments(prNumber)) || []).find((c) => (c.body || '').includes(FABRICATION_MARKER));
     const text = say(body);
     if (mine) await gh.updateComment(mine.id, text); else await gh.comment(prNumber, text);
     if (alerts.length) await gh.addLabels(prNumber, [L.skillsAlert]); else await gh.removeLabel(prNumber, L.skillsAlert);
-    return alerts;
+    return Object.assign(alerts, { missing });
   }
 
   async function report({ result, pr: prNumber, runId, sha }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
-    try { await fabrication(prNumber, pr); } catch (e) { log(`fabrication: ${e.message}`); }
+    let missing = [];
+    try { ({ missing } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
     const issueNumber = linkedIssue(pr.body);
+    // A skipped review or design pass is caught up once, by a dedicated run, before the owner is asked anything.
+    const catchUp = (missing || []).filter((s) => CATCH_UP.includes(s));
+    if (result === 'success' && catchUp.length) {
+      const done = ((await gh.listComments(prNumber)) || []).some((c) => (c.body || '').includes(SKILLS_FIX_MARKER));
+      if (!done) {
+        if (!(await fireOrBlock({ stage: 'skills-fix', issue: issueNumber, pr: prNumber, extra: { missing: catchUp }, why: "L'agent a sauté une étape" }))) return;
+        await gh.removeLabel(prNumber, L.checks);
+        await gh.addLabels(prNumber, [L.fixing]);
+        const steps = catchUp.map((s) => STEP_NAMES[s]).join(' et ');
+        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de ton côté.`)}`);
+        return;
+      }
+    }
     const issue = issueNumber ? await gh.getIssue(issueNumber) : null;
     const isBug = names(issue?.labels).includes(L.bug);
     const comments = (await gh.listComments(prNumber)) || [];

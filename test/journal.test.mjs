@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { entryFor, runFromPrompt, TEST_COMMAND } from '../agent/scripts/journal.mjs';
+import { entryFor, runFromPrompt, isTestCommand } from '../agent/scripts/journal.mjs';
 
 const now = new Date('2026-11-03T10:00:00Z');
 
@@ -20,7 +20,15 @@ test('records skills, red and green test runs, and ignores the rest', () => {
   assert.equal(entryFor({ hook_event_name: 'UserPromptSubmit', prompt: '{"stage":"bugfix","issue":3}' }, now).stage, 'bugfix');
 });
 
-test('TEST_COMMAND spots common test runners', () => {
-  for (const c of ['npm test', 'npm run test', 'pnpm test', 'npx vitest run src', 'npx playwright test', 'node --test']) assert.ok(TEST_COMMAND.test(c), c);
-  for (const c of ['npm run build', 'git commit -m test', 'npm run lint']) assert.ok(!TEST_COMMAND.test(c), c);
+test('isTestCommand spots common test runners', () => {
+  for (const c of ['npm test', 'npm run test', 'pnpm test', 'npx vitest run src', 'npx playwright test', 'node --test', 'npm run test:a11y',
+    'cd /home/user/app; npm test 2>&1 | tail -8', 'npm ci && npm test', 'CI=1 npx vitest run', 'sed -i s/a/b/ x.ts && npm test 2>&1 | grep FAIL']) assert.ok(isTestCommand(c), c);
+  for (const c of ['npm run build', 'git commit -m test', 'npm run lint', 'cat package.json', 'git commit -m "npm test passes"']) assert.ok(!isTestCommand(c), c);
+});
+
+test('a file written with a heredoc that mentions vitest is not a test run', () => {
+  const write = "mkdir -p tests && cat > tests/a.test.ts <<'EOF'\nimport { it } from \"vitest\";\nnpm test\nEOF";
+  assert.ok(!isTestCommand(write));
+  assert.ok(isTestCommand(`${write}\nnpx vitest run tests/a.test.ts`));
+  assert.ok(!isTestCommand("python3 - <<'E'\nprint('npx vitest')\nE"));
 });
