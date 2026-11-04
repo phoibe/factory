@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
   <header class="top">
@@ -33,7 +33,7 @@
       <form id="login-form">
         <label for="token">Jeton</label>
         <input id="token" type="password" autocomplete="off" placeholder="github_pat_…" required>
-        <button type="submit">Se connecter</button>
+        <button type="submit" class="secondary">Se connecter</button>
         <p id="login-error" class="error" role="alert"></p>
       </form>
     </section>
@@ -51,10 +51,10 @@
           <h1 id="project-name"></h1>
           <p id="project-sub" class="muted"></p>
           <p class="site-line"><a id="site" rel="noopener"></a></p>
-          <p class="site-line"><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les issues GitHub</a></p>
+          <p class="site-line"><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a></p>
         </div>
         <div class="actions">
-          <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle feature</a>
+          <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle fonctionnalité</a>
           <a id="new-bug" class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
           <a id="new-project" class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
           <button id="new-question" type="button" class="button secondary" title="Discutez avec l'agent : une question sur l'appli, une idée de feature ou un bug. Il peut en faire une feature ou un bug pour vous.">Discuter avec l'agent</button>
@@ -107,6 +107,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=19"></script>
+  <script type="module" src="app.mjs?v=23"></script>
 </body>
 </html>
