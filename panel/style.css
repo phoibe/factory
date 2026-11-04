@@ -137,4 +137,6 @@ dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
 main, .top { overflow-wrap: anywhere; }
 .tickets { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
 .ticket, .tickets > * { min-width: 0; }
-body { overflow-x: clip; }
+html, body { overflow-x: clip; }
+/* iPhone zooms into any field under 16px when it is tapped, and the zoomed page then slides sideways. */
+input, select, textarea { font-size: 16px; }
