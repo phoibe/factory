@@ -1,0 +1,5 @@
+{"t":"2026-11-04T18:55:42.558Z","kind":"run","stage":"bugfix","issue":137,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-04T18:55:50.716Z","kind":"skill","name":"systematic-debugging","id":"toolu_01BM7FSsS5G4vSyjN8M37Ywn"}
+{"t":"2026-11-04T18:56:05.075Z","kind":"test","cmd":"head -12 test/panel-live.test.mjs | grep -n import\ncat >> test/panel-live.test.mjs <<'EOF'\n\ntest('a card only slides when it really moved: a few pixels of text reflow stay still', async () => {\n  cons","ok":false,"id":"toolu_019ibr73Y2SkcWMrMdnPMtFg"}
+{"t":"2026-11-04T18:57:12.762Z","kind":"test","cmd":"grep -rn \"live.mjs?v\" panel | grep -v \"^panel/app.mjs:4\"; sed -i \"4s/cardChanges } from '.\\/live.mjs?v=3'/cardChanges, shouldSlide } from '.\\/live.mjs?v=4'/\" panel/app.mjs && sed -i 's/app.mjs?v=26/ap","ok":true,"id":"toolu_01Pio91UMTbv4GxbtQe8q1p6"}
+{"t":"2026-11-04T18:57:14.767Z","kind":"skill","name":"requesting-code-review","id":"toolu_01ETjeQbY9L5TG6d4G3ZmVTY"}

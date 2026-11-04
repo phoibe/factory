@@ -95,3 +95,13 @@ test('the « À vous » card is drawn with its status text already filled (no gr
   const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
   assert.match(line, /statusText\(/);
 });
+
+test('a card only slides when it really moved: a few pixels of text reflow stay still', async () => {
+  const { shouldSlide, SLIDE_MIN_PX } = await import('../panel/live.mjs');
+  const r = (top, left = 0) => ({ top, left });
+  assert.equal(shouldSlide(r(100), r(101)), false);
+  assert.equal(shouldSlide(r(100), r(100 + SLIDE_MIN_PX - 1)), false);
+  assert.equal(shouldSlide(r(100, 5), r(103, 5)), false);
+  assert.equal(shouldSlide(r(100), r(100 + SLIDE_MIN_PX)), true);
+  assert.equal(shouldSlide(r(100, 0), r(100, 300)), true);
+});
