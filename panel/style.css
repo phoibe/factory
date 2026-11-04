@@ -132,3 +132,9 @@ dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
 #site { font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
 #site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+
+/* ---- No sideways scroll on phones: long words, links and titles wrap ---- */
+main, .top { overflow-wrap: anywhere; }
+.tickets { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+.ticket, .tickets > * { min-width: 0; }
+body { overflow-x: clip; }
