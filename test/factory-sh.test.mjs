@@ -33,11 +33,11 @@ test('adopter installs the factory files, secrets, sync and framing issue', () =
   assert.match(log, /repo clone https:\/\/github\.com\/phoibe\/mon-appli\.git /);
   assert.match(log, /workflow run factory-sync.yml -R phoibe\/mon-appli/);
   assert.match(log, /issue create -R phoibe\/mon-appli --title Cadrage : mon-appli --label factory:project/);
-  assert.match(readFileSync(join(cfg, 'factory/routine'), 'utf8'), /FACTORY_ROUTINE_TOKEN=sk-secret/);
+  assert.match(readFileSync(join(cfg, 'factory/routines/phoibe_mon-appli'), 'utf8'), /FACTORY_ROUTINE_TOKEN=sk-secret/);
 });
 
 test('nouveau creates the repository from the template', () => {
-  const { log } = run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', '', 'Une appli de recettes']);
+  const { log } = run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', 'Une appli de recettes']);
   assert.match(log, /repo create phoibe\/nouveau-projet --private --template phoibe\/factory-template/);
   assert.match(log, /issue create .*--body Une appli de recettes/);
 });
@@ -57,18 +57,30 @@ test('answering no to the confirmation changes nothing', () => {
   assert.doesNotMatch(log, /repo create/);
 });
 
-test('without a routine, it guides the creation step by step and skips the extra repository click', () => {
+test('without a routine, it guides the creation of a routine for this project only', () => {
   const { out } = run(['adopter', 'mon-appli'], ['', 'n', '', '', '', '', '', '', 'https://example.test/fire', 'tok', '', '']);
-  assert.match(out, /Création de la routine, pas à pas/);
-  assert.match(out, /Repositories : ajoute phoibe\/mon-appli/);
-  assert.doesNotMatch(out, /Dernier clic/);
+  assert.match(out, /Création de la routine de ce projet, pas à pas/);
+  assert.match(out, /Nom : Factory - mon-appli/);
+  assert.match(out, /Repositories : ajoute phoibe\/mon-appli, et seulement lui/);
+  assert.doesNotMatch(out, /Une seule routine|tous tes projets|Dernier clic/);
   assert.match(out, /C'est prêt/);
 });
 
-test('choice 3 puts the new routine token in every factory project', () => {
-  const { log } = run([], ['3', 'o', 'https://example.test/fire', 'nouveau-jeton']);
+test('a routine saved for another project is never reused', () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
+  writeFileSync(join(cfg, 'factory', 'routines', 'phoibe_habitudes'), 'FACTORY_ROUTINE_URL=https://habitudes.test/fire\nFACTORY_ROUTINE_TOKEN=habitudes-token\n');
+  const { out } = run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { XDG_CONFIG_HOME: cfg });
+  assert.match(out, /Avez-vous déjà créé la routine « Factory - mon-appli »/);
+  assert.match(readFileSync(join(cfg, 'factory', 'routines', 'phoibe_mon-appli'), 'utf8'), /FACTORY_ROUTINE_TOKEN=tok/);
+});
+
+test('choice 3 updates the routine of the one project picked', () => {
+  const { out, log } = run([], ['3', '1', 'o', 'https://example.test/fire', 'nouveau-jeton']);
+  assert.match(out, / 1\) habitudes/);
+  assert.doesNotMatch(out, /\) vieux-site/);
   assert.match(log, /secret set FACTORY_ROUTINE_TOKEN -R phoibe\/habitudes/);
-  assert.doesNotMatch(log, /secret set FACTORY_ROUTINE_TOKEN -R phoibe\/vieux-site/);
+  assert.equal((log.match(/secret set FACTORY_ROUTINE_TOKEN/g) || []).length, 1);
 });
 
 test('adopting the factory itself skips Vercel (its board is on GitHub Pages)', () => {
@@ -90,9 +102,10 @@ test('when GitHub refuses to list the app installations, it gives a working link
 test('choice 3 keeps the saved token when the new one is rejected', () => {
   const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
   mkdirSync(join(cfg, 'factory'));
-  const file = join(cfg, 'factory', 'routine');
+  mkdirSync(join(cfg, 'factory', 'routines'));
+  const file = join(cfg, 'factory', 'routines', 'phoibe_habitudes');
   writeFileSync(file, 'FACTORY_ROUTINE_URL=https://old.test/fire\nFACTORY_ROUTINE_TOKEN=old-token\n');
-  assert.throws(() => run([], ['3', 'o', 'pas-une-url', 'nouveau'], { XDG_CONFIG_HOME: cfg }),
+  assert.throws(() => run([], ['3', '1', 'o', 'pas-une-url', 'nouveau'], { XDG_CONFIG_HOME: cfg }),
     (e) => /ne ressemble pas à celle d'une routine/.test(`${e.stdout}${e.stderr}`));
   assert.ok(existsSync(file), 'the saved token file must survive a typo');
   assert.match(readFileSync(file, 'utf8'), /old-token/);
@@ -102,9 +115,10 @@ test('choice 3 keeps the saved token when the new one is rejected', () => {
 test('choice 3 replaces the saved token once the new one is valid', () => {
   const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
   mkdirSync(join(cfg, 'factory'));
-  const file = join(cfg, 'factory', 'routine');
+  mkdirSync(join(cfg, 'factory', 'routines'));
+  const file = join(cfg, 'factory', 'routines', 'phoibe_habitudes');
   writeFileSync(file, 'FACTORY_ROUTINE_URL=https://old.test/fire\nFACTORY_ROUTINE_TOKEN=old-token\n');
-  run([], ['3', 'o', 'https://new.test/fire', 'new-token'], { XDG_CONFIG_HOME: cfg });
+  run([], ['3', '1', 'o', 'https://new.test/fire', 'new-token'], { XDG_CONFIG_HOME: cfg });
   assert.match(readFileSync(file, 'utf8'), /FACTORY_ROUTINE_TOKEN=new-token/);
   assert.doesNotMatch(readFileSync(file, 'utf8'), /old-token/);
 });

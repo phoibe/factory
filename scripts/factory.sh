@@ -12,7 +12,6 @@ set -euo pipefail
 
 TEMPLATE="${FACTORY_TEMPLATE:-phoibe/factory-template}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/factory"
-ROUTINE_FILE="$CONFIG_DIR/routine"
 TEMPLATE_FILES=".github/workflows/factory.yml .github/workflows/factory-sync.yml .github/ISSUE_TEMPLATE/feature.yml .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/project.yml .github/ISSUE_TEMPLATE/question.yml .github/ISSUE_TEMPLATE/config.yml"
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -127,10 +126,11 @@ step() { printf '  %s\n' "$1"; ask "     (Entrée pour continuer)" >/dev/null; }
 copy() { if command -v pbcopy >/dev/null 2>&1; then printf '%s' "$1" | pbcopy && return 0; fi; return 1; }
 
 guide_new_routine() {
-  say "   Création de la routine, pas à pas (une seule fois)"
+  say "   Création de la routine de ce projet, pas à pas"
+  echo "  Chaque projet a sa propre routine : ses agents démarrent directement dans son dossier."
   echo "  J'ouvre la page des routines dans votre navigateur :"
   open_url "https://claude.ai/code/routines"
-  step "a) Cliquez « New routine ». Nom : Factory"
+  step "a) Cliquez « New routine ». Nom : Factory - ${REPO#*/}"
   if copy "$ROUTINE_PROMPT"; then
     step "b) Instructions : cliquez dans le champ et collez (Cmd+V), je viens de copier le texte pour vous"
   else
@@ -138,32 +138,33 @@ guide_new_routine() {
     printf '\n     %s\n\n' "$ROUTINE_PROMPT"
     ask "     (Entrée pour continuer)" >/dev/null
   fi
-  step "c) Repositories : ajoute $REPO"
+  step "c) Repositories : ajoute $REPO, et seulement lui"
   step "d) Environment : laisse « Default ». Connectors : retire-les tous"
   step "e) Trigger : choisis « API », puis enregistre la routine"
   step "f) Rouvre la routine (crayon), section du déclencheur API : clique « Generate token »"
   echo "  g) Copiez l'URL puis le jeton : je vous les demande juste après (le jeton n'est affiché qu'une fois)."
-  ROUTINE_HAS_REPO=1
 }
 
 guide_existing_routine() {
-  echo "  Ouvrez votre routine (crayon), section du déclencheur API :"
+  echo "  Ouvrez la routine « Factory - ${REPO#*/} » (crayon), section du déclencheur API :"
   open_url "https://claude.ai/code/routines"
-  echo "  copiez l'URL ; pour le jeton, si vous ne l'avez plus, cliquez « Generate token » (l'ancien cessera de marcher :"
-  echo "  relancez ensuite ce script et choisissez 3 pour mettre le nouveau jeton dans tous vos projets)."
+  echo "  copiez l'URL ; pour le jeton, si vous ne l'avez plus, cliquez « Generate token » (l'ancien cessera de marcher)."
 }
 
+# One routine per project: its sessions start inside the project, so the project's hooks (journal, gate) run.
+routine_file() { printf '%s/routines/%s' "$CONFIG_DIR" "$(printf '%s' "$REPO" | tr '/' '_')"; }
+
 routine() {
-  say "3. Routine Claude (le moteur des agents)"
-  local url token
-  if [ -f "$ROUTINE_FILE" ] && [ "${ROUTINE_REPLACE:-}" != 1 ]; then
+  say "3. Routine Claude de ce projet (le moteur des agents)"
+  local url token file
+  file=$(routine_file)
+  if [ -f "$file" ] && [ "${ROUTINE_REPLACE:-}" != 1 ]; then
     # shellcheck disable=SC1090
-    . "$ROUTINE_FILE"
+    . "$file"
     url=${FACTORY_ROUTINE_URL:-}; token=${FACTORY_ROUTINE_TOKEN:-}
   fi
   if [ -z "${url:-}" ] || [ -z "${token:-}" ]; then
-    echo "  Une seule routine Claude sert à tous vos projets."
-    case "$(ask "  Avez-vous déjà une routine pour la factory sur claude.ai ? (o/N)")" in
+    case "$(ask "  Avez-vous déjà créé la routine « Factory - ${REPO#*/} » sur claude.ai ? (o/N)")" in
       o|O|oui) guide_existing_routine ;;
       *) guide_new_routine ;;
     esac
@@ -171,21 +172,14 @@ routine() {
     printf '  Collez le jeton (il ne s’affiche pas) : ' >&2; read -rs token </dev/tty; echo >&2
     case "$url" in https://*) ;; *) die "Cette URL ne ressemble pas à celle d'une routine (elle commence par https://)." ;; esac
     [ -n "$token" ] || die "Jeton vide."
-    mkdir -p "$CONFIG_DIR"; umask 077
+    mkdir -p "$(dirname "$file")"; umask 077
     # Write beside the old file, then swap: the saved token is only replaced once the new one is complete.
-    printf 'FACTORY_ROUTINE_URL=%q\nFACTORY_ROUTINE_TOKEN=%q\n' "$url" "$token" > "$ROUTINE_FILE.new" && mv "$ROUTINE_FILE.new" "$ROUTINE_FILE"
-    ok "Gardés sur cet ordinateur ($ROUTINE_FILE) : on ne vous les redemandera plus"
+    printf 'FACTORY_ROUTINE_URL=%q\nFACTORY_ROUTINE_TOKEN=%q\n' "$url" "$token" > "$file.new" && mv "$file.new" "$file"
+    ok "Gardés sur cet ordinateur ($file) : on ne vous les redemandera plus pour ce projet"
   fi
-  FACTORY_ROUTINE_URL=$url; FACTORY_ROUTINE_TOKEN=$token
-  [ "${ROUTINE_SECRETS_ONLY:-}" = 1 ] && return 0
   printf '%s' "$url"   | gh secret set FACTORY_ROUTINE_URL   -R "$REPO" >/dev/null
   printf '%s' "$token" | gh secret set FACTORY_ROUTINE_TOKEN -R "$REPO" >/dev/null
   ok "Secrets de la routine rangés dans le dépôt"
-  if [ "${ROUTINE_HAS_REPO:-}" != 1 ]; then
-    echo "  👉 Dernier clic : dans votre routine, section « Repositories », ajoutez $REPO puis enregistrez."
-    open_url "https://claude.ai/code/routines"
-    ask "     Appuyez sur Entrée quand c'est fait." >/dev/null
-  fi
 }
 
 # ---- Labels et skills ----------------------------------------------------------------------------
@@ -258,7 +252,7 @@ choose_mode() {
   say "Bienvenue dans la software factory 👋"
   echo "  1) Créer un nouveau projet"
   echo "  2) Faire entrer dans la factory un projet déjà commencé (déjà sur GitHub)"
-  echo "  3) Mettre à jour l'URL et le jeton de la routine dans tous mes projets"
+  echo "  3) Changer l'URL ou le jeton de la routine d'un projet"
   local c
   while :; do
     c=$(ask "  Votre choix (1, 2 ou 3) :")
@@ -296,19 +290,25 @@ choose_existing() {
   done
 }
 
-# Range une nouvelle URL ou un nouveau jeton de routine dans tous les projets de la factory.
-update_token_everywhere() {
-  local repos line n=0
-  repos=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
-  REPO="(tous vos projets)"; ROUTINE_HAS_REPO=1
-  ROUTINE_REPLACE=1 ROUTINE_SECRETS_ONLY=1 routine
-  for line in $repos; do
+# Range une nouvelle URL ou un nouveau jeton de routine dans un projet de la factory, choisi par numéro.
+update_token() {
+  local list i=0 c line
+  list=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
+  say "Quel projet ?"
+  for line in $list; do
+    case "${line#*/}" in factory-template) continue ;; esac
     gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 || continue
-    printf '%s' "$FACTORY_ROUTINE_URL"   | gh secret set FACTORY_ROUTINE_URL   -R "$line" >/dev/null
-    printf '%s' "$FACTORY_ROUTINE_TOKEN" | gh secret set FACTORY_ROUTINE_TOKEN -R "$line" >/dev/null
-    ok "$line"; n=$((n + 1))
+    i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
+    eval "CHOICE_$i=\$line"
   done
-  say "C'est fait : $n projet(s) mis à jour."
+  [ "$i" -gt 0 ] || die "Aucun de vos dépôts n'est encore dans la factory."
+  while :; do
+    c=$(ask "  Numéro du projet (1 à $i) :")
+    case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "REPO=\$CHOICE_$c"; break; fi ;; esac
+    echo "  Répondez par un numéro de la liste."
+  done
+  ROUTINE_REPLACE=1 routine
+  say "C'est fait : $REPO utilise maintenant cette routine."
 }
 
 main() {
@@ -316,7 +316,7 @@ main() {
   case "$MODE" in nouveau|adopter|jeton|'') ;; *) usage ;; esac
   need_gh
   [ -n "$MODE" ] || choose_mode
-  if [ "$MODE" = jeton ]; then update_token_everywhere; exit 0; fi
+  if [ "$MODE" = jeton ]; then update_token; exit 0; fi
   if [ -z "$NAME" ]; then
     if [ "$MODE" = nouveau ]; then choose_name; else choose_existing; fi
   fi
