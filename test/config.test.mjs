@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveConfig, enabledSkills } from '../scripts/lib/config.mjs';
+import { resolveConfig, enabledSkills, parseRawConfig } from '../scripts/lib/config.mjs';
 
 const catalog = {
   packs: [
@@ -66,4 +66,11 @@ test('autoPick is off by default and only a boolean turns it on', () => {
   const { config, warnings } = resolveConfig({ autoPick: 'oui' }, catalog);
   assert.equal(config.autoPick, false);
   assert.equal(warnings.length, 1);
+});
+
+test('a broken config file never throws: defaults plus a warning', () => {
+  assert.deepEqual(parseRawConfig('{ not json'), { raw: {}, warning: 'factory.config.json est illisible : les réglages par défaut sont utilisés.' });
+  assert.equal(parseRawConfig('[1]').raw && Object.keys(parseRawConfig('[1]').raw).length, 0);
+  assert.deepEqual(parseRawConfig(null), { raw: {}, warning: null });
+  assert.deepEqual(parseRawConfig('{"a":1}'), { raw: { a: 1 }, warning: null });
 });

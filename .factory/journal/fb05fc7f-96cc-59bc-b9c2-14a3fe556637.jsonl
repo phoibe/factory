@@ -1,0 +1,5 @@
+{"t":"2026-11-04T18:47:37.137Z","kind":"run","stage":"visual-fix","issue":123,"pr":132,"repo":"phoibe/factory"}
+{"t":"2026-11-04T18:51:16.373Z","kind":"test","cmd":"npm test 2>&1 | tail -8; npm run lint 2>&1 | tail -3; npm run test:a11y 2>&1 | tail -6","ok":false,"id":"toolu_0182SAPGd1Nnx5U8XUMfLQS9"}
+{"t":"2026-11-04T18:52:16.822Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; npm run test:a11y 2>&1 | grep -iE \"error|not ok|cannot|Executable\" | head -8","ok":false,"id":"toolu_0177i7ZsGdVGft3f3FQKNk4m"}
+{"t":"2026-11-04T18:57:21.973Z","kind":"test","cmd":"G=$(npm root -g); mkdir -p node_modules && ln -s $G/playwright node_modules/playwright && ln -s $G/playwright-core node_modules/playwright-core 2>/dev/null; ls $G | head; npm ci --ignore-scripts >/dev","ok":true,"id":"toolu_01VpMB4KD19TQa9TM9AkFNbL"}
+{"t":"2026-11-04T18:58:21.703Z","kind":"test","cmd":"G=$(npm root -g); ln -s $G/playwright node_modules/playwright; ln -s $G/playwright-core node_modules/playwright-core; CP=$(find /opt/pw-browsers/chromium -name chrome -type f | head -1); echo $CP; CHR","ok":true,"id":"toolu_01B169chR9L746EPSAUjKjnE"}

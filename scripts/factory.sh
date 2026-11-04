@@ -211,21 +211,36 @@ vercel_setup() {
   say "5. Vercel (aperçu de chaque PR et mise en ligne)"
   local name=${REPO#*/} work
   if [ "$REPO" = "$OWNER_LOGIN/factory" ]; then ok "Pas besoin de Vercel : le tableau de la factory est publié par GitHub Pages"; return; fi
+  local app_link="https://github.com/apps/vercel/installations/new"
   if command -v npx >/dev/null 2>&1; then
     work=$(mktemp -d)
     gh repo clone "https://github.com/$REPO.git" "$work/repo" -- --quiet --depth 1 >/dev/null 2>&1 || true
     if ( cd "$work/repo" \
          && { npx --yes vercel@latest whoami >/dev/null 2>&1 || npx --yes vercel@latest login </dev/tty; } \
-         && npx --yes vercel@latest link --yes --project "$name" >/dev/null 2>&1 \
-         && npx --yes vercel@latest git connect --yes >/dev/null 2>&1 ); then
-      rm -rf "$work"
-      ok "Projet Vercel « $name » branché sur le dépôt"
-      return
+         && npx --yes vercel@latest link --yes --project "$name" >/dev/null 2>&1 ); then
+      # Le branchement au dépôt échoue tant que l'appli Vercel de GitHub n'a pas accès au dépôt
+      # (cas fréquent : accès limité à « certains dépôts », le nouveau dépôt n'y est pas).
+      local try
+      for try in 1 2 3; do
+        if ( cd "$work/repo" && npx --yes vercel@latest git connect --yes >/dev/null 2>&1 ); then
+          rm -rf "$work"
+          ok "Projet Vercel « $name » branché sur le dépôt"
+          return
+        fi
+        [ "$try" = 3 ] && break
+        warn "Vercel n'a pas encore le droit de voir le dépôt $REPO. À faire une seule fois :"
+        echo "     $app_link"
+        echo "     → choisissez « $OWNER_LOGIN » → « Repository access » : cochez « All repositories » → Save"
+        echo "     (ainsi les prochains projets marcheront tout seuls)"
+        ask "     Appuyez sur Entrée quand c'est fait." >/dev/null
+      done
     fi
     rm -rf "$work"
   fi
-  warn "Je n'ai pas pu brancher Vercel tout seul. Un clic suffit :"
-  echo "     https://vercel.com/new/import?s=https://github.com/$REPO  → Deploy (un premier échec est normal si l'appli n'existe pas encore)"
+  warn "Je n'ai pas pu brancher Vercel tout seul. Deux clics :"
+  echo "     1. Donnez à Vercel l'accès au dépôt : $app_link"
+  echo "        → « $OWNER_LOGIN » → « Repository access » : « All repositories » → Save"
+  echo "     2. https://vercel.com/new/import?s=https://github.com/$REPO  → Deploy (un premier échec est normal si l'appli n'existe pas encore)"
   ask "     Appuyez sur Entrée quand c'est fait." >/dev/null
 }
 

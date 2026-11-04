@@ -1,10 +1,12 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=16';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=5';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { startCountdown } from './countdown.mjs';
+import { parisMidnight, runsToday, runsText } from './runs.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -21,10 +23,10 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Grilling', "L'agent vous pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['grilling', 'Questions préalables', "L'agent vous pose des questions pour clarifier la demande avant d'écrire la spec."],
   ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
-  ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
+  ['tdd', 'Tests avant le code', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
@@ -32,7 +34,7 @@ const STAGES = [
   ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
 ];
 const CHECKS = [
-  ['typecheck', 'Types'], ['lint', 'Lint'], ['test', 'Tests'], ['build', 'Build'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
+  ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
 ];
 
 // A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
@@ -90,6 +92,7 @@ async function api(path, init = {}) {
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
   $('nav').hidden = id === 'login';
+  if (typeof placeMenu === 'function') placeMenu();
 }
 
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
@@ -289,9 +292,7 @@ function drawStatus() {
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
-  s.querySelector('.live-text').textContent = down
-    ? 'Connexion à GitHub perdue · nouvel essai automatique'
-    : `En direct · à jour ${agoText(Date.now() - live.last)}`;
+  s.querySelector('.live-text').textContent = statusText(live.failures, Date.now() - live.last);
 }
 
 function stepTrack(c) {
@@ -302,6 +303,10 @@ function stepTrack(c) {
       Array.from({ length: p.total }, (_, i) => el('li', { class: i < p.index ? 'done' : i === p.index ? 'now' : '' }))),
     el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
 }
+
+// The button names what it asks for, not a generic « Répondre ».
+const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
+const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -325,20 +330,20 @@ function card(c, lane, minutes, now, moved) {
   const testIt = c.column === 'acceptance' && !running;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
-      e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
+      e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
     preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
       testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
     stepTrack(c),
-    el('p', { class: 'eta' }, timeLine(e)),
+    el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only once the factory is done with it: while an agent catches the step up, there is nothing for you to see.
     // Not on the captures either: they come right after the catch-up, and the summary is only refreshed after the checks.
     c.labels.includes('factory:skills-alert') && lane === 'yours' && c.column !== 'visual'
       ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null);
-  article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
+  article.dataset.sig = withoutTimes(article.outerHTML); // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
   return article;
 }
@@ -353,7 +358,7 @@ function flip(before) {
   if (reduced()) return;
   for (const [n, node] of cardsOf($('board'))) {
     const a = before.get(n), b = node.getBoundingClientRect();
-    if (!a || (a.top === b.top && a.left === b.left)) continue;
+    if (!a || !shouldSlide(a, b)) continue;
     node.animate(onScreen(a) && onScreen(b)
       ? [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: 'none' }]
       : [{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: EASE });
@@ -362,20 +367,45 @@ function flip(before) {
 const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
 // The « À vous » card: everything that waits for an answer, oldest first. Only its « go » buttons are blue.
-async function answerGo(c, btn) {
-  btn.disabled = true;
+// A « go » waits 5 seconds and can be cancelled; nothing is stored, so leaving the page cancels it.
+const pendingGo = new Map();
+const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
+async function sendGo(c, btn) {
   try {
     await api(`/repos/${current.repo.full_name}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
     toast('« go » envoyé. La construction démarre.');
     await refresh();
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
+    sentGo.delete(c.number);
     btn.disabled = false;
+    btn.textContent = 'go';
+    btn.classList.remove('undo');
   }
+}
+const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
+function answerGo(c, btn) {
+  const running = pendingGo.get(c.number);
+  if (running) { running.cancel(); pendingGo.delete(c.number); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); return; }
+  btn.classList.add('undo');
+  toast('« go » part dans 5 s. Touchez le bouton pour annuler.');
+  const handle = startCountdown({
+    seconds: 5,
+    tick: (n) => { const h = pendingGo.get(c.number); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); },
+    done: () => { pendingGo.delete(c.number); const b = goBtn(c, null); if (!b) return; sentGo.add(c.number); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; sendGo(c, b); },
+  });
+  handle.left = 5;
+  pendingGo.set(c.number, handle);
+}
+
+function skeleton() {
+  const bar = (w) => el('span', { class: 'sk-bar', style: `width:${w}` });
+  const box = () => el('div', { class: 'sk-card' }, bar('40%'), bar('85%'), bar('60%'));
+  return el('div', { class: 'skeleton', role: 'status' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), box(), box(), box());
 }
 
 function youCard(yours, headline, sub) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }));
+  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
   return el('section', { class: 'you-card', 'aria-label': 'À vous' },
     el('p', { class: 'headline' }, headline),
@@ -388,8 +418,8 @@ function youCard(yours, headline, sub) {
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       c.reply === 'go'
-        ? el('button', { type: 'button', class: 'go', 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.target) }, 'go')
-        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, 'Répondre')))),
+        ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
+        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column))))),
     status);
 }
 
@@ -401,7 +431,7 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}:${doneAgo(d.mergedAt, now)}`).join('|') : null;
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}`).join('|') : null;
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
@@ -436,7 +466,7 @@ function drawBoard() {
       live.done.length
         ? el('div', { class: 'tickets' }, live.done.map((d) => el('article', { class: 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
-          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
+          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
         : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
   const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
   const holder = el('div', {}, ...fresh);
@@ -450,6 +480,9 @@ function drawBoard() {
   const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
   // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
   // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
+  // Their clocks are brought up to date in place.
+  for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) syncTimes(oldCards.get(n), node);
+  if (unchanged && board.querySelectorAll('[data-time]').length === holder.querySelectorAll('[data-time]').length) syncTimes(board, holder); // done column included
   if (!unchanged) for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
   // The halo lasts 2.4 s; the class goes away after it, so that moving the node later does not replay it.
   for (const n of movedSet) { const node = freshCards.get(n); if (node) setTimeout(() => node.classList.remove('moved'), 2500); }
@@ -512,7 +545,7 @@ function drawSite() {
 
 async function renderBoard() {
   drawSite();
-  if (live.repo !== current.repo.full_name) $('board').replaceChildren(el('p', { class: 'muted board-loading' }, 'Chargement…'));
+  if (live.repo !== current.repo.full_name) $('board').replaceChildren(skeleton());
   clearTimeout(live.timer);
   await refresh();
 }
@@ -637,7 +670,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim());
-  if (unsaved) return toast('Une nouvelle version du tableau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
   location.reload();
 }
 function watchVersion() {
@@ -667,8 +700,32 @@ async function start() {
     return show('login');
   }
   refreshStable().catch(() => {});
+  refreshRuns();
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
+}
+
+// Agent starts of the day, all projects together, refreshed every 5 minutes (the routines have a daily limit).
+let runsTimer = null;
+async function refreshRuns() {
+  clearTimeout(runsTimer);
+  runsTimer = setTimeout(refreshRuns, 5 * 60_000);
+  if (!token || !projects.length) return;
+  const from = parisMidnight();
+  try {
+    const counts = await mapLimit(projects, 2, async (p) => {
+      const events = [];
+      for (let page = 1; page <= 5; page++) {
+        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        events.push(...batch);
+        if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
+      }
+      return runsToday(events);
+    });
+    $('runs').textContent = runsText(counts.reduce((a, b) => a + b, 0));
+    $('runs').hidden = false;
+    $('runs-sep').hidden = false;
+  } catch { /* the next try is in 5 minutes */ }
 }
 
 // « Déclarer stable »: projects follow the factory's `stable` branch; this shows how far main is ahead of it.
@@ -698,7 +755,6 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
-    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -774,12 +830,12 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   if (!$('chat').hidden) openChat();
@@ -841,10 +897,11 @@ async function refreshChat() {
   chat.busy = true;
   const repo = chat.repo;
   try {
-    if (chat.server) { await refreshServerChat(); drawChat(); return; }
+    if (chat.server) { await refreshServerChat(); chat.error = false; drawChat(); return; }
     const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
     if (chat.repo !== repo) return;
     chat.list = conversations(list);
+    chat.error = false;
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
@@ -860,7 +917,8 @@ async function refreshChat() {
     }
     drawChat();
   } catch (err) {
-    if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+    if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
+    else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
   } finally {
     chat.busy = false;
     scheduleChat();
@@ -957,7 +1015,8 @@ function drawLive() {
 
 function drawChatList() {
   const items = $('chat-items');
-  if (!chat.list) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  if (!chat.list && chat.error) return items.replaceChildren(el('li', {}, el('div', { class: 'chat-error', role: 'alert' }, el('strong', {}, 'Impossible de charger les discussions'), el('span', { class: 'muted' }, 'Vérifiez votre connexion.'), el('button', { type: 'button', class: 'secondary', onclick: () => { chat.error = false; drawChatList(); refreshChat(); } }, 'Réessayer'))));
+  if (!chat.list) return items.replaceChildren(el('li', { class: 'sk-chat' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), el('span', { class: 'sk-bar', style: 'width:70%' }), el('span', { class: 'sk-bar', style: 'width:50%' })));
   if (!chat.list.length) return items.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Aucune conversation pour l\'instant.'));
   const open = chat.list.filter((c) => c.state === 'open');
   const done = chat.list.filter((c) => c.state !== 'open');
@@ -1145,6 +1204,7 @@ async function sendChat(text, withImages = true) {
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 }
@@ -1318,3 +1378,20 @@ function showWidthReport(force) {
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }
 setTimeout(() => showWidthReport(new URLSearchParams(location.search).has('largeur')), 4000);
+
+// On a phone the secondary actions fold into « Plus »; on a computer they stay where they were.
+const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({ node, home: node.parentNode, next: node.nextSibling }));
+const phoneMq = matchMedia('(max-width: 600px)');
+function placeMenu() {
+  const menu = $('more-menu');
+  // The menu lives in the project view: with no project shown, the items stay in the header.
+  if (phoneMq.matches && !$('project-view').hidden) menuItems.forEach(({ node }) => menu.append(node));
+  else menuItems.slice().reverse().forEach(({ node, home, next }) => home.insertBefore(node, next && next.parentNode === home ? next : null));
+  $('more').open = !(phoneMq.matches && !$('project-view').hidden);
+}
+placeMenu();
+phoneMq.addEventListener('change', placeMenu);
+// Tapping outside, Escape or an action closes « Plus » on a phone.
+const closeMore = () => { if (phoneMq.matches) $('more').open = false; };
+document.addEventListener('click', (e) => { if (!$('more').contains(e.target) || e.target.closest('#more-menu a, #more-menu button')) closeMore(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });

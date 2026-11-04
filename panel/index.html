@@ -5,18 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="build" content="__BUILD__">
   <title>Factory</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
   <header class="top">
     <a class="brand" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V10l5 3V10l5 3V6l8 4v10z"/></svg>Factory</a>
     <nav id="nav" hidden>
       <select id="project" aria-label="Projet"></select>
-      <a class="button ghost" href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip" title="Deux fichiers à double-cliquer sur votre Mac : créer un nouveau projet, ou mettre dans la factory un projet déjà commencé.">Outils Mac</a>
-      <button id="stable" class="ghost" type="button" hidden title="Les projets suivent la version stable de la factory. Ce bouton y ajoute les derniers changements, si ses tests passent.">Déclarer stable</button>
-      <button id="phone-open" class="ghost" type="button">Sur mon téléphone</button>
-      <button id="logout" class="ghost" type="button">Se déconnecter</button>
+      <a class="button ghost" data-menu href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip" title="Deux fichiers à double-cliquer sur votre Mac : créer un nouveau projet, ou mettre dans la factory un projet déjà commencé.">Outils Mac</a>
+      <button id="stable" data-menu class="ghost" type="button" hidden title="Les projets suivent la version stable de la factory. Elle avance toute seule une heure après un changement si tout va bien ; ce bouton la fait avancer tout de suite, si les tests passent.">Déclarer stable</button>
+      <button id="phone-open" data-menu class="ghost" type="button">Sur mon téléphone</button>
+      <button id="logout" data-menu class="ghost" type="button">Se déconnecter</button>
     </nav>
   </header>
 
@@ -26,10 +28,13 @@
       <p>Le panneau a besoin d'un jeton GitHub pour lire vos projets et enregistrer vos règles. Il reste dans ce navigateur, nulle part ailleurs.</p>
       <p class="tip">Déjà connecté sur votre ordinateur ? Là-bas, cliquez sur <strong>Sur mon téléphone</strong> et scannez le code avec ce téléphone : rien à recopier.</p>
       <ol>
-        <li>Ouvrez <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la création de jeton</a>.</li>
-        <li>Nom : « factory panneau ». Expiration : 1 an. <strong>Repository access</strong> : <strong>All repositories</strong>.</li>
-        <li>Dans la boîte <strong>Repositories</strong> (pas « Account ») : <strong>+ Add permissions</strong>, cochez <strong>Contents</strong>, <strong>Issues</strong> et <strong>Pull requests</strong>, puis mettez Contents et Issues sur « Read and write » (Pull requests reste en « Read-only »).</li>
-        <li>Générez le jeton, copiez-le et collez-le ici.</li>
+        <li>Ouvrez <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">la page de création de jeton sur GitHub</a> (elle s'ouvre dans un nouvel onglet).</li>
+        <li>Dans « Token name », écrivez « factory panneau ». Dans « Expiration », choisissez 1 an.</li>
+        <li>Dans « Repository access », choisissez « All repositories ».</li>
+        <li>Plus bas, dans la boîte « Repositories » (pas « Account »), cliquez sur « Add permissions ».</li>
+        <li>Cochez « Contents », « Issues » et « Pull requests ».</li>
+        <li>Mettez « Contents » et « Issues » sur « Read and write ». « Pull requests » reste sur « Read-only ».</li>
+        <li>Cliquez sur « Generate token », copiez le jeton et collez-le ici.</li>
       </ol>
       <form id="login-form">
         <label for="token">Jeton</label>
@@ -51,14 +56,15 @@
         <div>
           <h1 id="project-name"></h1>
           <p id="project-sub" class="muted"></p>
-          <p class="site-line"><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a></p>
+          <p class="site-line" data-menu><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a><span id="runs-sep" class="sep" aria-hidden="true" hidden>·</span><a id="runs" class="quiet-link" href="https://claude.ai/code/routines" target="_blank" rel="noopener" title="Tous projets confondus. La limite de lancements par jour de votre abonnement se voit sur la page des routines Claude." hidden></a></p>
         </div>
         <div class="actions">
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle fonctionnalité</a>
-          <a id="new-bug" class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
-          <a id="new-project" class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
-          <button id="new-question" type="button" class="button secondary" title="Discutez avec l'agent : une question sur l'appli, une idée de feature ou un bug. Il peut en faire une feature ou un bug pour vous.">Discuter avec l'agent</button>
-          <button id="general-review" type="button" class="button secondary" title="L'agent critique et corrige tous les écrans avec impeccable, puis relit et corrige tout le code.">Review générale</button>
+          <details id="more" class="more"><summary class="button secondary">Plus</summary><div id="more-menu" class="more-menu"></div></details>
+          <a id="new-bug" data-menu class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
+          <a id="new-project" data-menu class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
+          <button id="new-question" data-menu type="button" class="button secondary" title="Discutez avec l'agent : une question sur l'appli, une idée de feature ou un bug. Il peut en faire une feature ou un bug pour vous.">Discuter avec l'agent</button>
+          <button id="general-review" data-menu type="button" class="button secondary" title="L'agent critique et corrige tous les écrans avec impeccable, puis relit et corrige tout le code.">Review générale</button>
         </div>
       </div>
       <div class="tabs" role="tablist" aria-label="Sections du projet">
@@ -98,7 +104,7 @@
   </main>
   <dialog id="phone" aria-labelledby="phone-title">
     <h2 id="phone-title">Ouvrir le panneau sur votre téléphone</h2>
-    <p>Scannez ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté, et le reste.</p>
+    <p>Scannez ce code avec l'appareil photo du téléphone. Le panneau s'ouvre déjà connecté.</p>
     <div id="phone-qr"></div>
     <p class="muted small">Ce code contient votre jeton GitHub : ne le montrez à personne. Astuce : une fois ouvert, ajoutez la page à l'écran d'accueil.</p>
     <div class="dialog-actions">
@@ -107,6 +113,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=24"></script>
+  <script type="module" src="app.mjs?v=28"></script>
 </body>
 </html>

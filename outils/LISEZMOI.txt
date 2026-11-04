@@ -6,7 +6,7 @@ Les outils de la factory, pour Mac
 Double-cliquez le fichier : une fenêtre Terminal s'ouvre et vous pose les questions. Vous n'avez rien à modifier.
 
 La première fois, votre Mac peut refuser d'ouvrir le fichier parce qu'il vient d'internet. Dans ce cas :
-ouvre Réglages Système > Confidentialité et sécurité, descends jusqu'au message sur le fichier et clique
+ouvrez Réglages Système > Confidentialité et sécurité, descendez jusqu'au message sur le fichier et cliquez sur
 « Ouvrir quand même ». Ensuite il s'ouvre normalement.
 
 Les fichiers lancent toujours la dernière version du script : pas besoin de les retélécharger.

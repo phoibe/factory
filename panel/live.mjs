@@ -57,6 +57,14 @@ export function agoText(ms) {
   return `il y a ${Math.floor(s / 60)} min`;
 }
 
+// Text of the « En direct » line. It must never be empty: the line changes height when its text arrives,
+// which pushes every card down after they were measured for the slide animation.
+export function statusText(failures, ms) {
+  return failures > 0
+    ? 'Connexion à GitHub perdue · nouvel essai automatique'
+    : `En direct · à jour ${agoText(ms)}`;
+}
+
 // Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.
 export const pollDelay = (failures, idle = false) => Math.min((idle ? 30_000 : 8_000) * 2 ** failures, 300_000);
 
@@ -72,6 +80,15 @@ export function cardChanges(prev, next) {
   }
   if (prev) for (const n of prev.keys()) if (!next.has(n)) removed.push(n);
   return { added, removed, changed };
+}
+
+// A card's HTML without the text of its time elements (marked data-time): a clock moving is not a change of the card.
+export const withoutTimes = (html) => html.replace(/(<(\w+)\b[^>]*\bdata-time\b[^>]*>)[^<]*(<\/\2>)/g, '$1$3');
+
+// Copies the text of each time element of `fresh` onto the matching one of `old`, in place.
+export function syncTimes(old, fresh) {
+  const a = old.querySelectorAll('[data-time]'), b = fresh.querySelectorAll('[data-time]');
+  a.forEach((node, i) => { if (b[i] && node.textContent !== b[i].textContent) node.textContent = b[i].textContent; });
 }
 
 // One short line about time, from estimate() in eta.mjs.
@@ -90,3 +107,8 @@ export function yoursList(cards) {
     .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
     .map((c) => ({ ...c, reply: c.column === 'spec' ? 'go' : 'open' }));
 }
+
+// A card slides only when it moved by a real distance. A text that changes length ("il y a 2 min" → "il y a 3 min")
+// shifts the cards below by a few pixels: that must not animate.
+export const SLIDE_MIN_PX = 8;
+export const shouldSlide = (a, b) => Math.abs(a.top - b.top) >= SLIDE_MIN_PX || Math.abs(a.left - b.left) >= SLIDE_MIN_PX;

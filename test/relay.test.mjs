@@ -10,12 +10,13 @@ function fakeGh(state) {
   const issue = (n) => state.issues.find((i) => i.number === n) || state.prs.find((p) => p.number === n);
   const gh = {
     calls,
-    getIssue: async (n) => { const i = issue(n); return i && { ...i, labels: (i.labels || []).map((name) => ({ name })) }; },
+    getIssue: async (n) => { const i = issue(n); return i && { state: i.open === false ? 'closed' : 'open', ...i, labels: (i.labels || []).map((name) => ({ name })) }; },
     getRepo: async () => ({ default_branch: 'main' }),
     dispatch: async (wf, ref, inputs) => calls.push(['dispatch', wf, ref, inputs]),
     react: async (id, c) => calls.push(['react', id, c]),
     getPr: async (n) => state.prs.find((p) => p.number === n),
     listPulls: async () => state.prs.filter((p) => p.state !== 'closed'),
+    listClosedPulls: async () => state.prs.filter((p) => p.state === 'closed'),
     listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
     listComments: async (n) => state.comments?.[n] || [],
     listEvents: async (n) => state.events?.[n] || [],
@@ -707,4 +708,115 @@ test('a merge by the factory closes the linked issue (GitHub does not when the w
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1));
+});
+
+// The guard: on every tick, cards left in a state no event will ever move are repaired.
+const NOW = Date.parse('2026-11-04T18:00:00Z');
+const minutesAgo = (m) => new Date(NOW - m * 60_000).toISOString();
+const tick = { kind: 'tick', event: 'schedule', labels: [], fromOwner: false };
+const runEvents = (labeledAgo, unlabeledAgo) => [
+  { event: 'labeled', label: { name: L.running }, created_at: minutesAgo(labeledAgo) },
+  ...(unlabeledAgo == null ? [] : [{ event: 'unlabeled', label: { name: L.running }, created_at: minutesAgo(unlabeledAgo) }]),
+];
+
+test('guard: an issue left open after its PR merged is closed and frees its place', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.queued] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Closes #7', labels: [] }],
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.building));
+  assert.equal(payloadOf(sent[0].init.body).issue, 8); // the queue moves on
+});
+
+test('guard: an issue the owner reopened after the merge is left alone', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Closes #7', labels: [] }],
+    events: { 7: [{ event: 'reopened', created_at: minutesAgo(30) }] },
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(!gh.calls.some((c) => c[0] === 'close'));
+});
+
+test('guard: a PR closed without merging does not close its issue', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [{ number: 20, state: 'closed', merged_at: null, body: 'Closes #7', labels: [] }], events: { 7: runEvents(90, 80) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(!gh.calls.some((c) => c[0] === 'close'));
+  assert.equal(sent.length, 0); // nor relaunches it: the owner closed that PR on purpose
+});
+
+test('guard: a build that stopped without a PR or a question is relaunched once, quietly', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [], events: { 7: runEvents(60, 40) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  const p = payloadOf(sent[0].init.body);
+  assert.deepEqual([p.stage, p.issue, p.relaunch], ['build', 7, true]);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- factory-heal -->')));
+});
+
+test('guard: a build that stopped a few minutes ago is not relaunched yet', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [], events: { 7: runEvents(30, 10) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(sent.length, 0);
+});
+
+test('guard: a build with an open PR, a block or a running agent is not relaunched', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.building, L.blocked] }, { number: 9, labels: [L.bug, L.building, L.running] }],
+    prs: [{ number: 20, state: 'open', body: 'Closes #7', labels: [L.checks] }],
+    events: { 7: runEvents(90, 80), 8: runEvents(90, 80), 9: runEvents(30) },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(sent.length, 0);
+});
+
+test('guard: a second stop without a PR blocks the card and tells the owner once', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.bug, L.building] }], prs: [], events: { 7: runEvents(60, 40) },
+    comments: { 7: [{ body: '<!-- factory-heal -->\nrelancé' }] },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 7 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && /réessaie/.test(c[2])));
+});
+
+test('guard: an agent lock older than its time limit is released, and a stopped build is relaunched with its stage', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.project, L.building, L.running] }], prs: [], events: { 7: runEvents(200) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.running));
+  assert.equal(payloadOf(sent[0].init.body).stage, 'foundation');
+});
+
+test('guard: a stale lock on a card that is not building is released, and messages written meanwhile are handled', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 5, labels: [L.feature, L.grilling, L.running, L.pending] }], prs: [],
+    events: { 5: runEvents(200) },
+    comments: { 5: [{ user: { login: 'phoibe' }, body: 'réponse 2', created_at: minutesAgo(100) }] },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick, { ownerLogin: 'phoibe' });
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 5 && c[2] === L.pending));
+  assert.equal(payloadOf(sent[0].init.body).stage, 'grilling');
+});
+
+test('guard: a fresh lock is never touched', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling, L.running] }], prs: [], events: { 5: runEvents(20) } });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove'));
+});
+
+test('guard: a build whose PR forgot « Closes #n » is recognised by its branch and not built twice', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [{ number: 20, state: 'open', body: 'no link', head: { ref: 'claude/issue-7-dark' }, labels: [] }], events: { 7: runEvents(90, 80) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(sent.length, 0);
 });
