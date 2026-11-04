@@ -3,7 +3,7 @@
  "title": "Je voudrais que quand des slots sont libres et qu'il n'y a rien en…",
  "state": "open",
  "created": "2026-11-04T14:54:23Z",
- "updated": "2026-11-04T14:55:07Z",
+ "updated": "2026-11-04T14:55:45Z",
  "messages": [
   {
    "who": "me",
@@ -15,6 +15,24 @@
    "who": "agent",
    "text": "Non, ça n'existe pas aujourd'hui.\n\nVoilà comment ça marche pour l'instant :\n- Il y a un réglage « Features en parallèle » dans les paramètres (2 par défaut).\n- Quand toutes les places sont prises, une nouvelle feature attend en file.\n- Dès qu'une place se libère, la file d'attente démarre toute seule.\n- Si la file est vide et qu'il reste des places libres, la factory ne fait rien. Elle ne va pas chercher d'elle-même dans les fiches existantes.\n- Il n'y a pas non plus d'interrupteur pour ça dans les paramètres.\n\nMa certitude : c'est lu dans le code, je n'ai pas vérifié avec un test.\n\nTu veux que j'en fasse une fiche ? Elle demanderait une option dans les paramètres pour activer ou désactiver ce comportement.",
    "at": "2026-11-04T14:55:07Z"
+  },
+  {
+   "who": "me",
+   "text": "Crée une issue « Nouvelle feature » à partir de cette conversation, puis donne-moi le lien.",
+   "images": [],
+   "at": "2026-11-04T14:55:45Z"
+  },
+  {
+   "who": "agent",
+   "text": "C'est parti, je crée la fiche. Le lien apparaîtra juste en dessous de ma réponse.",
+   "at": "2026-11-04T14:55:45Z",
+   "issues": [
+    {
+     "title": "Piocher automatiquement dans les fiches existantes quand des places sont libres",
+     "url": "https://github.com/phoibe/factory/issues/71",
+     "kind": "feature"
+    }
+   ]
   }
  ]
 }
