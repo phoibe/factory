@@ -412,3 +412,21 @@ test('checks cancelled early by a newer run on the same commit are not a hung te
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: now / 1000 - 31 * 60, now });
   assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
 });
+
+test('after its own merge the relay starts the workflows the push would have started (a bot push starts none)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.listPrFiles = async () => [{ filename: 'panel/style.css' }, { filename: 'factory.config.json' }];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  const dispatched = gh.calls.filter((c) => c[0] === 'dispatch').map((c) => c[1]);
+  assert.ok(dispatched.includes('pages.yml'));
+  assert.ok(dispatched.includes('factory-sync.yml'));
+});
+
+test('a project without those workflows still merges cleanly', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.dispatch = async () => { throw new Error('HTTP 404'); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /fusionné/.test(c[2])));
+});
