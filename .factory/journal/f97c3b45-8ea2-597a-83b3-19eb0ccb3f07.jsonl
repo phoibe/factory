@@ -3,3 +3,4 @@
 {"t":"2026-11-04T19:07:12.283Z","kind":"skill","name":"receiving-code-review","id":"toolu_01QK68VTESbdFbfLMMWNF4t9"}
 {"t":"2026-11-04T19:07:14.821Z","kind":"skill","name":"impeccable","id":"toolu_01M7ajkmANrxYDa6vaEjXYL8"}
 {"t":"2026-11-04T19:07:20.590Z","kind":"test","cmd":"grep -n 'class=\"brand\"' -A3 panel/index.html | head; node --test test/panel-favicon.test.mjs 2>&1 | tail -12; python3 -c \"\nimport zlib,struct\nd=open('panel/apple-touch-icon.png','rb').read()\ni=8;idat=","ok":true,"id":"toolu_01KZhjX32biooCVpUiy4nFhf"}
+{"t":"2026-11-04T19:08:56.198Z","kind":"test","cmd":"node --test test/panel-favicon.test.mjs 2>&1 | grep -E \"^# (pass|fail)\"; git add -A test .factory/journal .impeccable && git commit -qm \"Assert apple touch icon is 180x180\n\nCo-Authored-By: Claude Sonn","ok":true,"id":"toolu_01XL2AcXWNCko9KYhEn7robt"}
