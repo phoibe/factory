@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=3';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -290,9 +290,7 @@ function drawStatus() {
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
-  s.querySelector('.live-text').textContent = down
-    ? 'Connexion à GitHub perdue · nouvel essai automatique'
-    : `En direct · à jour ${agoText(Date.now() - live.last)}`;
+  s.querySelector('.live-text').textContent = statusText(live.failures, Date.now() - live.last);
 }
 
 function stepTrack(c) {
@@ -380,7 +378,7 @@ async function answerGo(c, btn) {
 }
 
 function youCard(yours, headline, sub) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }));
+  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
   return el('section', { class: 'you-card', 'aria-label': 'À vous' },
     el('p', { class: 'headline' }, headline),

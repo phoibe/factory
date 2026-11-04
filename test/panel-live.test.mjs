@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
+import { stepsFor, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
   assert.deepEqual(stepsFor(['factory:feature']).map((s) => s.id), ['grilling', 'spec', 'building', 'visual', 'checks', 'acceptance']);
@@ -82,4 +82,9 @@ test('yoursList puts the oldest wait first, and only the spec step is a plain «
     item(5, 'grilling', '2026-11-04T11:00:00Z'),
   ]);
   assert.deepEqual(list.map((c) => [c.number, c.reply]), [[1, 'go'], [5, 'open'], [3, 'open']]);
+});
+
+test('the live status line is never empty, so the cards do not jump when its text arrives', () => {
+  assert.equal(statusText(0, 2000), "En direct · à jour à l'instant");
+  assert.match(statusText(2, 0), /Connexion à GitHub perdue/);
 });

@@ -1,0 +1,5 @@
+{"t":"2026-11-04T18:27:20.598Z","kind":"run","stage":"bugfix","issue":131,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-04T18:27:42.227Z","kind":"skill","name":"systematic-debugging","id":"toolu_011BtUshAi886fMBrbqi5Akg"}
+{"t":"2026-11-04T18:29:28.009Z","kind":"test","cmd":"python3 - <<'E'\np='panel/live.mjs'\ns=open(p).read()\ns=s.replace(\"// Milliseconds between two refreshes\",\"\"\"// Text of the « En direct » line. It must never be empty: the line changes height when its t","ok":true,"id":"toolu_01XBNsS2NsE47ssnmu3Lhphn"}
+{"t":"2026-11-04T18:30:34.001Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; node .factory/scripts/journal-check.mjs 2>&1 | tail -15","ok":true,"id":"toolu_01MskfYR5A9aao3rv2Rgg41k"}
+{"t":"2026-11-04T18:30:34.103Z","kind":"skill","name":"requesting-code-review","id":"toolu_01PbySGsbV2Ew2pe7x7BxYzp"}
