@@ -2,7 +2,7 @@ import json
 import unittest
 
 from core import (
-    ASK_BLOCK, build_prompt, check_access, events_from_line, extract_issues, new_conversation,
+    ASK_BLOCK, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation,
     add_exchange, index_entry, upsert_index, visible_text,
 )
 
@@ -47,6 +47,23 @@ class IssueBlockTest(unittest.TestCase):
         self.assertEqual(visible_text("Voilà.\n<creer-is"), "Voilà.")
         self.assertEqual(visible_text("Voilà < 3"), "Voilà < 3")
         self.assertIn("creer-issue", ASK_BLOCK)
+
+
+class CreationNeedsAnExplicitActionTest(unittest.TestCase):
+    def test_a_free_sentence_never_creates_a_ticket_by_itself(self):
+        self.assertIn("Tu veux que j'en fasse une fiche ?", SYSTEM)
+        self.assertIn("JAMAIS de feature ou de bug de toi-même", SYSTEM)
+
+    def test_the_trigger_matches_the_panel_buttons(self):
+        import pathlib, re
+        chat = (pathlib.Path(__file__).parents[2] / "panel" / "chat.mjs").read_text()
+        for m in re.findall(r"'(Créez une issue[^']*)'", chat):
+            self.assertIn(m.split(" « ")[0], SYSTEM)
+            self.assertIn("à partir de cette conversation", m)
+
+    def test_only_buttons_an_explicit_request_or_a_yes_count(self):
+        for needle in ("Créez une issue", "vas-y", "Une seule fois"):
+            self.assertIn(needle, SYSTEM)
 
 
 class PromptTest(unittest.TestCase):
