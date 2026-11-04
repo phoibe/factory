@@ -12,6 +12,9 @@ des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil
    `.factory/journal`), push.
 4. Ajoute à la description de la PR ce que la revue et la passe design ont changé (section « Design » de
    `design-pass.md`, une ligne par correction de revue).
-5. Labels de la PR : retire `factory:fixing`. Si la passe design a changé l'apparence et que l'étape screenshots
-   est active, refais les captures (`screenshots.md`) et mets `factory:visual-review` ; sinon mets
-   `factory:checks`. Pas besoin de commenter si tout s'est bien passé.
+5. Labels de la PR : retire `factory:fixing`. Si la revue ou la passe design a changé l'apparence et que l'étape
+   screenshots est active, refais les captures en suivant **tout** `screenshots.md`, y compris le commentaire
+   avec le tableau : commence-le par une phrase qui dit que le rattrapage a retouché l'écran et ce qui a changé,
+   et que le propriétaire doit revalider. Puis mets `factory:visual-review`. Sans ce commentaire, le dernier
+   message de la PR dit « rien à faire » alors que le tableau de suivi dit « à toi de jouer ».
+   Sinon mets `factory:checks`, sans commenter.
