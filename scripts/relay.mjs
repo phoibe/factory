@@ -73,7 +73,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   if (eventName === 'pull_request') {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
-      merged: Boolean(p.pull_request.merged), fromOwner: isOwnerOrApp(p.sender?.login),
+      merged: Boolean(p.pull_request.merged), open: p.pull_request.state === 'open', fromOwner: isOwnerOrApp(p.sender?.login),
     };
   }
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
@@ -210,9 +210,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dis-moi « réessaie » une fois la règle ajustée, ou fusionne la PR toi-même.`));
       return;
     }
-    for (const l of [L.acceptance, L.checks, L.fixing, L.running]) await gh.removeLabel(prNumber, l);
+    for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
     await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
-    if (issue) await gh.removeLabel(issue, L.building);
+    if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
     await dequeue();
   }
 

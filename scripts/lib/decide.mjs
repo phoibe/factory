@@ -28,6 +28,11 @@ const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked]
 const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit].some((l) => has(labels, l));
 // A project issue (framing) always grills, whatever the config: the vision and the stack are decided there.
 const grillStage = (labels) => (has(labels, L.project) ? 'framing' : 'grilling');
+// The steps a factory PR can be at. An open PR with none of them (and not blocked) is stuck: no one will act on it.
+const PR_STEPS = [L.visualReview, L.checks, L.fixing, L.acceptance];
+// The owner answering a blocked item is what unblocks it: the factory takes the label off as the agent starts, so
+// the board never keeps saying « Débloque l'agent » after the answer. The agent puts it back if it is still stuck.
+const unblock = (labels) => (has(labels, L.blocked) ? [L.blocked] : []);
 
 function startIssue(ev, config, ctx) {
   // A question is answered right away, never queued, and changes no state: each follow-up gets an answer.
@@ -54,7 +59,7 @@ function onIssue(ev, config, ctx) {
     return startIssue(ev, config, ctx);
   }
   // A comment on an issue.
-  if (has(ev.labels, L.blocked)) return fire('resume');
+  if (has(ev.labels, L.blocked)) return fire('resume', { remove: [L.blocked] });
   if (has(ev.labels, L.grilling)) return fire(grillStage(ev.labels));
   if (has(ev.labels, L.specReview)) {
     if (has(ev.labels, L.project)) {
@@ -85,14 +90,15 @@ function onPr(ev) {
   }
   // A comment or a review on a PR.
   if (has(ev.labels, L.visualReview)) {
-    if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview], reason: 'captures validées' };
-    return fire('visual-fix');
+    if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées' };
+    return fire('visual-fix', { remove: unblock(ev.labels) });
   }
   if (has(ev.labels, L.acceptance)) {
     if (isApproval(ev.text)) return { type: 'merge', dequeue: true, reason: 'recette validée' };
-    return fire('acceptance-fix');
+    return fire('acceptance-fix', { remove: unblock(ev.labels) });
   }
   if (has(ev.labels, L.checks) || has(ev.labels, L.fixing)) return ignore('contrôles ou correction en cours');
+  if (has(ev.labels, L.blocked)) return fire('resume', { remove: [L.blocked] });
   if (ev.labels.some((l) => l.startsWith('factory:'))) return fire('feedback');
   return ignore('PR hors factory');
 }
@@ -103,6 +109,11 @@ export function decide(ev, config, ctx) {
   if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
     if (ev.removedLabel !== L.running) return ignore('label retiré');
     if (has(ev.labels, L.pending)) return { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" };
+    // An agent run that leaves an open PR at no step: the owner would wait for nothing. Checks put it back on track
+    // (then recette or merge), so the board and the PR's last message agree again.
+    if (ev.kind === 'pr' && ev.open && !has(ev.labels, L.blocked) && !PR_STEPS.some((l) => has(ev.labels, l))) {
+      return { type: 'checks', add: [L.checks], remove: [], reason: "PR laissée sans étape par l'agent : on relance les contrôles" };
+    }
     // Spec published without asking for a « go » (spec validation turned off): it starts like an approved one.
     if (has(ev.labels, L.autoGo) && has(ev.labels, L.specReview)) {
       if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [L.specReview, L.autoGo], reason: 'spec lancée sans validation, factory pleine' };

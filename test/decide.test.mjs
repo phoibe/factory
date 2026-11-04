@@ -227,3 +227,25 @@ test('a general review issue from the panel is built right away, or queued when 
   assert.deepEqual(go.add, ['factory:building']);
   assert.equal(decide(ev, cfg, { inFlight: 2 }).type, 'queue');
 });
+
+test('the owner answering a blocked item takes the label off as the agent starts', () => {
+  const a = decide(ev({ labels: [L.feature, L.building, L.blocked], text: 'voici la clé' }), config, ctx);
+  assert.deepEqual([a.stage, a.remove], ['resume', [L.blocked]]);
+  const pr = decide(ev({ kind: 'pr', labels: [L.blocked, L.skillsAlert], text: 'ok' }), config, ctx);
+  assert.deepEqual([pr.type, pr.stage, pr.remove], ['fire', 'resume', [L.blocked]]);
+});
+
+test('an approval in recette merges even if the PR was also marked blocked', () => {
+  assert.equal(decide(ev({ kind: 'pr', labels: [L.acceptance, L.blocked], text: 'ok' }), config, ctx).type, 'merge');
+  const fix = decide(ev({ kind: 'pr', labels: [L.acceptance, L.blocked], text: 'le bouton ne marche pas' }), config, ctx);
+  assert.deepEqual([fix.stage, fix.remove], ['acceptance-fix', [L.blocked]]);
+});
+
+test('an agent run that leaves an open PR at no step sends it back to the checks', () => {
+  const end = (o) => ev({ kind: 'pr', event: 'pull_request', action: 'unlabeled', removedLabel: L.running, open: true, ...o });
+  const a = decide(end({ labels: [L.skillsAlert] }), config, ctx);
+  assert.deepEqual([a.type, a.add], ['checks', [L.checks]]);
+  assert.equal(decide(end({ labels: [L.acceptance] }), config, ctx).type, 'ignore');
+  assert.equal(decide(end({ labels: [L.blocked] }), config, ctx).type, 'ignore');
+  assert.equal(decide(end({ labels: [], open: false }), config, ctx).type, 'ignore');
+});
