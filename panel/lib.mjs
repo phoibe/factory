@@ -100,12 +100,17 @@ export const phoneLink = (pageUrl, token) => `${pageUrl.split('#')[0]}#jeton=${t
 
 // Preview link of a PR, from its comments (oldest first): the Vercel bot's latest "[Preview](…)"
 // or "[Visit Preview](…)" link, else the factory's « Tu peux tester … ici : https://… » message.
+// Only trusted authors count: on a public project anyone can comment, and a link planted that way must never
+// show up as the project's preview. Trusted = the Vercel bot, the factory's own bot, or someone with write access.
+const OWNER_ROLES = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+export const fromOwnerOrFactory = (c) => c?.user?.login === 'github-actions[bot]' || OWNER_ROLES.has(c?.author_association);
+
 export function previewFrom(comments) {
   for (const c of [...(comments || [])].reverse()) {
     const body = c.body || '';
-    const m = c.user?.login === 'vercel[bot]'
-      ? /\[(?:Visit )?Preview\]\((https:\/\/[^)\s]+)\)/.exec(body)
-      : /tester la nouvelle version ici : (https:\/\/\S+)/.exec(body);
+    let m = null;
+    if (c.user?.login === 'vercel[bot]') m = /\[(?:Visit )?Preview\]\((https:\/\/[^)\s]+)\)/.exec(body);
+    else if (fromOwnerOrFactory(c)) m = /tester la nouvelle version ici : (https:\/\/\S+)/.exec(body);
     if (m) return m[1];
   }
   return null;
@@ -127,6 +132,35 @@ export const projectCandidates = (repos) => repos.filter((r) => !r.archived && !
 
 // The link to the agent's latest Claude session, from the comment the factory keeps on the card.
 export function sessionFrom(comments) {
-  const note = (comments || []).find((c) => (c.body || '').includes('<!-- factory-session -->'));
+  const note = (comments || []).find((c) => c.user?.login === 'github-actions[bot]' && (c.body || '').includes('<!-- factory-session -->'));
   return /\((https:\/\/claude\.ai\/[^)\s]+)\)/.exec(note?.body || '')?.[1] || null;
+}
+
+// The chat server's address comes from a file published with the panel, and the GitHub token is sent to it:
+// only a Modal address (or a local one, for development) is accepted.
+export const chatServerUrl = (url) => (/^(https:\/\/[a-z0-9-]+\.modal\.run|http:\/\/localhost:\d+)$/.test(String(url || '')) ? url : null);
+
+// All pages of a GitHub list (100 per page), up to `max` pages. `get(page)` returns one page's array.
+export async function allPages(get, max = 10) {
+  const out = [];
+  for (let page = 1; page <= max; page++) {
+    const batch = await get(page);
+    out.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return out;
+}
+
+// Rules saved while someone else changed the file meanwhile: keep their changes and apply only what this
+// session changed (compared with `base`, the version it loaded). On the same setting, this session wins.
+export function mergeConfig(base, mine, theirs) {
+  const plain = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  if (!plain(mine) || !plain(base) || !plain(theirs)) return JSON.stringify(mine) === JSON.stringify(base) ? theirs : mine;
+  const out = { ...theirs };
+  for (const k of new Set([...Object.keys(base), ...Object.keys(mine)])) {
+    if (JSON.stringify(mine[k]) === JSON.stringify(base[k])) continue;
+    if (!(k in mine)) delete out[k];
+    else out[k] = mergeConfig(base[k], mine[k], theirs[k]);
+  }
+  return out;
 }
