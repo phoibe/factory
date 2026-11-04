@@ -1,10 +1,14 @@
 # « Déclarer stable » (button in the panel, or Run workflow here): runs the tests on main and, if they pass,
 # moves the `stable` branch that every project follows to main, with a numbered release listing the changes.
+# Every hour it also does so on its own, once main has run an hour on the factory itself without trouble
+# (the factory follows main: it tries each version before the projects; see scripts/stable.mjs ready).
 name: Déclarer stable
 on:
   issues:
     types: [opened]
   workflow_dispatch:
+  schedule:
+    - cron: '41 * * * *'
 permissions:
   contents: write
   issues: write
@@ -13,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   promote:
-    if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,10 +28,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - id: ready
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/stable.mjs ready
       - id: tests
+        if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
         run: node --test
       - name: Promote
         id: promote
+        if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -14,4 +14,7 @@ permissions:
 
 jobs:
   sync:
-    uses: phoibe/factory/.github/workflows/sync.yml@stable
+    # The factory runs the newest version itself before the projects get it (they follow @stable).
+    uses: phoibe/factory/.github/workflows/sync.yml@main
+    with:
+      factory_ref: main
