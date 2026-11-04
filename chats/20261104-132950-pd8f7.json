@@ -3,7 +3,7 @@
  "title": "Je voudrais que le rafraichissement du tableau soit plus fluide :…",
  "state": "open",
  "created": "2026-11-04T13:29:50Z",
- "updated": "2026-11-04T13:30:16Z",
+ "updated": "2026-11-04T13:32:03Z",
  "messages": [
   {
    "who": "me",
@@ -22,6 +22,17 @@
      "kind": "feature"
     }
    ]
+  },
+  {
+   "who": "me",
+   "text": "J'aimerais que tu me demandes avant de transformer l'une de nos discussions en demande de feature ou en bug. En fait, c'est moi qui dois déclencher l'action avec les boutons prévus.",
+   "images": [],
+   "at": "2026-11-04T13:32:03Z"
+  },
+  {
+   "who": "agent",
+   "text": "C'est noté : je ne crée plus de demande de feature ou de bug de moi-même. Si une discussion fait apparaître un manque ou un défaut, je te le dis en une phrase et je te demande si tu veux une fiche. Je n'en crée une que si tu déclenches l'action avec les boutons prévus, ou si tu me le demandes clairement.\n\nJe n'ai pas pu garder cette consigne en mémoire pour les prochaines conversations, car l'écriture est désactivée ici. Tu devras peut-être me la rappeler plus tard.\n\nPour la fluidité du tableau, rien n'est créé. Tu veux que j'en fasse une feature, ou tu préfères utiliser le bouton toi-même ?",
+   "at": "2026-11-04T13:32:03Z"
   }
  ]
 }
