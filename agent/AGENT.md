@@ -36,8 +36,9 @@ les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque
 suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
 (`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
 tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, `node
-.factory/scripts/journal-check.mjs` te dit ce que le journal ne montre pas encore : fais-le. Une étape sautée
-(revue, passe design) relance un run de rattrapage et retarde la PR.
+.factory/scripts/journal-check.mjs` te dit ce que le journal ne montre pas encore : fais-le. Un verrou
+refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
+si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
 ## Parler au propriétaire
 
