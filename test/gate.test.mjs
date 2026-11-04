@@ -61,3 +61,9 @@ test('stopping early is sent back once, and only when something was built', () =
   assert.equal(decide({ hook_event_name: 'Stop', stop_hook_active: true }, env(text)), null);
   assert.equal(decide({ hook_event_name: 'Stop' }, env(text, ['.factory/journal/s.jsonl'])), null);
 });
+
+test('a general review cannot open its PR without both passes', () => {
+  const res = decide(bash('gh pr create'), env(j(run('audit'), skill('impeccable')), ['lib/x.ts', '.factory/journal/s.jsonl']));
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /revue de code/);
+  assert.equal(decide(bash('gh pr create'), env(j(run('audit'), skill('impeccable'), skill('requesting-code-review')))), null);
+});

@@ -38,6 +38,8 @@ export function expectations(stage, stages, ui) {
     if (on('tdd')) out.push({ skill: 'test-driven-development', label: 'TDD', tdd: true });
   }
   if (stage === 'bugfix') out.push({ skill: 'systematic-debugging', label: 'recherche de la cause', tdd: true });
+  // The general review is asked for explicitly: both passes are expected whatever the stage toggles.
+  if (stage === 'audit') return [{ skill: 'impeccable', label: 'passe design' }, { skill: 'requesting-code-review', label: 'revue de code' }];
   if (['build', 'bugfix', 'foundation'].includes(stage)) {
     if (on('review')) out.push({ skill: 'requesting-code-review', label: 'revue de code' });
     if (on('designPass') && ui) out.push({ skill: 'impeccable', label: 'passe design' });
@@ -62,7 +64,7 @@ export function missingSkills(runs, { stages = {}, ui = false } = {}) {
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
-  'skills-fix': 'Rattrapage des étapes',
+  'skills-fix': 'Rattrapage des étapes', audit: 'Review générale',
 };
 
 export function summarize(runs, { stages = {}, ui = false } = {}) {
@@ -80,7 +82,7 @@ export function summarize(runs, { stages = {}, ui = false } = {}) {
   }
   const missing = missingSkills(runs, { stages, ui });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
-  if (!runs.some((r) => ['build', 'bugfix', 'foundation'].includes(r.stage))) {
+  if (!runs.some((r) => ['build', 'bugfix', 'foundation', 'audit'].includes(r.stage))) {
     alerts.push("Aucun journal de construction dans cette PR : impossible de prouver les skills utilisés.");
   }
   const tdd = runs.filter((r) => expectations(r.stage, stages, ui).some((e) => e.tdd));

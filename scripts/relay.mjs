@@ -172,7 +172,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
       try {
-        await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : 'build', issue: issue.number, quiet: true });
+        await fireAgent({ stage: labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build', issue: issue.number, quiet: true });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
         break;

@@ -62,7 +62,7 @@ export function estimate(item, events, minutes, now) {
   const stay = labelIntervals(events, item.number, labelOf(col), now).at(-1);
   const since = stay ? Math.max(0, Math.round((now - stay.start) / MIN)) : null;
   const running = item.labels.includes(RUNNING);
-  const isBug = item.labels.includes('factory:bug');
+  const isBug = item.labels.includes('factory:bug') || item.labels.includes('factory:audit'); // no questions, no spec
   if (col === 'queued') return { since, status: 'queued' };
   const yours = COLUMNS.find((c) => c.id === col)?.yours && !running;
   const flow = FLOW.filter((c) => !(isBug && (c === 'grilling' || c === 'spec')));
