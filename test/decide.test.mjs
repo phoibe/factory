@@ -155,6 +155,11 @@ test('closing a PR or an issue advances the queue', () => {
   assert.equal(decide(ev({ event: 'issues', action: 'closed', labels: [L.feature] }), config, ctx).type, 'dequeue');
 });
 
+test('a freed place advances the queue: building label removed, or the periodic tick', () => {
+  assert.equal(decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.building, labels: [L.feature] }), config, ctx).type, 'dequeue');
+  assert.equal(decide({ kind: 'tick', event: 'schedule', labels: [] }, config, ctx).type, 'dequeue');
+});
+
 test('afterChecks routes green and red results', () => {
   const base = { acceptanceOn: true, isBug: false, failures: 0, maxLoops: 3 };
   assert.equal(afterChecks({ ...base, result: 'success' }), 'acceptance');
@@ -271,4 +276,11 @@ test('a card getting blocked frees its place for the queue', () => {
   const blocked = ev({ event: 'issues', action: 'labeled', addedLabel: L.blocked, labels: [L.feature, L.building, L.blocked] });
   assert.equal(decide(blocked, config, ctx).type, 'dequeue');
   assert.equal(decide({ ...blocked, labels: [L.feature, L.grilling, L.blocked] }, config, ctx).type, 'ignore');
+});
+
+test('an empty review or comment on a PR waiting for the owner launches no agent', () => {
+  for (const label of [L.acceptance, L.visualReview]) {
+    const a = decide(ev({ kind: 'pr', event: 'pull_request_review', labels: [label], text: '' }), config, ctx);
+    assert.equal(a.type, 'ignore', label);
+  }
 });

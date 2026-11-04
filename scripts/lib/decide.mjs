@@ -98,6 +98,7 @@ function onPr(ev) {
     return checksNow ? { type: 'checks', add: [], remove: [], reason: 'PR prête pour les contrôles' } : ignore('rien à faire sur cette PR');
   }
   // A comment or a review on a PR.
+  if (!String(ev.text || '').trim()) return ignore('message vide');
   if (has(ev.labels, L.visualReview)) {
     if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées' };
     return fire('visual-fix', { remove: unblock(ev.labels) });
@@ -115,6 +116,11 @@ function onPr(ev) {
 // Turns one GitHub event into one factory action. Pure: all IO lives in relay.mjs.
 export function decide(ev, config, ctx) {
   if (ev.kind === 'dispatch') return ev.payload ? { type: 'agent', reason: 'lancement de l\'agent sur GitHub Actions' } : ignore('rien à lancer');
+  // Periodic safety net: a place can be freed without any event the queue listens to.
+  if (ev.kind === 'tick') return { type: 'dequeue', reason: 'vérification régulière de la file' };
+  if (ev.event === 'issues' && ev.action === 'unlabeled' && ev.removedLabel === L.building) {
+    return { type: 'dequeue', reason: 'une place vient de se libérer' };
+  }
   if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
     if (ev.removedLabel !== L.running) return ignore('label retiré');
     if (has(ev.labels, L.pending)) return { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" };

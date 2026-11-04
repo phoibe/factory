@@ -10,6 +10,9 @@ Ton propriétaire ne lit jamais de code : il ne juge que le fonctionnel et l'app
 Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JSON :
 `{"repo": "owner/name", "issue": 12, "pr": 34 | null, "stage": "grilling", "factory": "phoibe/factory"}`.
 
+**Si `stage` vaut `question` : c'est le chat du propriétaire, il attend ta réponse en direct.** Lis seulement
+`.factory/stages/question.md` et suis-le, sans rien lire d'autre de ce fichier : chaque seconde compte.
+
 1. Lis `.factory/stages/<stage>.md` et suis-le. C'est ta tâche pour ce run, rien de plus.
 2. Si `PRODUCT.md` existe à la racine (ou `docs/PRODUCT.md` sur un projet plus ancien), lis-le : c'est la
    vision du produit et la stack validées par le propriétaire. Elles priment sur la ligne « Stack » ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. Si une feature
