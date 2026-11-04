@@ -1,0 +1,20 @@
+{
+ "id": "20261104-132038-1miin",
+ "title": "Tout va bien pour toi ?",
+ "state": "open",
+ "created": "2026-11-04T13:20:38Z",
+ "updated": "2026-11-04T13:20:46Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Tout va bien pour toi ?",
+   "images": [],
+   "at": "2026-11-04T13:20:46Z"
+  },
+  {
+   "who": "agent",
+   "text": "Oui, tout va bien de mon côté, merci ! Je suis prêt à t'aider.\n\nSi tu veux, je peux te dire ce que fait déjà le produit, vérifier si une idée est prévue, ou noter une nouvelle feature ou un bug à traiter. Qu'est-ce que tu veux regarder ?",
+   "at": "2026-11-04T13:20:46Z"
+  }
+ ]
+}
