@@ -1,0 +1,20 @@
+{
+ "id": "20261104-155605-wfmmq",
+ "title": "Suite à la PR85, on devrait piocher automatiquement des issues.…",
+ "state": "open",
+ "created": "2026-11-04T15:56:05Z",
+ "updated": "2026-11-04T15:56:32Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Suite à la PR85, on devrait piocher automatiquement des issues. Mais ça ne semble pas fonctionner",
+   "images": [],
+   "at": "2026-11-04T15:56:32Z"
+  },
+  {
+   "who": "agent",
+   "text": "Dans le code, la pioche automatique est bien en place, mais je ne peux pas voir ce que la factory a fait en vrai sur tes fiches. Je ne peux donc pas te dire pourquoi elle ne démarre pas chez toi.\n\nCe que j'ai vérifié :\n- **Réglage :** la pioche est activée dans la config.\n- **Déclenchement :** la factory fait un tour de contrôle toutes les 10 minutes. Elle regarde s'il y a une place libre et, si oui, prend une fiche.\n- **Tests :** le fonctionnement est couvert par des tests (bug avant feature, urgent d'abord, pas de pioche si tout est plein, etc.).\n\nCe qui peut expliquer qu'elle ne prenne rien :\n- **Les places sont toutes occupées :** une fiche « en construction » compte, et c'est aussi le cas d'une fiche bloquée qui attend encore une réponse de ta part.\n- **Une fiche piochée attend tes réponses :** tant qu'une fonctionnalité prise par la factory attend tes réponses ou ta validation de la spec, elle ne prend plus d'autre fonctionnalité. Seuls les bugs passent.\n- **Les fiches sont écartées :**\n  - elles portent le label « ne pas piocher », « question », « projet », « audit » ou « release » ;\n  - elles ont déjà été piochées une fois ;\n  - elles ne sont ni marquées bug ni marquées feature.\n- **Le lancement de l'agent échoue :** par exemple si la limite quotidienne est atteinte. Dans ce cas la factory retire ses marques et s'arrête, sans rien afficher d'évident.\n\nMa certitude : c'est lu dans le code et dans les tests. Je n'ai rien pu observer sur ton tableau.\n\nPour t'aider, dis-moi sur quelle fiche tu t'attendais à une pioche. Dis-moi aussi combien de fiches sont en construction en ce moment, et si une fiche piochée attend une réponse de ta part. Avec ça, je saurai laquelle de ces raisons s'applique.\n\nTu veux que j'en fasse une fiche si tu penses que c'est un vrai défaut ?",
+   "at": "2026-11-04T15:56:32Z"
+  }
+ ]
+}
