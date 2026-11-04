@@ -70,8 +70,10 @@ function sessionExpired() {
   if (!token) return;
   store.del(TOKEN_KEY); token = null; projects = []; current = null;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; live.repo = null;
-  $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
+  const err = $('login-error');
+  err.replaceChildren(Object.assign(document.createElement('strong'), { textContent: 'Session expirée.' }), 'GitHub n’accepte plus le jeton (il dure un an). Créez-en un nouveau avec le lien ci-dessous, puis collez-le ici.');
   show('login');
+  $('token').focus();
 }
 
 async function api(path, init = {}) {
