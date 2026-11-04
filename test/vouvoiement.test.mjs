@@ -33,3 +33,9 @@ test('the quoted messages of the agent templates use « vous »', () => {
   }
   assert.match(read('agent/AGENT.md'), /Répondez « go »/);
 });
+
+test('the chat agent is told to address the owner with « vous »', () => {
+  const core = read('server/chat/core.py');
+  assert.match(core, /Vouvoie-le/);
+  assert.doesNotMatch(core, /Tutoie/);
+});
