@@ -20,5 +20,8 @@ test('favicon is the header logo, white on a rounded blue square', () => {
 test('apple touch icon is a PNG file', () => {
   const p = new URL('../panel/apple-touch-icon.png', import.meta.url);
   assert.ok(existsSync(p));
-  assert.equal(readFileSync(p).subarray(1, 4).toString(), 'PNG');
+  const png = readFileSync(p);
+  assert.equal(png.subarray(1, 4).toString(), 'PNG');
+  assert.equal(png.readUInt32BE(16), 180, 'width');
+  assert.equal(png.readUInt32BE(20), 180, 'height');
 });
