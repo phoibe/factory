@@ -7,7 +7,8 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER } from './lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
+import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
@@ -141,7 +142,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ text: JSON.stringify(payload) }),
+      // The first line names the run, so the owner tells the sessions apart in the routine's list.
+      body: JSON.stringify({ text: `${runTitle(payload)}\n\n${JSON.stringify(payload)}` }),
     });
     if (!res.ok) {
       const detail = await res.text();
@@ -151,6 +153,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     const body = await res.json().catch(() => ({}));
     log(`session: ${body.claude_code_session_url || '?'}`);
+    if (body.claude_code_session_url && stage !== 'question') {
+      await noteSession(pr || issue, stage, body.claude_code_session_url).catch((e) => log(`session note: ${e.message}`));
+    }
+  }
+
+  // One comment per card, kept up to date, with a link to the agent's latest session (the board shows it too).
+  async function noteSession(n, stage, url) {
+    const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+    const text = `${SESSION_MARKER}\n${AGENT_MARKER}\nDernier lancement de l'agent : **${stageName(stage)}**, à ${time}. [Voir ce qu'il fait](${url})`;
+    const mine = ((await gh.listComments(n)) || []).find((c) => (c.body || '').includes(SESSION_MARKER));
+    if (mine) await gh.updateComment(mine.id, text); else await gh.comment(n, text);
   }
 
   // For runs no owner message started (checks, merge): on failure, park the issue as blocked so that
