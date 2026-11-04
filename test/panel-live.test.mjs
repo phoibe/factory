@@ -105,3 +105,10 @@ test('a card only slides when it really moved: a few pixels of text reflow stay 
   assert.equal(shouldSlide(r(100), r(100 + SLIDE_MIN_PX)), true);
   assert.equal(shouldSlide(r(100, 0), r(100, 300)), true);
 });
+
+test('flip uses shouldSlide, so no card is animated for a tiny shift', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('function flip('), src.indexOf('const rectsOf'));
+  assert.match(body, /shouldSlide\(a, b\)/);
+});
