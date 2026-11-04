@@ -1,0 +1,20 @@
+{
+ "id": "20261104-160727-z0sq4",
+ "title": "La PR 90 aurait du générer des captures et me les faire valider",
+ "state": "open",
+ "created": "2026-11-04T16:07:27Z",
+ "updated": "2026-11-04T16:07:42Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "La PR 90 aurait du générer des captures et me les faire valider",
+   "images": [],
+   "at": "2026-11-04T16:07:42Z"
+  },
+  {
+   "who": "agent",
+   "text": "Oui, tu as raison de t'y attendre. Les captures sont activées dans les réglages, et la PR 90 ajoute un lien sur le panneau, donc l'apparence change. Le parcours prévu est : l'agent prend des captures avant/après (clair et sombre), les publie, te les montre et attend ton « ok » avant de continuer.\n\nDans ce que je peux consulter, je ne vois aucune trace de captures pour cette PR. Le journal de travail de l'agent n'en mentionne pas. Je ne peux pas voir l'historique de la PR elle-même, donc je ne sais pas si elle a sauté l'étape ou si elle a été validée autrement. Je n'ai pas non plus trouvé la raison. C'est donc une lecture du code et des réglages, sans test qui le confirme.\n\nTu veux que j'en fasse une fiche ?",
+   "at": "2026-11-04T16:07:42Z"
+  }
+ ]
+}
