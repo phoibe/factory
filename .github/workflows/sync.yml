@@ -36,4 +36,4 @@ jobs:
           git config user.name "factory-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(factory): sync skills and agent instructions"
-          for i in 1 2 3 4; do git push && break; [ $i = 4 ] && exit 1; echo "GitHub a refusé l'envoi, nouvel essai dans $((i*10)) s"; sleep $((i*10)); done
+          for i in 1 2 3 4; do git push && break; [ $i = 4 ] && exit 1; echo "GitHub a refusé l'envoi, nouvel essai dans $((i*10)) s"; sleep $((i*10)); git pull --rebase || git rebase --abort; done

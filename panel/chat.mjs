@@ -8,8 +8,8 @@ const WAIT_MS = 10 * 60_000; // past this, a message nobody answered is « late 
 
 // The messages behind the two buttons under a conversation. The agent's question stage creates the issue.
 export const ASK = {
-  feature: 'Crée une issue « Nouvelle feature » à partir de cette conversation, puis donne-moi le lien.',
-  bug: 'Crée une issue « Signaler un bug » à partir de cette conversation, puis donne-moi le lien.',
+  feature: 'Créez une issue « Nouvelle feature » à partir de cette conversation, puis donnez-moi le lien.',
+  bug: 'Créez une issue « Signaler un bug » à partir de cette conversation, puis donnez-moi le lien.',
 };
 
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -30,8 +30,11 @@ export function cleanBody(body) {
 // message carries a hidden marker with its path, which the relay passes to the agent, and a normal Markdown
 // image so that it also shows on GitHub.
 export const ATTACHMENTS_BRANCH = 'factory-attachments';
-const IMAGE_MARK = /<!-- factory-image: (attachments\/[\w./-]+) -->/g;
+const IMAGE_MARK = /<!-- factory-image: (attachments\/chat\/[\w-]+\.(?:png|jpe?g|gif|webp)) -->/g;
 const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+
+// Only GitHub links may become clickable: a link coming from chat data must never run script.
+export const safeGithubUrl = (u) => (/^https:\/\/github\.com\/[\w./#?=&%-]*$/.test(String(u || '')) ? u : undefined);
 
 export const imagePath = (type, now = Date.now(), rand = Math.random().toString(36).slice(2, 8)) =>
   `attachments/chat/${now}-${rand}.${EXT[type] || 'jpg'}`;
