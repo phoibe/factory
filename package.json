@@ -9,7 +9,7 @@
     "lint": "node tools/project-checks.mjs lint",
     "test": "node --test \"test/*.test.mjs\"",
     "build": "node tools/project-checks.mjs build",
-    "test:a11y": "node --test a11y/panel.a11y.mjs"
+    "test:a11y": "node --test \"a11y/*.a11y.mjs\""
   },
   "devDependencies": {
     "axe-core": "4.10.3",

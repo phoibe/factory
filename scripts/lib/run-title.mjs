@@ -1,7 +1,7 @@
 // What a routine run is about, in words the owner recognises in the list of Claude sessions.
 const STAGES = {
   grilling: 'Questions', spec: 'Spec', framing: 'Cadrage', foundation: 'Fondations', build: 'Construction',
-  bugfix: 'Correction du bug', audit: 'Review générale', feedback: 'Réponse à ton message', resume: 'Reprise après blocage',
+  bugfix: 'Correction du bug', audit: 'Review générale', feedback: 'Réponse à votre message', resume: 'Reprise après blocage',
   'visual-fix': 'Retouche des captures', 'acceptance-fix': 'Correction après recette', 'fix-checks': 'Correction des contrôles',
   'update-branch': 'Mise à jour de la branche', 'skills-fix': 'Rattrapage des étapes', question: 'Discussion',
 };

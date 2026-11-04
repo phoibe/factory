@@ -3,6 +3,8 @@ import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
 import { resolveConfig } from './config-core.mjs';
+import { watchNumbers } from './numbers.mjs';
+import { setupTabs } from './tabs.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -442,9 +444,12 @@ function drawBoard() {
   const prevSigs = live.sigs;
   live.sigs = new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig]));
   const oldIndex = new Map([...oldCards].map(([n, node]) => [n, [...node.parentNode.children].indexOf(node)]));
+  // Decided first: reusing a card moves its node out of the board, so nothing may be reused when the board is left as it is
+  // (otherwise the cards leave with the discarded draw and the lane stays empty until the next change).
+  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
   // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
   // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
-  for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
+  if (!unchanged) for (const [n, node] of freshCards) if (oldCards.has(n) && prevSigs?.has(n) && !changes.changed.includes(n) && !movedSet.has(n)) node.replaceWith(oldCards.get(n));
   // The halo lasts 2.4 s; the class goes away after it, so that moving the node later does not replay it.
   for (const n of movedSet) { const node = freshCards.get(n); if (node) setTimeout(() => node.classList.remove('moved'), 2500); }
   // Cards that left stay in place, fading, then the space closes smoothly.
@@ -464,7 +469,6 @@ function drawBoard() {
     grid.insertBefore(node, grid.children[oldIndex.get(n)] || null);
     leaving.push(node);
   }
-  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
   if (!unchanged) {
     live.yoursSig = yoursSig;
     board.replaceChildren(...holder.childNodes);
@@ -619,7 +623,7 @@ async function saveRules(e) {
 function selectTab(name) {
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
-    $(t).hidden = name !== t;
+    $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
   }
   if (name === 'chat') openChat(); else clearTimeout(chat.timer);
 }
@@ -1263,6 +1267,8 @@ for (const t of ['dragover', 'drop']) {
 $('chat-close').addEventListener('click', () => closeConversation());
 $('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
 
+setupTabs(document.querySelector('.tabs'));
+watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));

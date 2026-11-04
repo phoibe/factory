@@ -51,7 +51,10 @@ export function build() {
   const dir = join(ROOT, 'panel');
   const html = readFileSync(join(dir, 'index.html'), 'utf8');
   const refs = [...html.matchAll(/(?:src|href)="([^"#?:]+)(?:\?[^"]*)?"/g)].map((m) => m[1]).filter((r) => !r.startsWith('//'));
-  const missing = refs.filter((r) => !existsSync(join(dir, r)));
+  // Files the stylesheets load (fonts), relative to the stylesheet itself.
+  const cssRefs = refs.filter((r) => r.endsWith('.css') && existsSync(join(dir, r))).flatMap((css) =>
+    [...readFileSync(join(dir, css), 'utf8').matchAll(/url\(["']?([^"')#?:]+)/g)].map((m) => join(dirname(css), m[1])));
+  const missing = [...refs, ...cssRefs].filter((r) => !existsSync(join(dir, r)));
   missing.forEach((r) => console.error(`Missing panel file: ${r}`));
   return missing.length === 0;
 }

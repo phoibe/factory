@@ -71,7 +71,7 @@ test('a routine saved for another project is never reused', () => {
   mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
   writeFileSync(join(cfg, 'factory', 'routines', 'phoibe_habitudes'), 'FACTORY_ROUTINE_URL=https://habitudes.test/fire\nFACTORY_ROUTINE_TOKEN=habitudes-token\n');
   const { out } = run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { XDG_CONFIG_HOME: cfg });
-  assert.match(out, /As-tu déjà créé la routine « Factory - mon-appli »/);
+  assert.match(out, /Avez-vous déjà créé la routine « Factory - mon-appli »/);
   assert.match(readFileSync(join(cfg, 'factory', 'routines', 'phoibe_mon-appli'), 'utf8'), /FACTORY_ROUTINE_TOKEN=tok/);
 });
 

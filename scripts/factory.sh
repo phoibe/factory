@@ -26,7 +26,7 @@ Utilisation :
   factory.sh                   pose ses questions puis fait tout (le plus simple)
   factory.sh nouveau <nom>     crée un nouveau projet depuis le modèle de la factory
   factory.sh adopter <nom>     fait entrer dans la factory un projet déjà commencé
-<nom> peut être « mon-appli » (sur ton compte) ou « compte/mon-appli ».
+<nom> peut être « mon-appli » (sur votre compte) ou « compte/mon-appli ».
 EOF
   exit 1
 }
@@ -61,7 +61,7 @@ create_repo() {
   # GitHub copie le modèle en quelques secondes.
   local i=0
   until gh api "repos/$REPO/contents/factory.config.json" >/dev/null 2>&1; do
-    i=$((i + 1)); [ "$i" -gt 30 ] && die "Le dépôt a été créé mais le modèle n'y est pas encore copié. Relance le script dans une minute."
+    i=$((i + 1)); [ "$i" -gt 30 ] && die "Le dépôt a été créé mais le modèle n'y est pas encore copié. Relancez le script dans une minute."
     sleep 2
   done
   ok "Dépôt créé : https://github.com/$REPO"
@@ -69,7 +69,7 @@ create_repo() {
 
 install_into_existing() {
   say "1. Installation de la factory dans $REPO"
-  gh repo view "$REPO" >/dev/null 2>&1 || die "Je ne trouve pas le dépôt $REPO. Vérifie son nom (ou utilise « nouveau » pour en créer un)."
+  gh repo view "$REPO" >/dev/null 2>&1 || die "Je ne trouve pas le dépôt $REPO. Vérifiez son nom (ou utilisez « nouveau » pour en créer un)."
   local branch work f dest
   branch=$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)
   work=$(mktemp -d)
@@ -95,7 +95,7 @@ install_into_existing() {
     git push --quiet origin "HEAD:$branch"
   )
   rm -rf "$work"
-  ok "Fichiers de la factory ajoutés sur la branche $branch (ton code n'est pas modifié)"
+  ok "Fichiers de la factory ajoutés sur la branche $branch (votre code n'est pas modifié)"
 }
 
 # ---- Accès de Claude au dépôt --------------------------------------------------------------------
@@ -107,7 +107,7 @@ claude_access() {
   inst=$(gh api user/installations --jq '.installations[] | select(.app_slug=="claude") | "\(.id) \(.repository_selection)"' 2>/dev/null | head -1 || true)
   if [[ "$inst" =~ ^[0-9]+\ (all|selected)$ ]]; then
     id=${inst%% *}; sel=${inst#* }
-    if [ "$sel" = "all" ]; then ok "Claude a accès à tous tes dépôts"; return; fi
+    if [ "$sel" = "all" ]; then ok "Claude a accès à tous vos dépôts"; return; fi
     repo_id=$(gh api "repos/$REPO" --jq .id 2>/dev/null || true)
     if [[ "$repo_id" =~ ^[0-9]+$ ]] && gh api -X PUT "user/installations/$id/repositories/$repo_id" >/dev/null 2>&1; then
       ok "Dépôt ajouté à l'application Claude"; return
@@ -115,7 +115,7 @@ claude_access() {
   fi
   # Not an error: GitHub just won't tell the gh login which repositories the app can read.
   echo "     Claude doit pouvoir lire $REPO. Si ce n'est pas déjà le cas (« All repositories », ou dépôt"
-  echo "     déjà dans la liste), ajoute-le via « Configure » à côté de Claude sur https://github.com/settings/installations"
+  echo "     déjà dans la liste), ajoutez-le via « Configure » à côté de Claude sur https://github.com/settings/installations"
 }
 
 # ---- Routine Claude (moteur des agents) ----------------------------------------------------------
@@ -128,11 +128,11 @@ copy() { if command -v pbcopy >/dev/null 2>&1; then printf '%s' "$1" | pbcopy &&
 guide_new_routine() {
   say "   Création de la routine de ce projet, pas à pas"
   echo "  Chaque projet a sa propre routine : ses agents démarrent directement dans son dossier."
-  echo "  J'ouvre la page des routines dans ton navigateur :"
+  echo "  J'ouvre la page des routines dans votre navigateur :"
   open_url "https://claude.ai/code/routines"
-  step "a) Clique « New routine ». Nom : Factory - ${REPO#*/}"
+  step "a) Cliquez « New routine ». Nom : Factory - ${REPO#*/}"
   if copy "$ROUTINE_PROMPT"; then
-    step "b) Instructions : clique dans le champ et colle (Cmd+V), je viens de copier le texte pour toi"
+    step "b) Instructions : cliquez dans le champ et collez (Cmd+V), je viens de copier le texte pour vous"
   else
     echo "  b) Instructions : copie exactement ce texte :"
     printf '\n     %s\n\n' "$ROUTINE_PROMPT"
@@ -142,13 +142,13 @@ guide_new_routine() {
   step "d) Environment : laisse « Default ». Connectors : retire-les tous"
   step "e) Trigger : choisis « API », puis enregistre la routine"
   step "f) Rouvre la routine (crayon), section du déclencheur API : clique « Generate token »"
-  echo "  g) Copie l'URL puis le jeton : je te les demande juste après (le jeton n'est affiché qu'une fois)."
+  echo "  g) Copiez l'URL puis le jeton : je vous les demande juste après (le jeton n'est affiché qu'une fois)."
 }
 
 guide_existing_routine() {
-  echo "  Ouvre la routine « Factory - ${REPO#*/} » (crayon), section du déclencheur API :"
+  echo "  Ouvrez la routine « Factory - ${REPO#*/} » (crayon), section du déclencheur API :"
   open_url "https://claude.ai/code/routines"
-  echo "  copie l'URL ; pour le jeton, si tu ne l'as plus, clique « Generate token » (l'ancien cessera de marcher)."
+  echo "  copiez l'URL ; pour le jeton, si vous ne l'avez plus, cliquez « Generate token » (l'ancien cessera de marcher)."
 }
 
 # One routine per project: its sessions start inside the project, so the project's hooks (journal, gate) run.
@@ -164,18 +164,18 @@ routine() {
     url=${FACTORY_ROUTINE_URL:-}; token=${FACTORY_ROUTINE_TOKEN:-}
   fi
   if [ -z "${url:-}" ] || [ -z "${token:-}" ]; then
-    case "$(ask "  As-tu déjà créé la routine « Factory - ${REPO#*/} » sur claude.ai ? (o/N)")" in
+    case "$(ask "  Avez-vous déjà créé la routine « Factory - ${REPO#*/} » sur claude.ai ? (o/N)")" in
       o|O|oui) guide_existing_routine ;;
       *) guide_new_routine ;;
     esac
-    url=$(ask "  Colle l'URL du déclencheur :")
-    printf '  Colle le jeton (il ne s’affiche pas) : ' >&2; read -rs token </dev/tty; echo >&2
+    url=$(ask "  Collez l'URL du déclencheur :")
+    printf '  Collez le jeton (il ne s’affiche pas) : ' >&2; read -rs token </dev/tty; echo >&2
     case "$url" in https://*) ;; *) die "Cette URL ne ressemble pas à celle d'une routine (elle commence par https://)." ;; esac
     [ -n "$token" ] || die "Jeton vide."
     mkdir -p "$(dirname "$file")"; umask 077
     # Write beside the old file, then swap: the saved token is only replaced once the new one is complete.
     printf 'FACTORY_ROUTINE_URL=%q\nFACTORY_ROUTINE_TOKEN=%q\n' "$url" "$token" > "$file.new" && mv "$file.new" "$file"
-    ok "Gardés sur cet ordinateur ($file) : on ne te les redemandera plus pour ce projet"
+    ok "Gardés sur cet ordinateur ($file) : on ne vous les redemandera plus pour ce projet"
   fi
   printf '%s' "$url"   | gh secret set FACTORY_ROUTINE_URL   -R "$REPO" >/dev/null
   printf '%s' "$token" | gh secret set FACTORY_ROUTINE_TOKEN -R "$REPO" >/dev/null
@@ -189,7 +189,7 @@ first_sync() {
   # The last run listed before we dispatch may be an old, green one: remember it to wait for a newer one.
   before=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
   until gh workflow run factory-sync.yml -R "$REPO" >/dev/null 2>&1; do
-    i=$((i + 1)); [ "$i" -gt 15 ] && die "GitHub n'a pas encore activé les workflows du dépôt. Relance le script dans une minute."
+    i=$((i + 1)); [ "$i" -gt 15 ] && die "GitHub n'a pas encore activé les workflows du dépôt. Relancez le script dans une minute."
     sleep 4
   done
   i=0
@@ -226,7 +226,7 @@ vercel_setup() {
   fi
   warn "Je n'ai pas pu brancher Vercel tout seul. Un clic suffit :"
   echo "     https://vercel.com/new/import?s=https://github.com/$REPO  → Deploy (un premier échec est normal si l'appli n'existe pas encore)"
-  ask "     Appuie sur Entrée quand c'est fait." >/dev/null
+  ask "     Appuyez sur Entrée quand c'est fait." >/dev/null
 }
 
 # ---- Cadrage --------------------------------------------------------------------------------------
@@ -234,11 +234,11 @@ framing_issue() {
   say "6. Cadrage"
   local body url
   if [ "$MODE" = nouveau ]; then
-    body=$(ask "  Décris ton idée d'appli en une ou deux phrases :")
+    body=$(ask "  Décrivez votre idée d'appli en une ou deux phrases :")
     [ -n "$body" ] || body="(Idée à préciser avec l'agent.)"
   else
     body="Adoption d'un projet commencé sans la factory. L'agent lit d'abord le code pour proposer la fiche produit, puis ne pose que les questions sur ce qu'il n'a pas pu déduire."
-    local extra; extra=$(ask "  Si tu veux, ajoute ce que tu veux faire ensuite de ce projet (sinon Entrée) :")
+    local extra; extra=$(ask "  Si vous voulez, ajoutez ce que vous voulez faire ensuite de ce projet (sinon Entrée) :")
     [ -n "$extra" ] && body="$body
 
 $extra"
@@ -255,9 +255,9 @@ choose_mode() {
   echo "  3) Changer l'URL ou le jeton de la routine d'un projet"
   local c
   while :; do
-    c=$(ask "  Ton choix (1, 2 ou 3) :")
+    c=$(ask "  Votre choix (1, 2 ou 3) :")
     case "$c" in 1) MODE=nouveau; return ;; 2) MODE=adopter; return ;; 3) MODE=jeton; return ;; esac
-    echo "  Réponds 1, 2 ou 3."
+    echo "  Répondez 1, 2 ou 3."
   done
 }
 
@@ -270,7 +270,7 @@ choose_name() {
   done
 }
 
-# Liste tes dépôts qui n'ont pas encore la factory, et te fait choisir par numéro.
+# Liste vos dépôts qui n'ont pas encore la factory, et vous fait choisir par numéro.
 choose_existing() {
   local list i=0 c line
   list=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
@@ -282,11 +282,11 @@ choose_existing() {
     i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
     eval "CHOICE_$i=\$line"
   done
-  [ "$i" -gt 0 ] || die "Tous tes dépôts sont déjà dans la factory. Pour un nouveau projet, relance et choisis 1."
+  [ "$i" -gt 0 ] || die "Tous vos dépôts sont déjà dans la factory. Pour un nouveau projet, relancez et choisissez 1."
   while :; do
     c=$(ask "  Numéro du projet (1 à $i) :")
     case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "NAME=\$CHOICE_$c"; return; fi ;; esac
-    echo "  Réponds par un numéro de la liste."
+    echo "  Répondez par un numéro de la liste."
   done
 }
 
@@ -301,11 +301,11 @@ update_token() {
     i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
     eval "CHOICE_$i=\$line"
   done
-  [ "$i" -gt 0 ] || die "Aucun de tes dépôts n'est encore dans la factory."
+  [ "$i" -gt 0 ] || die "Aucun de vos dépôts n'est encore dans la factory."
   while :; do
     c=$(ask "  Numéro du projet (1 à $i) :")
     case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "REPO=\$CHOICE_$c"; break; fi ;; esac
-    echo "  Réponds par un numéro de la liste."
+    echo "  Répondez par un numéro de la liste."
   done
   ROUTINE_REPLACE=1 routine
   say "C'est fait : $REPO utilise maintenant cette routine."
@@ -330,7 +330,7 @@ main() {
   vercel_setup
   framing_issue
   say "C'est prêt 🎉"
-  echo "  L'agent te pose ses questions dans l'issue de cadrage, dans quelques minutes."
+  echo "  L'agent vous pose ses questions dans l'issue de cadrage, dans quelques minutes."
   echo "  Tableau de bord : https://phoibe.github.io/factory/"
 }
 

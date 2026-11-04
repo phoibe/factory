@@ -19,5 +19,5 @@ des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil
    screenshots est active, refais les captures en suivant **tout** `screenshots.md`, y compris le commentaire
    avec le tableau : commence-le par une phrase qui dit que le rattrapage a retouché l'écran et ce qui a changé,
    et que le propriétaire doit revalider. Puis mets `factory:visual-review`. Sans ce commentaire, le dernier
-   message de la PR dit « rien à faire » alors que le tableau de suivi dit « à toi de jouer ».
+   message de la PR dit « rien à faire » alors que le tableau de suivi dit « À vous de jouer ».
    Sinon mets `factory:checks`, sans commenter.
