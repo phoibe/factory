@@ -1,0 +1,4 @@
+{"t":"2026-11-04T16:02:50.520Z","kind":"run","stage":"bugfix","issue":56,"pr":null,"repo":"phoibe/factory","source":"transcript"}
+{"t":"2026-11-04T16:04:25.583Z","kind":"test","cmd":"python3 - <<'EOF'\np='panel/index.html'\ns=open(p).read()\ns=s.replace('<title>Factory</title>','''<title>Factory</title>\n  <meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-","ok":false,"id":"toolu_01USf5ynR2WwBNezKrd7D3qR","source":"transcript"}
+{"t":"2026-11-04T16:04:56.664Z","kind":"test","cmd":"npm test 2>&1 | grep -B3 -A25 \"^not ok\" | head -60","ok":false,"id":"toolu_01QDmpGjn2DcZ72hnXNKVNW9","source":"transcript"}
+{"t":"2026-11-04T16:05:30.225Z","kind":"test","cmd":"sed -i \"72s/{ body: \\\"<!--/{ user: { login: 'github-actions[bot]' }, body: \\\"<!--/\" test/panel-lib.test.mjs && npm test 2>&1 | grep -E \"^# (pass|fail)\"; git add -A && git status --short","ok":true,"id":"toolu_0161w3D7L9WxJaGfsBNijvs7","source":"transcript"}

@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom } from './lib.mjs?v=14';
+import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs';
@@ -65,12 +65,22 @@ function toast(msg) {
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
+// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
+function sessionExpired() {
+  if (!token) return;
+  store.del(TOKEN_KEY); token = null; projects = []; current = null;
+  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; live.repo = null;
+  $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
+  show('login');
+}
+
 async function api(path, init = {}) {
   const res = await fetch(path.startsWith('http') ? path : API + path, {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
   });
   if (res.status === 404) return null;
+  if (res.status === 401) sessionExpired();
   if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`), { status: res.status });
   return res.status === 204 ? null : res.json();
 }
@@ -182,6 +192,7 @@ async function cachedGet(path) {
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
   });
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
+  if (res.status === 401) sessionExpired();
   if (!res.ok) throw new Error(`${res.status}`);
   const data = await res.json();
   const etag = res.headers.get('etag');
@@ -202,7 +213,14 @@ async function refresh() {
   try {
     const first = live.repo !== repo;
     if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
-    const issues = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100`);
+    // Every page: beyond 100 open items, the others would silently vanish from the board.
+    const issues = { data: [], changed: false };
+    for (let page = 1; page <= 10; page++) {
+      const res = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`);
+      issues.data.push(...res.data);
+      issues.changed ||= res.changed;
+      if (res.data.length < 100) break;
+    }
     const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
@@ -539,6 +557,12 @@ function renderRules() {
 async function saveRules(e) {
   e.preventDefault();
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
+  // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
+  // what was modified here, instead of overwriting them.
+  if (fresh.sha !== current.file.sha) {
+    const theirs = resolveConfig(JSON.parse(fromBase64(fresh.content)), catalog, defaults).config;
+    current.config = mergeConfig(JSON.parse(current.saved), current.config, theirs);
+  }
   const body = JSON.stringify(current.config, null, 2) + '\n';
   const res = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`, {
     method: 'PUT',
@@ -570,7 +594,7 @@ async function start() {
   let server;
   [catalog, defaults, server] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json()),
     fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
-  chat.server = /^(https:\/\/[\w.-]+|http:\/\/localhost:\d+)$/.test(server?.url || '') ? server.url : null;
+  chat.server = chatServerUrl(server?.url);
   if (!token) return show('login');
   try {
     projects = await loadProjects();
@@ -717,6 +741,7 @@ async function chatGet(path) {
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
   });
   if (res.status === 304 && hit) return hit.data;
+  if (res.status === 401) sessionExpired();
   if (!res.ok) throw new Error(`${res.status}`);
   const data = await res.json();
   const etag = res.headers.get('etag');
