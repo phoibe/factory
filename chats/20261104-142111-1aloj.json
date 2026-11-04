@@ -1,0 +1,27 @@
+{
+ "id": "20261104-142111-1aloj",
+ "title": "Quand impeccable fait des captures avant/après pour validation et…",
+ "state": "open",
+ "created": "2026-11-04T14:21:11Z",
+ "updated": "2026-11-04T14:21:45Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Quand impeccable fait des captures avant/après pour validation et qu'il existe un thème sombre, il faut aussi des captures pour le thème sombre",
+   "images": [],
+   "at": "2026-11-04T14:21:45Z"
+  },
+  {
+   "who": "agent",
+   "text": "Aujourd'hui, les captures avant/après ne font que le thème clair. Elles sont prises en deux tailles seulement, ordinateur et mobile, et aucune ne passe en thème sombre. Je l'ai lu dans le code. Le tableau publié montre donc seulement « Écran · taille » avec avant et après.\n\nCe que ça changerait si on l'ajoute :\n- Quand l'application a un thème sombre, chaque écran serait aussi pris en sombre, en ordinateur et en mobile, avant et après.\n- Le tableau afficherait ces lignes à côté des lignes claires.\n- Sans thème sombre, rien ne changerait.\n\nLa détection du thème sombre est la partie à trancher. Le plus simple est de regarder si l'application réagit au réglage sombre du navigateur. Pour les thèmes sombres activés par un bouton ou une classe, il faudra une règle de plus.\n\nJe te propose d'en faire une feature.",
+   "at": "2026-11-04T14:21:45Z",
+   "issues": [
+    {
+     "title": "Captures avant/après aussi en thème sombre",
+     "url": "https://github.com/phoibe/factory/issues/62",
+     "kind": "feature"
+    }
+   ]
+  }
+ ]
+}
