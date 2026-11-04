@@ -12,3 +12,11 @@ jobs:
         with:
           node-version: 22
       - run: node --test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Chat server tests
+        working-directory: server/chat
+        run: |
+          pip install -q "fastapi[standard]==0.115.12" httpx==0.28.1
+          python -m unittest -v

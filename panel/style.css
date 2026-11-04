@@ -241,3 +241,7 @@ html { touch-action: manipulation; }
 #chat-attach { flex: none; width: 42px; height: 42px; padding: 0; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 #chat-attach:hover { color: var(--accent); border-color: var(--accent); }
 @media (max-width: 700px) { .pending-images { padding: 8px 12px 0; } .shot { width: 150px; } }
+.issue-chip { display: block; max-width: 100%; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--you-line); background: var(--you-bg); color: var(--text); font-size: .9rem; text-decoration: none; }
+.issue-chip strong { color: var(--you); }
+.issue-chip:hover { border-color: var(--you); }
+.badge[hidden] { display: none; }

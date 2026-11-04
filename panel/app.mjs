@@ -1,5 +1,5 @@
 import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates } from './lib.mjs?v=12';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock } from './chat.mjs?v=12';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=12';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -454,7 +454,10 @@ function selectTab(name) {
 }
 
 async function start() {
-  [catalog, defaults] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json())]);
+  let server;
+  [catalog, defaults, server] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json()),
+    fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+  chat.server = /^(https:\/\/[\w.-]+|http:\/\/localhost:\d+)$/.test(server?.url || '') ? server.url : null;
   if (!token) return show('login');
   try {
     projects = await loadProjects();
@@ -561,21 +564,24 @@ async function startGeneralReview() {
   }
 }
 // ---- Discussion -------------------------------------------------------------------------------
-// A chat with the agent. Each conversation is a `factory:question` issue, which is what wakes the agent up;
-// the owner only ever sees the chat. While an answer is awaited the conversation is checked every 4 s,
-// otherwise every 15 s, with ETags so that unchanged answers cost nothing.
+// A chat with the agent. Two ways to reach it:
+// - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within
+//   seconds; conversations are JSON files on the project's `factory-chat` branch;
+// - otherwise, each conversation is a `factory:question` issue that wakes the agent's routine (a minute or
+//   more). While an answer is awaited it is checked every 4 s, otherwise every 15 s, with ETags.
+// Either way the owner only ever sees the chat.
 const SEEN_KEY = 'factory.chat.seen';
 const EXAMPLES = [
   'Que se passe-t-il si je ferme l\'appli au milieu d\'une saisie ?',
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map() };
+const chat = { repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null });
+  Object.assign(chat, { repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   if (!$('chat').hidden) openChat();
@@ -603,8 +609,32 @@ async function chatGet(path) {
 async function openChat() {
   if (!current) return;
   if (chat.repo !== current.repo.full_name) return resetChat();
+  // Wakes the chat server up while the owner types (it sleeps when unused).
+  if (chat.server && Date.now() - chat.warmed > 60_000) { chat.warmed = Date.now(); fetch(`${chat.server}/health`).catch(() => {}); }
   drawChat();
   await refreshChat();
+}
+
+// A JSON file of the `factory-chat` branch, or null.
+async function branchJson(path) {
+  const res = await fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`, {
+    cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+async function refreshServerChat() {
+  const repo = chat.repo;
+  const index = await branchJson('index.json');
+  if (chat.repo !== repo) return;
+  chat.list = serverList(index);
+  const id = chat.open;
+  if (id && id !== 'new' && !chat.live) {
+    const conv = await branchJson(`chats/${id}.json`);
+    if (chat.repo === repo && chat.open === id && !chat.live) chat.conv = conv;
+  }
 }
 
 async function refreshChat() {
@@ -612,6 +642,7 @@ async function refreshChat() {
   chat.busy = true;
   const repo = chat.repo;
   try {
+    if (chat.server) { await refreshServerChat(); drawChat(); return; }
     const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
     if (chat.repo !== repo) return;
     chat.list = conversations(list);
@@ -640,6 +671,7 @@ async function refreshChat() {
 function scheduleChat() {
   clearTimeout(chat.timer);
   if (document.hidden || $('chat').hidden || !current) return;
+  if (chat.server) { chat.timer = setTimeout(refreshChat, 30_000); return; } // only picks up other devices' messages
   const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
   chat.timer = setTimeout(refreshChat, waiting ? 4000 : 15_000);
 }
@@ -700,7 +732,28 @@ function bubble(m) {
   return el('li', { class: `msg ${m.who}` },
     pics.length ? el('div', { class: 'shots' }, pics) : null,
     text.length ? el('div', { class: 'bubble' }, text) : null,
+    ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: i.url, target: '_blank', rel: 'noopener' },
+      el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Feature créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
     el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+}
+
+// The answer being written by the chat server, updated in place as it streams.
+function liveBubble() {
+  const live = chat.live;
+  return el('li', { class: 'msg agent', id: 'live-bubble' },
+    live.text
+      ? el('div', { class: 'bubble' }, richText(live.text))
+      : el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+    el('span', { class: 'meta' }, live.status || 'Réfléchit…'));
+}
+
+function drawLive() {
+  const node = $('live-bubble');
+  if (!node || !chat.live) return drawChat();
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+  node.replaceWith(liveBubble());
+  if (stick) list.scrollTop = list.scrollHeight;
 }
 
 function drawChatList() {
@@ -710,23 +763,25 @@ function drawChatList() {
   const open = chat.list.filter((c) => c.state === 'open');
   const done = chat.list.filter((c) => c.state !== 'open');
   const row = (c) => {
-    const thinking = c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
-    const fresh = unread(c, chat.seen) && chat.open !== c.number;
+    const key = chat.server ? c.id : c.number;
+    const thinking = chat.server ? Boolean(chat.live) && chat.open === key : c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
+    const fresh = !chat.server && unread(c, chat.seen) && chat.open !== key;
     return el('li', {},
-      el('button', { type: 'button', class: `conv${chat.open === c.number ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === c.number ? 'true' : false, onclick: () => selectConversation(c.number) },
+      el('button', { type: 'button', class: `conv${chat.open === key ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === key ? 'true' : false, onclick: () => selectConversation(key) },
         el('span', { class: 'conv-title' }, c.title),
         el('span', { class: 'conv-meta' }, thinking ? el('span', { class: 'typing-dot', 'aria-hidden': 'true' }) : null,
-          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated_at))));
+          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated || c.updated_at))));
   };
   items.replaceChildren(...open.map(row), ...(done.length ? [el('li', { class: 'chat-sep' }, 'Terminées')] : []), ...done.map(row));
-  const n = open.filter((c) => unread(c, chat.seen)).length;
+  const n = chat.server ? 0 : open.filter((c) => unread(c, chat.seen)).length;
   $('chat-badge').hidden = !n;
   $('chat-badge').textContent = String(n);
 }
 
 function drawChat() {
   drawChatList();
-  const isNew = chat.open === 'new' || chat.open == null;
+  const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
+  if (chat.server) return drawServerChat(isNew);
   $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '…';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
@@ -735,7 +790,7 @@ function drawChat() {
     list.replaceChildren(el('li', { class: 'chat-intro' },
       el('p', { class: 'intro-title' }, 'Parle à l\'agent de ton appli'),
       el('p', { class: 'muted' }, 'Pose une question sur son fonctionnement, propose une idée ou décris un problème. L\'agent lit le code pour te répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
-      el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)))));
+      examples()));
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
@@ -754,10 +809,38 @@ function drawChat() {
   if (stick || chat.pending) list.scrollTop = list.scrollHeight;
 }
 
+const examples = () => el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)));
+
+function drawServerChat(isNew) {
+  const list = $('chat-messages');
+  const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+  const entry = chat.list?.find((c) => c.id === chat.open);
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '…');
+  $('chat-tools').hidden = isNew || !chat.conv;
+  $('chat-close').hidden = entry?.state === 'closed';
+  if (isNew) {
+    list.replaceChildren(el('li', { class: 'chat-intro' },
+      el('p', { class: 'intro-title' }, 'Parle à l\'agent de ton appli'),
+      el('p', { class: 'muted' }, 'Pose une question sur son fonctionnement, propose une idée ou décris un problème, avec une capture si tu veux. L\'agent lit le code et te répond en quelques secondes. Il peut ensuite en faire une feature ou un bug.'),
+      examples()));
+  } else if (chat.conv || chat.live) {
+    const messages = serverMessages(chat.conv);
+    if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
+    const tail = chat.live ? liveBubble()
+      : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écris un message pour la reprendre.') : null;
+    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+  } else {
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+  }
+  if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+}
+
 function selectConversation(n) {
+  if (chat.live && n !== chat.open) return toast('Attends la fin de la réponse en cours.');
   chat.open = n;
   chat.pending = null;
   if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
+  if (chat.conv?.id !== n) chat.conv = null;
   $('chat').classList.add('viewing');
   drawChat();
   const list = $('chat-messages');
@@ -829,6 +912,7 @@ async function sendChat(text, withImages = true) {
   text = text.trim();
   const files = withImages ? [...chat.files] : [];
   if ((!text && !files.length) || !current) return;
+  if (chat.server) return sendToServer(text, files, withImages);
   const repo = chat.repo;
   const btn = $('chat-send');
   btn.disabled = true;
@@ -864,7 +948,92 @@ async function sendChat(text, withImages = true) {
   }
 }
 
+// Sends a message to the chat server and shows the answer as it is written.
+async function sendToServer(text, files, withImages) {
+  if (chat.live) return;
+  const repo = chat.repo;
+  const btn = $('chat-send');
+  btn.disabled = true;
+  const isNew = !chat.open || chat.open === 'new';
+  chat.pending = { text, previews: files.map((f) => f.url) };
+  chat.live = { text: '', status: files.length ? 'Envoie les images…' : 'Envoi…' };
+  if (withImages) {
+    $('chat-input').value = '';
+    chat.files = [];
+    drawPendingImages();
+    autosize();
+  }
+  drawChat();
+  let answer = null;
+  try {
+    const paths = await uploadImages(repo, files);
+    const res = await fetch(`${chat.server}/chat`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const { events, rest } = ndjson(buffer + decoder.decode(value, { stream: true }));
+      buffer = rest;
+      for (const e of events) {
+        if (e.type === 'status') chat.live.status = e.text;
+        else if (e.type === 'delta') { chat.live.text += e.text; chat.live.status = 'Écrit…'; }
+        else if (e.type === 'draft') chat.live.text = e.text;
+        else if (e.type === 'reset') chat.live.text = '';
+        else if (e.type === 'answer') answer = e;
+        else if (e.type === 'error') throw new Error(e.message);
+        else if (e.type === 'done') {
+          const c = e.conversation;
+          chat.conv = chat.conv || { id: c.id, title: c.title, messages: [] };
+          chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
+            { who: 'agent', text: answer?.text || '', issues: answer?.issues || [], at: c.updated });
+          for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
+          if (chat.repo === repo) chat.open = c.id;
+          chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
+        }
+      }
+      drawLive();
+    }
+    if (!answer) throw new Error('la réponse a été coupée');
+  } catch (e) {
+    if (!$('chat-input').value) $('chat-input').value = text;
+    autosize();
+    toast(`L'agent n'a pas pu répondre : ${e.message}. Ton message est remis dans la zone de saisie : renvoie-le.`);
+  } finally {
+    chat.pending = null;
+    chat.live = null;
+    btn.disabled = false;
+    drawChat();
+    if (answer?.issues?.length) renderBoard().catch(() => {});
+  }
+}
+
+// In server mode, « Terminer » only marks the conversation in the branch's index.
+async function closeServerConversation() {
+  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`);
+  const index = JSON.parse(fromBase64(meta.content)).map((c) => (c.id === chat.open ? { ...c, state: 'closed' } : c));
+  await api(`/repos/${chat.repo}/contents/index.json`, { method: 'PUT', body: JSON.stringify({
+    message: 'chore(factory): chat index', branch: CHAT_BRANCH, sha: meta.sha, content: toBase64(JSON.stringify(index, null, 1) + '\n') }) });
+}
+
 async function closeConversation() {
+  if (chat.server && chat.open && chat.open !== 'new') {
+    try {
+      await closeServerConversation();
+      toast('Conversation rangée dans « Terminées »');
+      $('chat').classList.remove('viewing');
+      await refreshChat();
+    } catch (e) {
+      toast(`Impossible de terminer la conversation : ${e.message}`);
+    }
+    return;
+  }
   if (typeof chat.open !== 'number') return;
   try {
     await api(`/repos/${chat.repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });

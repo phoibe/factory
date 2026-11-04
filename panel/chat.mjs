@@ -172,3 +172,33 @@ export function markdown(text) {
   for (const b of blocks) delete b.open;
   return blocks;
 }
+
+// ---- Chat server (server/chat, on Modal) --------------------------------------------------------
+// When the factory's chat server is deployed, messages go to it and the answer streams back as NDJSON;
+// conversations are JSON files on the project's `factory-chat` branch, no issue involved.
+export const CHAT_BRANCH = 'factory-chat';
+
+// Splits what has arrived so far into complete events and the unfinished last line.
+export function ndjson(buffer) {
+  const lines = buffer.split('\n');
+  const rest = lines.pop();
+  const events = [];
+  for (const l of lines) {
+    if (!l.trim()) continue;
+    try { events.push(JSON.parse(l)); } catch {}
+  }
+  return { events, rest };
+}
+
+export function serverMessages(conv) {
+  return (conv?.messages || [])
+    .filter((m) => m.text || m.images?.length)
+    .map((m) => ({
+      who: m.who === 'agent' ? 'agent' : 'me', text: m.text || '',
+      ...(m.images?.length ? { images: m.images } : {}), at: m.at,
+      ...(m.issues?.length ? { issues: m.issues } : {}),
+    }));
+}
+
+export const serverList = (index) => [...(index || [])]
+  .sort((a, b) => (b.state === 'open') - (a.state === 'open') || Date.parse(b.updated) - Date.parse(a.updated));

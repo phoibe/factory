@@ -109,3 +109,29 @@ test('imagePath: one unique, safe path per image', async () => {
   assert.equal(imagePath('image/png', 1700000000000, 'k3x'), 'attachments/chat/1700000000000-k3x.png');
   assert.equal(imagePath('image/jpeg', 1, 'a'), 'attachments/chat/1-a.jpg');
 });
+
+test('chat server: NDJSON lines are read as they arrive, a cut line waits for the rest', async () => {
+  const { ndjson } = await import('../panel/chat.mjs');
+  assert.deepEqual(ndjson('{"type":"delta","text":"Bon"}\n{"type":"del'), { events: [{ type: 'delta', text: 'Bon' }], rest: '{"type":"del' });
+  assert.deepEqual(ndjson('ta","text":"jour"}\n'.replace(/^/, '{"type":"del')), { events: [{ type: 'delta', text: 'jour' }], rest: '' });
+  assert.deepEqual(ndjson('pas du json\n'), { events: [], rest: '' });
+});
+
+test('chat server: a stored conversation becomes bubbles, the list keeps open ones first', async () => {
+  const { serverMessages, serverList } = await import('../panel/chat.mjs');
+  const conv = { messages: [
+    { who: 'me', text: 'Exporter ?', images: ['attachments/chat/1-a.jpg'], at: 't1' },
+    { who: 'agent', text: 'Pas encore.', at: 't2', issues: [{ title: 'Export', url: 'https://github.com/a/b/issues/3', kind: 'feature' }] },
+    { who: 'me', text: '', images: [], at: 't3' },
+  ] };
+  assert.deepEqual(serverMessages(conv), [
+    { who: 'me', text: 'Exporter ?', images: ['attachments/chat/1-a.jpg'], at: 't1' },
+    { who: 'agent', text: 'Pas encore.', at: 't2', issues: [{ title: 'Export', url: 'https://github.com/a/b/issues/3', kind: 'feature' }] },
+  ]);
+  assert.deepEqual(serverList([
+    { id: 'a', state: 'closed', updated: '2026-11-04T12:00:00Z' },
+    { id: 'b', state: 'open', updated: '2026-11-04T09:00:00Z' },
+    { id: 'c', state: 'open', updated: '2026-11-04T11:00:00Z' },
+  ]).map((c) => c.id), ['c', 'b', 'a']);
+  assert.deepEqual(serverList(null), []);
+});
