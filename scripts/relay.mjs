@@ -7,6 +7,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
+import { pickOrder, isPickable } from './lib/pick.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig } from './lib/config.mjs';
@@ -210,6 +211,40 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(issue.number, L.resumeQueued);
       await gh.addLabels(issue.number, [L.building]);
       await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec ta réponse." : "Une place s'est libérée : je démarre la construction."));
+      free -= 1;
+    }
+    if (config.autoPick) await autoPick({ freed });
+  }
+
+  // Free places and an empty queue: start the oldest suitable open cards by ourselves (setting `autoPick`).
+  // A picked feature that still waits for the owner (questions, spec) keeps its place, so the factory never
+  // floods the owner with questions.
+  async function autoPick({ freed = null } = {}) {
+    const taken = await inFlight(freed);
+    const waiting = ((await gh.listIssues({ labels: L.autoPicked })) || [])
+      .filter((i) => !i.pull_request && i.number !== freed)
+      .filter((i) => { const l = names(i.labels); return l.includes(L.grilling) || l.includes(L.specReview) || l.includes(L.queued); });
+    let free = config.maxParallel - taken - waiting.length;
+    if (free <= 0) return;
+    const queued = ((await gh.listIssues({ labels: L.queued })) || []).filter((i) => !i.pull_request);
+    if (queued.length) return;
+    const open = (await gh.listIssues({ sort: 'created', direction: 'asc' })) || [];
+    for (const issue of pickOrder(open)) {
+      if (free <= 0) break;
+      const labels = await liveLabels(issue.number);
+      if (!isPickable(labels)) continue; // the owner or another run took it meanwhile
+      const direct = labels.includes(L.bug) || labels.includes(L.audit);
+      const stage = labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : config.stages.grilling ? 'grilling' : 'spec';
+      try {
+        await fireAgent({ stage, issue: issue.number, quiet: true });
+      } catch (e) {
+        log(`auto-pick fire failed: ${e}`);
+        break;
+      }
+      const add = [L.autoPicked, ...(direct ? [L.building] : config.stages.grilling ? [L.grilling] : [])];
+      await gh.addLabels(issue.number, add);
+      await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."
+        + (direct ? '' : ' Je commence par vous poser mes questions.')));
       free -= 1;
     }
   }

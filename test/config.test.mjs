@@ -59,3 +59,11 @@ test('siteUrl is kept when it is an https link, dropped with a warning otherwise
   assert.equal(bad.warnings.length, 1);
   assert.equal(resolveConfig({}, catalog).config.siteUrl, undefined);
 });
+
+test('autoPick is off by default and only accepts a boolean', () => {
+  assert.equal(resolveConfig(undefined, catalog).config.autoPick, false);
+  assert.equal(resolveConfig({ autoPick: true }, catalog).config.autoPick, true);
+  const bad = resolveConfig({ autoPick: 'yes' }, catalog);
+  assert.equal(bad.config.autoPick, false);
+  assert.equal(bad.warnings.length, 1);
+});

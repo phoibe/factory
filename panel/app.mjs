@@ -302,7 +302,7 @@ function card(c, lane, minutes, now, moved) {
   const testIt = c.column === 'acceptance' && !running;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}${c.labels.includes('factory:auto-picked') ? ' · prise d\'elle-même' : ''}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
@@ -485,7 +485,11 @@ function renderRules() {
       el('div', {}, el('label', { for: 'maxParallel' }, 'Features en parallèle'),
         el('p', {}, 'Les suivantes attendent en file.'),
         el('input', { type: 'number', id: 'maxParallel', min: '1', max: '10', value: String(c.maxParallel),
-          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))));
+          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } })),
+    el('div', { class: 'row' },
+      checkbox('autoPick', c.autoPick, (on) => update(setPath(c, 'autoPick', on))),
+      el('div', {}, el('label', { for: 'autoPick' }, 'Piocher automatiquement dans les fiches existantes'),
+        el('p', {}, 'Quand une place est libre et que la file est vide, la factory démarre d\'elle-même une fiche ouverte (bugs d\'abord, la plus ancienne en premier). Étiquettes : « factory:urgent » pour passer devant, « factory:no-pick » pour l\'exclure.')))));
   const stages = el('fieldset', {}, el('legend', {}, 'Étapes'),
     STAGES.map(([k, t, d]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
       el('div', {}, el('label', { for: `stage-${k}` }, t), el('p', {}, d)))));
@@ -522,10 +526,11 @@ async function saveRules(e) {
     body: JSON.stringify({ message: 'chore(factory): update rules from the panel', content: toBase64(body), sha: fresh.sha }),
   });
   const before = JSON.parse(current.saved || '{}').maxParallel;
+  const beforeAuto = JSON.parse(current.saved || '{}').autoPick;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
   // More places: ask the factory to look at the queue now instead of at its next regular check.
-  if (current.config.maxParallel > (before || 0)) {
+  if (current.config.maxParallel > (before || 0) || (current.config.autoPick && !beforeAuto)) {
     api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
       method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
     }).catch(() => {});

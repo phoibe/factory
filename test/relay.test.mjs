@@ -15,7 +15,7 @@ function fakeGh(state) {
     dispatch: async (wf, ref, inputs) => calls.push(['dispatch', wf, ref, inputs]),
     react: async (id, c) => calls.push(['react', id, c]),
     getPr: async (n) => state.prs.find((p) => p.number === n),
-    listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
+    listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && (!labels || i.labels.includes(labels))).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
     listComments: async (n) => state.comments?.[n] || [],
     listEvents: async (n) => state.events?.[n] || [],
     comment: async (n, body) => calls.push(['comment', n, body]),
@@ -541,4 +541,65 @@ test('a PR merged by hand also unsticks the PRs it put in conflict', async () =>
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'pull_request', action: 'closed', number: 10, labels: [], fromOwner: true });
   assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+});
+
+const onConfig = { ...config, autoPick: true };
+const tick = { kind: 'tick', event: 'schedule', labels: [], fromOwner: false };
+const mk = (number, labels, day) => ({ number, labels, created_at: `2026-01-${String(day || number).padStart(2, '0')}T00:00:00Z` });
+
+test('autoPick off: a free slot and an open bug start nothing', async () => {
+  const gh = fakeGh({ issues: [mk(1, [L.bug])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  assert.equal(sent.length, 0);
+});
+
+test('autoPick on: a free slot starts the open bug and says so on the card', async () => {
+  const gh = fakeGh({ issues: [mk(1, [L.feature]), mk(2, [L.bug])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: { ...onConfig, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  assert.equal(sent.length, 1);
+  assert.deepEqual([payloadOf(sent[0].init.body).issue, payloadOf(sent[0].init.body).stage], [2, 'bugfix']);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.building) && c.includes(L.autoPicked)));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 2 && /d'elle-même/.test(c[2])));
+});
+
+test('autoPick on: an urgent feature goes before an older bug and starts with the questions', async () => {
+  const gh = fakeGh({ issues: [mk(1, [L.bug]), mk(2, [L.feature, L.urgent])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: { ...onConfig, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  assert.deepEqual([payloadOf(sent[0].init.body).issue, payloadOf(sent[0].init.body).stage], [2, 'grilling']);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 2 && c.includes(L.grilling)));
+});
+
+test('autoPick on: no free slot, a non-empty queue, no-pick and non-feature cards start nothing', async () => {
+  for (const issues of [
+    [mk(1, [L.building]), mk(2, [L.building]), mk(3, [L.bug])],
+    [mk(1, [L.feature, L.queued]), mk(2, [L.building]), mk(3, [L.building]), mk(4, [L.bug])],
+    [mk(3, [L.bug, L.noPick]), mk(4, [L.question]), mk(5, [L.project]), mk(6, [L.feature, L.grilling])],
+  ]) {
+    const sent = [];
+    const relay = createRelay({ gh: fakeGh({ issues, prs: [] }), repo: 'r', config: onConfig, env, fetchImpl: fetchOk(sent), log: quiet });
+    await relay.handle(tick);
+    assert.equal(sent.length, 0);
+  }
+});
+
+test('autoPick on: features picked and still waiting for the owner keep their slot', async () => {
+  const gh = fakeGh({ issues: [mk(1, [L.feature, L.grilling, L.autoPicked]), mk(2, [L.building]), mk(3, [L.bug])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: onConfig, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  assert.equal(sent.length, 0);
+});
+
+test('autoPick on: two free slots start two cards, not more', async () => {
+  const gh = fakeGh({ issues: [mk(1, [L.bug]), mk(2, [L.bug]), mk(3, [L.bug])], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config: onConfig, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(tick);
+  assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [1, 2]);
 });

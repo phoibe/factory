@@ -17,6 +17,7 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     version: 1,
     runner: DEFAULTS.runner,
     maxParallel: DEFAULTS.maxParallel,
+    autoPick: DEFAULTS.autoPick === true,
     stack: typeof input.stack === 'string' && input.stack.trim() ? input.stack : DEFAULTS.stack,
     stages: boolMap(DEFAULTS.stages, input.stages),
     review: { maxLoops: DEFAULTS.review.maxLoops },
@@ -35,6 +36,10 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   if (input.maxParallel !== undefined) {
     if (isPosInt(input.maxParallel)) config.maxParallel = input.maxParallel;
     else warnings.push(`maxParallel invalide (${JSON.stringify(input.maxParallel)}), ${DEFAULTS.maxParallel} utilisé`);
+  }
+  if (input.autoPick !== undefined) {
+    if (typeof input.autoPick === 'boolean') config.autoPick = input.autoPick;
+    else warnings.push(`autoPick invalide (${JSON.stringify(input.autoPick)}), désactivé`);
   }
   const loops = input.review?.maxLoops;
   if (loops !== undefined) {
