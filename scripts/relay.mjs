@@ -16,7 +16,9 @@ import { mirrorAttachments } from './lib/attachments.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
-const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design' };
+const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
+// The shots table written by `shots.mjs publish` links images on this branch: its presence proves captures were shown.
+const SHOTS_BRANCH = 'claude/factory-assets';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Just under the checks job's timeout-minutes (30) in relay.yml.
@@ -472,7 +474,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const text = say(body);
     if (mine) await gh.updateComment(mine.id, text); else await gh.comment(prNumber, text);
     if (alerts.length) await gh.addLabels(prNumber, [L.skillsAlert]); else await gh.removeLabel(prNumber, L.skillsAlert);
-    return Object.assign(alerts, { missing });
+    return Object.assign(alerts, { missing, ui: uiChanged(changed) });
   }
 
   async function report({ result, pr: prNumber, runId, sha, started = null, now = Date.now() }) {
@@ -489,10 +491,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
     let missing = [];
-    try { ({ missing } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
+    let ui = false;
+    try { ({ missing, ui } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
     const issueNumber = linkedIssue(pr.body);
     // A skipped review or design pass is caught up once, by a dedicated run, before the owner is asked anything.
     const catchUp = (missing || []).filter((s) => CATCH_UP.includes(s));
+    // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
+    if (result === 'success' && ui && config.stages.screenshots !== false) {
+      const shown = ((await gh.listComments(prNumber)) || []).some((c) => (c.body || '').includes(SHOTS_BRANCH));
+      if (!shown) catchUp.push('screenshots');
+    }
     if (result === 'success' && catchUp.length) {
       const done = ((await gh.listComments(prNumber)) || []).some((c) => (c.body || '').includes(SKILLS_FIX_MARKER));
       if (!done) {
