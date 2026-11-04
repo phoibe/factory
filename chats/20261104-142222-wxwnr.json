@@ -3,7 +3,7 @@
  "title": "J'ai 2 slots paramétrés, il y a une seule feature en cours et les…",
  "state": "open",
  "created": "2026-11-04T14:22:22Z",
- "updated": "2026-11-04T14:23:02Z",
+ "updated": "2026-11-04T14:25:20Z",
  "messages": [
   {
    "who": "me",
@@ -15,6 +15,24 @@
    "who": "agent",
    "text": "Sur le papier, deux fonctionnent en même temps. Je ne vois pas ton tableau en direct, donc je ne peux pas dire laquelle des causes ci-dessous est la tienne.\n\n**Ce que j'ai lu dans le code :**\n- Une place est prise dès qu'une feature est en construction, et elle reste prise jusqu'à la validation finale de la recette et la fusion. Si une feature attend ton « ok » ou est bloquée, elle garde sa place.\n- Une feature ne passe « en attente de place » qu'après ton go sur sa fiche. Avant ça, elle attend simplement ta validation, ce qui n'a rien à voir avec les places.\n- La file d'attente ne repart que dans deux cas : quand une feature est fusionnée, ou quand une fiche ou sa proposition de changement est fermée. Il n'y a pas de vérification régulière en arrière-plan.\n\n**Les causes probables, de la plus à la moins vraisemblable :**\n1. Les autres attendent ton go sur leur fiche, et non une place. Elles n'ont alors pas encore été lancées.\n2. Une place s'est libérée sans passer par une fusion ou une fermeture, par exemple si une fiche a été abandonnée ou son étiquette retirée à la main. Dans ce cas, personne ne relance la file, et les features en attente restent coincées alors qu'une place est libre.\n3. Une deuxième feature compte comme « en construction » mais est bloquée. Elle occupe sa place sans avancer, et il n'en reste qu'une seule pour le reste.\n\n**Ma certitude :** le réglage à 2 places et le fonctionnement de la file sont lus dans le code. Je n'ai pas vérifié l'état réel de tes fiches.\n\nDis-moi le numéro ou le titre de celles qui attendent, et je regarde dans quel cas tu es.\n\nSi tu as constaté le cas 2, c'est un vrai défaut : la file devrait se relancer d'elle-même quand une place est libre. Dis-moi si tu veux que j'en fasse un bug.",
    "at": "2026-11-04T14:23:02Z"
+  },
+  {
+   "who": "me",
+   "text": "La 53 et la 59 sont dans la file, seule la 61 est en cours. La 62 attend mon input, mais avant son apparition les 2 autres étaient déjà dans la file d'attente et y restaient",
+   "images": [],
+   "at": "2026-11-04T14:25:20Z"
+  },
+  {
+   "who": "agent",
+   "text": "Ce que tu décris ressemble à un vrai défaut, donc je te le note en bug.\n\n- **Pourquoi ça reste coincé :** la file ne se relance que quand une feature est fusionnée ou qu'une fiche est fermée. Il n'y a aucune vérification régulière. Si une place se libère autrement, par exemple une feature abandonnée, bloquée puis retirée, ou une étiquette changée à la main, les features en attente ne sont pas relancées. La 53 et la 59 restent alors bloquées alors qu'une place est libre.\n- **Ce qui explique que la 61 passe devant :** une feature neuve, lancée directement quand il reste de la place, peut démarrer avant celles qui attendent. C'est cohérent avec ce que tu vois.\n- **La 62 :** elle n'est pas en cause. Tant qu'elle attend ton input, elle ne prend pas de place, et tu dis que le blocage existait avant elle.\n- **Autre piste possible :** une fiche pourrait garder une place sans que tu la voies, par exemple une feature déjà fusionnée dont l'étiquette « en construction » n'a pas été retirée. Je ne peux pas le vérifier sans voir l'état réel de tes fiches.\n\n**Ma certitude :** le fonctionnement de la file et l'absence de relance automatique sont lus dans le code. Je n'ai pas testé ton cas réel, donc la cause exacte reste à confirmer.\n\nJe crée le bug pour que la file se relance toute seule dès qu'une place est libre.",
+   "at": "2026-11-04T14:25:20Z",
+   "issues": [
+    {
+     "title": "La file d'attente ne repart pas quand une place est libre",
+     "url": "https://github.com/phoibe/factory/issues/63",
+     "kind": "bug"
+    }
+   ]
   }
  ]
 }
