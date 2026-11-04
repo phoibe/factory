@@ -1,5 +1,11 @@
 [
  {
+  "id": "20261104-160416-ps85g",
+  "title": "Quand tu crées une fiche feature, tu la lances tout de suite. Je…",
+  "updated": "2026-11-04T16:04:29Z",
+  "state": "open"
+ },
+ {
   "id": "20261104-155605-wfmmq",
   "title": "Suite à la PR85, on devrait piocher automatiquement des issues.…",
   "updated": "2026-11-04T16:00:16Z",
