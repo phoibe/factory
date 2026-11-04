@@ -38,8 +38,10 @@ Si une étape est désactivée ci-dessus, saute-la même si une instruction d'é
 les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été
 suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
 (`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
-tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, `node
-.factory/scripts/journal-check.mjs` te dit ce que le journal ne montre pas encore : fais-le. Un verrou
+tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, lance `node
+.factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
+session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore : fais-le,
+puis committe `.factory/journal/`. Un verrou
 refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 

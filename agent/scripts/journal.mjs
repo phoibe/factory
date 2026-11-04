@@ -19,7 +19,8 @@ export function isTestCommand(cmd = '') {
     return RUNNER.test(p);
   });
 }
-const FAILED_TEXT = /(\b[1-9]\d* (failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|\bERR!|exit code [1-9])/im;
+// Case matters: node --test prints « # fail 0 » on a green run.
+export const FAILED_TEXT = /(\b[1-9]\d* (?:failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|^# fail [1-9]|\bERR!|exit code [1-9])/m;
 
 // The run JSON ({"repo","issue","pr","stage"}) is somewhere in the first prompt of the run.
 export function runFromPrompt(prompt = '') {
