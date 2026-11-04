@@ -410,7 +410,7 @@ test('checks stopped by the time limit count as a failure, so the PR never sits 
   const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [] } };
   const gh = fakeGh(state);
   const sent = [];
-  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc' });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: Date.now() / 1000 - 31 * 60 });
   assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /trop longtemps/.test(c[2])));
 });

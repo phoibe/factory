@@ -31,7 +31,27 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return out;
   }
   const enc = encodeURIComponent;
+  // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
+  // points to carries the time it was taken.
+  const LOCK_REF = 'factory/lock';
+  const queueLock = {
+    async acquire() {
+      const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] });
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree: tree.sha, parents: [] });
+      try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); return true; }
+      catch (e) { if (String(e).includes('422')) return false; throw e; }
+    },
+    async ageMs() {
+      const ref = await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`);
+      if (!ref) return null;
+      const commit = await request('GET', `/repos/{repo}/git/commits/${ref.object.sha}`);
+      return commit ? Date.now() - Date.parse(commit.committer.date) : null;
+    },
+    async release() { try { await request('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; } },
+    takeOver() { return queueLock.release(); },
+  };
   return {
+    queueLock,
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
