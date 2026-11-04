@@ -1,0 +1,27 @@
+{
+ "id": "20261104-143234-pefat",
+ "title": "Je veux voir à la fin de mon tableau la carte des dernières…",
+ "state": "open",
+ "created": "2026-11-04T14:32:34Z",
+ "updated": "2026-11-04T14:33:02Z",
+ "messages": [
+  {
+   "who": "me",
+   "text": "Je veux voir à la fin de mon tableau la carte des dernières features qui ont fini de traverser le pipeline",
+   "images": [],
+   "at": "2026-11-04T14:33:02Z"
+  },
+  {
+   "who": "agent",
+   "text": "Non, aujourd'hui ça n'existe pas. Ton tableau s'arrête à la colonne « Recette ». Il y a aussi « Bloqué » pour ce qui coince. Une fois qu'une feature a traversé tout le pipeline, elle disparaît du tableau et tu ne la revois plus nulle part. Je l'ai lu dans le code, pas dans la fiche produit.\n\nCe que tu demandes, c'est une dernière colonne à droite, avec les cartes des features terminées les plus récentes. Elle servirait de mémoire de ce qui vient d'être livré, avec une pastille verte « Terminé », comme le prévoit déjà le design. Je propose de la limiter aux dernières livrées, par exemple une dizaine, pour qu'elle reste lisible.\n\nJe te crée la fiche.",
+   "at": "2026-11-04T14:33:02Z",
+   "issues": [
+    {
+     "title": "Colonne « Terminé » en fin de tableau avec les dernières features livrées",
+     "url": "https://github.com/phoibe/factory/issues/65",
+     "kind": "feature"
+    }
+   ]
+  }
+ ]
+}
