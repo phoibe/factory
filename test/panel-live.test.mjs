@@ -88,3 +88,10 @@ test('the live status line is never empty, so the cards do not jump when its tex
   assert.equal(statusText(0, 2000), "En direct · à jour à l'instant");
   assert.match(statusText(2, 0), /Connexion à GitHub perdue/);
 });
+
+test('the « À vous » card is drawn with its status text already filled (no growth after the cards are measured)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
+  assert.match(line, /statusText\(/);
+});
