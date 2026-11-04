@@ -65,7 +65,8 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     };
   }
   if (eventName === 'pull_request_review') {
-    const body = p.review?.body || '';
+    // A bare « Approve » (no text) is an approval ; a review with only inline comments and no text says nothing.
+    const body = p.review?.body || (p.review?.state === 'approved' ? 'ok' : '');
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
       text: body, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.review?.user?.login === owner,
@@ -121,8 +122,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       throw new Error(error);
     };
     if (config.runner === 'github-actions') {
-      const ref = (await gh.getRepo())?.default_branch || 'main';
       try {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify(payload) });
       } catch (e) {
         await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécris ton message dans quelques minutes ; si ça se répète, vérifie que le workflow « Factory » est activé (onglet Actions).", String(e));

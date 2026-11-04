@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, ASK } from '../panel/chat.mjs';
+import { cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, ASK, safeGithubUrl } from '../panel/chat.mjs';
 
 const AGENT = '<!-- factory-agent -->';
 const FOOT = '\n\n---\n_Généré par [Claude Code](https://claude.ai/code) · software factory_';
@@ -134,4 +134,17 @@ test('chat server: a stored conversation becomes bubbles, the list keeps open on
     { id: 'c', state: 'open', updated: '2026-11-04T11:00:00Z' },
   ]).map((c) => c.id), ['c', 'b', 'a']);
   assert.deepEqual(serverList(null), []);
+});
+
+test('safeGithubUrl only lets GitHub https links through', () => {
+  assert.equal(safeGithubUrl('https://github.com/phoibe/demo/issues/4'), 'https://github.com/phoibe/demo/issues/4');
+  assert.equal(safeGithubUrl('javascript:alert(1)'), undefined);
+  assert.equal(safeGithubUrl('https://github.com.evil.example/x'), undefined);
+  assert.equal(safeGithubUrl(undefined), undefined);
+});
+
+test('image markers only accept chat attachment paths, never a traversal', () => {
+  const at = (p) => chatMessages({ body: `x\n<!-- factory-image: ${p} -->` }, [])[0];
+  assert.deepEqual(at('attachments/chat/1-ab.png').images, ['attachments/chat/1-ab.png']);
+  assert.equal(at('attachments/../../../user').images, undefined);
 });

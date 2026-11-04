@@ -1,5 +1,5 @@
 import { COLUMNS, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom } from './lib.mjs?v=13';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine } from './live.mjs';
 import { resolveConfig } from './config-core.mjs';
@@ -327,7 +327,7 @@ function drawBoard() {
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
   const n = byLane.yours.length;
   const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
-    : cards.length ? 'Rien ne t\'attend' : 'Aucune feature en cours';
+    : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle feature ».';
@@ -335,7 +335,7 @@ function drawBoard() {
   board.replaceChildren(
     el('div', { class: `pulse-bar${n ? ' attention' : ''}` },
       el('div', {}, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub)),
-      el('p', { class: 'live', role: 'status' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
+      el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }))),
     ...LANES.filter(([id]) => cards.length || id === 'yours').map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
@@ -513,6 +513,7 @@ $('stable').addEventListener('click', async () => {
   } catch (e) {
     toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
   } finally {
+    chat.sending = false;
     btn.disabled = false;
   }
 });
@@ -524,7 +525,11 @@ $('login-form').addEventListener('submit', (e) => {
   $('login-error').textContent = '';
   start();
 });
-$('logout').addEventListener('click', () => { store.del(TOKEN_KEY); token = null; show('login'); });
+$('logout').addEventListener('click', () => {
+  store.del(TOKEN_KEY); token = null; projects = []; current = null;
+  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+  show('login');
+});
 function loadScript(src) {
   return new Promise((ok, ko) => document.head.append(el('script', { src, onload: ok, onerror: ko })));
 }
@@ -548,7 +553,7 @@ $('site').addEventListener('click', (e) => {
 });
 $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
 $('phone-close').addEventListener('click', () => $('phone').close());
-$('project').addEventListener('change', (e) => openProject(e.target.value));
+$('project').addEventListener('change', (e) => openProject(e.target.value).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); if (current) $('project').value = current.repo.full_name; }));
 $('general-review').addEventListener('click', () => startGeneralReview());
 
 // Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
@@ -740,7 +745,7 @@ function bubble(m) {
   return el('li', { class: `msg ${m.who}` },
     pics.length ? el('div', { class: 'shots' }, pics) : null,
     text.length ? el('div', { class: 'bubble' }, text) : null,
-    ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: i.url, target: '_blank', rel: 'noopener' },
+    ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
       el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Feature créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
     el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
 }
@@ -920,10 +925,12 @@ async function sendChat(text, withImages = true) {
   text = text.trim();
   const files = withImages ? [...chat.files] : [];
   if ((!text && !files.length) || !current) return;
+  if (chat.sending) return;
   if (chat.server) return sendToServer(text, files, withImages);
   const repo = chat.repo;
   const btn = $('chat-send');
   btn.disabled = true;
+  chat.sending = true;
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
     const paths = await uploadImages(repo, files);
@@ -1115,7 +1122,7 @@ function showWidthReport(force) {
   if (!wide && !force) return;
   document.getElementById('width-report')?.remove();
   document.body.append(el('div', { id: 'width-report', style: 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9;background:#000;color:#fff;border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,monospace' },
-    el('p', { style: 'margin:0 0 6px;font-weight:700' }, 'La page est plus large que l\'écran : fais une capture et envoie-la à Claude.'),
+    el('p', { style: 'margin:0 0 6px;font-weight:700' }, 'La page est plus large que l\'écran : faites une capture et envoyez-la à Claude.'),
     el('pre', { style: 'margin:0;max-height:35vh;overflow:auto;white-space:pre-wrap' }, text),
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }

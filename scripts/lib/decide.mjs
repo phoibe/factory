@@ -89,6 +89,7 @@ function onPr(ev) {
     return checksNow ? { type: 'checks', add: [], remove: [], reason: 'PR prête pour les contrôles' } : ignore('rien à faire sur cette PR');
   }
   // A comment or a review on a PR.
+  if (!String(ev.text || '').trim()) return ignore('message vide');
   if (has(ev.labels, L.visualReview)) {
     if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées' };
     return fire('visual-fix', { remove: unblock(ev.labels) });

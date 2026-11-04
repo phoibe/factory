@@ -12,10 +12,10 @@ const STEPS = [
 ];
 const ACTIONS = {
   grilling: 'Répondez aux questions',
-  spec: 'Valide la spec',
-  visual: 'Valide les captures',
+  spec: 'Validez la spec',
+  visual: 'Validez les captures',
   acceptance: 'Testez la preview',
-  blocked: "Débloque l'agent",
+  blocked: "Débloquez l'agent",
 };
 
 // The steps an item goes through. Bugs and general reviews have no questions and no spec.

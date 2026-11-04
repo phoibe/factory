@@ -388,3 +388,11 @@ test('a run is named for the session list and its link is kept in one comment on
   await relay.handle(msg);
   assert.deepEqual(updated, [9]);
 });
+
+test('a bare « Approve » review counts as an approval, a review with only inline comments says nothing', () => {
+  const pr = { number: 3, labels: [{ name: L.acceptance }] };
+  const mk = (review) => eventFromPayload('pull_request_review', { action: 'submitted', repository: { owner: { login: 'phoibe' } }, pull_request: pr, review: { user: { login: 'phoibe' }, ...review } });
+  assert.equal(mk({ body: '', state: 'approved' }).text, 'ok');
+  assert.equal(mk({ body: '', state: 'commented' }).text, '');
+  assert.equal(mk({ body: 'Change le titre', state: 'commented' }).text, 'Change le titre');
+});
