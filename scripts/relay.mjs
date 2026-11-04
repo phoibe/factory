@@ -94,10 +94,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // `freed`: an issue whose build just ended. GitHub's issue list can still show its old label for a few
   // seconds, which used to keep its place taken until the next regular tick.
+  // A place is taken only while the agent builds: once the card's PR is open (checks, captures, recette), the
+  // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
   async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
-    // A blocked card has given up its place: it needs a free one again when the owner answers.
-    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !names(i.labels).includes(L.blocked)).length;
+    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map((p) => linkedIssue(p.body)).filter(Boolean));
+    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && !names(i.labels).includes(L.blocked)).length;
   }
 
   async function lockStart(number) {
@@ -453,6 +455,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         break;
       default:
         break;
+    }
+    // A PR just opened: its card gives up its place, so the next queued card starts now rather than at the tick.
+    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.action === 'opened' && action.type !== 'dequeue') {
+      const built = linkedIssue((await gh.getPr(n))?.body);
+      if (built) await dequeue({ freed: built }).catch((e) => log(`dequeue after PR: ${e.message}`));
     }
     return { action, outputs };
   }

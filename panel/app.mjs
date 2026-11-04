@@ -501,7 +501,7 @@ function renderRules() {
         el('div', {}, el('label', { for: `runner-${v}` }, t), el('p', {}, d)))),
     el('div', { class: 'row' },
       el('div', {}, el('label', { for: 'maxParallel' }, 'Features en parallèle'),
-        el('p', {}, 'Les suivantes attendent en file.'),
+        el('p', {}, 'Comptées pendant que l\'agent construit : une feature libère sa place dès que sa PR est ouverte. Les suivantes attendent en file.'),
         el('input', { type: 'number', id: 'maxParallel', min: '1', max: '10', value: String(c.maxParallel),
           onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))),
     el('div', { class: 'row' }, checkbox('autoPick', c.autoPick === true, (on) => update(setPath(c, 'autoPick', on))),

@@ -65,6 +65,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
     listIssues: (q) => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`),
+    listPulls: () => paginate('/repos/{repo}/pulls?state=open&per_page=100'),
     paginate,
     getRepo: () => request('GET', '/repos/{repo}'),
     listComments: (n) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`),
