@@ -121,3 +121,12 @@ test('withoutTimes ignores the text of time elements but not other changes', asy
   assert.notEqual(withoutTimes(a), withoutTimes(b.replace('<h3>T', '<h3>U')));
   assert.notEqual(withoutTimes(a), withoutTimes(a.replace('data-time=""', '')));
 });
+
+test('syncTimes copies time texts in place and leaves other nodes alone', async () => {
+  const { syncTimes } = await import('../panel/live.mjs');
+  const mk = (...t) => ({ querySelectorAll: () => t });
+  const a = { textContent: 'depuis 2 min' }, b = { textContent: '~5 min' };
+  syncTimes(mk(a, b), mk({ textContent: 'depuis 3 min' }, { textContent: '~5 min' }));
+  assert.equal(a.textContent, 'depuis 3 min');
+  assert.equal(b.textContent, '~5 min');
+});
