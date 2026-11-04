@@ -484,7 +484,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
     if (ev.kind !== 'none' && ev.number) {
-      ev = { ...ev, labels: await liveLabels(ev.number) }; // webhook labels can be stale
+      const live = await gh.getIssue(ev.number);
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed' }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
@@ -505,6 +506,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    // A finished card (merged, closed) never starts over: a message written during its last run, or afterwards,
+    // would otherwise send a closed issue back to grilling.
+    if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
+      log('closed issue: nothing is started');
+      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     const applyLabels = async () => {
       for (const l of action.remove || []) await gh.removeLabel(n, l);
