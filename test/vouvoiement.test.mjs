@@ -6,7 +6,7 @@ const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
 // What the owner reads is always addressed with « vous ». The instructions written for the agent itself
 // (« Tu es l'agent… ») keep « tu », so only the quoted messages and owner-facing files are checked.
-const TU = /\b(tu|toi|ton|ta|tes|Tu|Ton)\b|\bt'[a-zéèêàâ]|\b(Réponds|Écris|Clique|Colle|Appuie|Relance|Vérifie|Décris|Dis-moi|Double-clique)\b/;
+const TU = /\b(tu|toi|ton|ta|tes|Tu|Ton)\b|\bt'[a-zéèêàâ]|\b(Réponds|Écris|Clique|Colle|Appuie|Relance|Vérifie|Décris|Dis-moi|Double-clique|[Ff]usionne|Envoie)\b/;
 
 test('files read by the owner never use « tu »', () => {
   const files = ['scripts/factory.sh', 'scripts/lib/labels.mjs', 'scripts/lib/run-title.mjs', 'outils/LISEZMOI.txt',

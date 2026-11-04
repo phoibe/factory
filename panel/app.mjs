@@ -1103,7 +1103,7 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  chat.live = { text: '', status: files.length ? 'Envoie les images…' : 'Envoi…' };
+  chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
