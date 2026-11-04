@@ -8,7 +8,7 @@ import { resolveConfig, enabledSkills } from './lib/config.mjs';
 
 const FACTORY_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STAGE_LABELS = {
-  grilling: 'grilling', plan: 'plan', tdd: 'TDD', review: 'revue de code', designPass: 'passe design (impeccable)',
+  grilling: 'grilling', specReview: 'validation de chaque spec', plan: 'plan', tdd: 'TDD', review: 'revue de code', designPass: 'passe design (impeccable)',
   screenshots: 'captures avant/après', checks: 'contrôles automatiques', acceptance: 'recette',
 };
 

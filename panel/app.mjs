@@ -15,10 +15,11 @@ const store = {
 
 const STAGES = [
   ['grilling', 'Grilling', "L'agent te pose des questions pour clarifier la feature avant d'écrire la spec."],
+  ['specReview', 'Valider chaque spec', "Coché : tu valides chaque spec par « go ». Décoché : l'agent lance la construction seul et ne te demande ton accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
   ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
   ['tdd', 'Code en TDD', "Les tests sont écrits avant le code."],
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
-  ['designPass', 'Passe design', "Le skill impeccable soigne les écrans touchés."],
+  ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Tu valides l'apparence avant les contrôles."],
   ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, failles.'],
   ['acceptance', 'Recette', 'Tu testes la preview avant la mise en ligne.'],

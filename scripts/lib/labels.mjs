@@ -15,6 +15,7 @@ export const L = {
   fixing: 'factory:fixing',
   pending: 'factory:pending',
   skillsAlert: 'factory:skills-alert',
+  autoGo: 'factory:auto-go',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -34,6 +35,7 @@ export const LABEL_DEFS = [
   [L.acceptance, 'fbca04', 'Recette : teste la preview et réponds « ok »'],
   [L.fixing, 'e99695', "Correction en cours après un contrôle rouge"],
   [L.pending, 'bfdadc', "Message reçu pendant qu'un agent travaillait, traité juste après"],
+  [L.autoGo, 'c2e0c6', 'Spec publiée sans validation demandée : la construction démarre seule'],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 

@@ -5,6 +5,7 @@
   "stack": "À choisir au cadrage",
   "stages": {
     "grilling": true,
+    "specReview": false,
     "plan": true,
     "tdd": true,
     "review": true,
