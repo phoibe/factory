@@ -38,8 +38,10 @@ test('disabled stages are not expected', () => {
   assert.deepEqual(summarize(runs, { stages: { plan: false, tdd: false, review: false, designPass: false } }).alerts, []);
 });
 
-test('no journal at all is an alert', () => {
-  assert.equal(summarize([], { stages }).alerts.length, 1);
+test('no journal at all is a discreet note, not an alert (no red card)', () => {
+  const { alerts, body } = summarize([], { stages });
+  assert.equal(alerts.length, 0);
+  assert.match(body, /Pas de journal de construction/);
 });
 
 test('uiChanged ignores tests', () => {
