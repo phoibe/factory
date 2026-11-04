@@ -41,3 +41,10 @@ test('a green node --test run (« # fail 0 ») is not read as a failure', () => 
   const ko = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_response: { stdout: '# pass 11\n# fail 1', stderr: '' } });
   assert.equal(ko.ok, false);
 });
+
+test('isTestCommand spots Python test runs', () => {
+  assert.equal(isTestCommand('cd server/chat && python3 -m pytest -q'), true);
+  assert.equal(isTestCommand('pytest server/chat/test_service.py'), true);
+  assert.equal(isTestCommand('python -m unittest discover'), true);
+  assert.equal(isTestCommand('python3 server/chat/service.py'), false);
+});

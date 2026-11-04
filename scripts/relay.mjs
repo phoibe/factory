@@ -460,13 +460,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // Posts (or refreshes) the PR's « Fabrication » comment from the journal the hook wrote on the branch.
   async function fabrication(prNumber, pr) {
     // Only the journal files this PR adds or changes: older runs already merged into main are not this PR's.
-    const files = ((await gh.listPrFiles(prNumber)) || []).filter((f) => f.status !== 'removed').map((f) => f.filename);
+    const changed = ((await gh.listPrFiles(prNumber)) || []).filter((f) => f.status !== 'removed');
+    const files = changed.map((f) => f.filename);
     const texts = [];
     for (const path of files.filter((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) {
       const file = await gh.getContent(path, pr.head.sha);
       if (file?.content) texts.push(Buffer.from(file.content, 'base64').toString('utf8'));
     }
-    const { body, alerts, missing } = summarize(parseJournal(texts), { stages: config.stages, ui: uiChanged(files) });
+    const { body, alerts, missing } = summarize(parseJournal(texts), { stages: config.stages, ui: uiChanged(changed) });
     const mine = ((await gh.listComments(prNumber)) || []).find((c) => (c.body || '').includes(FABRICATION_MARKER));
     const text = say(body);
     if (mine) await gh.updateComment(mine.id, text); else await gh.comment(prNumber, text);

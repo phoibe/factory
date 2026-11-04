@@ -314,7 +314,9 @@ function card(c, lane, minutes, now, moved) {
     stepTrack(c),
     el('p', { class: 'eta' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
-    c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Un skill attendu n\'a pas été utilisé (voir « Fabrication » dans la PR).') : null);
+    // Only once the factory is done with it: while an agent catches the step up, there is nothing for you to see.
+    c.labels.includes('factory:skills-alert') && lane === 'yours'
+      ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null);
   article.dataset.sig = article.outerHTML; // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
   return article;
