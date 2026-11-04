@@ -132,7 +132,10 @@ dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
 @media (max-width: 600px) { #phone-open { display: none; } }
 
 /* ---- Live site link ---- */
-.site-line { margin: 6px 0 0; }
+.site-line { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.site-line .sep { color: var(--muted); }
+.site-line .quiet-link { margin: 0; }
+@media (max-width: 600px) { .site-line .sep { display: none; } }
 #site { font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
 .quiet-link { font-size: 0.875rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; }
