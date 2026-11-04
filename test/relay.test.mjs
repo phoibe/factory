@@ -429,4 +429,17 @@ test('a project without those workflows still merges cleanly', async () => {
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /fusionné/.test(c[2])));
+
+test("a merge frees its place even while GitHub's issue list still shows the old label", async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, labels: [L.building] }, { number: 2, labels: [L.building] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }],
+  });
+  // A stale list: issue 1 is still listed as building after its label was removed.
+  const stale = gh.listIssues;
+  gh.listIssues = async (q) => (q.labels === L.building ? [{ number: 1, labels: [{ name: L.building }] }, { number: 2, labels: [{ name: L.building }] }] : stale(q));
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 4 && c[2] === L.building));
 });
