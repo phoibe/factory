@@ -357,6 +357,19 @@ test('green checks on a visible change with no captures shown start a captures c
   assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
 });
 
+test('no captures catch-up when the screenshots step is off or the change is not visual', async () => {
+  const full = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  for (const [cfg, files] of [[{ ...allStages, stages: { ...allStages.stages, screenshots: false } }, null], [allStages, [{ filename: 'scripts/x.mjs' }]]]) {
+    const gh = prWithSkippedSteps();
+    gh.getContent = async () => ({ content: Buffer.from(full).toString('base64') });
+    if (files) gh.listPrFiles = async () => files;
+    const sent = [];
+    await createRelay({ gh, repo: 'r', config: cfg, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+    assert.equal(sent.length, 0);
+  }
+});
+
 test('the catch-up happens once: afterwards the PR goes on to acceptance with the alert', async () => {
   const gh = prWithSkippedSteps([SHOTS, { body: '<!-- factory-skills-fix -->\nrattrapage' }]);
   const sent = [];
