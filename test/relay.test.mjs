@@ -353,3 +353,19 @@ test("the owner's answer on a blocked PR unblocks its issue too", async () => {
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 15 && c[2] === L.blocked));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 5 && c[2] === L.blocked));
 });
+
+test('checks stopped by the time limit count as a failure, so the PR never sits silently in the checks lane', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc' });
+  assert.equal(JSON.parse(JSON.parse(sent[0].init.body).text).stage, 'fix-checks');
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /trop longtemps/.test(c[2])));
+});
+
+test('checks cancelled because the PR changed are ignored (a newer run reports)', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'new' } }], comments: { 10: [] } };
+  const sent = [];
+  await createRelay({ gh: fakeGh(state), repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'old' });
+  assert.equal(sent.length, 0);
+});

@@ -341,6 +341,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function report({ result, pr: prNumber, runId, sha }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
+    // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
+    if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
+    const timedOut = result === 'cancelled';
+    if (timedOut) result = 'failure';
     let missing = [];
     try { ({ missing } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
     const issueNumber = linkedIssue(pr.body);
@@ -380,7 +384,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(prNumber, L.checks);
       await gh.addLabels(prNumber, [L.fixing]);
       const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
-      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`Un contrôle automatique a échoué${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de ton côté.`)}`);
+      const what = timedOut ? 'Les contrôles automatiques ont tourné trop longtemps (un test bloqué), je les ai arrêtés' : 'Un contrôle automatique a échoué';
+      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de ton côté.`)}`);
       return;
     }
     // blocked: the next failure count starts again from zero once the owner unblocks it.
