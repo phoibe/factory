@@ -295,3 +295,36 @@ test('report posts the Fabrication comment from the journal and flags missing sk
   assert.match(posted[2], /## Fabrication/);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.skillsAlert));
 });
+
+function prWithSkippedSteps(comments = []) {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: comments } });
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'test', ok: false }, { t: '5', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async () => ({ content: Buffer.from(journal).toString('base64') });
+  gh.listPrFiles = async () => [{ filename: 'app/page.tsx' }, { filename: '.factory/journal/s1.jsonl', status: 'added' }];
+  gh.updateComment = async () => {};
+  return gh;
+}
+const allStages = { ...config, stages: { ...config.stages, plan: true, tdd: true, review: true, designPass: true } };
+
+test('green checks after a skipped review and design pass start one catch-up run instead of acceptance', async () => {
+  const gh = prWithSkippedSteps();
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.equal(sent.length, 1);
+  const text = JSON.parse(sent[0].init.body).text;
+  assert.match(text, /"stage":"skills-fix"/);
+  assert.match(text, /"missing":\["requesting-code-review","impeccable"\]/);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.fixing));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /factory-skills-fix/.test(c[2]) && /les rattrape/.test(c[2])));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+});
+
+test('the catch-up happens once: afterwards the PR goes on to acceptance with the alert', async () => {
+  const gh = prWithSkippedSteps([{ body: '<!-- factory-skills-fix -->\nrattrapage' }]);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.skillsAlert));
+});

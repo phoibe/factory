@@ -61,4 +61,5 @@ test('installs the journal hook and keeps the project settings', () => {
   assert.equal(s.hooks.PostToolUse[1].matcher, 'Skill|Bash');
   assert.equal(s.hooks.UserPromptSubmit.length, 1);
   assert.ok(existsSync(join(dir, '.factory/scripts/journal.mjs')));
+  assert.ok(existsSync(join(dir, '.factory/scripts/journal-check.mjs')) && existsSync(join(dir, '.factory/scripts/fabrication.mjs')));
 });

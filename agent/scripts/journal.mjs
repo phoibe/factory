@@ -5,7 +5,19 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const TEST_COMMAND = /\b(vitest|jest|playwright test|node --test|(npm|pnpm|yarn|bun)( run)? test(:[\w-]+)?)\b/;
+const RUNNER = /^(?:(?:npx|bunx|pnpm (?:exec|dlx)|yarn)\s+)?(?:vitest|jest|playwright test|node --test)\b|^(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?(?:\s|$)/;
+const PREFIX = /^(?:cd\s+\S+|[A-Z_][A-Z0-9_]*=\S*|timeout\s+\S+|env|time|CI=\S+)\s*/;
+
+// A Bash command runs the tests when one of its commands starts with a test runner. The text of a heredoc
+// (a file being written that merely mentions vitest) does not count.
+export function isTestCommand(cmd = '') {
+  const code = String(cmd).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '');
+  return code.split(/&&|\|\||[;|\n()]/).some((part) => {
+    let p = part.trim();
+    for (let prev = null; prev !== p;) { prev = p; p = p.replace(PREFIX, ''); }
+    return RUNNER.test(p);
+  });
+}
 const FAILED_TEXT = /(\b[1-9]\d* (failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|\bERR!|exit code [1-9])/im;
 
 // The run JSON ({"repo","issue","pr","stage"}) is somewhere in the first prompt of the run.
@@ -41,7 +53,7 @@ export function entryFor(input, now = new Date()) {
   }
   if (input.tool_name === 'Bash' && (ev === 'PostToolUse' || ev === 'PostToolUseFailure')) {
     const cmd = String(input.tool_input?.command || '');
-    if (!TEST_COMMAND.test(cmd)) return null;
+    if (!isTestCommand(cmd)) return null;
     const ok = ev === 'PostToolUse' && !responseFailed(input.tool_response);
     return { t, kind: 'test', cmd: cmd.slice(0, 200), ok };
   }
