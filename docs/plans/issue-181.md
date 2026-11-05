@@ -1,0 +1,41 @@
+# Host after framing (issue #181) Implementation Plan
+
+> **For agentic workers:** executed inline with executing-plans (no human plan review in the factory).
+
+**Goal:** The install script no longer connects any host; the host is chosen with the stack at framing, and the project brief tells the owner what to click.
+
+**Architecture:** Remove `vercel_setup` from `scripts/factory.sh` and replace it with a single info line; update the agent stage instructions (`agent/stages/framing.md`, `foundation.md`) and the relay's "no preview" message so no host is assumed. `.factory/` is regenerated with `node scripts/sync.mjs .`.
+
+**Tech Stack:** bash (macOS 3.2), Node test runner.
+
+**Spec:** issue #181, comment `<!-- factory-spec -->` (version 1).
+
+## Global Constraints
+
+- Install line, verbatim: « L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer. »
+- Only `gh` required to install: the script never calls `npx`/`node`.
+- Existing Vercel projects untouched; the factory board stays on GitHub Pages.
+- Agent never logs into a host account.
+
+## Review Focus
+
+- Install answers shift: removing the Vercel "Entrée" prompt must not make the framing idea swallow a stray answer (test: nouveau body is the typed idea).
+- Mac without Node: PATH without node/npx still reaches « C'est prêt » (test).
+- Adoption of the factory itself: no host line confusion, still finishes (test).
+- Foundation run with a host needing an account but not yet connected: PR still opened, message repeats the links (framing/foundation text).
+- Relay "no preview found" message must not name Vercel.
+
+---
+
+### Task 1: Install script without host step
+
+**Files:** Modify `scripts/factory.sh` (header comment, remove `vercel_setup`, renumber « 6. Cadrage » → « 5. Cadrage », add host line); Test `test/factory-sh.test.mjs`.
+
+- [ ] Tests: `the install never connects a host and says when it will be chosen` (out matches the verbatim line, no /Vercel/, log has no npx); update answer arrays (drop the Vercel Entrée answer); replace the "skips Vercel" test; nouveau test asserts body `Une appli de recettes`.
+- [ ] Run `npm test`, see failures.
+- [ ] Implement; run `npm test` green; commit.
+
+### Task 2: Agent instructions and relay message
+
+**Files:** `agent/stages/framing.md` (host chosen with the stack, adoption check of existing deployment, brief box « Avant de répondre « go » : brancher l'hébergeur » with exact links/clicks, or nothing when no account needed), `agent/stages/foundation.md` (no `vercel.json` by default; set up account-less host such as GitHub Pages; if host not connected, PR message repeats links), `scripts/relay.mjs` no-preview message host-neutral (+ test in `test/relay.test.mjs` if one covers it), `docs/design.md` hosting row, then `node scripts/sync.mjs .` to regenerate `.factory/`.
+- [ ] Update text; run `npm test`; commit.

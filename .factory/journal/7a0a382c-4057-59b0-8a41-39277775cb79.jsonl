@@ -1,0 +1,5 @@
+{"t":"2026-11-05T13:53:28.165Z","kind":"run","stage":"build","issue":181,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-05T13:54:07.340Z","kind":"skill","name":"writing-plans","id":"toolu_01JiURigP14DwHaNkUJ31zt1"}
+{"t":"2026-11-05T13:54:34.657Z","kind":"skill","name":"test-driven-development","id":"toolu_013FM6B54jCnMy3uDthbgv6m"}
+{"t":"2026-11-05T13:56:05.336Z","kind":"test","cmd":"python3 - <<'EOF'\np='test/factory-sh.test.mjs'\ns=open(p).read()\ns=s.replace(\"PATH: `${bin}:/usr/bin:/bin`,\",\"PATH: [bin, extraEnv.PATH_PREFIX, '/usr/bin', '/bin'].filter(Boolean).join(':'),\")\ns=s.repl","ok":false,"id":"toolu_011DJJA3RFeQzRGWMHPaPn9d"}
+{"t":"2026-11-05T13:57:21.813Z","kind":"test","cmd":"python3 - <<'EOF'\np='scripts/factory.sh'\ns=open(p).read()\ns=s.replace(\"# Il faut seulement l'outil GitHub `gh` (connecté) ; Node.js en plus pour brancher Vercel automatiquement.\",\"# Il faut seulement ","ok":true,"id":"toolu_01YZaV33PHVFPXG8iDSa3Nwy"}
