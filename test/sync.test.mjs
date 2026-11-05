@@ -112,3 +112,11 @@ test('the stages point to the documents step only when grill-with-docs can be in
   assert.match(stage('docs.md'), /claude\/docs-/);
   assert.match(stage('docs.md'), /Sinon, ne fais rien/);
 });
+
+test('the sync records the fingerprint of the factory version it installed', async () => {
+  const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
+  const dir = project();
+  sync({ projectDir: dir });
+  const { fingerprint } = JSON.parse(readFileSync(join(dir, '.factory/synced.json'), 'utf8'));
+  assert.equal(fingerprint, syncFingerprint(join(import.meta.dirname, '..')));
+});
