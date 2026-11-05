@@ -10,6 +10,11 @@
      dans le commentaire de la PR.
    - L'outil prend d'abord le clair puis le sombre, et ne garde les captures sombres (suffixe `--sombre`) que si la
      page est réellement différente du clair. Pas de thème sombre : rien de plus n'est publié.
+   **Écrans derrière une connexion ou une base de données** : ne saute jamais les captures (le verrou relance
+   alors un rattrapage complet, une dizaine de minutes de plus). Lance l'appli avec la base locale qu'utilisent les
+   tests (ou une base jetable démarrée sur la machine), crée un compte de démonstration, puis capture les écrans
+   connectés en passant le cookie de session à l'outil (`--cookie <nom>=<valeur>` sur les commandes `capture`).
+   Fais pareil pour « avant ». N'ajoute pas de page de test dans l'appli pour ça.
 3. **Après** : lance l'appli de la branche (`npm run build && npm run start -- -p 3000`, ou `npm run dev`),
    puis `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
