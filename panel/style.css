@@ -79,6 +79,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .finished { margin: 0; font-weight: 650; color: var(--ok); }
 .finished .when { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
+.done-more { color: var(--muted); font-size: 0.85em; margin: 10px 2px 0; }
 .tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .ticket { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); text-decoration: none; box-shadow: var(--shadow); transition: border-color .15s, transform .15s cubic-bezier(.16, 1, .3, 1), box-shadow .15s; }
 .ticket:hover { border-color: var(--accent); transform: translateY(-1px); }
