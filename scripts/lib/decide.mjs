@@ -72,6 +72,7 @@ function onIssue(ev, config, ctx) {
     return startIssue(ev, config, ctx);
   }
   // A comment on an issue.
+  if (isFactoryIssue(ev.labels) && isDrop(ev.text)) return { type: 'drop', reason: 'le propriétaire abandonne la demande' };
   if (has(ev.labels, L.blocked)) {
     // A blocked card gives up its place (it is not counted in flight): coming back, it needs one again. Only a card
     // that was building is limited; the foundation never waits, and a card blocked before the build holds no place.
@@ -141,6 +142,8 @@ export function decide(ev, config, ctx) {
   }
   if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
     if (ev.removedLabel !== L.running) return ignore('label retiré');
+    // The agent cannot close anything (its run is refused it): it asks the factory with factory:close.
+    if (has(ev.labels, L.close)) return { type: 'drop', reason: "l'agent demande de fermer la fiche" };
     if (has(ev.labels, L.pending)) return { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" };
     // An agent run that leaves an open PR at no step: the owner would wait for nothing. Checks put it back on track
     // (then recette or merge), so the board and the PR's last message agree again.

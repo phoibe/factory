@@ -378,6 +378,35 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The owner gave up on a card (PR or issue): close it with its PR or issue, and free its place. The agent's run is
+  // refused closing anything, so it only asks for it with factory:close and the factory does it here.
+  async function dropCard(n) {
+    const item = await gh.getIssue(n);
+    if (!item || item.state !== 'open') return;
+    const isPr = Boolean(item.pull_request);
+    const pr = isPr ? await gh.getPr(n) : null;
+    const issue = isPr ? linkedIssue(pr?.body) || branchIssue(pr) : n;
+    const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
+    const dropLabels = async (k) => { for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l); };
+    for (const p of prs) { await gh.closePr(p); await dropLabels(p); }
+    if (issue) {
+      const it = issue === n ? item : await gh.getIssue(issue);
+      await dropLabels(issue);
+      if (it?.state === 'open') await gh.closeIssue(issue, 'not_planned');
+    }
+    const what = isPr ? (issue ? `cette PR est abandonnée et la demande #${issue} est fermée` : 'cette PR est abandonnée')
+      : (prs.length ? `cette demande est fermée, avec sa PR #${prs[0]}` : 'cette demande est fermée');
+    await gh.comment(n, say(`C'est fait : ${what}. Rien n'a été mis en ligne. Pour reprendre le sujet plus tard, rouvrez-la.`));
+    log(`drop: #${n} closed`);
+    await dequeue({ freed: issue || null });
+  }
+
+  // A card the agent marked factory:close but whose run ended without removing factory:running (or whose event was
+  // lost): closed on the next tick all the same.
+  async function closeAsked() {
+    for (const item of (await gh.listIssues({ labels: L.close })) || []) await dropCard(item.number);
+  }
+
   // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
   // It only speaks to the owner when it cannot repair (a card that stops twice without finishing).
   async function heal(ownerLogin) {
@@ -386,6 +415,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await relaunchIdle(closed, ownerLogin);
     await releaseStaleLocks(ownerLogin);
     await reportLost();
+    await closeAsked();
   }
 
   // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which
@@ -664,23 +694,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'merge':
         await mergePr(n);
         break;
-      case 'drop': {
-        // The owner gave up on this PR: close it and its issue, and free its place. The agent's run cannot do it.
-        const pr = await gh.getPr(n);
-        const issue = linkedIssue(pr?.body) || (pr && branchIssue(pr));
-        await gh.comment(n, say(issue
-          ? `C'est fait : cette PR est abandonnée et la demande #${issue} est fermée. Rien n'a été mis en ligne.`
-          : "C'est fait : cette PR est abandonnée. Rien n'a été mis en ligne."));
-        await gh.closePr(n);
-        for (const l of names(pr?.labels).filter((x) => x.startsWith('factory:'))) await gh.removeLabel(n, l);
-        if (issue) {
-          const labels = await liveLabels(issue);
-          for (const l of [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing]) if (labels.includes(l)) await gh.removeLabel(issue, l);
-          await gh.closeIssue(issue, 'not_planned');
-        }
-        await dequeue({ freed: issue || null });
+      case 'drop':
+        await dropCard(n);
         break;
-      }
       case 'docs-merge':
         await mergeDocsPr(n);
         break;

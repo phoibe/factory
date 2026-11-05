@@ -103,6 +103,10 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
 - Ne traite pas les messages que le propriétaire écrit pendant ton run (la factory les a marqués 👀) : elle
   les traitera elle-même dès que tu retires `factory:running`. Ne fais jamais toi-même une transition que
   seule la factory fait : passer en construction après un « go », lancer les contrôles, fusionner.
+- **Tu ne fermes jamais une issue ni une PR toi-même** : ton run n'en a pas le droit, la commande sera refusée.
+  Quand le propriétaire demande de fermer ou d'abandonner (une demande, une PR), ajoute le label `factory:close`
+  à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
+  factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
 - Quand tu ouvres une issue pour une idée nouvelle, mets `<!-- factory-agent -->` au début de sa description
   et le label `factory:feature` : elle ne démarrera que quand le propriétaire y écrira.
 
