@@ -33,7 +33,7 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
   bibliothèques reconnues) plutôt que de reconstruire.
 - Étapes actives : grilling ✅, validation de chaque spec ❌, plan ✅, TDD ✅, revue de code ✅, passe design (impeccable) ✅, captures avant/après ✅, contrôles automatiques ✅, recette ✅
 - Revue de code : au plus 3 allers-retours entre le développeur et le relecteur, ensuite escalade.
-- Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : `dispatching-parallel-agents`, `executing-plans`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans`, `grilling`, `grill-with-docs`, `to-spec`, `impeccable`
+- Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : `dispatching-parallel-agents`, `executing-plans`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans`, `grilling`, `domain-modeling`, `grill-with-docs`, `to-spec`, `impeccable`
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
 
@@ -92,8 +92,9 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage, `factory:audit` pour une review générale qui passe directement en `factory:building` ; une issue `factory:question` ne change jamais d'état, voir `stages/question.md`) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
-Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques, à poser
-même si les contrôles sont désactivés : la factory passe alors directement à la suite) →
+Sur la PR : `factory:visual-review` (captures à valider) **et** `factory:checks` (contrôles automatiques, posés
+ensemble : les contrôles tournent pendant qu'il regarde les captures, et son « ok » sur les captures vaut recette ;
+`factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, `factory:checks` seul, puis
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
 - Quand ton étape le dit, change les labels (voir « API GitHub »).
@@ -102,6 +103,10 @@ même si les contrôles sont désactivés : la factory passe alors directement �
 - Ne traite pas les messages que le propriétaire écrit pendant ton run (la factory les a marqués 👀) : elle
   les traitera elle-même dès que tu retires `factory:running`. Ne fais jamais toi-même une transition que
   seule la factory fait : passer en construction après un « go », lancer les contrôles, fusionner.
+- **Tu ne fermes jamais une issue ni une PR toi-même** : ton run n'en a pas le droit, la commande sera refusée.
+  Quand le propriétaire demande de fermer ou d'abandonner (une demande, une PR), ajoute le label `factory:close`
+  à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
+  factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
 - Quand tu ouvres une issue pour une idée nouvelle, mets `<!-- factory-agent -->` au début de sa description
   et le label `factory:feature` : elle ne démarrera que quand le propriétaire y écrira.
 
@@ -111,6 +116,10 @@ même si les contrôles sont désactivés : la factory passe alors directement �
 - Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main`. Tu ne fusionnes jamais une PR :
   la factory le fait après les contrôles et la recette.
 - La PR contient `Closes #<n>` dans sa description, et un résumé en français pour le propriétaire en tête.
+- **Toujours à jour avec `main` avant de pousser pour la factory.** Juste avant d'ouvrir une PR, et avant chaque push
+  suivi de `factory:visual-review` ou `factory:checks` : `git fetch origin main && git merge origin/main` (pas de
+  rebase), résous les conflits, relance les tests, puis pousse. Une PR en conflit ne déclenche aucun contrôle et
+  reste bloquée jusqu'à ce que la factory s'en aperçoive.
 - Les captures d'écran vont sur la branche `claude/factory-assets` via `.factory/scripts/shots.mjs publish`.
 
 ## Interdits

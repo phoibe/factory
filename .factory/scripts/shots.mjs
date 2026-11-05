@@ -2,6 +2,7 @@
 // Before/after screenshots for factory PRs.
 //   node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/settings --out /tmp/shots/after
 //        [--dark-class dark | --dark-attr data-theme=dark]   (only for a dark theme switched by the app, not by the browser)
+//        [--cookie session=abc123[,other=v]]                 (screens behind a sign-in: the session cookie to send)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
 // Publish builds one side-by-side image (before left, after right) per screen, size and theme.
@@ -44,17 +45,28 @@ export function darkToggle({ 'dark-class': cls, 'dark-attr': attr } = {}) {
   return null;
 }
 
+// Parses --cookie "a=1,b=2" into Playwright cookies for the base URL (screens behind a sign-in).
+export function cookiesFor(arg, baseUrl) {
+  if (typeof arg !== 'string' || !arg) return [];
+  const url = new URL(baseUrl).origin;
+  return arg.split(',').map((pair) => pair.trim()).filter((pair) => pair.includes('=')).map((pair) => {
+    const at = pair.indexOf('=');
+    return { name: pair.slice(0, at), value: pair.slice(at + 1), url };
+  });
+}
+
 // True when two screenshots (PNG buffers) differ, i.e. the dark theme changes the page.
 export function differs(a, b) {
   return !Buffer.from(a).equals(Buffer.from(b));
 }
 
-async function capture({ baseUrl, routes, out, toggle }) {
+async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
   const browser = await chromium.launch();
   const shoot = async (viewport, scheme, applyToggle) => {
     const context = await browser.newContext({ viewport, colorScheme: scheme });
+    if (cookies.length) await context.addCookies(cookies);
     if (applyToggle && toggle) {
       await context.addInitScript(({ toggle }) => {
         const root = document.documentElement;
@@ -165,7 +177,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   if (cmd === 'capture') {
-    await capture({ baseUrl: args['base-url'], routes: String(args.routes || '/').split(','), out: args.out, toggle: darkToggle(args) });
+    await capture({ baseUrl: args['base-url'], routes: String(args.routes || '/').split(','), out: args.out, toggle: darkToggle(args), cookies: cookiesFor(args.cookie, args['base-url']) });
   } else if (cmd === 'publish') {
     console.log(await publish({ pr: args.pr, before: args.before, after: args.after }));
   } else {

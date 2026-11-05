@@ -25,13 +25,15 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
 6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`
    (critique impeccable de chaque écran créé ou modifié, puis correction de tout ce qu'elle trouve), en
-   respectant `DESIGN.md` : pas de nouvelle couleur ou police hors de ce fichier.
+   respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
+   « Textes à l'écran » de `design-pass.md`.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
-   lui), puis `Closes #<n>`, puis les détails techniques en anglais.
+   lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais.
 9. **Captures** : si l'interface change et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md`, puis mets le label `factory:visual-review` sur la PR.
+   `.factory/stages/screenshots.md`, puis mets les labels `factory:visual-review` puis `factory:checks` sur la PR
+   (les contrôles tournent pendant que le propriétaire regarde les captures ; son « ok » vaut recette).
    Sinon, mets directement `factory:checks` sur la PR.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

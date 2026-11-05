@@ -61,7 +61,7 @@
         "code-review": false,
         "codebase-design": false,
         "diagnosing-bugs": false,
-        "domain-modeling": false,
+        "domain-modeling": true,
         "grill-with-docs": true,
         "implement": false,
         "implement-spec": false,
