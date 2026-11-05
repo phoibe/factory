@@ -385,6 +385,28 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await closeMerged(closed);
     await relaunchIdle(closed, ownerLogin);
     await releaseStaleLocks(ownerLogin);
+    await reportLost();
+  }
+
+  // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which
+  // stays in « contrôles » with green checks. The report is made again from the checks' own result.
+  async function reportLost() {
+    const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
+    for (const item of waiting) {
+      if (names(item.labels).includes(L.running)) continue;
+      const pr = await gh.getPr(item.number);
+      if (pr?.state !== 'open') continue;
+      const runs = (await gh.checkRuns?.(pr.head.sha).catch(() => null)) || [];
+      const job = (name) => runs.filter((r) => new RegExp(`(^|/ )${name}$`).test(r.name)).sort((a, b) => Date.parse(b.started_at || 0) - Date.parse(a.started_at || 0))[0];
+      const checks = job('checks');
+      const last = job('report');
+      if (!checks || checks.status !== 'completed' || !['success', 'failure'].includes(checks.conclusion)) continue;
+      if (!last || last.status !== 'completed' || last.conclusion !== 'failure') continue;
+      if (Date.parse(last.started_at || 0) < Date.parse(checks.completed_at || 0)) continue; // an older report
+      if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
+      log(`guard: report of #${item.number} lost, made again (${checks.conclusion})`);
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha });
+    }
   }
 
   const lastRunningAt = async (n) => {
