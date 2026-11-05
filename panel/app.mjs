@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=17';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=18';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=6';
@@ -173,6 +173,7 @@ async function openProject(fullName) {
     ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
     : "À faire une fois, avant la première feature : vision, design et stack.";
   $('issues-link').href = issuesUrl(base);
+  $('issues-link').textContent = issuesLinkText(null);
   show('project-view');
   resetChat();
   renderRules();
@@ -239,6 +240,7 @@ async function refresh() {
     if (ev.changed) mergeEvents(ev.data);
     if (closed.data) { live.done = doneItems(closed.data); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
+    $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
     // and the message the card should open on, instead of the top of the issue.
     let previewsChanged = false;

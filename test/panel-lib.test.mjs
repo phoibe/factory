@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -174,4 +174,13 @@ test('a pull request closing several issues hides and finishes all of them', () 
   assert.deepEqual(boardItems(items).map((i) => i.number), [9]);
   const done = doneItems([{ number: 5, merged_at: '2026-01-01T00:00:00Z', body: 'Closes #1, closes #2', title: 'T', html_url: 'https://github.com/o/r/pull/5' }]);
   assert.deepEqual(done.map((d) => d.issue), [1, 2]);
+});
+
+test('openIssueCount counts issues, not pull requests', () => {
+  assert.equal(openIssueCount([{ number: 1 }, { number: 2, pull_request: {} }, { number: 3 }]), 2);
+  assert.equal(openIssueCount([]), 0);
+  assert.equal(openIssueCount(null), null);
+  assert.equal(issuesLinkText(7), 'Voir les demandes sur GitHub (7)');
+  assert.equal(issuesLinkText(0), 'Voir les demandes sur GitHub (0)');
+  assert.equal(issuesLinkText(null), 'Voir les demandes sur GitHub');
 });
