@@ -69,7 +69,8 @@ export function statusText(failures, ms) {
 export const pollDelay = (failures, idle = false) => Math.min((idle ? 30_000 : 8_000) * 2 ** failures, 300_000);
 
 export const IDLE_AFTER = 120_000;
-export const isIdle = (lastActivity, now) => now - lastActivity >= IDLE_AFTER;
+// A hidden browser tab is idle by definition: it keeps polling, at the calm rhythm.
+export const isIdle = (lastActivity, now, hidden = false) => hidden || now - lastActivity >= IDLE_AFTER;
 
 // Compares two Maps number -> signature (null = nothing drawn yet).
 export function cardChanges(prev, next) {
