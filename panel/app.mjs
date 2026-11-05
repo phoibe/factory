@@ -381,12 +381,12 @@ function pendingState() { try { return JSON.parse(store.get(pendingKey()) || '{}
 const savePending = (state) => { if (Object.keys(state).length) store.set(pendingKey(), JSON.stringify(state)); else store.del(pendingKey()); };
 function pendingZone(held) {
   if (!held.length) return null;
-  return el('section', { class: 'pending-zone', 'aria-label': 'Prise en compte en cours', 'aria-live': 'polite' },
+  return el('section', { class: 'pending-zone', 'aria-label': 'Prise en compte en cours' },
     el('h2', {}, 'Prise en compte en cours…', el('span', { class: 'count' }, String(held.length))),
     el('ul', { class: 'pending-list' }, held.map((c) => el('li', { class: 'pending-item', 'data-number': String(c.number) },
       el('span', { class: 'num' }, `#${c.number}`),
       el('span', { class: 'pending-title' }, c.title),
-      el('span', { class: 'muted' }, 'Prise en compte en cours…')))));
+      el('span', { class: 'muted' }, 'En attente de GitHub')))));
 }
 // Clicking a plate's link (preview, « Répondre », title) opens GitHub in another tab: remember it, and put the plate on hold when the owner is back.
 for (const type of ['click', 'auxclick']) {
