@@ -22,6 +22,7 @@ export const L = {
   noPick: 'factory:no-pick',
   urgent: 'factory:urgent',
   autoPicked: 'factory:auto-picked',
+  close: 'factory:close',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -47,6 +48,7 @@ export const LABEL_DEFS = [
   [L.noPick, 'ededed', 'Ne jamais piocher cette fiche automatiquement'],
   [L.urgent, 'e11d48', 'Fiche à piocher en premier par la factory'],
   [L.autoPicked, 'c2e0c6', "La factory a pris cette fiche d'elle-même (place libre)"],
+  [L.close, 'ededed', 'Le propriétaire abandonne cette fiche : la factory la ferme'],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 
