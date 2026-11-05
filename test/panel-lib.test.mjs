@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -93,12 +93,27 @@ test('doneItems keeps merged requests only, newest first, and opens the original
   assert.equal(out[0].url, 'https://github.com/o/r/issues/7');
 });
 
-test('doneItems keeps only the 10 most recent whatever their age', () => {
+test('doneItems keeps every merged request, newest first', () => {
   const pulls = Array.from({ length: 14 }, (_, i) => pr(200 + i, new Date(Date.UTC(2025, 0, 1 + i)).toISOString()));
   const out = doneItems(pulls);
-  assert.equal(out.length, 10);
+  assert.equal(out.length, 14);
   assert.equal(out[0].number, 213);
   assert.deepEqual(doneItems(null), []);
+});
+
+test('doneView shows at most 9 items and counts the hidden older ones', () => {
+  const mk = (n) => Array.from({ length: n }, (_, i) => ({ number: i }));
+  assert.deepEqual([doneView(mk(14)).shown.length, doneView(mk(14)).hidden], [9, 5]);
+  assert.deepEqual([doneView(mk(10)).shown.length, doneView(mk(10)).hidden], [9, 1]);
+  assert.deepEqual([doneView(mk(9)).shown.length, doneView(mk(9)).hidden], [9, 0]);
+  assert.deepEqual([doneView(mk(3)).shown.length, doneView(mk(3)).hidden], [3, 0]);
+  assert.equal(doneView(mk(14)).shown[0].number, 0);
+});
+
+test('olderNote words the hidden count, singular and plural', () => {
+  assert.equal(olderNote(0), '');
+  assert.equal(olderNote(1), '+ 1 plus ancienne non affichée');
+  assert.equal(olderNote(5), '+ 5 plus anciennes non affichées');
 });
 
 test('doneAgo speaks French', () => {
