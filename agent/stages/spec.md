@@ -9,6 +9,7 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    - les règles et cas limites décidés ;
    - ce qui est hors périmètre ;
    - les critères d'acceptation, sous forme de vérifications qu'il pourra faire lui-même sur la preview.
+   Si les questions ont produit des documents (voir `.factory/stages/docs.md`), ajoute la phrase de résumé en français.
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
    titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
 4. **Faut-il la faire valider ?** Oui si l'étape « validation de chaque spec » est active (voir AGENT.md).

@@ -30,6 +30,20 @@ export function withJournalHook(settings = {}) {
   return { ...settings, hooks };
 }
 
+// One-off changes to a project's own config. `docs-grilling`: grill-with-docs (and the domain-modeling skill it
+// needs) become the default; a project that had them off gets them on once, and a later opt-out is respected.
+const MIGRATIONS = [
+  { id: 'docs-grilling', apply(raw) {
+    const pack = raw.skills?.['matt-pocock'];
+    if (!pack || pack.enabled === false) return false;
+    let changed = false;
+    for (const id of ['grill-with-docs', 'domain-modeling']) {
+      if (pack.skills && pack.skills[id] === false) { pack.skills[id] = true; changed = true; }
+    }
+    return changed;
+  } },
+];
+
 export function render(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
@@ -40,6 +54,14 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   const catalog = readJson(join(factoryDir, 'packs/catalog.json'));
   const configPath = join(projectDir, 'factory.config.json');
   const parsed = parseRawConfig(existsSync(configPath) ? readFileSync(configPath, 'utf8') : null);
+  // Only a config file the project already has is migrated; the marker lives beside the installed skills.
+  const donePath = join(projectDir, '.factory/migrations.json');
+  const done = readJson(donePath, { done: [] }).done;
+  let migrated = false;
+  if (!parsed.warning && existsSync(configPath)) {
+    for (const m of MIGRATIONS.filter((x) => !done.includes(x.id))) { if (m.apply(parsed.raw)) migrated = true; }
+    if (migrated) writeFileSync(configPath, JSON.stringify(parsed.raw, null, 2) + '\n');
+  }
   const { config, warnings } = resolveConfig(parsed.raw, catalog);
   if (parsed.warning) warnings.push(parsed.warning);
   const skills = enabledSkills(config, catalog);
@@ -74,6 +96,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
+  writeFileSync(donePath, JSON.stringify({ done: MIGRATIONS.map((m) => m.id) }, null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');
   writeFileSync(join(outDir, 'config.resolved.json'), JSON.stringify(config, null, 2) + '\n');
   return { installed: skills.map((s) => s.id), removed, warnings };

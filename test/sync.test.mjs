@@ -66,3 +66,49 @@ test('installs the journal hook and keeps the project settings', () => {
   assert.ok(existsSync(join(dir, '.factory/scripts/journal.mjs')));
   assert.ok(existsSync(join(dir, '.factory/scripts/journal-check.mjs')) && existsSync(join(dir, '.factory/scripts/fabrication.mjs')));
 });
+
+test('grill-with-docs and its domain-modeling helper are installed by default', () => {
+  const dir = project();
+  const res = sync({ projectDir: dir });
+  assert.ok(res.installed.includes('grill-with-docs'));
+  assert.ok(res.installed.includes('domain-modeling'));
+  assert.ok(existsSync(join(dir, '.claude/skills/domain-modeling/SKILL.md')));
+});
+
+test('an existing project that had them off gets them once, and a later opt-out is kept', () => {
+  const off = { skills: { 'matt-pocock': { skills: { 'grill-with-docs': false, 'domain-modeling': false, grilling: true } } } };
+  const dir = project(off);
+  const first = sync({ projectDir: dir });
+  assert.ok(first.installed.includes('grill-with-docs') && first.installed.includes('domain-modeling'));
+  const saved = JSON.parse(readFileSync(join(dir, 'factory.config.json'), 'utf8'));
+  assert.equal(saved.skills['matt-pocock'].skills['grill-with-docs'], true);
+  assert.equal(saved.skills['matt-pocock'].skills.grilling, true);
+  // The owner turns it off afterwards: the next sync must not turn it back on.
+  saved.skills['matt-pocock'].skills['grill-with-docs'] = false;
+  writeFileSync(join(dir, 'factory.config.json'), JSON.stringify(saved));
+  const second = sync({ projectDir: dir });
+  assert.ok(!second.installed.includes('grill-with-docs'));
+  assert.ok(!existsSync(join(dir, '.claude/skills/grill-with-docs')));
+});
+
+test('a project without a config file is not given a config file by the migration', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  assert.ok(!existsSync(join(dir, 'factory.config.json')));
+});
+
+test('a disabled matt-pocock pack stays disabled through the migration', () => {
+  const dir = project({ skills: { 'matt-pocock': { enabled: false } } });
+  const res = sync({ projectDir: dir });
+  assert.ok(!res.installed.includes('grill-with-docs'));
+});
+
+test('the stages point to the documents step only when grill-with-docs can be installed', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const stage = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8');
+  assert.match(stage('grilling.md'), /docs\.md/);
+  assert.match(stage('framing.md'), /docs\.md/);
+  assert.match(stage('docs.md'), /claude\/docs-/);
+  assert.match(stage('docs.md'), /Sinon, ne fais rien/);
+});
