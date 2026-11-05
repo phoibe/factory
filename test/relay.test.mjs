@@ -252,6 +252,17 @@ test('green checks on a feature open acceptance with the preview link', async ()
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://preview.example')));
 });
 
+test('when no preview shows up, the acceptance message names no host in particular', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  gh.deploymentStatuses = async () => [{ state: 'pending' }];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+  await relay.report({ result: 'success', pr: 10 });
+  const msg = gh.calls.find((c) => c[0] === 'comment')[2];
+  assert.match(msg, /pas trouvé de preview/);
+  assert.match(msg, /hébergeur/);
+  assert.doesNotMatch(msg, /Vercel|README/);
+});
+
 test('green checks on a project without previews merge directly: nothing to try', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], deployments: [{ id: 1, environment: 'github-pages' }] });
   let waited = 0;

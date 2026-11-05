@@ -17,7 +17,7 @@ function run(args, answers, extraEnv = {}) {
   const log = join(dir, 'gh.log');
   writeFileSync(log, '');
   // The script reads its answers from /dev/tty; `script` gives it one fed from our input.
-  const env = { ...process.env, PATH: `${bin}:/usr/bin:/bin`, FAKE_GH_LOG: log, FAKE_REMOTE: remote, XDG_CONFIG_HOME: join(dir, 'cfg'), HOME: dir, ...extraEnv };
+  const env = { ...process.env, PATH: [bin, extraEnv.PATH_PREFIX, '/usr/bin', '/bin'].filter(Boolean).join(':'), FAKE_GH_LOG: log, FAKE_REMOTE: remote, XDG_CONFIG_HOME: join(dir, 'cfg'), HOME: dir, ...extraEnv };
   const out = execFileSync('script', ['-qec', `bash ${SCRIPT} ${args.join(' ')}`.trim(), '/dev/null'], { env, input: answers.join('\n') + '\n', encoding: 'utf8', timeout: 60_000 });
   return { out, log: readFileSync(log, 'utf8'), remote, cfg: join(dir, 'cfg') };
 }
@@ -37,7 +37,7 @@ test('adopter installs the factory files, secrets, sync and framing issue', () =
 });
 
 test('nouveau creates the repository from the template', () => {
-  const { log } = run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', 'Une appli de recettes']);
+  const { log } = run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', 'Une appli de recettes']);
   assert.match(log, /repo create phoibe\/nouveau-projet --private --template phoibe\/factory-template/);
   assert.match(log, /issue create .*--body Une appli de recettes/);
 });
@@ -83,9 +83,28 @@ test('choice 3 updates the routine of the one project picked', () => {
   assert.equal((log.match(/secret set FACTORY_ROUTINE_TOKEN/g) || []).length, 1);
 });
 
-test('adopting the factory itself skips Vercel (its board is on GitHub Pages)', () => {
+test('the install never connects a host: it says the host comes with the stack, at framing', () => {
+  const { out, log } = run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', 'Une appli']);
+  assert.match(out, /L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer\./);
+  assert.doesNotMatch(out, /Vercel|Appuyez sur Entrée/);
+  assert.doesNotMatch(log, /vercel/i);
+  assert.match(out, /C'est prêt/);
+});
+
+test('installing works on a Mac without Node.js, even when npx would be found', () => {
+  // A trap: if the script ever called npx (or node), the run would fail loudly.
+  const dir = mkdtempSync(join(tmpdir(), 'factory-trap-'));
+  for (const tool of ['npx', 'node']) {
+    writeFileSync(join(dir, tool), '#!/bin/sh\necho "$0 must not be called" >&2; exit 97\n', { mode: 0o755 });
+  }
+  const { out } = run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', ''], { PATH_PREFIX: dir });
+  assert.doesNotMatch(out, /must not be called/);
+  assert.match(out, /C'est prêt/);
+});
+
+test('adopting the factory itself finishes without any host step', () => {
   const { out, log } = run(['adopter', 'factory'], ['', 'o', 'https://example.test/fire', 'tok', '', '']);
-  assert.match(out, /Pas besoin de Vercel/);
+  assert.doesNotMatch(out, /Vercel|L'hébergeur sera choisi/);
   assert.match(out, /C'est prêt/);
   assert.match(log, /issue create -R phoibe\/factory --title Cadrage : factory/);
 });

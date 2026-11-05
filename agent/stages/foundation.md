@@ -28,10 +28,10 @@ ne refais **pas** l'appli et ne change pas son comportement.
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
-   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil), et
-   le fichier de configuration de l'hébergeur s'il en demande un et qu'il manque (il déclare le type d'appli
-   de la stack choisie). Si un contrôle échoue à cause du code existant, corrige
-   ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
+   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil).
+   Si la fiche retient un hébergeur et que le dépôt n'y est pas encore déployé, fais comme à l'étape 5
+   ci-dessous (puce « l'hébergeur retenu dans la fiche ») ; sinon ne touche pas à l'hébergement.
+   Si un contrôle échoue à cause du code existant, corrige ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
    directement `factory:checks` ; sinon fais les captures (étape 8).
@@ -65,14 +65,30 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      pages principales), qui passent tous : ce sont ceux des contrôles automatiques ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
-   - la configuration d'hébergement : déclare le type d'appli de la stack choisie, si l'hébergeur le demande
-     (un projet importé quand le dépôt était vide ne sait pas encore quoi construire).
+   - **l'hébergeur retenu dans la fiche** :
+     - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
+       (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire. Pour GitHub Pages,
+       revérifie d'abord que le dépôt est public (`gh api repos/<dépôt> --jq .private`) ; s'il est encore
+       privé, ne mets pas Pages en place, ouvre la PR et dis-le-lui (ne change jamais la visibilité toi-même). Puis déploie dans
+       l'environnement nommé exactement `github-pages` (celui du modèle officiel) : la factory sait ainsi
+       qu'il n'y a pas d'aperçu de PR à attendre. Si un réglage
+       t'est refusé (par exemple activer les pages du dépôt), ouvre la PR quand même et donne-lui le clic
+       exact avec son lien (« Settings → Pages → Source : GitHub Actions ») ;
+     - s'il demande un compte, ajoute seulement la configuration d'hébergement : déclare le
+       type d'appli de la stack choisie, si l'hébergeur le demande (un projet importé quand le dépôt était vide
+       ne sait pas encore quoi construire). Ne te connecte jamais à son compte.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
    localement que les cinq scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
+   **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
+   aucun déploiement GitHub du dépôt (`gh api repos/<dépôt>/deployments`), aucun commentaire de son bot sur
+   les PR précédentes) : ne bloque rien, ouvre la PR quand même. Ajoute au
+   résumé et à ton message sur la PR que cette PR n'aura pas d'aperçu, en redonnant les liens et les clics de
+   l'encadré « Avant de répondre « go » » de la fiche : une fois l'hébergeur branché, les PR suivantes auront
+   leur aperçu.
 8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:visual-review`
    puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
 9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue (titre

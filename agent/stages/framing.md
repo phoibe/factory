@@ -14,6 +14,10 @@ application (un `package.json`, du code source), c'est une **adoption** :
   nouveau ; seulement dans ce cas, passe par le questionnaire design et la direction visuelle.
 - **Stack** : garde celle en place. N'en propose une autre que si le propriétaire le demande ou si elle
   empêche vraiment un besoin décidé.
+- **Hébergement** : regarde toi-même si le dépôt est déjà déployé quelque part (déploiements et environnements
+  GitHub, fichiers de configuration d'hébergeur à la racine, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR,
+  adresse du site dans le README). S'il l'est, garde cet hébergeur et ne demande rien. Sinon, propose-en un
+  avec la stack, comme pour un nouveau projet.
 - La fiche finale décrit l'appli telle qu'elle est plus ce qui vient ensuite ; « Première version » devient
   **Prochaines features**.
 
@@ -126,10 +130,18 @@ Critères pour construire et départager les stacks :
    `package.json` qui lance ses propres outils sous ces noms (et Playwright pour `test:a11y`) : compte-le
    alors dans son point faible.
 
-**Hébergement** : l'hébergeur se choisit avec la stack, sur les mêmes critères (adapté, gratuit, robuste).
-Celui qui est branché à la création du projet (Vercel aujourd'hui) n'a aucun bonus : on le débranche si un
-autre est retenu. Les aperçus de chaque PR marchent avec tout hébergeur qui signale ses déploiements à GitHub ;
-préfère-en un qui le fait.
+**Hébergement** : il fait partie de la stack, et l'hébergeur se choisit avec la stack, sur les mêmes critères
+(adapté, gratuit, robuste). L'installation n'en branche aucun et aucun n'est choisi par défaut : propose celui qui
+va le mieux avec la stack et le besoin, avec une alternative écartée et pourquoi. Un hébergeur déjà branché sur un
+projet plus ancien (souvent Vercel) n'a aucun bonus : on le débranche si un autre est retenu.
+La factory affiche les aperçus de tout hébergeur qui signale ses déploiements à GitHub ; préfère-en un qui le fait.
+Un projet sans aperçu passe directement à la suite. Tu ne te connectes jamais au compte du propriétaire
+chez un hébergeur : s'il faut un compte, les clics restent les siens.
+Pour les pages gratuites de GitHub, vérifie d'abord la visibilité du dépôt (`gh api repos/<dépôt> --jq .private`) :
+sur un dépôt privé et un compte gratuit, elles ne marchent pas (il faut un abonnement payant, et le site serait
+public quand même). Sur un dépôt privé, propose plutôt un autre hébergeur gratuit ; tu peux mettre en alternative
+« rendre le dépôt public » en disant clairement que tout le code deviendrait visible par tout le monde. Ne change
+jamais la visibilité du dépôt sans son « oui » écrit à cette question.
 
 ## La fiche projet (porte 1)
 
@@ -143,10 +155,18 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Design** : la scène d'usage, les trois mots du ressenti, les inspirations et anti-inspirations, ce qui
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
   visuelle choisie avec ses quatre lignes ;
-- **Stack** : chaque brique avec sa raison en une phrase ;
+- **Stack** : chaque brique avec sa raison en une phrase, **hébergeur compris** ;
 - **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
-  cliquer, étape par étape, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;
-- **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
+  cliquer, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;
+- **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien » ;
+- **Si l'hébergeur retenu demande un compte** et que le dépôt n'y est pas déjà branché, un
+  encadré (citation `>`) intitulé **« Avant de répondre « go » : brancher l'hébergeur »**, juste avant la phrase
+  de fin : les liens exacts pour ce dépôt et les clics à faire, en général deux (donner à l'hébergeur l'accès au
+  dépôt depuis son application GitHub, puis importer le dépôt chez lui), en disant qu'ainsi la toute première PR
+  aura déjà son aperçu. Préviens qu'un premier échec du déploiement est normal tant que l'appli n'existe pas encore.
+  Écris des liens cliquables (pas en format code), avec le vrai nom du dépôt.
+  Si l'hébergeur ne demande aucun compte (par exemple GitHub Pages pour un site simple), pas d'encadré : dis
+  seulement que tu le mets en place toi-même dans la PR des fondations, sans rien lui demander.
 
 Termine par : « Répondez « go » pour que je pose les fondations de l'appli, ou dites-moi ce qu'il faut changer. »
 Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`.
