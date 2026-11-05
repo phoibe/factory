@@ -9,10 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
-import { resolveConfig } from './lib/config.mjs';
+import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
+import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, summarize, uiChanged } from './lib/fabrication.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -26,6 +27,11 @@ const CHECKS_TIMEOUT_MS = 28 * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 export const PROJECT_WORKFLOW = 'factory.yml';
 export const MAX_BRANCH_UPDATES = 2;
+// A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
+export const IDLE_MINUTES = 30;
+const HEAL_MARKER = '<!-- factory-heal -->';
+// The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
+const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr.head?.ref || '')?.[1]) || null;
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -84,11 +90,14 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   if (eventName === 'pull_request') {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
-      merged: Boolean(p.pull_request.merged), open: p.pull_request.state === 'open', fromOwner: isOwnerOrApp(p.sender?.login),
+      merged: Boolean(p.pull_request.merged), headRef: p.pull_request.head?.ref, open: p.pull_request.state === 'open', fromOwner: isOwnerOrApp(p.sender?.login),
     };
   }
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
 }
+
+// Files a documentation PR may carry: the glossary and the decision records, nothing else.
+export const isDocFile = (f) => /^(GLOSSARY(-MAP)?\.md|docs\/adr\/[^/]+\.md)$/.test(f);
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const outputs = {};
@@ -271,6 +280,27 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The documents written during the questions (glossary, decisions) are merged as soon as their PR opens, but only
+  // when it touches nothing else: a doc PR that carries code is left for the owner.
+  async function mergeDocsPr(prNumber) {
+    const pr = await gh.getPr(prNumber);
+    const sha = pr?.head?.sha;
+    const def = (await gh.getRepo?.())?.default_branch || 'main';
+    // Only the factory's own branch, in this repo, aimed at the default branch.
+    if (!pr || pr.state !== 'open' || pr.draft || pr.base?.ref !== def || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
+      log(`docs PR #${prNumber}: not a plain docs PR of this repo, left alone`); return;
+    }
+    const list = (await gh.listPrFiles(prNumber)) || [];
+    if (!list.length || !list.every((f) => f.status !== 'renamed' && !f.previous_filename && isDocFile(f.filename))) { log(`docs PR #${prNumber}: not only documents, left alone`); return; }
+    try {
+      await gh.merge(prNumber, sha);
+      log(`docs PR #${prNumber} merged`);
+    } catch (e) {
+      log(`docs PR #${prNumber} not merged: ${e.message || e}`);
+      await gh.comment(prNumber, say("Je n'ai pas pu fusionner ces documents (glossaire et décisions) tout seul, sans doute un conflit. Rien n'est cassé : le projet continue sans eux pour l'instant.")).catch(() => {});
+    }
+  }
+
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
     const issue = linkedIssue(pr.body);
@@ -348,6 +378,111 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
+  // It only speaks to the owner when it cannot repair (a card that stops twice without finishing).
+  async function heal(ownerLogin) {
+    const closed = (await gh.listClosedPulls?.().catch(() => null)) || [];
+    await closeMerged(closed);
+    await relaunchIdle(closed, ownerLogin);
+    await releaseStaleLocks(ownerLogin);
+    await reportLost();
+  }
+
+  // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which
+  // stays in « contrôles » with green checks. The report is made again from the checks' own result.
+  async function reportLost() {
+    const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
+    for (const item of waiting) {
+      if (names(item.labels).includes(L.running)) continue;
+      const pr = await gh.getPr(item.number);
+      if (pr?.state !== 'open') continue;
+      const runs = (await gh.checkRuns?.(pr.head.sha).catch(() => null)) || [];
+      const job = (name) => runs.filter((r) => new RegExp(`(^|/ )${name}$`).test(r.name)).sort((a, b) => Date.parse(b.started_at || 0) - Date.parse(a.started_at || 0))[0];
+      const checks = job('checks');
+      const last = job('report');
+      if (!checks || checks.status !== 'completed' || !['success', 'failure'].includes(checks.conclusion)) continue;
+      if (!last || last.status !== 'completed' || last.conclusion !== 'failure') continue;
+      if (Date.parse(last.started_at || 0) < Date.parse(checks.completed_at || 0)) continue; // an older report
+      if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
+      log(`guard: report of #${item.number} lost, made again (${checks.conclusion})`);
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha });
+    }
+  }
+
+  const lastRunningAt = async (n) => {
+    const last = ((await gh.listEvents(n)) || []).filter((e) => ['labeled', 'unlabeled'].includes(e.event) && e.label?.name === L.running).pop();
+    return last ? Date.parse(last.created_at) : null;
+  };
+
+  // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
+  async function closeMerged(closed) {
+    for (const pr of closed.filter((p) => p.merged_at)) {
+      const n = linkedIssue(pr.body);
+      const issue = n && (await gh.getIssue(n));
+      if (!issue || issue.state !== 'open' || issue.pull_request) continue;
+      const labels = names(issue.labels);
+      if (!labels.some((l) => l.startsWith('factory:'))) continue;
+      // Reopened by the owner after the merge: there is more to do on it.
+      const events = (await gh.listEvents(n)) || [];
+      if (events.some((e) => e.event === 'reopened' && Date.parse(e.created_at) > Date.parse(pr.merged_at))) continue;
+      for (const l of [L.building, L.blocked, L.running, L.queued, L.pending]) if (labels.includes(l)) await gh.removeLabel(n, l);
+      await gh.closeIssue(n);
+      log(`guard: #${n} closed, its PR #${pr.number} was merged`);
+    }
+  }
+
+  async function relaunchIdle(closed, ownerLogin) {
+    const building = ((await gh.listIssues({ labels: L.building })) || []).filter((i) => !i.pull_request);
+    if (!building.length) return;
+    const linked = new Set([...((await gh.listPulls?.().catch(() => null)) || []), ...closed].flatMap((p) => [linkedIssue(p.body), branchIssue(p)]).filter(Boolean));
+    for (const item of building) {
+      const n = item.number;
+      if (linked.has(n)) continue; // it has a PR (open: the PR steps move it; closed by the owner: on purpose)
+      const labels = await liveLabels(n);
+      if (!labels.includes(L.building) || [L.blocked, L.queued].some((l) => labels.includes(l))) continue;
+      if (labels.includes(L.running)) {
+        if (await lockFresh(n, labels)) continue;
+        await gh.removeLabel(n, L.running); // the agent died without releasing its lock
+        if (labels.includes(L.pending)) {
+          await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: n, labels: [] }, { ownerLogin });
+          continue;
+        }
+      } else {
+        if (labels.includes(L.pending)) continue;
+        const at = await lastRunningAt(n);
+        if (at === null || now() - at < IDLE_MINUTES * 60_000) continue;
+      }
+      const heals = ((await gh.listComments(n)) || []).filter((c) => (c.body || '').includes(HEAL_MARKER)).length;
+      if (heals >= 1) {
+        await gh.addLabels(n, [L.blocked]);
+        await gh.comment(n, `${HEAL_MARKER}\n${say("L'agent s'est arrêté deux fois avant d'avoir fini, sans ouvrir de PR ni poser de question. Je mets la carte de côté pour qu'elle ne bloque pas la file. Répondez « réessaie » ici pour le relancer.")}`);
+        log(`guard: #${n} blocked after a second stop`);
+        continue;
+      }
+      const stage = labels.includes(L.project) ? 'foundation' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build';
+      try {
+        await fireAgent({ stage, issue: n, extra: { relaunch: true }, quiet: true });
+      } catch (e) {
+        log(`guard: relaunch of #${n} failed: ${e}`);
+        break; // the routine does not start: no use trying the others now
+      }
+      await gh.comment(n, `${HEAL_MARKER}\n${say("L'agent s'était arrêté avant d'avoir fini : je le relance là où il en était. Rien à faire de votre côté.")}`);
+      log(`guard: #${n} relaunched (${stage})`);
+    }
+  }
+
+  // A lock older than the agent's time limit on any other card (grilling, PR fix…): the agent is gone. Released the
+  // way the agent would have, so messages written meanwhile are handled.
+  async function releaseStaleLocks(ownerLogin) {
+    for (const item of (await gh.listIssues({ labels: L.running })) || []) {
+      const labels = await liveLabels(item.number);
+      if (!labels.includes(L.running) || (await lockFresh(item.number, labels))) continue;
+      await gh.removeLabel(item.number, L.running);
+      log(`guard: stale lock released on #${item.number}`);
+      await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: item.number, labels: [] }, { ownerLogin });
+    }
+  }
+
   // A project has previews when something other than GitHub Pages (Vercel, Netlify…) deploys it, or when the
   // Vercel bot already comments. The factory itself, for one, has none: nothing to wait for or to test there.
   async function hasPreviews(prNumber) {
@@ -384,7 +519,42 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return all.length ? all.map((m) => m.body).join('\n\n') : null;
   }
 
+  // Phone alert (ntfy) for each card that starts waiting for the owner. One per wait, no reminder: the wait is
+  // identified by the label's latest « labeled » event, kept in a hidden comment on the card. Without
+  // NTFY_TOPIC in the project, nothing happens. Never throws.
+  async function notifyWaiting() {
+    const topic = (env.NTFY_TOPIC || '').trim();
+    if (!topic) return;
+    try {
+      const items = [];
+      for (const label of WAIT_LABELS) items.push(...((await gh.listIssues({ labels: label })) || []));
+      const project = repo.split('/')[1] || repo;
+      for (const card of waitingCards(items)) {
+        try {
+          const events = ((await gh.listEvents(card.number)) || []).filter((e) => e.event === 'labeled' && e.label?.name === card.label);
+          const key = `${card.label}@${events.pop()?.id ?? 'x'}`;
+          let mine = ((await gh.listComments(card.number)) || []).find((c) => (c.body || '').includes(NOTIFIED_MARKER));
+          const keys = notifiedKeys(mine?.body);
+          if (keys.includes(key)) continue;
+          // Write the key first: a crash or a failed write after the send would otherwise repeat the alert forever.
+          const text = notifiedComment([...keys, key].slice(-10));
+          if (mine) await gh.updateComment(mine.id, text); else mine = await gh.comment(card.number, text);
+          if (!(await sendAlert({ topic, message: alertText(project, card.label), click: card.url, fetchImpl }))) {
+            log(`alert #${card.number} not sent`);
+            if (mine?.id) await gh.updateComment(mine.id, notifiedComment(keys)); // retried at the next tick
+          }
+        } catch (e) { log(`alert #${card.number}: ${e.message}`); }
+      }
+    } catch (e) { log(`alerts: ${e.message}`); }
+  }
+
   async function handle(ev, { ownerLogin } = {}) {
+    const result = await handleEvent(ev, { ownerLogin });
+    await notifyWaiting();
+    return result;
+  }
+
+  async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
       outputs.agent = 'true';
       outputs.payload = ev.payload;
@@ -396,7 +566,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
     if (ev.kind !== 'none' && ev.number) {
-      ev = { ...ev, labels: await liveLabels(ev.number) }; // webhook labels can be stale
+      const live = await gh.getIssue(ev.number);
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed' }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
@@ -417,6 +588,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    // A finished card (merged, closed) never starts over: a message written during its last run, or afterwards,
+    // would otherwise send a closed issue back to grilling.
+    if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
+      log('closed issue: nothing is started');
+      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     const applyLabels = async () => {
       for (const l of action.remove || []) await gh.removeLabel(n, l);
@@ -452,7 +630,28 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'merge':
         await mergePr(n);
         break;
+      case 'drop': {
+        // The owner gave up on this PR: close it and its issue, and free its place. The agent's run cannot do it.
+        const pr = await gh.getPr(n);
+        const issue = linkedIssue(pr?.body) || (pr && branchIssue(pr));
+        await gh.comment(n, say(issue
+          ? `C'est fait : cette PR est abandonnée et la demande #${issue} est fermée. Rien n'a été mis en ligne.`
+          : "C'est fait : cette PR est abandonnée. Rien n'a été mis en ligne."));
+        await gh.closePr(n);
+        for (const l of names(pr?.labels).filter((x) => x.startsWith('factory:'))) await gh.removeLabel(n, l);
+        if (issue) {
+          const labels = await liveLabels(issue);
+          for (const l of [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing]) if (labels.includes(l)) await gh.removeLabel(issue, l);
+          await gh.closeIssue(issue, 'not_planned');
+        }
+        await dequeue({ freed: issue || null });
+        break;
+      }
+      case 'docs-merge':
+        await mergeDocsPr(n);
+        break;
       case 'dequeue':
+        if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
         // A PR merged by hand (or any closed one): the PRs still waiting may now be in conflict.
         if (ev.kind === 'tick' || ev.kind === 'pr') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
@@ -486,7 +685,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return Object.assign(alerts, { missing, ui: uiChanged(changed) });
   }
 
-  async function report({ result, pr: prNumber, runId, sha, started = null, now = Date.now() }) {
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now() }) {
     const pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
@@ -494,7 +693,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
     // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
     // A run cancelled without a known start time never got going: it was replaced too.
-    if (result === 'cancelled' && !(started && now - started * 1000 >= CHECKS_TIMEOUT_MS)) {
+    if (result === 'cancelled' && !(started && nowMs - started * 1000 >= CHECKS_TIMEOUT_MS)) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
     const timedOut = result === 'cancelled';
@@ -575,7 +774,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, outputs };
+  return { handle, report, dequeue, release, fabrication, notifyWaiting, outputs };
 }
 
 function writeOutputs(outputs) {
@@ -592,8 +791,9 @@ async function main() {
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const file = await gh.getContent('factory.config.json');
-  const raw = file ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')) : {};
-  const { config, warnings } = resolveConfig(raw, catalog);
+  const parsed = parseRawConfig(file ? Buffer.from(file.content, 'base64').toString('utf8') : null);
+  const { config, warnings } = resolveConfig(parsed.raw, catalog);
+  if (parsed.warning) warnings.push(parsed.warning);
   for (const w of warnings) console.log(`::warning::${w}`);
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
@@ -603,6 +803,7 @@ async function main() {
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
     await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null }));
+    await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'dequeue') {

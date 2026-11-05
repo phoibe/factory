@@ -21,6 +21,17 @@ export function isApproval(text) {
   return words.some((w) => CORE.has(w));
 }
 
+// True when a short message asks to drop the PR (« fermer », « on abandonne », « laisse tomber »). The agent's run
+// is not allowed to close a PR, so the relay does it itself.
+const DROP = new Set(['fermer', 'ferme', 'fermes', 'fermez', 'abandonner', 'abandonne', 'abandonnes', 'abandonnez', 'abandon', 'close', 'tomber']);
+const DROP_FILLER = new Set(['on', 'tu', 'peux', 'la', 'le', 'cette', 'pr', 'demande', 'issue', 'et', "l'issue", 'merci', 'oui', 'ok', 'laisse',
+  'laisser', 'stp', 'svp', 'tout', 'alors', 'je', 'veux', 'bien', 'les', 'deux', 'aussi', 'c', 'est', "c'est", 'bon']);
+export function isDrop(text) {
+  const words = String(text || '').toLowerCase().replace(/[’`]/g, "'").replace(/[!.,;:()…"«»]+/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 8 || String(text).includes('?')) return false;
+  return words.every((w) => DROP.has(w) || DROP_FILLER.has(w)) && words.some((w) => DROP.has(w));
+}
+
 const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
@@ -86,10 +97,15 @@ function onIssue(ev, config, ctx) {
   return ignore('issue hors factory');
 }
 
+// The branch the agent opens, at the end of the questions, for the project's glossary and decisions.
+export const isDocsBranch = (ref) => /^claude\/docs-\d+$/.test(String(ref || ''));
+
 function onPr(ev) {
   if (ev.event === 'pull_request') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'PR fermée' };
     if (!ev.fromOwner) return ignore("PR d'un tiers");
+    // The glossary and decisions written during the questions travel in their own small PR: no card, no checks.
+    if (isDocsBranch(ev.headRef) && ['opened', 'synchronize', 'reopened'].includes(ev.action)) return { type: 'docs-merge', add: [], remove: [], reason: 'PR de documents (glossaire et décisions)' };
     if (ev.action === 'synchronize' && has(ev.labels, L.acceptance)) {
       return { type: 'checks', add: [L.checks], remove: [L.acceptance], reason: 'nouveau code pendant la recette : on recontrôle' };
     }
@@ -99,6 +115,7 @@ function onPr(ev) {
   }
   // A comment or a review on a PR.
   if (!String(ev.text || '').trim()) return ignore('message vide');
+  if (ev.labels.some((l) => l.startsWith('factory:')) && isDrop(ev.text)) return { type: 'drop', reason: 'le propriétaire abandonne la PR' };
   if (has(ev.labels, L.visualReview)) {
     if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées' };
     return fire('visual-fix', { remove: unblock(ev.labels) });

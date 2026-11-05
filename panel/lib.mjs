@@ -27,35 +27,43 @@ export function waitsForOwner(labels) {
   return Boolean(col && COLUMNS.find((c) => c.id === col).yours);
 }
 
+// Every issue number a pull request body closes (« Closes #1, closes #2 »).
+const closedIssues = (body) => [...String(body || '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map((m) => Number(m[1]));
+
 // An issue whose PR is already open shows only once, on the PR's column.
 export function boardItems(items) {
   const linked = new Set();
   for (const it of items) {
     if (!it.pull_request) continue;
-    const m = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.exec(it.body || '');
-    if (m && columnFor(it.labels) && columnFor(it.labels) !== 'building') linked.add(Number(m[1]));
+    if (columnFor(it.labels) && columnFor(it.labels) !== 'building') for (const n of closedIssues(it.body)) linked.add(n);
   }
   return items
     .map((it) => ({ ...it, column: columnFor(it.labels) }))
     .filter((it) => it.column && !(linked.has(it.number) && !it.labels.includes('factory:blocked')));
 }
 
-// How many finished items the « Terminé » column keeps.
-export const DONE_LIMIT = 10;
+// How many finished items the « Terminé » column displays (3 full rows on a desktop grid).
+export const DONE_SHOWN = 9;
 
 // The « Terminé » column, from closed pull requests: only the merged ones that close a request
-// (feature, bug or project; questions have no PR), most recently merged first, at most `limit`.
+// (feature, bug or project; questions have no PR), most recently merged first.
 // Closed without a merge (abandoned) never counts. Each item opens the original request.
-export function doneItems(pulls, limit = DONE_LIMIT) {
+export function doneItems(pulls) {
   return (pulls || [])
     .filter((p) => p.merged_at)
-    .map((p) => {
-      const m = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.exec(p.body || '');
-      return m ? { number: p.number, issue: Number(m[1]), title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${m[1]}`) } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
-    .slice(0, limit);
+    .flatMap((p) => closedIssues(p.body).map((n) => ({ number: p.number, issue: n, title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${n}`) })))
+    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt));
+}
+
+// The items to display (the newest `limit`) and how many older ones stay hidden.
+export function doneView(done, limit = DONE_SHOWN) {
+  return { shown: done.slice(0, limit), hidden: Math.max(0, done.length - limit) };
+}
+
+// Discreet note under the cards: « + 5 plus anciennes non affichées ».
+export function olderNote(hidden) {
+  if (!hidden) return '';
+  return hidden === 1 ? '+ 1 plus ancienne non affichée' : `+ ${hidden} plus anciennes non affichées`;
 }
 
 // « il y a 2 h », « hier » or « le 3 nov. » for the finish date of a done item.
@@ -86,7 +94,12 @@ export function setPath(config, path, value) {
 }
 
 // UTF-8 safe base64 for the GitHub Contents API.
-export const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+export function toBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
 export const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
 
 // Token carried by a phone link (#jeton=…). The fragment never reaches a server.
@@ -126,6 +139,10 @@ export function focusComment(comments) {
 // Plain list of the project's open issues (GitHub's default view, no filter).
 export const issuesUrl = (repoUrl) => `${repoUrl.replace(/\/+$/, '')}/issues`;
 
+// GitHub's issues page does not list pull requests, so neither does the count next to its link.
+export const openIssueCount = (items) => (Array.isArray(items) ? items.filter((i) => !i.pull_request).length : null);
+export const issuesLinkText = (count) => (Number.isInteger(count) ? `Voir les demandes sur GitHub (${count})` : 'Voir les demandes sur GitHub');
+
 // The repositories worth checking for a factory.config.json: not archived, and not a template (the factory's
 // template holds one too, but it is the model new projects are copied from, not a project).
 export const projectCandidates = (repos) => repos.filter((r) => !r.archived && !r.is_template);
@@ -163,4 +180,9 @@ export function mergeConfig(base, mine, theirs) {
     else out[k] = mergeConfig(base[k], mine[k], theirs[k]);
   }
   return out;
+}
+
+// The browser tab title: « (2) Factory » while cards wait for the owner, plain « Factory » otherwise.
+export function tabTitle(count) {
+  return count > 0 ? `(${count}) Factory` : 'Factory';
 }

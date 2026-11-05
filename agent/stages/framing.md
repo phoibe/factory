@@ -27,6 +27,8 @@ change). La fiche publiée à la fin est la fiche complète mise à jour, avec e
 ## Les questions (rounds de grilling)
 
 1. Charge le skill `grilling` et applique-le **en asynchrone** : un round = un commentaire, puis tu termines.
+   Si `grill-with-docs` est installé, lis aussi `.factory/stages/docs.md` : il remplace `grilling` et ajoute le
+   glossaire et les décisions (petite PR de documents à la publication de la fiche).
 2. Relis l'issue et toutes les réponses déjà données. Ne pose que les questions encore ouvertes dont les
    prérequis sont réglés. Maximum 8 questions par round, numérotées, chacune avec ta recommandation (➡️) et
    formulée pour qu'un « oui » l'accepte. Termine par : « Répondez par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ». »

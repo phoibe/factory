@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepsFor, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
+import { stepsFor, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
   assert.deepEqual(stepsFor(['factory:feature']).map((s) => s.id), ['grilling', 'spec', 'building', 'visual', 'checks', 'acceptance']);
@@ -82,4 +82,57 @@ test('yoursList puts the oldest wait first, and only the spec step is a plain «
     item(5, 'grilling', '2026-11-04T11:00:00Z'),
   ]);
   assert.deepEqual(list.map((c) => [c.number, c.reply]), [[1, 'go'], [5, 'open'], [3, 'open']]);
+});
+
+test('the live status line is never empty, so the cards do not jump when its text arrives', () => {
+  assert.equal(statusText(0, 2000), "En direct · à jour à l'instant");
+  assert.match(statusText(2, 0), /Connexion à GitHub perdue/);
+});
+
+test('the « À vous » card is drawn with its status text already filled (no growth after the cards are measured)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
+  assert.match(line, /statusText\(/);
+});
+
+test('a card only slides when it really moved: a few pixels of text reflow stay still', async () => {
+  const { shouldSlide, SLIDE_MIN_PX } = await import('../panel/live.mjs');
+  const r = (top, left = 0) => ({ top, left });
+  assert.equal(shouldSlide(r(100), r(101)), false);
+  assert.equal(shouldSlide(r(100), r(100 + SLIDE_MIN_PX - 1)), false);
+  assert.equal(shouldSlide(r(100, 5), r(103, 5)), false);
+  assert.equal(shouldSlide(r(100), r(100 + SLIDE_MIN_PX)), true);
+  assert.equal(shouldSlide(r(100, 0), r(100, 300)), true);
+});
+
+test('flip uses shouldSlide, so no card is animated for a tiny shift', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('function flip('), src.indexOf('const rectsOf'));
+  assert.match(body, /shouldSlide\(a, b\)/);
+});
+
+test('withoutTimes ignores the text of time elements but not other changes', async () => {
+  const { withoutTimes } = await import('../panel/live.mjs');
+  const a = '<article><span class="since" data-time="">depuis 2 min</span><h3>T</h3><p class="eta" data-time="">~5 min restantes</p></article>';
+  const b = '<article><span class="since" data-time="">depuis 10 min</span><h3>T</h3><p class="eta" data-time="">~4 min restantes</p></article>';
+  assert.equal(withoutTimes(a), withoutTimes(b));
+  assert.notEqual(withoutTimes(a), withoutTimes(b.replace('<h3>T', '<h3>U')));
+  assert.notEqual(withoutTimes(a), withoutTimes(a.replace('data-time=""', '')));
+});
+
+test('syncTimes copies time texts in place and leaves other nodes alone', async () => {
+  const { syncTimes } = await import('../panel/live.mjs');
+  const mk = (...t) => ({ querySelectorAll: () => t });
+  const a = { textContent: 'depuis 2 min' }, b = { textContent: '~5 min' };
+  syncTimes(mk(a, b), mk({ textContent: 'depuis 3 min' }, { textContent: '~5 min' }));
+  assert.equal(a.textContent, 'depuis 3 min');
+  assert.equal(b.textContent, '~5 min');
+});
+
+test('a hidden browser tab counts as idle, so it polls every 30 s instead of stopping', () => {
+  assert.equal(isIdle(1_000, 1_000 + 5_000, true), true);
+  assert.equal(isIdle(1_000, 1_000 + 5_000, false), false);
+  assert.equal(isIdle(1_000, 1_000 + 5_000), false);
 });

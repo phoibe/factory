@@ -15,9 +15,9 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    Sinon, oui seulement si la spec est **sensible** : elle peut faire perdre ou effacer des données, touche à
    l'argent, à la sécurité, aux comptes ou au partage de données personnelles, change la vision ou le design
    validés, ou repose sur une hypothèse importante que le grilling n'a pas confirmée.
-   - **À valider** : termine par « Réponds « go » pour lancer la construction, ou dis-moi ce qu'il faut
+   - **À valider** : termine par « Répondez « go » pour lancer la construction, ou dites-moi ce qu'il faut
      changer. » (et, si la validation est désactivée, dis en une phrase pourquoi tu demandes quand même).
-   - **Pas à valider** : termine par « Je lance la construction sans attendre ta validation (réglage du
-     projet). Si quelque chose ne va pas, écris-le ici : j'en tiendrai compte. »
+   - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
+     projet). Si quelque chose ne va pas, écrivez-le ici : j'en tiendrai compte. »
 5. Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`, et aussi `factory:auto-go`
    si la spec n'est pas à valider : la construction démarrera dès la fin de ce run.

@@ -70,3 +70,14 @@ export function enabledSkills(config, catalog) {
     return pack.skills.filter((s) => c.skills[s.id]).map((s) => ({ packId: pack.id, id: s.id, path: s.path }));
   });
 }
+
+// Reads the text of factory.config.json without ever throwing: a broken file falls back to the defaults
+// (with a warning) so that one bad edit cannot stop every run of the factory.
+export function parseRawConfig(text) {
+  if (text == null) return { raw: {}, warning: null };
+  try {
+    const raw = JSON.parse(text);
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { raw, warning: null };
+  } catch { /* fall through */ }
+  return { raw: {}, warning: 'factory.config.json est illisible : les réglages par défaut sont utilisés.' };
+}

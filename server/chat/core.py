@@ -8,7 +8,9 @@ import json
 import re
 
 BRANCH = "factory-chat"
-REPO_RE = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$")
+REPO_RE = re.compile(r"^[A-Za-z0-9-]+/(?!\.{1,2}$)[A-Za-z0-9._-]+$")
+CID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_ISSUES = 3  # one answer never opens more tickets than this (each one starts factory work)
 
 ASK_BLOCK = """Pour créer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
 <creer-issue type="feature" titre="Titre court en français">
@@ -85,7 +87,8 @@ def extract_issues(text):
     issues = [
         {"kind": "bug" if k.strip() == "bug" else "feature", "title": t.strip(), "body": b.strip()}
         for k, t, b in BLOCK_RE.findall(text or "")
-    ]
+        if t.strip()
+    ][:MAX_ISSUES]
     return BLOCK_RE.sub("", text or "").strip(), issues
 
 
@@ -134,6 +137,9 @@ def upsert_index(index, conv):
     return sorted([index_entry(conv)] + rest, key=lambda e: e.get("updated") or "", reverse=True)
 
 
+MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
+
+
 def build_prompt(conv, message, image_files):
     parts = []
     history = conv.get("messages") or []
@@ -143,7 +149,16 @@ def build_prompt(conv, message, image_files):
             who = "[Propriétaire]" if m["who"] == "me" else "[Toi]"
             extra = f" ({len(m['images'])} image(s) jointe(s))" if m.get("images") else ""
             lines.append(f"{who} {m.get('text', '')}{extra}")
-        parts.append("Conversation jusqu'ici :\n" + "\n\n".join(lines))
+        kept, size = [], 0
+        for line in reversed(lines):
+            if kept and size + len(line) > MAX_PROMPT_CHARS:
+                break
+            kept.append(line)
+            size += len(line)
+        kept.reverse()
+        if len(kept) < len(lines):
+            kept.insert(0, "(les premiers messages de la conversation ont été omis)")
+        parts.append("Conversation jusqu'ici :\n" + "\n\n".join(kept))
     parts.append("Nouveau message du propriétaire :\n" + (message or "(seulement des images)"))
     if image_files:
         parts.append("Images jointes à ce message (ouvre-les avec Read avant de répondre) :\n" + "\n".join(image_files))

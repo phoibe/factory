@@ -62,7 +62,7 @@
         "codebase-design": false,
         "diagnosing-bugs": false,
         "domain-modeling": false,
-        "grill-with-docs": false,
+        "grill-with-docs": true,
         "implement": false,
         "implement-spec": false,
         "improve-codebase-architecture": false,

@@ -36,8 +36,8 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
 4. **Une feature ou un bug dans la conversation.** Tu ne crées **jamais** une issue de toi-même, même quand
    la conversation révèle un manque ou un défaut, et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne
    marche pas quand… ».
-   - Dans ces cas, réponds d'abord à sa demande, puis pose une seule question : « Tu veux que j'en fasse une
-     fiche ? » (ou, si c'est ta réponse qui révèle le manque : « Il manque X, tu veux une fiche ? »). Une seule
+   - Dans ces cas, réponds d'abord à sa demande, puis pose une seule question : « Voulez-vous que j'en fasse une
+     fiche ? » (ou, si c'est ta réponse qui révèle le manque : « Il manque X, voulez-vous une fiche ? »). Une seule
      fois par sujet : s'il ne répond pas ou dit non, n'y reviens pas dans la conversation.
    - Tu ne crées l'issue que dans trois cas : les boutons du chat « En faire une feature » et « C'est un bug »
      (ils envoient « Créez une issue … à partir de cette conversation »), une demande explicite de fiche
@@ -54,3 +54,6 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
      les questions de clarification se posent dans l'issue de la feature, pas ici.
 5. Pas de formule de fin du type « ferme l'issue » : le chat a son propre bouton « Terminer ».
 6. Dernière action : retire `factory:running` (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404).
+   Si tu viens de créer une fiche feature ou bug (point 4), ferme aussi la conversation, puisque la suite se passe
+   dans la fiche : `gh api -X PATCH repos/<repo>/issues/<n> -f state=closed -f state_reason=completed`. Elle reste
+   lisible dans l'onglet « Discussion », et un nouveau message de sa part la rouvre.

@@ -135,7 +135,13 @@ class ServiceTest(unittest.TestCase):
         self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
         r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et ensuite ?"})
         self.assertEqual(events[-1]["type"], "done", events)
-        self.assertGreater(len(open(self.claude + ".prompt").read()), 500000)
+        self.assertLess(len(open(self.claude + ".prompt").read()), 70000)  # only the recent messages are sent
+
+    def test_the_conversation_is_saved_before_the_answer_is_sent(self):
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+        kinds = [e["type"] for e in events]
+        self.assertLess(kinds.index("answer"), kinds.index("done"))
+        self.assertTrue(any(k.startswith("chats/") for k in self.gh.files))
 
     def test_a_failed_save_after_creating_an_issue_does_not_ask_to_send_again(self):
         self.gh.fail_saves = True

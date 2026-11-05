@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, isApproval, afterChecks } from '../scripts/lib/decide.mjs';
+import { decide, isApproval, isDrop, afterChecks } from '../scripts/lib/decide.mjs';
 import { L } from '../scripts/lib/labels.mjs';
 
 const config = { maxParallel: 2, stages: { grilling: true, acceptance: true, screenshots: true }, review: { maxLoops: 3 } };
@@ -282,5 +282,32 @@ test('an empty review or comment on a PR waiting for the owner launches no agent
   for (const label of [L.acceptance, L.visualReview]) {
     const a = decide(ev({ kind: 'pr', event: 'pull_request_review', labels: [label], text: '' }), config, ctx);
     assert.equal(a.type, 'ignore', label);
+  }
+});
+
+test('a documentation PR opened by the factory is merged on its own', () => {
+  for (const action of ['opened', 'synchronize', 'reopened']) {
+    const a = decide({ kind: 'pr', event: 'pull_request', action, number: 8, labels: [], fromOwner: true, headRef: 'claude/docs-155' }, config, ctx);
+    assert.equal(a.type, 'docs-merge', action);
+  }
+});
+
+test('only the factory\'s own documentation branches are merged on their own', () => {
+  const base = { kind: 'pr', event: 'pull_request', action: 'opened', number: 8, labels: [], fromOwner: true };
+  assert.equal(decide({ ...base, headRef: 'claude/issue-5-x' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, headRef: 'claude/docs-x.y' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, headRef: 'feature/claude/docs-1' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, fromOwner: false, headRef: 'claude/docs-155' }, config, ctx).type, 'ignore');
+});
+
+// yoldmewhen2 PR #22: the owner answered « fermer », the agent was refused the close, and the PR stayed open.
+test('isDrop recognises a short request to drop the PR, nothing else', () => {
+  for (const t of ['fermer', 'Fermer.', 'oui, ferme', 'on abandonne', 'laisse tomber', 'ferme la PR et l’issue']) assert.ok(isDrop(t), t);
+  for (const t of ['ok', 'ferme le menu quand on clique', 'faut-il fermer ?', 'le bouton fermer est trop petit']) assert.ok(!isDrop(t), t);
+});
+
+test('« fermer » on a factory PR is a drop, whatever its step', () => {
+  for (const label of [L.visualReview, L.acceptance, L.blocked, L.checks]) {
+    assert.equal(decide(pr({ event: 'issue_comment', action: 'created', labels: [label], text: 'fermer' }), config, ctx).type, 'drop', label);
   }
 });

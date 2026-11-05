@@ -27,7 +27,7 @@ test('every skill path holds a SKILL.md and a description', () => {
 
 test('expected defaults are enabled', () => {
   const on = catalog.packs.flatMap((p) => p.skills.filter((s) => s.defaultEnabled).map((s) => s.id));
-  for (const id of ['grilling', 'test-driven-development', 'impeccable', 'requesting-code-review']) {
+  for (const id of ['grilling', 'grill-with-docs', 'domain-modeling', 'test-driven-development', 'impeccable', 'requesting-code-review']) {
     assert.ok(on.includes(id), id);
   }
   assert.ok(!on.includes('brainstorming'));
