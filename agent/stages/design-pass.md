@@ -7,7 +7,8 @@ soit corrigé avant les captures.
 ## Textes à l'écran
 
 Rappelle cette règle à `impeccable` à **chaque** appel (création d'un écran ou du look, critique,
-correction, review générale) : un écran bien fait se passe d'explications sur son fonctionnement.
+correction, revue générale), y compris dans les consignes des sous-agents de la critique : un écran bien
+fait se passe d'explications sur son fonctionnement.
 
 - **Permis** : les titres, les libellés de boutons et de champs, les messages d'erreur courts qui disent quoi
   faire, et une seule phrase courte sur un écran vide (ex. « Aucune commande pour l'instant »).
@@ -16,22 +17,26 @@ correction, review générale) : un écran bien fait se passe d'explications sur
   visites guidées et les bulles « astuce ».
 - **À la critique**, tout texte qui explique le fonctionnement de l'écran est un défaut à corriger, jamais une
   amélioration à proposer.
-- **Exception** : si le propriétaire demande lui-même, dans l'issue, une page d'aide, un texte explicatif ou
-  une visite guidée, sa demande passe avant la règle.
+- **Exception** : si le propriétaire demande lui-même, dans l'issue ou dans ses retours sur la PR, une
+  page d'aide, un texte explicatif ou une visite guidée, sa demande passe avant la règle.
 - **`DESIGN.md`** : la règle y figure, dans « Do's and Don'ts », pour qu'`impeccable` la relise tout seul.
   Si elle n'y est pas et que tu modifies `DESIGN.md`, ajoute-la.
+
+## Étapes
 
 1. **Liste les écrans** créés ou modifiés par la branche (pages, routes, composants visibles), d'après le
    diff avec `main`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
    téléphone et sur ordinateur.
 2. **Critique** : pour chaque écran, skill `impeccable`, commande `critique`
    (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents et le détecteur.
-   Elle juge l'écran contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » ci-dessus. Tu travailles seul : saute les questions de fin de
+   Elle juge l'écran contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » ci-dessus.
+   Tu travailles seul : saute les questions de fin de
    critique en écrivant « Questions skipped: run autonome de la factory », et ne t'arrête pas sur elles.
 3. **Corrige tout** : chaque problème du rapport (prioritaires, alertes des personas, observations
    mineures, alertes du détecteur), avec les commandes qu'il suggère (`polish`, `layout`, `typeset`,
    `clarify`, `harden`, `adapt`…). Avec `clarify` comme avec les autres, raccourcis ou retire les textes
-   explicatifs, n'en ajoute jamais (règle « Textes à l'écran »). Ne corrige que ce qui reste dans le périmètre de la feature et dans
+   explicatifs, n'en ajoute jamais (règle « Textes à l'écran »).
+   Ne corrige que ce qui reste dans le périmètre de la feature et dans
    `DESIGN.md` ; si une correction demande de changer le design validé (nouvelle couleur, nouveau
    composant), fais-la dans `DESIGN.md` aussi et signale-le dans la PR.
 4. **Recritique** les écrans corrigés. Recommence 3 à 4 jusqu'à ce qu'il ne reste rien, au plus 3 tours.

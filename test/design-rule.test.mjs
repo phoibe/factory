@@ -9,13 +9,15 @@ const RULE = 'Textes à l\'écran';
 
 test('design-pass.md holds the screen-text rule', () => {
   const md = read('design-pass.md');
-  const section = md.split(`## ${RULE}`)[1];
+  const section = md.split(`## ${RULE}`)[1]?.split('\n## ')[0];
   assert.ok(section, `missing "## ${RULE}" section`);
   for (const term of [
     'libellés', 'messages d\'erreur', 'écran vide', 'une seule phrase',
     'paragraphe', 'Comment ça marche', 'sous-titres', 'aides sous', 'tutoriels', 'visites guidées', 'astuce',
     'demande', 'défaut', 'DESIGN.md', 'Do\'s and Don\'ts',
+    'sous-agents', 'retours sur la PR',
   ]) assert.ok(section.includes(term), `rule does not mention "${term}"`);
+  assert.ok(!section.includes('**Liste les écrans**'), 'the steps must sit under their own heading');
 });
 
 test('the fix step never adds explanations and the PR lists removed texts', () => {
@@ -35,6 +37,6 @@ test('every stage that calls impeccable points to the rule', () => {
 
 test('framing and foundation write the rule into DESIGN.md', () => {
   for (const f of ['framing.md', 'foundation.md']) {
-    assert.match(read(f), new RegExp(`DESIGN\\.md[^]*${RULE}|${RULE}[^]*DESIGN\\.md`), f);
+    assert.match(read(f), new RegExp(`DESIGN\\.md[^]{0,300}${RULE}|${RULE}[^]{0,300}DESIGN\\.md`), f);
   }
 });
