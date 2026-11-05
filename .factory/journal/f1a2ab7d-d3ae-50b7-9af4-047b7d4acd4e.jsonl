@@ -1,0 +1,6 @@
+{"t":"2026-11-05T11:11:36.218Z","kind":"run","stage":"build","issue":165,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-05T11:12:00.431Z","kind":"skill","name":"writing-plans","id":"toolu_01RCnSQvBYSDNjisdBDYW1S7"}
+{"t":"2026-11-05T11:12:00.501Z","kind":"skill","name":"test-driven-development","id":"toolu_01DpaVdbVh21WzTbpuyMwWiy"}
+{"t":"2026-11-05T11:13:07.538Z","kind":"test","cmd":"cat > docs/plans/issue-165.md <<'EOF'\n# Issue 165 — show at most 9 finished features\n\n**Goal:** the « Terminé » lane shows the 9 most recent finished items; the counter keeps the real total; a discree","ok":false,"id":"toolu_01YGKarKuNtuQ2cuxP79gSua"}
+{"t":"2026-11-05T11:15:23.227Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; git status --short","ok":true,"id":"toolu_017nKE1qwtqZAmfEqYscVcPF"}
+{"t":"2026-11-05T11:15:23.302Z","kind":"skill","name":"requesting-code-review","id":"toolu_01N43529ZL7bmF7B13Rser2T"}

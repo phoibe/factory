@@ -42,18 +42,28 @@ export function boardItems(items) {
     .filter((it) => it.column && !(linked.has(it.number) && !it.labels.includes('factory:blocked')));
 }
 
-// How many finished items the « Terminé » column keeps.
-export const DONE_LIMIT = 10;
+// How many finished items the « Terminé » column displays (3 full rows on a desktop grid).
+export const DONE_SHOWN = 9;
 
 // The « Terminé » column, from closed pull requests: only the merged ones that close a request
-// (feature, bug or project; questions have no PR), most recently merged first, at most `limit`.
+// (feature, bug or project; questions have no PR), most recently merged first.
 // Closed without a merge (abandoned) never counts. Each item opens the original request.
-export function doneItems(pulls, limit = DONE_LIMIT) {
+export function doneItems(pulls) {
   return (pulls || [])
     .filter((p) => p.merged_at)
     .flatMap((p) => closedIssues(p.body).map((n) => ({ number: p.number, issue: n, title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${n}`) })))
-    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
-    .slice(0, limit);
+    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt));
+}
+
+// The items to display (the newest `limit`) and how many older ones stay hidden.
+export function doneView(done, limit = DONE_SHOWN) {
+  return { shown: done.slice(0, limit), hidden: Math.max(0, done.length - limit) };
+}
+
+// Discreet note under the cards: « + 5 plus anciennes non affichées ».
+export function olderNote(hidden) {
+  if (!hidden) return '';
+  return hidden === 1 ? '+ 1 plus ancienne non affichée' : `+ ${hidden} plus anciennes non affichées`;
 }
 
 // « il y a 2 h », « hier » or « le 3 nov. » for the finish date of a done item.

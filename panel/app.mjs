@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=17';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=17';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=6';
@@ -448,6 +448,7 @@ function drawBoard() {
   const yours = yoursList(cards);
   const n = yours.length;
   document.title = tabTitle(n);
+  const doneShown = doneView(live.done);
   const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
     : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
   const sub = cards.length
@@ -466,10 +467,11 @@ function drawBoard() {
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', el('span', { class: 'count' }, String(live.done.length))),
       live.done.length
-        ? el('div', { class: 'tickets' }, live.done.map((d) => el('article', { class: 'ticket done' },
+        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
-        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
+        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"),
+      doneShown.hidden ? el('p', { class: 'done-more' }, olderNote(doneShown.hidden)) : null)];
   const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
