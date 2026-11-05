@@ -1,6 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig } from './lib.mjs?v=15';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
+import { noteClick, noteReturn, pendingNow } from './pending.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, pollDelay, timeLine, isIdle, cardChanges } from './live.mjs?v=2';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -374,12 +375,43 @@ async function answerGo(c, btn) {
   }
 }
 
+// Plates the owner just acted on (see pending.mjs): kept per project, on this device only.
+const pendingKey = () => `factory.pending.${current.repo.full_name}`;
+function pendingState() { try { return JSON.parse(store.get(pendingKey()) || '{}') || {}; } catch { return {}; } }
+const savePending = (state) => { if (Object.keys(state).length) store.set(pendingKey(), JSON.stringify(state)); else store.del(pendingKey()); };
+function pendingZone(held) {
+  if (!held.length) return null;
+  return el('section', { class: 'pending-zone', 'aria-label': 'Prise en compte en cours' },
+    el('h2', {}, 'Prise en compte en cours…', el('span', { class: 'count' }, String(held.length))),
+    el('ul', { class: 'pending-list' }, held.map((c) => el('li', { class: 'pending-item', 'data-number': String(c.number) },
+      el('span', { class: 'num' }, `#${c.number}`),
+      el('span', { class: 'pending-title' }, c.title),
+      el('span', { class: 'muted' }, 'Prise en compte en cours…')))));
+}
+// Clicking a plate's link (preview, « Répondre », title) opens GitHub in another tab: remember it, and put the plate on hold when the owner is back.
+for (const type of ['click', 'auxclick']) {
+  document.addEventListener(type, (e) => {
+    const li = e.target.closest?.('.you-item[data-number]');
+    if (!li || !current || !e.target.closest('a')) return;
+    const c = live.issues && boardItems(live.issues).find((x) => x.number === Number(li.dataset.number));
+    if (c) savePending(noteClick(pendingState(), c, Date.now()));
+  });
+}
+function owedReturn() {
+  if (!current || !live.issues) return;
+  const state = pendingState();
+  if (Object.values(state).some((x) => x.backAt == null)) savePending(noteReturn(state, Date.now()));
+  drawBoard();
+}
+window.addEventListener('focus', owedReturn);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) owedReturn(); });
+
 function youCard(yours, headline, sub) {
   const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
   return el('section', { class: 'you-card', 'aria-label': 'À vous' },
     el('p', { class: 'headline' }, headline),
-    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: `you-item${c.column === 'blocked' ? ' blocked' : ''}` },
+    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: `you-item${c.column === 'blocked' ? ' blocked' : ''}`, 'data-number': String(c.number) },
       el('div', { class: 'you-what' },
         el('span', { class: 'num' }, `#${c.number}`),
         el('a', { class: 'you-title', 'data-key': String(c.number), href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
@@ -413,7 +445,10 @@ function drawBoard() {
   // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
   minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
-  const yours = yoursList(cards);
+  const held = pendingNow(pendingState(), yoursList(cards), now);
+  savePending(held.state);
+  const heldSet = new Set(held.pending.map((c) => c.number));
+  const yours = yoursList(cards).filter((c) => !heldSet.has(c.number));
   const n = yours.length;
   const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
     : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
@@ -425,6 +460,7 @@ function drawBoard() {
   const before = rectsOf(board);
   const fresh = [
     youCard(yours, headline, sub),
+    pendingZone(held.pending),
     ...LANES.filter(([id]) => id !== 'yours' && cards.length).map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
@@ -437,8 +473,8 @@ function drawBoard() {
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
         : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"))];
-  const yoursSig = JSON.stringify(yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')]));
-  const holder = el('div', {}, ...fresh);
+  const yoursSig = JSON.stringify([held.pending.map((c) => c.number), ...yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')])]);
+  const holder = el('div', {}, ...fresh.filter(Boolean));
   const freshCards = cardsOf(holder);
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
   const prevSigs = live.sigs;
@@ -490,7 +526,7 @@ function startLive() {
   clearInterval(live.tick);
   // Every 5 s the "à jour il y a" text moves; every minute the durations on the cards move.
   let n = 0;
-  live.tick = setInterval(() => { drawStatus(); if (++n % 12 === 0 && live.issues && !$('board').hidden) drawBoard(); }, 5000);
+  live.tick = setInterval(() => { drawStatus(); if ((++n % 12 === 0 || (current && Object.keys(pendingState()).length)) && live.issues && !$('board').hidden) drawBoard(); }, 5000);
 }
 
 function drawSite() {
