@@ -25,3 +25,16 @@ Première critique : 27/40. Dernière critique : 24/32 (75 %, deux heuristiques 
 - En clair, le contour en pointillés de la zone d'attente est très pâle (comportement antérieur).
 
 Questions skipped: run autonome de la factory.
+
+## Retouche après les captures (« Les boutons sont trop gros et pas très beaux »)
+Critique de la zone retouchée par une revue neuve (code + captures) : 33/40.
+
+Corrigé :
+- Boutons pleine largeur et « go » gris plein remplacés par de petits boutons discrets (32 px visibles), côte à côte, tous du même style : fond de carte, filet fin, texte encre. Aucun bleu.
+- La zone de toucher reste de 44 px (invisible autour du bouton), vérifiée par le test en haut, en bas, à gauche et à droite de chaque bouton.
+- Le « go » garde la même largeur pendant « Annuler (5 s) » et « Envoi… » : rien ne saute.
+- Texte des liens et des boutons aligné à la même hauteur.
+- Espaces entre boutons assez grands pour que deux zones de toucher ne se chevauchent pas quand la ligne passe à la ligne sur téléphone.
+- En sombre, le filet des boutons est un peu plus marqué pour qu'ils ne s'enfoncent pas dans la carte.
+
+Questions skipped: run autonome de la factory.

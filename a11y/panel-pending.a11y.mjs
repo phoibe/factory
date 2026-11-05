@@ -123,8 +123,20 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     });
     assert.notEqual(colours.bg, colours.accent);
     assert.notEqual(colours.border, colours.accent);
-    const box = await go.boundingBox();
-    assert.ok(box.height >= 44, 'big enough for a thumb');
+    // Small to the eye, but a thumb-sized (44 px) touch area around every button of the row.
+    // Measured and probed in one step once the cards have stopped sliding, so nothing moves in between.
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity));
+    const reach = await page.evaluate(() => [...document.querySelectorAll('.pending-zone .card-actions > *')].map((b) => {
+      b.scrollIntoView({ block: 'center' });
+      const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = (px, py) => document.elementFromPoint(px, py)?.closest('.card-actions > *') === b;
+      return { height: r.height, tall: hit(x, r.top - (44 - r.height) / 2 + 0.5) && hit(x, r.bottom + (44 - r.height) / 2 - 0.5), wide: hit(r.left - 3.5, y) && hit(r.right + 3.5, y) };
+    }));
+    assert.ok(reach.length >= 2);
+    for (const r of reach) {
+      assert.ok(r.height <= 36, 'a compact button, not a big block');
+      assert.ok(r.tall && r.wide, 'big enough for a thumb (44 px)');
+    }
     // Nothing in the waiting zone is blue: step track, borders, text, nor focus rings.
     const blue = await page.evaluate(async () => {
       const probe = document.createElement('span');
@@ -178,10 +190,12 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.deepEqual(posted, [], 'a cancelled « go » sends nothing');
     assert.match(await page.locator('.pending-zone button.go[data-go="1"]').getAttribute('aria-label'), /^go pour #1/);
     // Sent: « Envoi… » stays readable on the waiting card (not faded).
+    // The button turns to « Envoi… » just before the request leaves: wait for the request itself.
     await page.locator('.pending-zone button.go[data-go="1"]').click();
-    await page.waitForFunction(() => document.querySelector('.pending-zone button.go[data-go="1"]')?.disabled, null, { timeout: 10000 });
+    for (let t = Date.now(); !posted.length && Date.now() - t < 10000;) await page.waitForTimeout(50);
     assert.deepEqual(posted, ['/repos/o/r/issues/1/comments']);
-    assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').evaluate((b) => getComputedStyle(b).opacity), '1');
+    // Read on the live button: a redraw may replace it right after the request.
+    await page.waitForFunction(() => { const b = document.querySelector('.pending-zone button.go[data-go="1"]'); return b?.disabled && getComputedStyle(b).opacity === '1'; }, null, { timeout: 10000 });
     // The blocked card keeps its red « Bloqué » tag and its « Débloquer » button.
     assert.equal(await blocked.locator('.blocked-tag').textContent(), 'Bloqué');
     assert.equal(await blocked.locator('a.button').textContent(), 'Débloquer');

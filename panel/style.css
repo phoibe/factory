@@ -371,13 +371,22 @@ details summary { color: var(--text); }
 .ticket.pending:hover { transform: none; border-color: var(--line); }
 .ticket.pending.blocked, .ticket.pending.blocked:hover { border-color: var(--danger); }
 .ticket.pending .doing { color: var(--muted); }
-/* Issue 176: a waiting card keeps its buttons, in grey (blue stays for what waits for an answer). */
-.ticket.pending .button, .ticket.pending .go { align-self: stretch; text-align: center; }
-.ticket.pending button.go { background: var(--muted); border-color: var(--muted); color: var(--surface); }
-.ticket.pending button.go:hover { border-color: var(--muted); }
-.ticket.pending button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
+/* Issue 176: a waiting card keeps its buttons: small, quiet and side by side (blue stays for what waits for an answer). */
+.ticket.pending .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 10px; margin: 2px 0 4px; }
+.ticket.pending .card-actions .button, .ticket.pending .card-actions button {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; align-self: auto;
+  min-height: 32px; padding: 5px 12px; border-radius: 8px;
+  font-size: .85rem; font-weight: 500; line-height: 1.25; text-align: center;
+  background: var(--surface); border-color: var(--line); color: var(--text); filter: none;
+}
+/* The touch area stays 44 px high (thumb size) around the smaller visible button: 32 px - 2 px of border + 2 x 7 px. */
+.ticket.pending .card-actions .button::after, .ticket.pending .card-actions button::after { content: ""; position: absolute; inset: -7px -5px; }
+.ticket.pending .card-actions .button:hover, .ticket.pending .card-actions button:hover:not(:disabled) { border-color: var(--muted); }
+/* Wide enough for « Annuler (5 s) », so the button does not jump when the countdown starts. */
+.ticket.pending .card-actions button.go { min-width: 9em; }
+.ticket.pending .card-actions button.go.undo { border-color: var(--text); }
+.ticket.pending .card-actions button.go:disabled { opacity: 1; color: var(--muted); }
 .ticket.pending .blocked-tag { font-weight: 600; color: var(--danger); }
-.ticket.pending button.go:disabled { opacity: 1; background: var(--surface); color: var(--muted); border-color: var(--line); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ticket.pending button.go:not(:disabled):not(.undo) { background: color-mix(in srgb, var(--muted) 40%, var(--surface)); border-color: color-mix(in srgb, var(--muted) 40%, var(--surface)); color: var(--text); }
+  :root:not([data-theme="light"]) .ticket.pending .card-actions > :not(.undo):not(:hover) { border-color: color-mix(in srgb, var(--muted) 35%, var(--line)); }
 }

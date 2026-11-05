@@ -339,6 +339,8 @@ function card(c, lane, minutes, now, moved) {
   const preview = live.previews.get(c.number);
   // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
   const testIt = c.column === 'acceptance' && !running && !waiting;
+  const previewLink = preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
+    testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
@@ -346,9 +348,8 @@ function card(c, lane, minutes, now, moved) {
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     waiting && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview ? null : status,
-    preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
-      testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
-    waiting ? replyAction(c) : null,
+    // On a waiting card the buttons sit together on one compact row (within reach, without taking over the card).
+    waiting ? el('div', { class: 'card-actions' }, previewLink, replyAction(c)) : previewLink,
     stepTrack(c),
     el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
