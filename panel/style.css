@@ -369,6 +369,7 @@ details summary { color: var(--text); }
 .pending-zone h2 { color: var(--muted); }
 .ticket.pending { box-shadow: none; background: var(--surface-2); border-style: dashed; }
 .ticket.pending:hover { transform: none; border-color: var(--line); }
+.ticket.pending.blocked, .ticket.pending.blocked:hover { border-color: var(--danger); }
 .ticket.pending .doing { color: var(--muted); }
 /* Issue 176: a waiting card keeps its buttons, in grey (blue stays for what waits for an answer). */
 .ticket.pending .button, .ticket.pending .go { align-self: stretch; text-align: center; }
@@ -377,3 +378,6 @@ details summary { color: var(--text); }
 .ticket.pending button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
 .ticket.pending .blocked-tag { font-weight: 600; color: var(--danger); }
 .ticket.pending button.go:disabled { opacity: 1; background: var(--surface); color: var(--muted); border-color: var(--line); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ticket.pending button.go:not(:disabled):not(.undo) { background: color-mix(in srgb, var(--muted) 40%, var(--surface)); border-color: color-mix(in srgb, var(--muted) 40%, var(--surface)); color: var(--text); }
+}

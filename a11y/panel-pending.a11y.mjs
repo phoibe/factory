@@ -143,6 +143,18 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
       return hits;
     });
     assert.deepEqual(blue, []);
+    const blocked = page.locator('.pending-zone .ticket[data-number="3"]');
+    // Its red border stays red under the pointer.
+    await blocked.hover();
+    await page.waitForTimeout(400); // the border colour has a short transition
+    const red = await blocked.evaluate((n) => { const p = document.createElement('span'); p.style.color = 'var(--danger)'; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return [getComputedStyle(n).borderTopColor, c]; });
+    assert.equal(red[0], red[1]);
+    // In the dark theme the grey « go » stays quieter than the muted grey (it is not the brightest block on the board).
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const dark = await page.evaluate(() => { const p = document.createElement('span'); p.style.color = 'var(--muted)'; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return [getComputedStyle(document.querySelector('.pending-zone button.go')).backgroundColor, c]; });
+    assert.notEqual(dark[0], dark[1]);
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.mouse.move(0, 0);
     // With the keyboard: « go » starts the countdown, keeps the focus across redraws, and Enter cancels it.
     await go.focus();
     // The « go » sits at the very bottom of the screen, where the toast shows.
@@ -171,7 +183,6 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.deepEqual(posted, ['/repos/o/r/issues/1/comments']);
     assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').evaluate((b) => getComputedStyle(b).opacity), '1');
     // The blocked card keeps its red « Bloqué » tag and its « Débloquer » button.
-    const blocked = page.locator('.pending-zone .ticket[data-number="3"]');
     assert.equal(await blocked.locator('.blocked-tag').textContent(), 'Bloqué');
     assert.equal(await blocked.locator('a.button').textContent(), 'Débloquer');
     assert.match(await blocked.textContent(), /En attente de GitHub/);
