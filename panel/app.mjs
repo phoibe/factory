@@ -321,14 +321,14 @@ function card(c, lane, minutes, now, moved) {
         running && live.sessions.get(c.number)
           ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
           : null)
-      : null;
-  const preview = live.previews.get(c.number);
+      : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub') : null;
+  const preview = lane === 'pending' ? null : live.previews.get(c.number);
   const testIt = c.column === 'acceptance' && !running;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'issue'} #${c.number}`),
       e.since != null ? el('span', { class: 'since' }, `depuis ${humanMinutes(e.since)}`) : null),
-    el('h3', {}, el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
+    el('h3', {}, lane === 'pending' ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     testIt && preview ? null : status,
     preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
       testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
@@ -379,14 +379,11 @@ async function answerGo(c, btn) {
 const pendingKey = () => `factory.pending.${current.repo.full_name}`;
 function pendingState() { try { return JSON.parse(store.get(pendingKey()) || '{}') || {}; } catch { return {}; } }
 const savePending = (state) => { if (Object.keys(state).length) store.set(pendingKey(), JSON.stringify(state)); else store.del(pendingKey()); };
-function pendingZone(held) {
+function pendingZone(held, minutes, now) {
   if (!held.length) return null;
-  return el('section', { class: 'pending-zone', 'aria-label': 'Prise en compte en cours' },
+  return el('section', { class: 'lane lane-pending pending-zone', 'aria-label': 'Prise en compte en cours' },
     el('h2', {}, 'Prise en compte en cours…', el('span', { class: 'count' }, String(held.length))),
-    el('ul', { class: 'pending-list' }, held.map((c) => el('li', { class: 'pending-item', 'data-number': String(c.number) },
-      el('span', { class: 'num' }, `#${c.number}`),
-      el('span', { class: 'pending-title' }, c.title),
-      el('span', { class: 'muted' }, 'En attente de GitHub')))));
+    el('div', { class: 'tickets' }, held.map((c) => card(c, 'pending', minutes, now, false))));
 }
 // Clicking a plate's link (preview, « Répondre », title) opens GitHub in another tab: remember it, and put the plate on hold when the owner is back.
 for (const type of ['click', 'auxclick']) {
@@ -463,7 +460,7 @@ function drawBoard() {
   const before = rectsOf(board);
   const fresh = [
     youCard(yours, headline, sub),
-    pendingZone(held.pending),
+    pendingZone(held.pending, minutes, now),
     ...LANES.filter(([id]) => id !== 'yours' && cards.length).map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
       byLane[id].length
