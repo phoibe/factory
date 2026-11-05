@@ -922,3 +922,25 @@ test('a dropped PR is closed with its issue, and the issue gives its place back'
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 17 && c[2] === L.building));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 22 && c[2] === L.visualReview));
 });
+
+// yoldmewhen2 issue #31: « tu peux donc fermer cette demande », the agent was refused the close and asked the owner.
+test('the agent asks with factory:close: at the end of its run the factory closes the issue and its PR', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 31, labels: [L.feature, L.grilling, L.close] }],
+    prs: [{ number: 40, state: 'open', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  });
+  gh.closePr = async (n) => gh.calls.push(['closePr', n]);
+  gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 31, labels: [L.feature, L.grilling, L.close], fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 31 && c[2] === 'not_planned'));
+  assert.ok(gh.calls.some((c) => c[0] === 'closePr' && c[1] === 40));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 31 && c[2] === L.grilling));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 31 && /fermée/.test(c[2])));
+});
+
+test('guard: a card left with factory:close is closed on the next tick', async () => {
+  const gh = fakeGh({ issues: [{ number: 31, labels: [L.feature, L.close] }], prs: [] });
+  gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 31));
+});

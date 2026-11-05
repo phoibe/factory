@@ -311,3 +311,12 @@ test('« fermer » on a factory PR is a drop, whatever its step', () => {
     assert.equal(decide(pr({ event: 'issue_comment', action: 'created', labels: [label], text: 'fermer' }), config, ctx).type, 'drop', label);
   }
 });
+
+test('« fermer » on a factory issue is a drop too', () => {
+  assert.equal(decide(ev({ kind: 'issue', event: 'issue_comment', action: 'created', labels: [L.feature, L.grilling], text: 'ferme' }), config, ctx).type, 'drop');
+  assert.notEqual(decide(ev({ kind: 'issue', event: 'issue_comment', action: 'created', labels: [L.feature, L.grilling], text: 'le bouton fermer est trop petit' }), config, ctx).type, 'drop');
+});
+
+test('an agent run that ends with factory:close is a drop', () => {
+  assert.equal(decide(ev({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.close] }), config, ctx).type, 'drop');
+});
