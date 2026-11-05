@@ -365,3 +365,8 @@ button.go { min-width: 9.5em; font-variant-numeric: tabular-nums; }
 details summary { color: var(--text); }
 .more > summary { margin-top: 0; padding: 8px 14px; }
 .sk-bar { background: color-mix(in srgb, var(--muted) 22%, var(--surface)); }
+.pending-zone { margin: -24px 0 48px; }
+.pending-zone h2 { color: var(--muted); }
+.ticket.pending { box-shadow: none; background: var(--surface-2); border-style: dashed; }
+.ticket.pending:hover { transform: none; border-color: var(--line); }
+.ticket.pending .doing { color: var(--muted); }
