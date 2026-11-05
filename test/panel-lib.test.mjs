@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -176,8 +176,7 @@ test('a pull request closing several issues hides and finishes all of them', () 
   assert.deepEqual(done.map((d) => d.issue), [1, 2]);
 });
 
-test('openIssueCount counts issues, not pull requests', async () => {
-  const { openIssueCount, issuesLinkText } = await import('../panel/lib.mjs');
+test('openIssueCount counts issues, not pull requests', () => {
   assert.equal(openIssueCount([{ number: 1 }, { number: 2, pull_request: {} }, { number: 3 }]), 2);
   assert.equal(openIssueCount([]), 0);
   assert.equal(openIssueCount(null), null);
