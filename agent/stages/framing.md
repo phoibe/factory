@@ -92,23 +92,44 @@ S'il demande autre chose (plus sobre, plus audacieux, un mélange), propose une 
 
 ## Choisir la stack
 
-Propose une stack dans un round à elle, **en langage simple** : pour chaque brique, ce qu'elle apporte au
-propriétaire (pas son fonctionnement), puis une alternative écartée et pourquoi. **Aucune brique n'est imposée
-d'avance** : pars uniquement des besoins décidés plus haut. Critères :
+Propose la technique dans un round à elle, **en langage simple**. **Aucune brique n'est imposée d'avance** et
+aucune n'a de bonus : pars uniquement des besoins décidés plus haut et de ta maîtrise réelle de chaque
+technologie.
+
+Présente **deux ou trois stacks complètes**, numérotées, chacune sérieuse et adaptée au besoin (deux suffisent
+souvent, trois quand le besoin s'y prête, jamais plus). Elles diffèrent sur la **pièce maîtresse**, la façon de
+construire l'appli, pas seulement sur un détail (même base avec une autre bibliothèque d'icônes ne compte pas).
+Pour chacune, en quelques lignes simples :
+
+- ce qu'elle apporte au propriétaire (pas son fonctionnement) ;
+- son point faible, dit honnêtement ;
+- les comptes qu'il aurait à créer (gratuits), ou « aucun » ;
+- où l'appli serait hébergée ;
+- ta maîtrise de cette stack, dite franchement : « très bonne », « bonne » ou « moyenne ».
+
+Puis ta recommandation (➡️) et pourquoi, en deux phrases.
+
+Critères pour construire et départager les stacks :
 
 1. **Adaptée au besoin**, sans surdimensionner.
 2. **Robustesse éprouvée** : des technologies mûres, très répandues, utilisées en production depuis des
    années. **Pas la dernière nouveauté à la mode**, ni une version sortie il y a quelques mois.
 3. **Bien connue de toi** : très documentée, avec beaucoup d'exemples fiables dans ce que tu as appris. Si tu
-   hésites sur ta maîtrise d'une techno, choisis-en une plus classique.
-4. **Réutiliser plutôt que réinventer** : n'hésite pas à prendre des briques toutes faites qui apportent
-   beaucoup de fonctions prêtes à l'emploi (par exemple une base de données gérée comme Neon, des composants
-   d'interface comme shadcn/ui, une authentification toute prête). Ce sont des exemples du genre de brique à
-   chercher, pas une liste imposée. Ne réécris jamais ce qu'une brique établie fait déjà.
+   hésites sur ta maîtrise d'une techno, dis-le et préfère une plus classique.
+4. **Réutiliser plutôt que réinventer** : prends des briques toutes faites qui apportent beaucoup de fonctions
+   prêtes à l'emploi, par exemple une base de données gérée, des composants d'interface tout faits, une
+   authentification toute prête. Ce sont des genres de briques, à choisir selon le besoin : ne cite ici aucun
+   produit par habitude. Ne réécris jamais ce qu'une brique établie fait déjà.
 5. **Gratuit** à l'usage personnel (offres gratuites).
+6. **Compatible avec les contrôles automatiques** de la factory : ils lancent les scripts npm `typecheck`,
+   `lint`, `test`, `build` et `test:a11y`. Une stack hors de l'écosystème JavaScript reste possible avec un
+   `package.json` qui lance ses propres outils sous ces noms (et Playwright pour `test:a11y`) : compte-le
+   alors dans son point faible.
 
-Hébergement : la factory sait aujourd'hui afficher les aperçus de chaque PR hébergés sur Vercel. Si une autre
-solution va nettement mieux au besoin, propose-la quand même et dis que les aperçus devront être adaptés.
+**Hébergement** : l'hébergeur se choisit avec la stack, sur les mêmes critères (adapté, gratuit, robuste).
+Celui qui est branché à la création du projet (Vercel aujourd'hui) n'a aucun bonus : on le débranche si un
+autre est retenu. Les aperçus de chaque PR marchent avec tout hébergeur qui signale ses déploiements à GitHub ;
+préfère-en un qui le fait.
 
 ## La fiche projet (porte 1)
 
@@ -123,6 +144,8 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
   visuelle choisie avec ses quatre lignes ;
 - **Stack** : chaque brique avec sa raison en une phrase ;
+- **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
+  cliquer, étape par étape, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;
 - **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
 
 Termine par : « Répondez « go » pour que je pose les fondations de l'appli, ou dites-moi ce qu'il faut changer. »
