@@ -130,3 +130,9 @@ test('syncTimes copies time texts in place and leaves other nodes alone', async 
   assert.equal(a.textContent, 'depuis 3 min');
   assert.equal(b.textContent, '~5 min');
 });
+
+test('a hidden browser tab counts as idle, so it polls every 30 s instead of stopping', () => {
+  assert.equal(isIdle(1_000, 1_000 + 5_000, true), true);
+  assert.equal(isIdle(1_000, 1_000 + 5_000, false), false);
+  assert.equal(isIdle(1_000, 1_000 + 5_000), false);
+});

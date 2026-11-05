@@ -1,0 +1,6 @@
+{"t":"2026-11-05T09:27:45.123Z","kind":"run","stage":"build","issue":151,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-05T09:29:17.727Z","kind":"test","cmd":"python3 - <<'EOF'\np='test/panel-live.test.mjs'\ns=open(p).read()\ns+='''\ntest('a hidden browser tab counts as idle, so it polls every 30 s instead of stopping', () => {\n  assert.equal(isIdle(1_000, 1_00","ok":false,"id":"toolu_01AxHhknC4cA865gRbaPYDK1"}
+{"t":"2026-11-05T09:29:28.695Z","kind":"skill","name":"test-driven-development","id":"toolu_01Cf3ac1mhvUowsAEJuRLFgN"}
+{"t":"2026-11-05T09:29:28.823Z","kind":"skill","name":"writing-plans","id":"toolu_018QRdxjccpztZy78n19NiA9"}
+{"t":"2026-11-05T09:31:35.462Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; git diff panel","ok":true,"id":"toolu_016jKAuCS8PnYuyL8fM1UupC"}
+{"t":"2026-11-05T09:31:35.557Z","kind":"skill","name":"requesting-code-review","id":"toolu_015Vyr6GqznmfHRg2uwfbQeZ"}

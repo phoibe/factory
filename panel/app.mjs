@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=16';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=5';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=6';
 import { resolveConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -283,8 +283,8 @@ async function refresh() {
 
 function schedule() {
   clearTimeout(live.timer);
-  if (document.hidden || $('board').hidden || !current) return;
-  live.timer = setTimeout(refresh, pollDelay(live.failures, isIdle(live.activity, Date.now())));
+  if (!current) return;
+  live.timer = setTimeout(refresh, pollDelay(live.failures, isIdle(live.activity, Date.now(), document.hidden)));
 }
 
 function drawStatus() {
@@ -553,15 +553,16 @@ async function renderBoard() {
 // Any sign of life from the owner brings the 8 s rhythm back (after 2 minutes of calm it slows to 30 s).
 for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart']) {
   window.addEventListener(type, () => {
-    const wasIdle = isIdle(live.activity, Date.now());
+    const wasIdle = isIdle(live.activity, Date.now(), document.hidden);
     live.activity = Date.now();
     if (wasIdle && current && !document.hidden && !live.busy) schedule();
   }, { passive: true });
 }
 
-// Coming back to the tab refreshes at once (unless it just did), leaving it pauses the polling.
+// Coming back to the tab refreshes at once (unless it just did); while hidden it keeps polling every 30 s.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || !current) return clearTimeout(live.timer);
+  if (!current) return clearTimeout(live.timer);
+  if (document.hidden) return schedule();
   live.activity = Date.now();
   if (Date.now() - live.last > 5000) refresh(); else schedule();
 });
@@ -927,14 +928,14 @@ async function refreshChat() {
 
 function scheduleChat() {
   clearTimeout(chat.timer);
-  if (document.hidden || $('chat').hidden || !current) return;
+  if ($('chat').hidden || !current) return;
   if (chat.server) { chat.timer = setTimeout(refreshChat, 30_000); return; } // only picks up other devices' messages
   const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
   chat.timer = setTimeout(refreshChat, waiting ? 4000 : 15_000);
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return clearTimeout(chat.timer);
+  if (document.hidden) return;
   if (current && !$('chat').hidden) refreshChat();
 });
 
