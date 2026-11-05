@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slug, markdownTable, parseArgs, darkToggle, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { slug, markdownTable, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -51,4 +51,13 @@ test('darkToggle reads how the app switches to dark', () => {
 test('differs detects a page that looks the same in dark', () => {
   assert.equal(differs(Buffer.from('abc'), Buffer.from('abc')), false);
   assert.equal(differs(Buffer.from('abc'), Buffer.from('abd')), true);
+});
+
+test('cookiesFor turns --cookie into session cookies for the app being captured', () => {
+  assert.deepEqual(cookiesFor('session=a=b, theme=dark', 'http://localhost:3000/x'), [
+    { name: 'session', value: 'a=b', url: 'http://localhost:3000' },
+    { name: 'theme', value: 'dark', url: 'http://localhost:3000' },
+  ]);
+  assert.deepEqual(cookiesFor(undefined, 'http://localhost:3000'), []);
+  assert.deepEqual(cookiesFor(true, 'http://localhost:3000'), []);
 });

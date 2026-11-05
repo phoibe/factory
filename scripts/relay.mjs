@@ -355,7 +355,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // GitHub runs no pull_request workflow for a PR in conflict with main: a PR waiting for its checks would
-  // wait forever. Checked right after every merge (that is when a PR falls into conflict) and on every tick.
+  // wait forever. Checked right after every merge (that is when a PR falls into conflict) and on every event.
   async function unstickConflicts() {
     const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
     for (const item of waiting) {
@@ -550,6 +550,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   async function handle(ev, { ownerLogin } = {}) {
     const result = await handleEvent(ev, { ownerLogin });
+    // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to
+    // count on (a few runs a day): every event the relay sees looks for a PR stuck that way.
+    if (ev.kind !== 'dispatch') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
     await notifyWaiting();
     return result;
   }
@@ -653,8 +656,6 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'dequeue':
         if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
-        // A PR merged by hand (or any closed one): the PRs still waiting may now be in conflict.
-        if (ev.kind === 'tick' || ev.kind === 'pr') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
         break;
       default:
         break;

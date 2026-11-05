@@ -575,6 +575,19 @@ test('a PR merged by hand also unsticks the PRs it put in conflict', async () =>
   assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
 });
 
+test('any event unsticks a PR opened in conflict, without waiting for the rare scheduled tick', async () => {
+  // The agent opened PR 61 on a branch already behind a merge: GitHub sent no pull_request event for it.
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }, { number: 70, labels: [L.feature, L.grilling] }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'def' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 52, labels: [L.feature, L.building], fromOwner: false });
+  assert.ok(sent.some((s) => payloadOf(s.init.body).stage === 'update-branch' && payloadOf(s.init.body).pr === 61));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
+});
+
 // ---- auto-pick ----
 const pickConfig = { ...config, autoPick: true, stages: { grilling: true, acceptance: true } };
 async function runPick(issues, cfg = pickConfig) {
