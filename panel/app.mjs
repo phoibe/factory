@@ -310,6 +310,10 @@ function stepTrack(c) {
 // The button names what it asks for, not a generic « Répondre ».
 const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
+// The card's answer: a « go » button (5 s to cancel) or the link to the message to answer.
+const replyAction = (c) => c.reply === 'go'
+  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
+  : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -329,22 +333,26 @@ function card(c, lane, minutes, now, moved) {
           ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
           : null)
       : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub') : null;
-  const preview = lane === 'pending' ? null : live.previews.get(c.number);
-  const testIt = c.column === 'acceptance' && !running;
+  const waiting = lane === 'pending';
+  const preview = live.previews.get(c.number);
+  // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
+  const testIt = c.column === 'acceptance' && !running && !waiting;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
-    el('h3', {}, lane === 'pending' ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
+    el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
+    waiting && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview ? null : status,
     preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
-      testIt ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
+      testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
+    waiting ? replyAction(c) : null,
     stepTrack(c),
     el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only once the factory is done with it: while an agent catches the step up, there is nothing for you to see.
     // Not on the captures either: they come right after the catch-up, and the summary is only refreshed after the checks.
-    c.labels.includes('factory:skills-alert') && lane === 'yours' && c.column !== 'visual'
+    c.labels.includes('factory:skills-alert') && ((lane === 'yours' && c.column !== 'visual') || waiting)
       ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null);
   article.dataset.sig = withoutTimes(article.outerHTML); // the moved halo is not part of the signature
   if (moved) article.classList.add('moved');
@@ -420,7 +428,7 @@ function pendingZone(held, minutes, now) {
 // Clicking a plate's link (preview, « Répondre », title) opens GitHub in another tab: remember it, and put the plate on hold when the owner is back.
 for (const type of ['click', 'auxclick']) {
   document.addEventListener(type, (e) => {
-    const li = e.target.closest?.('.you-item[data-number]');
+    const li = e.target.closest?.('.you-item[data-number], .ticket.pending[data-number]'); // a new click on a waiting card restarts its wait
     const link = e.target.closest?.('a');
     if (!li || !current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
@@ -451,9 +459,7 @@ function youCard(yours, headline, sub) {
         el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
       live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
-      c.reply === 'go'
-        ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
-        : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column))))),
+      replyAction(c)))),
     status);
 }
 
