@@ -7,7 +7,8 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
 2. **Passe design sur tous les écrans** : fais la liste de **tous** les écrans de l'appli (pages, routes,
    états importants : vide, erreur, chargement, connecté ou non), pas seulement ceux d'un diff. Puis suis
    `.factory/stages/design-pass.md` sur cette liste : skill `impeccable`, commande `critique` pour chaque
-   écran, correction de tout ce qu'il trouve, recritique, au plus 3 tours. Reste dans `DESIGN.md` ; si un
+   écran, correction de tout ce qu'il trouve, recritique, au plus 3 tours, avec la règle « Textes à l'écran »
+   de `design-pass.md` sur tous les écrans. Reste dans `DESIGN.md` ; si un
    problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR.
 3. **Revue de code générale** : charge le skill `requesting-code-review` (outil Skill), puis fais relire
    **tout le code** (pas un diff) par des sous-agents neufs, un par grande partie de l'appli si elle est
