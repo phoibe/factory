@@ -1,11 +1,29 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
 const HTML = 'application/vnd.github.full+json';
 
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch }) {
+// GitHub answers 5xx now and then (503 « Service Unavailable », 500 on pushes…). One such answer used to kill a whole
+// relay step: a PR whose checks were green then waited for nothing until the next tick. Those answers are retried.
+// A POST is retried only on 503 (not served at all), so a comment or a label is never written twice.
+const RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
+const transient = (method, status) => (method === 'POST' ? status === 503 : status >= 500);
+
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  // The network call with its retries; a network error (no answer at all) is retried like a 503.
+  async function send(method, url, init) {
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try { res = await fetchImpl(url, { method, ...init }); } catch (e) {
+        if (attempt >= RETRY_DELAYS_MS.length) throw e;
+        await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      if (!transient(method, res.status) || attempt >= RETRY_DELAYS_MS.length) return res;
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
   async function request(method, path, body, accept = 'application/vnd.github+json') {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
-    const res = await fetchImpl(url, {
-      method,
+    const res = await send(method, url, {
       headers: {
         authorization: `Bearer ${token}`,
         accept,
@@ -23,7 +41,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     const out = [];
     let url = `${api}${path.replace('{repo}', repo)}`;
     while (url) {
-      const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}`, accept, 'x-github-api-version': '2022-11-28' } });
+      const res = await send('GET', url, { headers: { authorization: `Bearer ${token}`, accept, 'x-github-api-version': '2022-11-28' } });
       if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
       out.push(...(await res.json()));
       url = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get('link') || '')?.[1];
@@ -79,7 +97,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     removeLabel: async (n, label) => {
       try { await request('DELETE', `/repos/{repo}/issues/${n}/labels/${enc(label)}`); } catch (e) { if (!String(e).includes('404')) throw e; }
     },
-    closeIssue: (n) => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: 'completed' }),
+    closeIssue: (n, reason = 'completed') => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: reason }),
+    closePr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'closed' }),
     merge: (n, sha) => request('PUT', `/repos/{repo}/pulls/${n}/merge`, { merge_method: 'squash', ...(sha ? { sha } : {}) }),
     getContent: (path, ref) => request('GET', `/repos/{repo}/contents/${path}${ref ? `?ref=${enc(ref)}` : ''}`),
     listPrFiles: (n) => paginate(`/repos/{repo}/pulls/${n}/files?per_page=100`),
@@ -97,6 +116,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     },
     putContent: (path, branch, base64, message) => request('PUT', `/repos/{repo}/contents/${path}`, { message, content: base64, branch }),
     updateComment: (id, body) => request('PATCH', `/repos/{repo}/issues/comments/${id}`, { body }),
+    checkRuns: async (sha) => (await request('GET', `/repos/{repo}/commits/${sha}/check-runs?per_page=100`))?.check_runs || [],
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),
