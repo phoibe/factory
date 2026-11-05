@@ -800,7 +800,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.addLabels(prNumber, [L.acceptance]);
       const where = url
         ? `Vous pouvez tester la nouvelle version ici : ${url}`
-        : "Je n'ai pas trouvé de preview pour cette PR. Vérifiez que Vercel est bien connecté au dépôt (voir le README).";
+        : "Je n'ai pas trouvé de preview pour cette PR. Vérifiez que l'hébergeur est bien branché sur le dépôt (les liens et les clics sont dans la fiche projet du cadrage).";
       await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅\n\n${where}\n\nVérifiez les critères d'acceptation de la spec. Répondez « ok » pour mettre en ligne, ou décrivez ce qui ne va pas.`));
       return;
     }

@@ -14,6 +14,10 @@ application (un `package.json`, du code source), c'est une **adoption** :
   nouveau ; seulement dans ce cas, passe par le questionnaire design et la direction visuelle.
 - **Stack** : garde celle en place. N'en propose une autre que si le propriétaire le demande ou si elle
   empêche vraiment un besoin décidé.
+- **Hébergement** : regarde toi-même si le dépôt est déjà déployé quelque part (déploiements et environnements
+  GitHub, `vercel.json`, `netlify.toml`, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR,
+  adresse du site dans le README). S'il l'est, garde cet hébergeur et ne demande rien. Sinon, propose-en un
+  avec la stack, comme pour un nouveau projet.
 - La fiche finale décrit l'appli telle qu'elle est plus ce qui vient ensuite ; « Première version » devient
   **Prochaines features**.
 
@@ -107,8 +111,11 @@ d'avance** : pars uniquement des besoins décidés plus haut. Critères :
    chercher, pas une liste imposée. Ne réécris jamais ce qu'une brique établie fait déjà.
 5. **Gratuit** à l'usage personnel (offres gratuites).
 
-Hébergement : la factory sait aujourd'hui afficher les aperçus de chaque PR hébergés sur Vercel. Si une autre
-solution va nettement mieux au besoin, propose-la quand même et dis que les aperçus devront être adaptés.
+**Hébergement** : il fait partie de la stack. L'installation n'en branche aucun et aucun n'est choisi par défaut :
+propose celui qui va le mieux avec la stack et le besoin (offre gratuite), avec une alternative écartée et pourquoi.
+La factory affiche les aperçus de tout hébergeur qui signale ses déploiements à GitHub (Vercel, Netlify, Cloudflare
+Pages…) ; un projet sans aperçu passe directement à la suite. Tu ne te connectes jamais au compte du propriétaire
+chez un hébergeur : s'il faut un compte, les clics restent les siens.
 
 ## La fiche projet (porte 1)
 
@@ -122,8 +129,18 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Design** : la scène d'usage, les trois mots du ressenti, les inspirations et anti-inspirations, ce qui
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
   visuelle choisie avec ses quatre lignes ;
-- **Stack** : chaque brique avec sa raison en une phrase ;
-- **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
+- **Stack** : chaque brique avec sa raison en une phrase, **hébergeur compris** ;
+- **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien » ;
+- **Si l'hébergeur retenu demande un compte** (Vercel, Netlify…) et que le dépôt n'y est pas déjà branché, un
+  encadré (citation `>`) intitulé **« Avant de répondre « go » : brancher l'hébergeur »**, juste avant la phrase
+  de fin : les liens exacts pour ce dépôt et les clics à faire, en général deux (donner à l'hébergeur l'accès au
+  dépôt, puis « Importer »), en disant qu'ainsi la toute première PR aura déjà son aperçu. Pour Vercel par exemple :
+  1. https://github.com/apps/vercel/installations/new → votre compte → « Repository access » : ajoutez le dépôt
+     (ou « All repositories ») → Save ;
+  2. `https://vercel.com/new/import?s=https://github.com/<dépôt>` → Deploy (un premier échec est normal tant que
+     l'appli n'existe pas encore).
+  Si l'hébergeur ne demande aucun compte (par exemple GitHub Pages pour un site simple), pas d'encadré : dis
+  seulement que tu le mets en place toi-même dans la PR des fondations, sans rien lui demander.
 
 Termine par : « Répondez « go » pour que je pose les fondations de l'appli, ou dites-moi ce qu'il faut changer. »
 Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`.

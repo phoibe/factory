@@ -28,8 +28,7 @@ ne refais **pas** l'appli et ne change pas son comportement.
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
-   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil), et
-   `vercel.json` avec le framework s'il n'y est pas. Si un contrôle échoue à cause du code existant, corrige
+   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil). Si un contrôle échoue à cause du code existant, corrige
    ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
@@ -64,14 +63,23 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      pages principales), qui passent tous : ce sont ceux des contrôles automatiques ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
-   - un `vercel.json` qui déclare le framework (ex. `{"framework": "nextjs"}`) : le projet Vercel a été
-     importé quand le dépôt était vide, il ne sait donc pas encore quel type d'appli construire.
+   - **l'hébergeur retenu dans la fiche** :
+     - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
+       (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire ;
+     - s'il demande un compte, ajoute seulement son fichier de configuration quand il en faut un pour qu'il
+       reconnaisse l'appli (par exemple `vercel.json` avec le framework, `{"framework": "nextjs"}`, car le
+       projet peut avoir été importé quand le dépôt était vide). Ne te connecte jamais à son compte.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
    localement que les cinq scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
+   **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
+   aucun déploiement GitHub, aucun commentaire de son bot) : ne bloque rien, ouvre la PR quand même. Ajoute au
+   résumé et à ton message sur la PR que cette PR n'aura pas d'aperçu, en redonnant les liens et les clics de
+   l'encadré « Avant de répondre « go » » de la fiche : une fois l'hébergeur branché, les PR suivantes auront
+   leur aperçu.
 8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:visual-review`
    puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
 9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue (titre
