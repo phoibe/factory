@@ -125,9 +125,32 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.notEqual(colours.border, colours.accent);
     const box = await go.boundingBox();
     assert.ok(box.height >= 44, 'big enough for a thumb');
-    await go.click();
+    // Nothing in the waiting zone is blue: step track, borders, text, nor focus rings.
+    const blue = await page.evaluate(async () => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--accent)';
+      document.body.append(probe);
+      const accent = getComputedStyle(probe).color;
+      probe.remove();
+      const hits = [];
+      const scan = () => { for (const n of document.querySelectorAll('.pending-zone, .pending-zone *')) {
+        const st = getComputedStyle(n);
+        for (const k of ['color', 'backgroundColor', 'borderTopColor', 'outlineColor']) if (st[k] === accent && !(k === 'outlineColor' && st.outlineStyle === 'none')) hits.push(`${n.className || n.tagName}:${k}`);
+      } };
+      scan();
+      for (const n of document.querySelectorAll('.pending-zone a, .pending-zone button')) { n.focus(); scan(); }
+      document.activeElement.blur();
+      return hits;
+    });
+    assert.deepEqual(blue, []);
+    // With the keyboard: « go » starts the countdown, keeps the focus across redraws, and Enter cancels it.
+    await go.focus();
+    await page.keyboard.press('Enter');
     await page.waitForFunction(() => /Annuler/.test(document.querySelector('.pending-zone button.go[data-go="1"]')?.textContent || ''));
-    await page.locator('.pending-zone button.go[data-go="1"]').click();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // forces a redraw while the countdown runs
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset?.go), '1', 'focus stays on « go »');
+    await page.keyboard.press('Enter');
     assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').textContent(), 'go');
     await page.waitForTimeout(5500);
     assert.deepEqual(posted, [], 'a cancelled « go » sends nothing');

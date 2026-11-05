@@ -312,7 +312,7 @@ const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', 
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 // The card's answer: a « go » button (5 s to cancel) or the link to the message to answer.
 const replyAction = (c) => c.reply === 'go'
-  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
+  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
   : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 
 function card(c, lane, minutes, now, moved) {
