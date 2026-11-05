@@ -32,6 +32,7 @@ jobs:
         run: |
           rm -rf .factory-src
           git add -A .claude .factory
+          git add factory.config.json 2>/dev/null || true
           if git diff --cached --quiet; then echo "Rien à synchroniser"; exit 0; fi
           git config user.name "factory-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

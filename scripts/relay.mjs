@@ -90,11 +90,14 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   if (eventName === 'pull_request') {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
-      merged: Boolean(p.pull_request.merged), open: p.pull_request.state === 'open', fromOwner: isOwnerOrApp(p.sender?.login),
+      merged: Boolean(p.pull_request.merged), headRef: p.pull_request.head?.ref, open: p.pull_request.state === 'open', fromOwner: isOwnerOrApp(p.sender?.login),
     };
   }
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
 }
+
+// Files a documentation PR may carry: the glossary and the decision records, nothing else.
+export const isDocFile = (f) => /^(GLOSSARY(-MAP)?\.md|docs\/adr\/[^/]+\.md)$/.test(f);
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const outputs = {};
@@ -274,6 +277,27 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."));
       free -= 1;
       if (!isBug) stopFeatures = true;
+    }
+  }
+
+  // The documents written during the questions (glossary, decisions) are merged as soon as their PR opens, but only
+  // when it touches nothing else: a doc PR that carries code is left for the owner.
+  async function mergeDocsPr(prNumber) {
+    const pr = await gh.getPr(prNumber);
+    const sha = pr?.head?.sha;
+    const def = (await gh.getRepo?.())?.default_branch || 'main';
+    // Only the factory's own branch, in this repo, aimed at the default branch.
+    if (!pr || pr.state !== 'open' || pr.draft || pr.base?.ref !== def || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
+      log(`docs PR #${prNumber}: not a plain docs PR of this repo, left alone`); return;
+    }
+    const list = (await gh.listPrFiles(prNumber)) || [];
+    if (!list.length || !list.every((f) => f.status !== 'renamed' && !f.previous_filename && isDocFile(f.filename))) { log(`docs PR #${prNumber}: not only documents, left alone`); return; }
+    try {
+      await gh.merge(prNumber, sha);
+      log(`docs PR #${prNumber} merged`);
+    } catch (e) {
+      log(`docs PR #${prNumber} not merged: ${e.message || e}`);
+      await gh.comment(prNumber, say("Je n'ai pas pu fusionner ces documents (glossaire et décisions) tout seul, sans doute un conflit. Rien n'est cassé : le projet continue sans eux pour l'instant.")).catch(() => {});
     }
   }
 
@@ -583,6 +607,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         break;
       case 'merge':
         await mergePr(n);
+        break;
+      case 'docs-merge':
+        await mergeDocsPr(n);
         break;
       case 'dequeue':
         if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));

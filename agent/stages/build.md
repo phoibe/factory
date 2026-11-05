@@ -30,7 +30,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
-   lui), puis `Closes #<n>`, puis les détails techniques en anglais.
+   lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais.
 9. **Captures** : si l'interface change et que l'étape screenshots est active, suis
    `.factory/stages/screenshots.md`, puis mets le label `factory:visual-review` sur la PR.
    Sinon, mets directement `factory:checks` sur la PR.

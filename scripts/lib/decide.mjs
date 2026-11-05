@@ -86,10 +86,15 @@ function onIssue(ev, config, ctx) {
   return ignore('issue hors factory');
 }
 
+// The branch the agent opens, at the end of the questions, for the project's glossary and decisions.
+export const isDocsBranch = (ref) => /^claude\/docs-\d+$/.test(String(ref || ''));
+
 function onPr(ev) {
   if (ev.event === 'pull_request') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'PR fermée' };
     if (!ev.fromOwner) return ignore("PR d'un tiers");
+    // The glossary and decisions written during the questions travel in their own small PR: no card, no checks.
+    if (isDocsBranch(ev.headRef) && ['opened', 'synchronize', 'reopened'].includes(ev.action)) return { type: 'docs-merge', add: [], remove: [], reason: 'PR de documents (glossaire et décisions)' };
     if (ev.action === 'synchronize' && has(ev.labels, L.acceptance)) {
       return { type: 'checks', add: [L.checks], remove: [L.acceptance], reason: 'nouveau code pendant la recette : on recontrôle' };
     }

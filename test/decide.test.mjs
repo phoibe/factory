@@ -284,3 +284,18 @@ test('an empty review or comment on a PR waiting for the owner launches no agent
     assert.equal(a.type, 'ignore', label);
   }
 });
+
+test('a documentation PR opened by the factory is merged on its own', () => {
+  for (const action of ['opened', 'synchronize', 'reopened']) {
+    const a = decide({ kind: 'pr', event: 'pull_request', action, number: 8, labels: [], fromOwner: true, headRef: 'claude/docs-155' }, config, ctx);
+    assert.equal(a.type, 'docs-merge', action);
+  }
+});
+
+test('only the factory\'s own documentation branches are merged on their own', () => {
+  const base = { kind: 'pr', event: 'pull_request', action: 'opened', number: 8, labels: [], fromOwner: true };
+  assert.equal(decide({ ...base, headRef: 'claude/issue-5-x' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, headRef: 'claude/docs-x.y' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, headRef: 'feature/claude/docs-1' }, config, ctx).type, 'ignore');
+  assert.equal(decide({ ...base, fromOwner: false, headRef: 'claude/docs-155' }, config, ctx).type, 'ignore');
+});

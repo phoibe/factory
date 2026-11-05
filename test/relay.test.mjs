@@ -24,6 +24,7 @@ function fakeGh(state) {
     addLabels: async (n, ls) => { calls.push(['add', n, ...ls]); const i = issue(n); if (i) { i.labels = i.labels || []; i.labels.push(...ls); } },
     removeLabel: async (n, l) => { calls.push(['remove', n, l]); const i = issue(n); if (i) i.labels = (i.labels || []).filter((x) => x !== l); },
     merge: async (n) => calls.push(['merge', n]),
+    ...(state.files ? { listPrFiles: async (n) => state.files[n] || [] } : {}),
     closeIssue: async (n) => { calls.push(['close', n]); const i = issue(n); if (i) i.open = false; },
     deployments: async () => [{ id: 1 }],
     recentDeployments: async () => state.deployments || [{ id: 1, environment: 'Preview' }],
@@ -819,4 +820,49 @@ test('guard: a build whose PR forgot « Closes #n » is recognised by its branch
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
   assert.equal(sent.length, 0);
+});
+
+const docsEvent = (n) => ({ kind: 'pr', event: 'pull_request', action: 'opened', number: n, labels: [], fromOwner: true, headRef: 'claude/docs-155' });
+
+test('a documentation PR that only touches the glossary and decisions is merged', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 8, body: 'Glossaire', state: 'open', base: { ref: 'main' }, head: { sha: 'd1' }, labels: [] }], files: { 8: [{ filename: 'GLOSSARY.md' }, { filename: 'docs/adr/0001-x.md' }] } });
+  const relay = createRelay({ gh, repo: 'o/r', config, env, log: quiet });
+  await relay.handle(docsEvent(8), { ownerLogin: 'o' });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 8));
+});
+
+test('a documentation PR that touches anything else is left alone', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 8, body: 'Glossaire', state: 'open', base: { ref: 'main' }, head: { sha: 'd1' }, labels: [] }], files: { 8: [{ filename: 'GLOSSARY.md' }, { filename: 'src/app.js' }] } });
+  const relay = createRelay({ gh, repo: 'o/r', config, env, log: quiet });
+  await relay.handle(docsEvent(8), { ownerLogin: 'o' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+});
+
+test('a documentation PR with no file at all is left alone', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 8, body: '', state: 'open', base: { ref: 'main' }, head: { sha: 'd1' }, labels: [] }], files: { 8: [] } });
+  const relay = createRelay({ gh, repo: 'o/r', config, env, log: quiet });
+  await relay.handle(docsEvent(8), { ownerLogin: 'o' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+});
+
+test('eventFromPayload gives the branch name of a PR', () => {
+  const ev = eventFromPayload('pull_request', { action: 'opened', repository: { owner: { login: 'phoibe' } }, sender: { login: 'phoibe' }, pull_request: { number: 9, labels: [], head: { ref: 'claude/docs-155' } } });
+  assert.equal(ev.headRef, 'claude/docs-155');
+});
+
+test('a documentation PR is not merged through renames, prefixed paths, other bases or forks', async () => {
+  const pr = { number: 8, body: '', state: 'open', base: { ref: 'main' }, head: { sha: 'd1' }, labels: [] };
+  const cases = [
+    [{ ...pr }, [{ filename: 'GLOSSARY.md', status: 'renamed', previous_filename: 'src/app.js' }]],
+    [{ ...pr }, [{ filename: 'src/GLOSSARY.md' }]],
+    [{ ...pr }, [{ filename: '.claude/skills/x/docs/adr/y.md' }]],
+    [{ ...pr, base: { ref: 'dev' } }, [{ filename: 'GLOSSARY.md' }]],
+    [{ ...pr, head: { sha: 'd1', repo: { full_name: 'x/r' } } }, [{ filename: 'GLOSSARY.md' }]],
+    [{ ...pr, draft: true }, [{ filename: 'GLOSSARY.md' }]],
+  ];
+  for (const [p, files] of cases) {
+    const gh = fakeGh({ issues: [], prs: [p], files: { 8: files } });
+    await createRelay({ gh, repo: 'o/r', config, env, log: quiet }).handle(docsEvent(8), { ownerLogin: 'o' });
+    assert.ok(!gh.calls.some((c) => c[0] === 'merge'), JSON.stringify(files));
+  }
 });
