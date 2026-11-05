@@ -895,3 +895,17 @@ test('guard: a report that ran fine, or has not run yet, is left alone', async (
     assert.ok(!gh.calls.some((c) => c[0] === 'merge'), String(report));
   }
 });
+
+test('a dropped PR is closed with its issue, and the issue gives its place back', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 17, labels: [L.bug, L.building] }, { number: 22, labels: [L.visualReview], pull_request: {} }],
+    prs: [{ number: 22, state: 'open', body: 'Closes #17', head: { sha: 'abc', ref: 'claude/issue-17-fix' }, labels: [{ name: L.visualReview }] }],
+  });
+  gh.closePr = async (n) => gh.calls.push(['closePr', n]);
+  gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 22, labels: [L.visualReview], text: 'fermer', fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'closePr' && c[1] === 22));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 17 && c[2] === 'not_planned'));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 17 && c[2] === L.building));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 22 && c[2] === L.visualReview));
+});

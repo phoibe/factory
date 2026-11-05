@@ -630,6 +630,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'merge':
         await mergePr(n);
         break;
+      case 'drop': {
+        // The owner gave up on this PR: close it and its issue, and free its place. The agent's run cannot do it.
+        const pr = await gh.getPr(n);
+        const issue = linkedIssue(pr?.body) || (pr && branchIssue(pr));
+        await gh.comment(n, say(issue
+          ? `C'est fait : cette PR est abandonnée et la demande #${issue} est fermée. Rien n'a été mis en ligne.`
+          : "C'est fait : cette PR est abandonnée. Rien n'a été mis en ligne."));
+        await gh.closePr(n);
+        for (const l of names(pr?.labels).filter((x) => x.startsWith('factory:'))) await gh.removeLabel(n, l);
+        if (issue) {
+          const labels = await liveLabels(issue);
+          for (const l of [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing]) if (labels.includes(l)) await gh.removeLabel(issue, l);
+          await gh.closeIssue(issue, 'not_planned');
+        }
+        await dequeue({ freed: issue || null });
+        break;
+      }
       case 'docs-merge':
         await mergeDocsPr(n);
         break;

@@ -97,7 +97,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     removeLabel: async (n, label) => {
       try { await request('DELETE', `/repos/{repo}/issues/${n}/labels/${enc(label)}`); } catch (e) { if (!String(e).includes('404')) throw e; }
     },
-    closeIssue: (n) => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: 'completed' }),
+    closeIssue: (n, reason = 'completed') => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: reason }),
+    closePr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'closed' }),
     merge: (n, sha) => request('PUT', `/repos/{repo}/pulls/${n}/merge`, { merge_method: 'squash', ...(sha ? { sha } : {}) }),
     getContent: (path, ref) => request('GET', `/repos/{repo}/contents/${path}${ref ? `?ref=${enc(ref)}` : ''}`),
     listPrFiles: (n) => paginate(`/repos/{repo}/pulls/${n}/files?per_page=100`),
