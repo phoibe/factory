@@ -11,6 +11,7 @@ import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRAN
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { syncFingerprint } from './lib/fingerprint.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
@@ -416,6 +417,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await releaseStaleLocks(ownerLogin);
     await reportLost();
     await closeAsked();
+    await syncIfBehind();
+  }
+
+  // The project's agent instructions come from its last sync, which only ran on a config change or weekly: a fix to
+  // the agent's rules (« never close, add factory:close ») reached the relay at once but the agent a week later.
+  // When the project's synced fingerprint differs from this factory version's, the sync is started now.
+  async function syncIfBehind() {
+    if (!gh.getContent) return;
+    let mine;
+    try { mine = syncFingerprint(ROOT); } catch { return; }
+    const file = await gh.getContent('.factory/synced.json').catch(() => null);
+    let theirs = null;
+    try { theirs = file?.content ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')).fingerprint : null; } catch { /* resync */ }
+    if (theirs === mine) return;
+    const ref = (await gh.getRepo())?.default_branch || 'main';
+    try { await gh.dispatch('factory-sync.yml', ref, {}); log(`sync started: project at ${theirs || 'unknown'}, factory at ${mine}`); }
+    catch (e) { log(`sync not started (${String(e.message || e).slice(0, 80)})`); }
   }
 
   // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which

@@ -955,3 +955,16 @@ test('guard: a card left with factory:close is closed on the next tick', async (
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 31));
 });
+
+// yoldmewhen2 #37: the factory:close rule was live in the relay, but the project's agent still read week-old instructions.
+test('guard: a project whose agent instructions are behind the factory gets synced on the tick', async () => {
+  const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
+  const mine = syncFingerprint(new URL('..', import.meta.url).pathname);
+  const content = (fp) => ({ content: Buffer.from(JSON.stringify({ fingerprint: fp })).toString('base64') });
+  for (const [fp, dispatched] of [['old', true], [null, true], [mine, false]]) {
+    const gh = fakeGh({ issues: [], prs: [] });
+    gh.getContent = async () => (fp ? content(fp) : null);
+    await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+    assert.equal(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'), dispatched, String(fp));
+  }
+});

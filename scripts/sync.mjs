@@ -6,6 +6,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig, enabledSkills, parseRawConfig } from './lib/config.mjs';
 import { hookCommand } from '../agent/scripts/run-root.mjs';
+import { syncFingerprint } from './lib/fingerprint.mjs';
 
 const FACTORY_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STAGE_LABELS = {
@@ -100,6 +101,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   writeFileSync(donePath, JSON.stringify({ done: evaluated || done.length ? [...new Set([...done, ...MIGRATIONS.map((m) => m.id)])] : done }, null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');
   writeFileSync(join(outDir, 'config.resolved.json'), JSON.stringify(config, null, 2) + '\n');
+  writeFileSync(join(outDir, 'synced.json'), JSON.stringify({ fingerprint: syncFingerprint(factoryDir) }, null, 2) + '\n');
   return { installed: skills.map((s) => s.id), removed, warnings };
 }
 
