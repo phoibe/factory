@@ -29,7 +29,7 @@
 
 **Files:** Create `test/stack-neutral.test.mjs`; Modify `agent/stages/framing.md` (« Choisir la stack », fiche projet), `agent/stages/foundation.md` (adoption step 4, skeleton step 5), `agent/stages/resume.md`, `agent/stages/acceptance-fix.md`.
 
-- [ ] Write tests: no stage file contains `Neon|shadcn|nextjs|Next.js|Supabase|Clerk|Prisma|Tailwind|Firebase`; « Vercel » appears in no stage except as a neutral mention in framing's hosting rule (« aucun bonus »); framing requires « deux ou trois stacks », « pièce maîtresse », the five per-stack points, « très bonne », ➡️; hosting chosen « avec la stack »; adoption keeps stack; foundation hosting config only « si l'hébergeur choisi le demande ».
+- [ ] Write tests: no stage file contains `Neon|shadcn|nextjs|Next.js|Supabase|Clerk|Prisma|Tailwind|Firebase`; « Vercel » appears in no stage except as a neutral mention in framing's hosting rule (« aucun bonus »); framing requires « deux ou trois stacks », « pièce maîtresse », the five per-stack points, « très bonne », ➡️; hosting chosen « avec la stack »; adoption keeps stack; foundation hosting config only « si l'hébergeur le demande ».
 - [ ] Run `npm test`, see them fail.
 - [ ] Rewrite the passages.
 - [ ] Run `npm test`, all pass. Commit.

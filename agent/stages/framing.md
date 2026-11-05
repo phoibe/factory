@@ -121,6 +121,9 @@ Critères pour construire et départager les stacks :
    authentification toute prête. Ce sont des genres de briques, à choisir selon le besoin : ne cite ici aucun
    produit par habitude. Ne réécris jamais ce qu'une brique établie fait déjà.
 5. **Gratuit** à l'usage personnel (offres gratuites).
+6. **Compatible avec les contrôles automatiques** de la factory : ils lancent les scripts npm `typecheck`,
+   `lint`, `test`, `build` et `test:a11y`. Une stack hors de l'écosystème JavaScript reste possible si un petit
+   `package.json` peut lancer ses propres outils sous ces noms : compte-le alors dans son point faible.
 
 **Hébergement** : l'hébergeur se choisit avec la stack, sur les mêmes critères (adapté, gratuit, robuste).
 Celui qui est branché à la création du projet (Vercel aujourd'hui) n'a aucun bonus : on le débranche si un
@@ -141,7 +144,7 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
   visuelle choisie avec ses quatre lignes ;
 - **Stack** : chaque brique avec sa raison en une phrase ;
 - **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
-  cliquer, étape par étape ;
+  cliquer, étape par étape, et comment débrancher l'hébergeur déjà branché ;
 - **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
 
 Termine par : « Répondez « go » pour que je pose les fondations de l'appli, ou dites-moi ce qu'il faut changer. »

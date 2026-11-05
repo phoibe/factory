@@ -7,7 +7,7 @@ const dir = new URL('../agent/stages/', import.meta.url);
 const read = (f) => readFileSync(new URL(f, dir), 'utf8');
 const section = (md, title) => (md.split(`## ${title}`)[1]?.split('\n## ')[0] ?? '').replace(/\s+/g, ' ');
 
-const PRODUCTS = /\b(Neon|shadcn|nextjs|Next\.js|Supabase|Clerk|Prisma|Tailwind|Firebase|Netlify|Render|Cloudflare)\b/;
+const PRODUCTS = /\b(Neon|shadcn|nextjs|Next\.js|Supabase|Clerk|Prisma|Tailwind|Firebase|Netlify|Cloudflare|React|Vue|Svelte|SvelteKit|Astro|Remix|Nuxt|Angular|Postgres|PostgreSQL|Drizzle|Auth\.js|Railway|Fly\.io|Django|Rails|Laravel)\b/;
 
 test('no stage cites a product or framework name as an example', () => {
   for (const f of readdirSync(dir)) {
@@ -22,8 +22,8 @@ test('Vercel is only named by framing to say it gets no bonus', () => {
     if (f === 'framing.md') continue;
     assert.ok(!/vercel/i.test(md), `${f} mentions Vercel`);
   }
-  const lines = read('framing.md').split('\n').filter((l) => /vercel/i.test(l));
-  assert.ok(lines.length <= 1 && lines.every((l) => l.includes('aucun bonus')), lines.join('\n'));
+  const sentences = read('framing.md').replace(/\s+/g, ' ').split(/(?<=[.:;])\s/).filter((l) => /vercel/i.test(l));
+  assert.ok(sentences.length <= 1 && sentences.every((l) => l.includes('aucun bonus')), sentences.join('\n'));
 });
 
 test('stack criteria name kinds of building blocks only', () => {
@@ -57,4 +57,15 @@ test('adoption keeps the existing stack', () => {
 test('foundation writes hosting config only if the chosen host asks for it', () => {
   const md = read('foundation.md');
   assert.match(md, /type d'appli de la stack choisie, si l'hébergeur le demande/);
+});
+
+test('every proposed stack must pass the factory automatic checks', () => {
+  const s = section(read('framing.md'), 'Choisir la stack');
+  assert.match(s, /contrôles automatiques/);
+  for (const script of ['typecheck', 'lint', 'test', 'build', 'test:a11y']) assert.ok(s.includes(script), script);
+});
+
+test('the brief says how to disconnect the host already plugged in when another one wins', () => {
+  const brief = section(read('framing.md'), 'La fiche projet (porte 1)');
+  assert.match(brief, /débrancher/);
 });

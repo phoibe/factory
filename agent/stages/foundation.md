@@ -29,8 +29,8 @@ ne refais **pas** l'appli et ne change pas son comportement.
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
    `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil), et
-   le fichier de configuration de l'hébergeur s'il en demande un et qu'il manque (déclare le type d'appli de
-   la stack choisie, si l'hébergeur le demande). Si un contrôle échoue à cause du code existant, corrige
+   le fichier de configuration de l'hébergeur s'il en demande un et qu'il manque (il déclare le type d'appli
+   de la stack choisie). Si un contrôle échoue à cause du code existant, corrige
    ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
