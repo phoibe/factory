@@ -15,7 +15,7 @@ application (un `package.json`, du code source), c'est une **adoption** :
 - **Stack** : garde celle en place. N'en propose une autre que si le propriétaire le demande ou si elle
   empêche vraiment un besoin décidé.
 - **Hébergement** : regarde toi-même si le dépôt est déjà déployé quelque part (déploiements et environnements
-  GitHub, `vercel.json`, `netlify.toml`, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR,
+  GitHub, fichiers de configuration d'hébergeur à la racine, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR,
   adresse du site dans le README). S'il l'est, garde cet hébergeur et ne demande rien. Sinon, propose-en un
   avec la stack, comme pour un nouveau projet.
 - La fiche finale décrit l'appli telle qu'elle est plus ce qui vient ensuite ; « Première version » devient
@@ -96,25 +96,46 @@ S'il demande autre chose (plus sobre, plus audacieux, un mélange), propose une 
 
 ## Choisir la stack
 
-Propose une stack dans un round à elle, **en langage simple** : pour chaque brique, ce qu'elle apporte au
-propriétaire (pas son fonctionnement), puis une alternative écartée et pourquoi. **Aucune brique n'est imposée
-d'avance** : pars uniquement des besoins décidés plus haut. Critères :
+Propose la technique dans un round à elle, **en langage simple**. **Aucune brique n'est imposée d'avance** et
+aucune n'a de bonus : pars uniquement des besoins décidés plus haut et de ta maîtrise réelle de chaque
+technologie.
+
+Présente **deux ou trois stacks complètes**, numérotées, chacune sérieuse et adaptée au besoin (deux suffisent
+souvent, trois quand le besoin s'y prête, jamais plus). Elles diffèrent sur la **pièce maîtresse**, la façon de
+construire l'appli, pas seulement sur un détail (même base avec une autre bibliothèque d'icônes ne compte pas).
+Pour chacune, en quelques lignes simples :
+
+- ce qu'elle apporte au propriétaire (pas son fonctionnement) ;
+- son point faible, dit honnêtement ;
+- les comptes qu'il aurait à créer (gratuits), ou « aucun » ;
+- où l'appli serait hébergée ;
+- ta maîtrise de cette stack, dite franchement : « très bonne », « bonne » ou « moyenne ».
+
+Puis ta recommandation (➡️) et pourquoi, en deux phrases.
+
+Critères pour construire et départager les stacks :
 
 1. **Adaptée au besoin**, sans surdimensionner.
 2. **Robustesse éprouvée** : des technologies mûres, très répandues, utilisées en production depuis des
    années. **Pas la dernière nouveauté à la mode**, ni une version sortie il y a quelques mois.
 3. **Bien connue de toi** : très documentée, avec beaucoup d'exemples fiables dans ce que tu as appris. Si tu
-   hésites sur ta maîtrise d'une techno, choisis-en une plus classique.
-4. **Réutiliser plutôt que réinventer** : n'hésite pas à prendre des briques toutes faites qui apportent
-   beaucoup de fonctions prêtes à l'emploi (par exemple une base de données gérée comme Neon, des composants
-   d'interface comme shadcn/ui, une authentification toute prête). Ce sont des exemples du genre de brique à
-   chercher, pas une liste imposée. Ne réécris jamais ce qu'une brique établie fait déjà.
+   hésites sur ta maîtrise d'une techno, dis-le et préfère une plus classique.
+4. **Réutiliser plutôt que réinventer** : prends des briques toutes faites qui apportent beaucoup de fonctions
+   prêtes à l'emploi, par exemple une base de données gérée, des composants d'interface tout faits, une
+   authentification toute prête. Ce sont des genres de briques, à choisir selon le besoin : ne cite ici aucun
+   produit par habitude. Ne réécris jamais ce qu'une brique établie fait déjà.
 5. **Gratuit** à l'usage personnel (offres gratuites).
+6. **Compatible avec les contrôles automatiques** de la factory : ils lancent les scripts npm `typecheck`,
+   `lint`, `test`, `build` et `test:a11y`. Une stack hors de l'écosystème JavaScript reste possible avec un
+   `package.json` qui lance ses propres outils sous ces noms (et Playwright pour `test:a11y`) : compte-le
+   alors dans son point faible.
 
-**Hébergement** : il fait partie de la stack. L'installation n'en branche aucun et aucun n'est choisi par défaut :
-propose celui qui va le mieux avec la stack et le besoin (offre gratuite), avec une alternative écartée et pourquoi.
-La factory affiche les aperçus de tout hébergeur qui signale ses déploiements à GitHub (Vercel, Netlify, Cloudflare
-Pages…) ; un projet sans aperçu passe directement à la suite. Tu ne te connectes jamais au compte du propriétaire
+**Hébergement** : il fait partie de la stack, et l'hébergeur se choisit avec la stack, sur les mêmes critères
+(adapté, gratuit, robuste). L'installation n'en branche aucun et aucun n'est choisi par défaut : propose celui qui
+va le mieux avec la stack et le besoin, avec une alternative écartée et pourquoi. Un hébergeur déjà branché sur un
+projet plus ancien (souvent Vercel) n'a aucun bonus : on le débranche si un autre est retenu.
+La factory affiche les aperçus de tout hébergeur qui signale ses déploiements à GitHub ; préfère-en un qui le fait.
+Un projet sans aperçu passe directement à la suite. Tu ne te connectes jamais au compte du propriétaire
 chez un hébergeur : s'il faut un compte, les clics restent les siens.
 Pour les pages gratuites de GitHub, vérifie d'abord la visibilité du dépôt (`gh api repos/<dépôt> --jq .private`) :
 sur un dépôt privé et un compte gratuit, elles ne marchent pas (il faut un abonnement payant, et le site serait
@@ -135,15 +156,14 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
   visuelle choisie avec ses quatre lignes ;
 - **Stack** : chaque brique avec sa raison en une phrase, **hébergeur compris** ;
+- **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
+  cliquer, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;
 - **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien » ;
-- **Si l'hébergeur retenu demande un compte** (Vercel, Netlify…) et que le dépôt n'y est pas déjà branché, un
+- **Si l'hébergeur retenu demande un compte** et que le dépôt n'y est pas déjà branché, un
   encadré (citation `>`) intitulé **« Avant de répondre « go » : brancher l'hébergeur »**, juste avant la phrase
   de fin : les liens exacts pour ce dépôt et les clics à faire, en général deux (donner à l'hébergeur l'accès au
-  dépôt, puis « Importer »), en disant qu'ainsi la toute première PR aura déjà son aperçu. Pour Vercel par exemple :
-  1. https://github.com/apps/vercel/installations/new → votre compte → « Repository access » : ajoutez le dépôt
-     (ou « All repositories ») → Save ;
-  2. https://vercel.com/new/import?s=https://github.com/<dépôt> → Deploy (un premier échec est normal tant que
-     l'appli n'existe pas encore).
+  dépôt depuis son application GitHub, puis importer le dépôt chez lui), en disant qu'ainsi la toute première PR
+  aura déjà son aperçu. Préviens qu'un premier échec du déploiement est normal tant que l'appli n'existe pas encore.
   Écris des liens cliquables (pas en format code), avec le vrai nom du dépôt.
   Si l'hébergeur ne demande aucun compte (par exemple GitHub Pages pour un site simple), pas d'encadré : dis
   seulement que tu le mets en place toi-même dans la PR des fondations, sans rien lui demander.

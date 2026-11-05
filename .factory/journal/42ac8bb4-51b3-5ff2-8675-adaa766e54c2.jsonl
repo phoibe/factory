@@ -1,0 +1,4 @@
+{"t":"2026-11-05T14:18:47.207Z","kind":"run","stage":"update-branch","issue":181,"pr":186,"repo":"phoibe/factory"}
+{"t":"2026-11-05T14:20:59.744Z","kind":"test","cmd":"sed -i '18s/GitHub, `vercel.json`, `netlify.toml`, GitHub Pages,/GitHub, fichiers de configuration d'\"'\"'hébergeur à la racine, GitHub Pages,/' agent/stages/framing.md && sed -n 17,19p agent/stages/fr","ok":false,"id":"toolu_017kBiSL41qefLmM8juHGqeq"}
+{"t":"2026-11-05T14:22:12.910Z","kind":"test","cmd":"npm test 2>&1 | grep -B3 -A30 \"^not ok\" | head -60","ok":false,"id":"toolu_01X3NtcbpreXQF1YaJFKqYXs"}
+{"t":"2026-11-05T14:23:31.565Z","kind":"test","cmd":"python3 - <<'EOF'\np='agent/stages/foundation.md'; s=open(p).read()\nold=\"\"\"     - s'il demande un compte, ajoute seulement la configuration d'hébergement : déclare le type d'appli de la\n       stack ch","ok":false,"id":"toolu_01Cr4FP6E9oA5vzCNjkgJ1tG"}

@@ -13,6 +13,6 @@ L'issue ou la PR était `factory:blocked` et le propriétaire a répondu. La fac
 Si le blocage venait des contrôles automatiques (la PR est restée rouge) : reprends la correction comme
 dans `fix-checks.md`, puis remets `factory:checks` sur la PR.
 
-Si le blocage était sur une PR en recette (un réglage à faire de son côté, par exemple sur Vercel) et qu'il
+Si le blocage était sur une PR en recette (un réglage à faire de son côté, par exemple chez l'hébergeur) et qu'il
 est levé : remets `factory:checks` sur la PR. Les contrôles repartent, puis la factory lui redonne le lien de
 test et attend son « ok ». Ne lui dis jamais que la factory met en ligne : seul son « ok » en recette le fait.

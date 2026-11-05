@@ -74,9 +74,9 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
        qu'il n'y a pas d'aperçu de PR à attendre. Si un réglage
        t'est refusé (par exemple activer les pages du dépôt), ouvre la PR quand même et donne-lui le clic
        exact avec son lien (« Settings → Pages → Source : GitHub Actions ») ;
-     - s'il demande un compte, ajoute seulement son fichier de configuration quand il en faut un pour qu'il
-       reconnaisse l'appli (par exemple `vercel.json` avec le framework, `{"framework": "nextjs"}`, car le
-       projet peut avoir été importé quand le dépôt était vide). Ne te connecte jamais à son compte.
+     - s'il demande un compte, ajoute seulement la configuration d'hébergement : déclare le
+       type d'appli de la stack choisie, si l'hébergeur le demande (un projet importé quand le dépôt était vide
+       ne sait pas encore quoi construire). Ne te connecte jamais à son compte.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
