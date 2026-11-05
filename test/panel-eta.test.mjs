@@ -84,6 +84,14 @@ test('a card in building shows the agent range reduced by the time already spent
   assert.equal(rangeText(e.nextLow, e.nextHigh), 'entre 10 et 30 min');
 });
 
+test('an agent range above the measured history of its size is brought down to that history', () => {
+  const evs = [ev(17, 'labeled', 'factory:building', 0), ev(17, 'labeled', 'factory:running', 0)];
+  const item = { number: 17, labels: ['factory:feature', 'factory:building', 'factory:running'], column: 'building' };
+  // Builds of this size really take about 15 min; the agent announced 30 to 70.
+  const e = estimate(item, evs, { ...DEFAULT_MINUTES, building: 15 }, T0 + 10 * 60_000, { size: 'small', min: 30, max: 70, at: T0 });
+  assert.deepEqual([e.nextLow, e.nextHigh, e.overrun], [1, 11, false]);
+});
+
 test('past the top of the range the card says it is longer than planned, never a negative value', () => {
   const evs = [ev(8, 'labeled', 'factory:building', 0), ev(8, 'labeled', 'factory:running', 0)];
   const item = { number: 8, labels: ['factory:feature', 'factory:building', 'factory:running'], column: 'building' };

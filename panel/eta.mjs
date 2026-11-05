@@ -133,9 +133,14 @@ export function estimate(item, events, minutes, now, agent = null) {
     // The agent's range counts from the moment it was posted, so a fresh estimate restarts the clock.
     let spent = runs.reduce((t, r) => t + Math.max(0, Math.min(r.end, now) - Math.max(r.start, planned.at)), 0) / MIN;
     if (!stay && !runs.length) spent = Math.max(0, (now - planned.at) / MIN); // label history too old to be loaded
-    overrun = spent >= planned.max;
-    low = Math.max(0, Math.round(planned.min - spent));
-    high = Math.max(0, Math.round(planned.max - spent));
+    // Agents overestimate (e.g. 30-70 min for builds that take 10-20): the measured history of builds of this
+    // size, when lower, wins over their range.
+    const [histLow, histHigh] = around(minutes.building);
+    const planMin = Math.min(planned.min, histLow);
+    const planMax = Math.max(planMin + 1, Math.min(planned.max, histHigh));
+    overrun = spent >= planMax;
+    low = Math.max(0, Math.round(planMin - spent));
+    high = Math.max(0, Math.round(planMax - spent));
   } else {
     const left = minutes[col] - done;
     overrun = left <= 0;
