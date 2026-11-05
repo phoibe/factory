@@ -313,3 +313,4 @@ button.go:focus-visible { outline-color: var(--text); }
 .pending-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 16px; border: 1px dashed var(--line); border-radius: 10px; opacity: .7; }
 .pending-item .num { color: var(--muted); font-size: .85rem; }
 .pending-item .pending-title { font-weight: 600; color: var(--text); }
+@media (max-width: 600px) { .pending-zone { margin-top: -12px; } }
