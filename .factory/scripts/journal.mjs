@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findRoot, rememberRoot, sessionRoot } from './run-root.mjs';
 
-const RUNNER = /^(?:(?:npx|bunx|pnpm (?:exec|dlx)|yarn)\s+)?(?:vitest|jest|playwright test|node --test)\b|^(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?(?:\s|$)/;
+const RUNNER = /^(?:(?:npx|bunx|pnpm (?:exec|dlx)|yarn)\s+)?(?:vitest|jest|playwright test|node --test|pytest|python3? -m (?:pytest|unittest))\b|^(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?(?:\s|$)/;
 const PREFIX = /^(?:cd\s+\S+|[A-Z_][A-Z0-9_]*=\S*|timeout\s+\S+|env|time|CI=\S+)\s*/;
 
 // A Bash command runs the tests when one of its commands starts with a test runner. The text of a heredoc

@@ -19,7 +19,10 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
 3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
-4. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
+4. Si le JSON contient `"relaunch": true`, ton run précédent sur cette issue s'est arrêté avant la fin, sans PR
+   ni question. Repars de sa branche `claude/issue-<n>-…` si elle existe (et de son plan dans `docs/plans/`),
+   au lieu de tout recommencer. Termine comme prévu : une PR, ou une question avec `factory:blocked`.
+5. Un run n'attend jamais un humain : quand tu as besoin de lui, tu poses ta question en commentaire,
    tu mets le bon label et tu termines. Sa réponse relancera un nouveau run.
 
 ## Règles de la factory pour ce projet
@@ -30,7 +33,7 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
   bibliothèques reconnues) plutôt que de reconstruire.
 - Étapes actives : grilling ✅, validation de chaque spec ❌, plan ✅, TDD ✅, revue de code ✅, passe design (impeccable) ✅, captures avant/après ✅, contrôles automatiques ✅, recette ✅
 - Revue de code : au plus 3 allers-retours entre le développeur et le relecteur, ensuite escalade.
-- Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : `dispatching-parallel-agents`, `executing-plans`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans`, `grilling`, `to-spec`, `impeccable`
+- Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : `dispatching-parallel-agents`, `executing-plans`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`, `writing-plans`, `grilling`, `grill-with-docs`, `to-spec`, `impeccable`
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
 
@@ -63,8 +66,8 @@ image, et ne dis jamais que tu n'y as pas accès sans avoir essayé. Ne fusionne
   _Généré par [Claude Code](https://claude.ai/code) · software factory_
   ```
 - Écris tes commentaires dans un fichier puis publie-les avec `-F body=@fichier` (voir « API GitHub »).
-- Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Réponds « go » pour lancer la
-  construction », « Réponds « ok » si les captures te conviennent »).
+- Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Répondez « go » pour lancer la
+  construction », « Répondez « ok » si les captures vous conviennent »).
 
 ## API GitHub
 

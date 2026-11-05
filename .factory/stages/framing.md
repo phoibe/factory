@@ -29,7 +29,7 @@ change). La fiche publiée à la fin est la fiche complète mise à jour, avec e
 1. Charge le skill `grilling` et applique-le **en asynchrone** : un round = un commentaire, puis tu termines.
 2. Relis l'issue et toutes les réponses déjà données. Ne pose que les questions encore ouvertes dont les
    prérequis sont réglés. Maximum 8 questions par round, numérotées, chacune avec ta recommandation (➡️) et
-   formulée pour qu'un « oui » l'accepte. Termine par : « Réponds par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ». »
+   formulée pour qu'un « oui » l'accepte. Termine par : « Répondez par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ». »
 3. Ce qu'il faut décider, dans cet ordre :
    - **pour qui** et **dans quel but** (le problème réglé, en une phrase) ;
    - **les usages principaux** et ce que la toute première version doit permettre ;
@@ -65,7 +65,7 @@ ressentis et des exemples. Ce qu'il faut savoir :
 7. **Le mouvement** : animations et petites récompenses visuelles bienvenues, discrètes, ou aucune.
 8. **L'accessibilité** : un besoin particulier (vue, daltonisme, gros caractères, usage d'une seule main).
 
-N'en garde que celles dont la réponse n'est pas déjà claire. S'il répond « comme tu veux » à une question,
+N'en garde que celles dont la réponse n'est pas déjà claire. S'il répond « comme vous voulez » à une question,
 note-la « déléguée » et choisis toi-même à partir de ses autres réponses.
 
 ## La direction visuelle
@@ -82,7 +82,7 @@ interactive du skill n'est pas utilisable ici : présente les directions dans le
 - **Ta recommandation** (➡️) et pourquoi, en une phrase.
 - **La sortie sûre** : une dernière option « classique, comme les meilleures applis du genre », jamais
   recommandée.
-- Termine par : « Réponds par le numéro de la direction, ou dis ce qu'il faudrait changer. »
+- Termine par : « Répondez par le numéro de la direction, ou dites ce qu'il faudrait changer. »
 
 S'il demande autre chose (plus sobre, plus audacieux, un mélange), propose une nouvelle série.
 
@@ -121,7 +121,7 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Stack** : chaque brique avec sa raison en une phrase ;
 - **Ce dont tu auras besoin de créer toi-même** (comptes, services gratuits), ou « rien ».
 
-Termine par : « Réponds « go » pour que je pose les fondations de l'appli, ou dis-moi ce qu'il faut changer. »
+Termine par : « Répondez « go » pour que je pose les fondations de l'appli, ou dites-moi ce qu'il faut changer. »
 Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`.
 
 Si le propriétaire demande des changements sur une fiche déjà publiée, publie une nouvelle version complète

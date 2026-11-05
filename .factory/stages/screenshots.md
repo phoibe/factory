@@ -21,4 +21,4 @@
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
 6. Commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
-   sombre), le tableau, puis « Réponds « ok » si ça te convient (clair et sombre), ou dis-moi ce qu'il faut retoucher. »
+   sombre), le tableau, puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »

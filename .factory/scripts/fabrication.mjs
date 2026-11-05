@@ -5,7 +5,21 @@ export const FABRICATION_MARKER = '<!-- factory-fabrication -->';
 const UI_FILE = /\.(tsx|jsx|vue|svelte|astro|html|css|scss)$/;
 const TEST_FILE = /(\.|\/)(test|spec)\.|(^|\/)(tests?|__tests__|e2e)\//;
 
-export const uiChanged = (files) => files.some((f) => UI_FILE.test(f) && !TEST_FILE.test(f));
+// A change that only bumps a cache-busting « ?v=N » (to ship new code) changes nothing on screen.
+export function cacheBustOnly(patch) {
+  if (!patch) return false;
+  const lines = String(patch).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) /.test(l));
+  const strip = (l) => l.slice(1).replace(/([?&]v=)\d+/g, '$1');
+  const removed = lines.filter((l) => l[0] === '-').map(strip).sort();
+  const added = lines.filter((l) => l[0] === '+').map(strip).sort();
+  return removed.length > 0 && removed.length === added.length && removed.every((l, i) => l === added[i]);
+}
+
+// Files are names, or GitHub's PR file objects ({ filename, patch }) so that a cache bump is not counted.
+export const uiChanged = (files) => files.some((f) => {
+  const name = typeof f === 'string' ? f : f.filename;
+  return UI_FILE.test(name) && !TEST_FILE.test(name) && !(typeof f === 'object' && cacheBustOnly(f.patch));
+});
 
 export function parseJournal(files) {
   const runs = [];
