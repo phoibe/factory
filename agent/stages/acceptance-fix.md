@@ -4,6 +4,9 @@ Le propriétaire a testé la preview et signale un problème.
 
 1. Relis son commentaire. Une idée nouvelle devient une nouvelle issue (label `factory:feature`), pas un
    ajout à cette PR : dis-le lui.
+   S'il n'a pas d'aperçu et demande les liens pour brancher l'hébergeur, redonne-les : ceux de l'encadré
+   « Avant de répondre « go » » de la fiche projet (issue de cadrage) ou, à défaut, les liens et les clics
+   exacts pour l'hébergeur de la stack et ce dépôt. C'est une réponse sans code.
 2. Corrige (TDD si actif), revue par un sous-agent neuf, passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 3. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a

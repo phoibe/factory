@@ -68,7 +68,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    - **l'hébergeur retenu dans la fiche** :
      - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
        (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire. Pour GitHub Pages,
-       revérifie d'abord que le dépôt est public (`gh api repos/<dépôt> --jq .private`), et déploie dans
+       revérifie d'abord que le dépôt est public (`gh api repos/<dépôt> --jq .private`) ; s'il est encore
+       privé, ne mets pas Pages en place, ouvre la PR et dis-le-lui (ne change jamais la visibilité toi-même). Puis déploie dans
        l'environnement nommé exactement `github-pages` (celui du modèle officiel) : la factory sait ainsi
        qu'il n'y a pas d'aperçu de PR à attendre. Si un réglage
        t'est refusé (par exemple activer les pages du dépôt), ouvre la PR quand même et donne-lui le clic

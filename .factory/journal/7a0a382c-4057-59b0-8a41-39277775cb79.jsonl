@@ -15,3 +15,5 @@
 {"t":"2026-11-05T14:10:30.620Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_01NiyiZnAzMrWucYF5WSWLLK"}
 {"t":"2026-11-05T14:13:20.073Z","kind":"test","cmd":"python3 - <<'EOF'\ndef edit(p, pairs):\n    s=open(p).read()\n    for a,b in pairs:\n        assert a in s, (p, a[:50]); s=s.replace(a,b,1)\n    open(p,'w').write(s)\nedit('agent/stages/framing.md',[\n(\"\"\"su","ok":true,"id":"toolu_01Fg5V7LwbcgQ92rtoVWUDVX"}
 {"t":"2026-11-05T14:14:54.914Z","kind":"test","cmd":"(npm test 2>&1 | tail -15)","ok":true,"id":"toolu_01F1LQrw5e36udiiz6idb6YB"}
+{"t":"2026-11-05T14:17:27.807Z","kind":"test","cmd":"python3 - <<'EOF'\np='agent/stages/acceptance-fix.md'\ns=open(p).read()\na=\"\"\"1. Relis son commentaire. Une idée nouvelle devient une nouvelle issue (label `factory:feature`), pas un\n   ajout à cette PR ","ok":true,"id":"toolu_0143B2t2FQyKxYSyxYVSSxR6"}
+{"t":"2026-11-05T14:17:29.876Z","kind":"skill","name":"verification-before-completion","id":"toolu_01GvGgXRD3rmoBn8udPehpf3"}
