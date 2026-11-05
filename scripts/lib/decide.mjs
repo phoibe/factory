@@ -87,7 +87,7 @@ function onIssue(ev, config, ctx) {
 }
 
 // The branch the agent opens, at the end of the questions, for the project's glossary and decisions.
-export const isDocsBranch = (ref) => /^claude\/docs-[\w.-]+$/.test(String(ref || ''));
+export const isDocsBranch = (ref) => /^claude\/docs-\d+$/.test(String(ref || ''));
 
 function onPr(ev) {
   if (ev.event === 'pull_request') {

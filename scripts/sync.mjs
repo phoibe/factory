@@ -58,7 +58,8 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   const donePath = join(projectDir, '.factory/migrations.json');
   const done = readJson(donePath, { done: [] }).done;
   let migrated = false;
-  if (!parsed.warning && existsSync(configPath)) {
+  const evaluated = !parsed.warning && existsSync(configPath);
+  if (evaluated) {
     for (const m of MIGRATIONS.filter((x) => !done.includes(x.id))) { if (m.apply(parsed.raw)) migrated = true; }
     if (migrated) writeFileSync(configPath, JSON.stringify(parsed.raw, null, 2) + '\n');
   }
@@ -96,7 +97,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
-  writeFileSync(donePath, JSON.stringify({ done: MIGRATIONS.map((m) => m.id) }, null, 2) + '\n');
+  writeFileSync(donePath, JSON.stringify({ done: evaluated || done.length ? [...new Set([...done, ...MIGRATIONS.map((m) => m.id)])] : done }, null, 2) + '\n');
   writeFileSync(manifestPath, JSON.stringify({ skills: skills.map((s) => s.id) }, null, 2) + '\n');
   writeFileSync(join(outDir, 'config.resolved.json'), JSON.stringify(config, null, 2) + '\n');
   return { installed: skills.map((s) => s.id), removed, warnings };
