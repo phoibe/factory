@@ -46,7 +46,9 @@ change). La fiche publiée à la fin est la fiche complète mise à jour, avec e
 But : réunir tout ce dont le skill `impeccable` a besoin pour écrire les documents de design (`PRODUCT.md`
 et `DESIGN.md`) et donner à l'appli une interface soignée et un look qui lui ressemble. Lis d'abord, dans
 `.claude/skills/impeccable/`, `SKILL.md` puis `reference/init.md` et `reference/new-work.md` (sections 1 à 4) :
-ce sont eux qui disent ce qui compte. Si l'étape « passe design » est désactivée, réduis ce questionnaire à
+ce sont eux qui disent ce qui compte. La règle « Textes à l'écran » de `.factory/stages/design-pass.md`
+vaut pour tout projet sans question à poser : rappelle-la à `impeccable`, elle ira dans `DESIGN.md`.
+Si l'étape « passe design » est désactivée, réduis ce questionnaire à
 une seule question sur le ton et l'apparence.
 
 Pose ces questions en un ou deux rounds à part, **après** celles sur le produit, en langage de tous les

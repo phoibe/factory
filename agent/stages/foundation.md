@@ -8,7 +8,8 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
 
 1. Branche `claude/issue-<n>-revision` depuis `main`.
 2. Mets à jour `PRODUCT.md` à la racine d'après la nouvelle fiche (déplace `docs/PRODUCT.md` s'il existe) ;
-   si le design change, mets à jour `DESIGN.md` et `.impeccable/` (étape 3 ci-dessous) ; si la stack
+   si le design change, mets à jour `DESIGN.md` et `.impeccable/` (étape 3 ci-dessous), en y ajoutant la
+   règle « Textes à l'écran » si elle manque ; si la stack
    change, mets à jour `stack` dans `factory.config.json`. Ne touche pas au code de l'appli.
 3. Pour chaque changement qui demande du code (nouvelle feature, design à appliquer aux écrans, changement
    de stack), ouvre une issue comme à l'étape 9 ci-dessous ; une feature déjà couverte par une issue
@@ -22,7 +23,8 @@ ne refais **pas** l'appli et ne change pas son comportement.
 1. Branche `claude/issue-<n>-adoption` depuis la branche par défaut.
 2. Écris `PRODUCT.md` (étape 2 ci-dessous) d'après la fiche validée, et `stack` dans `factory.config.json`.
 3. **Design** : si le look actuel est gardé, skill `impeccable`, commande `document` (`reference/document.md`)
-   pour écrire `DESIGN.md` et `.impeccable/design.json` à partir des écrans existants. Si un nouveau look a
+   pour écrire `DESIGN.md` et `.impeccable/design.json` à partir des écrans existants, règle
+   « Textes à l'écran » comprise. Si un nouveau look a
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
@@ -45,7 +47,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    direction visuelle choisie en :
    - `DESIGN.md` à la racine, au format de `reference/document.md` (jetons de couleurs, typographie, formes,
      espacements, composants de base, puis les huit sections, dont « Do's and Don'ts » nourri des
-     anti-inspirations et de ce qui le ferait se sentir mal) ;
+     anti-inspirations, de ce qui le ferait se sentir mal et de la règle « Textes à l'écran » de
+     `.factory/stages/design-pass.md`, à rappeler aussi à `impeccable`) ;
    - `.impeccable/design.json`, le complément de `DESIGN.md` (nuances, ombres, mouvement, points de rupture,
      composants de base) ;
    - `.impeccable/config.json` avec `"buildPath": "code"`.

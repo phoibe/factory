@@ -25,7 +25,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
 6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`
    (critique impeccable de chaque écran créé ou modifié, puis correction de tout ce qu'elle trouve), en
-   respectant `DESIGN.md` : pas de nouvelle couleur ou police hors de ce fichier.
+   respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
+   « Textes à l'écran » de `design-pass.md`.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».

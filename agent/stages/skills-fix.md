@@ -6,7 +6,8 @@ des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil
 1. **`requesting-code-review`** : fais relire le diff de la PR par un **sous-agent** neuf (skill
    `requesting-code-review`), contre la spec et les standards du dépôt. Corrige ce qu'il trouve (skill
    `receiving-code-review`), puis une revue neuve. Au plus {{maxLoops}} tours.
-2. **`impeccable`** : suis `.factory/stages/design-pass.md` sur les écrans créés ou modifiés par la PR.
+2. **`impeccable`** : suis `.factory/stages/design-pass.md` sur les écrans créés ou modifiés par la PR,
+   règle « Textes à l'écran » comprise.
    **`screenshots`** : la PR change l'apparence mais aucune capture n'a été montrée au propriétaire. Ne la
    fais qu'après les étapes ci-dessus et les vérifications : c'est l'étape 5 ci-dessous, obligatoire dans ce cas
    même si la revue et la passe design n'ont rien changé.
