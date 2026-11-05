@@ -376,3 +376,4 @@ details summary { color: var(--text); }
 .ticket.pending button.go:hover { border-color: var(--muted); }
 .ticket.pending button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
 .ticket.pending .blocked-tag { font-weight: 600; color: var(--danger); }
+.ticket.pending button.go:disabled { opacity: 1; background: var(--surface); color: var(--muted); border-color: var(--line); }

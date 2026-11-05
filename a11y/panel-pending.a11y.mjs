@@ -87,7 +87,7 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
   }).listen(0);
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   try {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ viewport: { width: 1280, height: 480 } }); // short screen: the « go » sits low, where the toast shows
     await context.addInitScript(() => {
       localStorage.setItem('factory.token', 'test');
       const now = Date.now();
@@ -145,8 +145,18 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.deepEqual(blue, []);
     // With the keyboard: « go » starts the countdown, keeps the focus across redraws, and Enter cancels it.
     await go.focus();
+    // The « go » sits at the very bottom of the screen, where the toast shows.
+    await page.evaluate(() => { const b = document.querySelector('.pending-zone button.go[data-go="1"]').getBoundingClientRect(); scrollBy(0, b.bottom - innerHeight + 2); });
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => /Annuler/.test(document.querySelector('.pending-zone button.go[data-go="1"]')?.textContent || ''));
+    // The countdown stays readable: on screen, not under the toast, and named « Annuler » for screen readers.
+    const seen = await page.evaluate(() => {
+      const b = document.querySelector('.pending-zone button.go[data-go="1"]').getBoundingClientRect();
+      const t = document.getElementById('toast').getBoundingClientRect();
+      return { onScreen: b.top >= 0 && b.bottom <= innerHeight, underToast: b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right };
+    });
+    assert.deepEqual(seen, { onScreen: true, underToast: false });
+    assert.match(await page.locator('.pending-zone button.go[data-go="1"]').getAttribute('aria-label'), /^Annuler le go pour #1/);
     await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // forces a redraw while the countdown runs
     await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => document.activeElement?.dataset?.go), '1', 'focus stays on « go »');
@@ -154,6 +164,12 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').textContent(), 'go');
     await page.waitForTimeout(5500);
     assert.deepEqual(posted, [], 'a cancelled « go » sends nothing');
+    assert.match(await page.locator('.pending-zone button.go[data-go="1"]').getAttribute('aria-label'), /^go pour #1/);
+    // Sent: « Envoi… » stays readable on the waiting card (not faded).
+    await page.locator('.pending-zone button.go[data-go="1"]').click();
+    await page.waitForFunction(() => document.querySelector('.pending-zone button.go[data-go="1"]')?.disabled, null, { timeout: 10000 });
+    assert.deepEqual(posted, ['/repos/o/r/issues/1/comments']);
+    assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').evaluate((b) => getComputedStyle(b).opacity), '1');
     // The blocked card keeps its red « Bloqué » tag and its « Débloquer » button.
     const blocked = page.locator('.pending-zone .ticket[data-number="3"]');
     assert.equal(await blocked.locator('.blocked-tag').textContent(), 'Bloqué');

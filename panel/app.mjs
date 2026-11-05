@@ -311,8 +311,10 @@ function stepTrack(c) {
 const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 // The card's answer: a « go » button (5 s to cancel) or the link to the message to answer.
+// The « go » button's spoken name follows what a press does: send, cancel, or nothing while it is sent.
+const goName = (c) => `${pendingGo.has(c.number) ? 'Annuler le go' : sentGo.has(c.number) ? 'Envoi du go' : 'go'} pour #${c.number} ${c.title}`;
 const replyAction = (c) => c.reply === 'go'
-  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': `go pour #${c.number} ${c.title}`, onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
+  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
   : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 
 function card(c, lane, minutes, now, moved) {
@@ -392,18 +394,22 @@ async function sendGo(c, btn) {
     btn.disabled = false;
     btn.textContent = 'go';
     btn.classList.remove('undo');
+    btn.setAttribute('aria-label', goName(c));
   }
 }
 const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
 function answerGo(c, btn) {
   const running = pendingGo.get(c.number);
-  if (running) { running.cancel(); pendingGo.delete(c.number); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); return; }
+  if (running) { running.cancel(); pendingGo.delete(c.number); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
   toast('« go » part dans 5 s. Touchez le bouton pour annuler.');
+  // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
+  const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
+  if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
   const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const h = pendingGo.get(c.number); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); },
-    done: () => { pendingGo.delete(c.number); const b = goBtn(c, null); if (!b) return; sentGo.add(c.number); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; sendGo(c, b); },
+    tick: (n) => { const h = pendingGo.get(c.number); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
+    done: () => { pendingGo.delete(c.number); const b = goBtn(c, null); if (!b) return; sentGo.add(c.number); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b); },
   });
   handle.left = 5;
   pendingGo.set(c.number, handle);
