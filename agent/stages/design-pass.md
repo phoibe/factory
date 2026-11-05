@@ -39,9 +39,11 @@ fait se passe d'explications sur son fonctionnement.
    Ne corrige que ce qui reste dans le périmètre de la feature et dans
    `DESIGN.md` ; si une correction demande de changer le design validé (nouvelle couleur, nouveau
    composant), fais-la dans `DESIGN.md` aussi et signale-le dans la PR.
-4. **Recritique** les écrans corrigés. Recommence 3 à 4 jusqu'à ce qu'il ne reste rien, au plus 3 tours.
-   S'il reste des problèmes après le 3ᵉ tour, liste-les dans la PR, en français simple, dans une section
-   « Design : points restants ».
+4. **Recritique, une fois au plus**, et seulement si la première critique a trouvé des problèmes prioritaires
+   (P0 ou P1) : une seule évaluation suffit pour ce contrôle (pas les deux sous-agents), centrée sur ces
+   problèmes. Corrige ce qu'elle trouve encore, sans nouvelle critique. Sans problème prioritaire au départ,
+   pas de recritique : les captures que le propriétaire valide servent de contrôle final. S'il reste des
+   problèmes, liste-les dans la PR, en français simple, dans une section « Design : points restants ».
 5. Relance les tests (une correction visuelle peut casser un test ou l'accessibilité) et ajoute dans la PR
    une section « Design » : le score de la première et de la dernière critique, et en une ligne par point
    ce qui a été corrigé, avec une ligne par texte retiré (ex. « Texte d'introduction de la page Commandes
