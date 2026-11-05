@@ -117,7 +117,8 @@ function onPr(ev) {
   if (!String(ev.text || '').trim()) return ignore('message vide');
   if (ev.labels.some((l) => l.startsWith('factory:')) && isDrop(ev.text)) return { type: 'drop', reason: 'le propriétaire abandonne la PR' };
   if (has(ev.labels, L.visualReview)) {
-    if (isApproval(ev.text)) return { type: 'checks', add: [L.checks], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées' };
+    // One « ok » covers the captures and the recette: once the checks are green, it goes live without asking again.
+    if (isApproval(ev.text)) return { type: 'visual-ok', add: [], remove: [L.visualReview, ...unblock(ev.labels)], reason: 'captures validées (vaut recette)' };
     return fire('visual-fix', { remove: unblock(ev.labels) });
   }
   if (has(ev.labels, L.acceptance)) {

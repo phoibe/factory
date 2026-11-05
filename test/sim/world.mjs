@@ -195,7 +195,8 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
       if (agent.conflicts) get(pr).conflictsWith = agent.conflicts(r.issue, pr);
       if (ui) {
         comment('agent', pr, `${AGENT_MARKER}\nCaptures https://x/claude/factory-assets/a.png`);
-        addLabels('agent', pr, [L.visualReview]);
+        // The checks run while the owner looks at the captures.
+        addLabels('agent', pr, agent.serialChecks ? [L.visualReview] : [L.visualReview, L.checks]);
       } else addLabels('agent', pr, [L.checks]);
       comment('agent', r.issue, `${AGENT_MARKER}\nPR #${pr}`);
     },
@@ -204,7 +205,7 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
     audit: (r) => behaviours.build(r),
     resume: (r) => (r.pr ? behaviours['fix-checks'](r) : behaviours.build(r)),
     feedback: (r) => { comment('agent', r.pr || r.issue, `${AGENT_MARKER}\nRéponse`); },
-    'visual-fix': (r) => { push('agent', r.pr); comment('agent', r.pr, `${AGENT_MARKER}\nNouvelles captures https://x/claude/factory-assets/b.png`); },
+    'visual-fix': (r) => { push('agent', r.pr); comment('agent', r.pr, `${AGENT_MARKER}\nNouvelles captures https://x/claude/factory-assets/b.png`); if (!agent.serialChecks) addLabels('agent', r.pr, [L.checks]); },
     'acceptance-fix': (r) => { push('agent', r.pr); addLabels('agent', r.pr, [L.checks]); },
     'fix-checks': (r) => { push('agent', r.pr); addLabels('agent', r.pr, [L.checks]); },
     'skills-fix': (r) => { push('agent', r.pr, [journal('skills-fix', r.missing || [])]); addLabels('agent', r.pr, [L.checks]); },

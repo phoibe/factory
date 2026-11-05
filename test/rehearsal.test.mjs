@@ -34,7 +34,7 @@ test('rehearsal: a feature goes from the first message to the merge, and its iss
   assert.ok(w.get(pr).merged_at, 'no preview: green checks go live directly');
 });
 
-test('rehearsal: a visible change waits for the owner on the captures, then on the preview', async () => {
+test('rehearsal: a visible change needs one « ok » on the captures, with the preview link, then goes live', async () => {
   const w = createWorld({ config: base, agent: { ui: true }, previews: true });
   const n = await w.owner.openIssue({ title: 'Nouveau bouton', labels: [L.feature] });
   await w.owner.say(n, 'go');
@@ -42,10 +42,21 @@ test('rehearsal: a visible change waits for the owner on the captures, then on t
   assert.ok(w.labels(pr).includes(L.visualReview));
   await w.owner.say(pr, 'Le bouton plus grand');
   assert.equal(w.stages().at(-1), 'visual-fix');
-  await w.owner.say(pr, 'ok');
-  assert.ok(w.labels(pr).includes(L.acceptance));
+  // The checks ran while he looked: the preview link is already there, still on the captures step.
+  assert.ok(w.labels(pr).includes(L.visualReview));
   assert.ok(w.get(pr).comments.some((c) => c.body.includes('https://preview.example')));
   await w.owner.say(pr, 'ok');
+  assert.ok(!w.labels(pr).includes(L.acceptance), 'no second « ok » asked');
+  healthy(w);
+});
+
+test('rehearsal: captures approved before the checks ran still go live on that one « ok »', async () => {
+  const w = createWorld({ config: base, agent: { ui: true, serialChecks: true }, previews: true });
+  const n = await w.owner.openIssue({ title: 'Nouveau bouton', labels: [L.feature] });
+  await w.owner.say(n, 'go');
+  const pr = w.prOf(n);
+  await w.owner.say(pr, 'ok');
+  assert.ok(!w.labels(pr).includes(L.acceptance), 'no second « ok » asked');
   healthy(w);
 });
 

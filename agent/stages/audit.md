@@ -24,6 +24,6 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    dernière critique), une section « Code » (une ligne simple par problème corrigé) et les issues ouvertes.
    Puis `Closes #<n>`, puis les détails techniques en anglais.
 7. **Captures** : si l'apparence a changé et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:visual-review` sur la PR.
+   `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:visual-review` puis `factory:checks` sur la PR.
    Sinon, mets `factory:checks`.
 8. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

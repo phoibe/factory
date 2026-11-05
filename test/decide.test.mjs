@@ -113,9 +113,9 @@ test('queued issue comments are ignored', () => {
 
 const pr = (o) => ev({ kind: 'pr', number: 7, ...o });
 
-test('visual approval moves the PR to checks', () => {
+test('visual approval is also the recette: it moves the PR on to going live', () => {
   const a = decide(pr({ labels: [L.visualReview], text: 'ok' }), config, ctx);
-  assert.deepEqual([a.type, a.add, a.remove], ['checks', [L.checks], [L.visualReview]]);
+  assert.deepEqual([a.type, a.add, a.remove], ['visual-ok', [], [L.visualReview]]);
 });
 
 test('visual remarks fire a visual fix', () => {
