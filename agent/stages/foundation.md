@@ -28,7 +28,9 @@ ne refais **pas** l'appli et ne change pas son comportement.
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
-   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil). Si un contrôle échoue à cause du code existant, corrige
+   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil). Si la
+   fiche retient un hébergeur et que le dépôt n'y est pas encore déployé, fais comme à l'étape 5 ci-dessous
+   (puce « l'hébergeur retenu dans la fiche ») ; sinon ne touche pas à l'hébergement. Si un contrôle échoue à cause du code existant, corrige
    ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
@@ -65,7 +67,9 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
    - **l'hébergeur retenu dans la fiche** :
      - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
-       (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire ;
+       (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire. Si un réglage
+       t'est refusé (par exemple activer les pages du dépôt), ouvre la PR quand même et donne-lui le clic
+       exact avec son lien (« Settings → Pages → Source : GitHub Actions ») ;
      - s'il demande un compte, ajoute seulement son fichier de configuration quand il en faut un pour qu'il
        reconnaisse l'appli (par exemple `vercel.json` avec le framework, `{"framework": "nextjs"}`, car le
        projet peut avoir été importé quand le dépôt était vide). Ne te connecte jamais à son compte.
@@ -76,7 +80,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
    **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
-   aucun déploiement GitHub, aucun commentaire de son bot) : ne bloque rien, ouvre la PR quand même. Ajoute au
+   aucun déploiement GitHub du dépôt (`gh api repos/<dépôt>/deployments`), aucun commentaire de son bot sur
+   les PR précédentes) : ne bloque rien, ouvre la PR quand même. Ajoute au
    résumé et à ton message sur la PR que cette PR n'aura pas d'aperçu, en redonnant les liens et les clics de
    l'encadré « Avant de répondre « go » » de la fiche : une fois l'hébergeur branché, les PR suivantes auront
    leur aperçu.

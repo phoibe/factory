@@ -116,6 +116,9 @@ propose celui qui va le mieux avec la stack et le besoin (offre gratuite), avec 
 La factory affiche les aperçus de tout hébergeur qui signale ses déploiements à GitHub (Vercel, Netlify, Cloudflare
 Pages…) ; un projet sans aperçu passe directement à la suite. Tu ne te connectes jamais au compte du propriétaire
 chez un hébergeur : s'il faut un compte, les clics restent les siens.
+Pour les pages gratuites de GitHub, vérifie d'abord la visibilité du dépôt (`gh api repos/<dépôt> --jq .private`) :
+sur un dépôt privé et un compte gratuit, elles ne marchent pas (il faut un abonnement payant, et le site serait
+public quand même). Ne les propose donc que pour un dépôt public, ou en le disant clairement.
 
 ## La fiche projet (porte 1)
 

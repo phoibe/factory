@@ -104,7 +104,7 @@ test('installing works on a Mac without Node.js, even when npx would be found', 
 
 test('adopting the factory itself finishes without any host step', () => {
   const { out, log } = run(['adopter', 'factory'], ['', 'o', 'https://example.test/fire', 'tok', '', '']);
-  assert.doesNotMatch(out, /Vercel/);
+  assert.doesNotMatch(out, /Vercel|L'hébergeur sera choisi/);
   assert.match(out, /C'est prêt/);
   assert.match(log, /issue create -R phoibe\/factory --title Cadrage : factory/);
 });

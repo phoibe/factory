@@ -210,7 +210,8 @@ first_sync() {
 # ---- Cadrage --------------------------------------------------------------------------------------
 framing_issue() {
   say "5. Cadrage"
-  echo "  L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer."
+  # An adopted project often has its host already: framing checks that itself.
+  if [ "$MODE" = nouveau ]; then echo "  L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer."; fi
   local body url
   if [ "$MODE" = nouveau ]; then
     body=$(ask "  Décrivez votre idée d'appli en une ou deux phrases :")
