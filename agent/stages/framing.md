@@ -118,7 +118,9 @@ Pages…) ; un projet sans aperçu passe directement à la suite. Tu ne te conne
 chez un hébergeur : s'il faut un compte, les clics restent les siens.
 Pour les pages gratuites de GitHub, vérifie d'abord la visibilité du dépôt (`gh api repos/<dépôt> --jq .private`) :
 sur un dépôt privé et un compte gratuit, elles ne marchent pas (il faut un abonnement payant, et le site serait
-public quand même). Ne les propose donc que pour un dépôt public, ou en le disant clairement.
+public quand même). Sur un dépôt privé, propose plutôt un autre hébergeur gratuit ; tu peux mettre en alternative
+« rendre le dépôt public » en disant clairement que tout le code deviendrait visible par tout le monde. Ne change
+jamais la visibilité du dépôt sans son « oui » écrit à cette question.
 
 ## La fiche projet (porte 1)
 
@@ -140,8 +142,9 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
   dépôt, puis « Importer »), en disant qu'ainsi la toute première PR aura déjà son aperçu. Pour Vercel par exemple :
   1. https://github.com/apps/vercel/installations/new → votre compte → « Repository access » : ajoutez le dépôt
      (ou « All repositories ») → Save ;
-  2. `https://vercel.com/new/import?s=https://github.com/<dépôt>` → Deploy (un premier échec est normal tant que
+  2. https://vercel.com/new/import?s=https://github.com/<dépôt> → Deploy (un premier échec est normal tant que
      l'appli n'existe pas encore).
+  Écris des liens cliquables (pas en format code), avec le vrai nom du dépôt.
   Si l'hébergeur ne demande aucun compte (par exemple GitHub Pages pour un site simple), pas d'encadré : dis
   seulement que tu le mets en place toi-même dans la PR des fondations, sans rien lui demander.
 
