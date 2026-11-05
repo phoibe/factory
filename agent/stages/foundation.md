@@ -29,7 +29,8 @@ ne refais **pas** l'appli et ne change pas son comportement.
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
    `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil), et
-   `vercel.json` avec le framework s'il n'y est pas. Si un contrôle échoue à cause du code existant, corrige
+   le fichier de configuration de l'hébergeur s'il en demande un et qu'il manque (déclare le type d'appli de
+   la stack choisie, si l'hébergeur le demande). Si un contrôle échoue à cause du code existant, corrige
    ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
@@ -64,8 +65,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      pages principales), qui passent tous : ce sont ceux des contrôles automatiques ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
-   - un `vercel.json` qui déclare le framework (ex. `{"framework": "nextjs"}`) : le projet Vercel a été
-     importé quand le dépôt était vide, il ne sait donc pas encore quel type d'appli construire.
+   - la configuration d'hébergement : déclare le type d'appli de la stack choisie, si l'hébergeur le demande
+     (un projet importé quand le dépôt était vide ne sait pas encore quoi construire).
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
