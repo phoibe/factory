@@ -70,7 +70,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
 8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:visual-review`
-   sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
+   puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
 9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue (titre
    « Feature : … », description en deux ou trois phrases tirées de la fiche) avec `<!-- factory-agent -->` en
    tête et le label `factory:feature`. Elles ne démarrent que quand le propriétaire y écrit.

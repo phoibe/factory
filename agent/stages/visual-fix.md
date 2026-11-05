@@ -6,4 +6,5 @@ Le propriétaire a commenté les captures de la PR sans les valider.
    issue (label `factory:feature`) avec son idée, et dis-le lui ; ne l'ajoute pas à cette PR.
 2. Applique les retouches, revue rapide par un sous-agent neuf, passe design (`design-pass.md`) sur les
    écrans retouchés, vérifications locales, push.
-3. Refais les captures (`screenshots.md`) et commente avec le nouveau tableau. Le label reste `factory:visual-review`.
+3. Refais les captures (`screenshots.md`) et commente avec le nouveau tableau. Le label reste `factory:visual-review` ;
+   remets `factory:checks` pour que les contrôles retournent sur le nouveau code.

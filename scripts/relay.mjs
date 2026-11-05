@@ -7,7 +7,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER } from './lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
@@ -409,6 +409,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // True when the factory's checks job already passed on this commit (they ran while the owner looked at the captures).
+  async function checksGreen(sha) {
+    const runs = (await gh.checkRuns?.(sha).catch(() => null)) || [];
+    const last = runs.filter((r) => /(^|\/ )checks$/.test(r.name)).sort((a, b) => Date.parse(b.started_at || 0) - Date.parse(a.started_at || 0))[0];
+    return last?.status === 'completed' && last.conclusion === 'success';
+  }
+
+  // The owner said « ok » to the captures after the last ones were posted: that « ok » is also the recette.
+  const visualApproved = (comments) => {
+    const shots = comments.map((c) => (c.body || '').includes(SHOTS_BRANCH)).lastIndexOf(true);
+    return shots >= 0 && comments.map((c) => (c.body || '').includes(VISUAL_OK_MARKER)).lastIndexOf(true) > shots;
+  };
+
   const lastRunningAt = async (n) => {
     const last = ((await gh.listEvents(n)) || []).filter((e) => ['labeled', 'unlabeled'].includes(e.event) && e.label?.name === L.running).pop();
     return last ? Date.parse(last.created_at) : null;
@@ -630,6 +643,24 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           outputs.pr = String(n);
         }
         break;
+      case 'visual-ok': {
+        await applyLabels();
+        const pr = await gh.getPr(n);
+        const labels = await liveLabels(n);
+        const running = labels.includes(L.checks) || labels.includes(L.fixing);
+        const green = !running && config.stages.checks && Boolean(pr?.head?.sha) && (await checksGreen(pr.head.sha));
+        await gh.comment(n, `${VISUAL_OK_MARKER}\n${say(green || !config.stages.checks
+          ? 'Captures validées ✅.'
+          : 'Captures validées ✅. Je mets en ligne dès que les contrôles automatiques sont verts, sans vous redemander.')}`);
+        if (green) {
+          await report({ result: 'success', pr: n, sha: pr.head.sha });
+        } else if (!running) {
+          await gh.addLabels(n, [L.checks]);
+          if (!config.stages.checks) await report({ result: 'success', pr: n });
+          else { outputs.checks = 'true'; outputs.pr = String(n); }
+        }
+        break;
+      }
       case 'merge':
         await mergePr(n);
         break;
@@ -729,6 +760,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const next = afterChecks({ result, isBug, acceptanceOn: config.stages.acceptance, failures, maxLoops: config.review.maxLoops });
     log(`checks ${result} -> ${next}`);
     if (next === 'merge') return mergePr(prNumber, pr.head.sha);
+    if (next === 'acceptance' && (await liveLabels(prNumber)).includes(L.visualReview)) {
+      // The checks ran while the owner looks at the captures: give him the preview, his « ok » will put it live.
+      const url = (await hasPreviews(prNumber)) ? await previewUrl(pr.head.sha, prNumber) : null;
+      for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
+      const where = url ? `\n\nVous pouvez aussi tester la nouvelle version ici : ${url}` : '';
+      await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅${where}\n\nRépondez « ok » pour mettre en ligne directement, ou dites-moi ce qu'il faut retoucher.`));
+      return;
+    }
+    if (next === 'acceptance' && visualApproved(comments)) {
+      await gh.comment(prNumber, say('Les contrôles automatiques sont tous verts ✅ et vous avez validé les captures : je mets en ligne.'));
+      return mergePr(prNumber, pr.head.sha);
+    }
     if (next === 'acceptance') {
       // No preview, nothing to try: the spec and any captures were already validated, so it goes live (owner's rule).
       if (!(await hasPreviews(prNumber))) {

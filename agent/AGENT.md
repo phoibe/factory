@@ -92,8 +92,9 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage, `factory:audit` pour une review générale qui passe directement en `factory:building` ; une issue `factory:question` ne change jamais d'état, voir `stages/question.md`) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
-Sur la PR : `factory:visual-review` (captures à valider) → `factory:checks` (contrôles automatiques, à poser
-même si les contrôles sont désactivés : la factory passe alors directement à la suite) →
+Sur la PR : `factory:visual-review` (captures à valider) **et** `factory:checks` (contrôles automatiques, posés
+ensemble : les contrôles tournent pendant qu'il regarde les captures, et son « ok » sur les captures vaut recette ;
+`factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, `factory:checks` seul, puis
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
 - Quand ton étape le dit, change les labels (voir « API GitHub »).

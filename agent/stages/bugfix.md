@@ -10,5 +10,5 @@ Un bug signalé dans l'issue. Pas de grilling.
    passe design (`design-pass.md`). Puis vérifications locales.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 4. PR avec résumé en français et `Closes #<n>`. Si l'interface change : captures
-   (`screenshots.md`) puis `factory:visual-review` ; sinon `factory:checks`. La factory fusionne seule quand
+   (`screenshots.md`) puis `factory:visual-review` et `factory:checks` ; sinon `factory:checks`. La factory fusionne seule quand
    les contrôles passent : pas de recette pour un bug.
