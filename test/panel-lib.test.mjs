@@ -160,3 +160,13 @@ test('a pull request closing several issues hides and finishes all of them', () 
   const done = doneItems([{ number: 5, merged_at: '2026-01-01T00:00:00Z', body: 'Closes #1, closes #2', title: 'T', html_url: 'https://github.com/o/r/pull/5' }]);
   assert.deepEqual(done.map((d) => d.issue), [1, 2]);
 });
+
+test('openIssueCount counts issues, not pull requests', async () => {
+  const { openIssueCount, issuesLinkText } = await import('../panel/lib.mjs');
+  assert.equal(openIssueCount([{ number: 1 }, { number: 2, pull_request: {} }, { number: 3 }]), 2);
+  assert.equal(openIssueCount([]), 0);
+  assert.equal(openIssueCount(null), null);
+  assert.equal(issuesLinkText(7), 'Voir les demandes sur GitHub (7)');
+  assert.equal(issuesLinkText(0), 'Voir les demandes sur GitHub (0)');
+  assert.equal(issuesLinkText(null), 'Voir les demandes sur GitHub');
+});
