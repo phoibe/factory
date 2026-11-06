@@ -102,3 +102,62 @@ test('the cloud session Chromium is used when it is there', async () => {
   assert.deepEqual(launchOptions({}, (p) => p === '/opt/pw-browsers/chromium'), { executablePath: '/opt/pw-browsers/chromium' });
   assert.deepEqual(launchOptions({}, () => false), {});
 });
+
+// A page that changes on every load if nothing is frozen: the time, a running animation, a focused field.
+async function serveMovingPage(extra = '') {
+  const { createServer } = await import('node:http');
+  const html = `<!doctype html><meta charset="utf-8"><style>
+@keyframes spin{to{transform:rotate(360deg)}} .s{width:60px;height:60px;background:#c33;animation:spin 1.3s linear infinite}
+.f{width:60px;height:20px;background:#36c;animation:grow 2s ease-out forwards} @keyframes grow{from{width:0}to{width:200px}}
+</style><p id="t"></p><div class="s"></div><div class="f"></div><input autofocus value="abc">${extra}
+<script>document.getElementById('t').textContent = new Date().toISOString() + ' ' + Date.now();</script>`;
+  const server = createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(html); });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  return { server, url: `http://127.0.0.1:${server.address().port}` };
+}
+
+test('a screen that did not change gives the very same picture, even with an animation and the time on it', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture } = await import('../agent/scripts/shots.mjs');
+  const { server, url } = await serveMovingPage();
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  try {
+    await capture({ baseUrl: url, routes: ['/'], out: before, toggle: null });
+    await new Promise((ok) => setTimeout(ok, 700));
+    await capture({ baseUrl: url, routes: ['/'], out: after, toggle: null });
+    const files = readdirSync(after).sort();
+    assert.deepEqual(sameScreens(before, after, files), files);
+  } finally {
+    server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('a real small change is still shown', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture } = await import('../agent/scripts/shots.mjs');
+  const a = await serveMovingPage();
+  const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    const files = readdirSync(after).sort();
+    assert.deepEqual(sameScreens(before, after, files), []);
+  } finally {
+    a.server.close(); b.server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('each shot hides the text caret and stops animations', async () => {
+  const { FROZEN_SHOT } = await import('../agent/scripts/shots.mjs');
+  assert.equal(FROZEN_SHOT.caret, 'hide');
+  assert.equal(FROZEN_SHOT.animations, 'disabled');
+});
