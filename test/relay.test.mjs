@@ -1380,3 +1380,29 @@ test('the tick re-runs a run stopped by GitHub\'s rate limit, so its event is no
   await relay.handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 1]]);
 });
+
+test('only the relay commands whose workflow step marks the run exit quietly on the rate limit; the others still fail', async () => {
+  const { rateLimitHandled, RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(['decide', 'release', 'report', 'preview-report', 'prod-report', 'live-url'].map(rateLimitHandled), [true, true, true, false, false, false]);
+  const yml = readFileSync(new URL('../.github/workflows/relay.yml', import.meta.url), 'utf8');
+  for (const cmd of ['decide', 'release', 'report']) {
+    const call = 'node .factory-src/scripts/relay.mjs';
+    const at = yml.indexOf(`${call} ${cmd}`);
+    const step = yml.indexOf(RATE_LIMIT_STEP, at);
+    const next = yml.indexOf(call, at + call.length);
+    assert.ok(at > 0 && step > at && (next < 0 || next > step), cmd);
+  }
+});
+
+test('a failed run that did not move lately costs no read of its jobs at each tick', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  const reads = [];
+  Object.assign(gh, {
+    failedRuns: async () => [{ id: 9, run_attempt: 1, created_at: new Date(Date.now() - 3 * 3600_000).toISOString(), updated_at: new Date(Date.now() - 2 * 3600_000).toISOString() }],
+    runJobs: async (id) => { reads.push(id); return []; },
+    rerunFailed: async () => {},
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(reads, []);
+});

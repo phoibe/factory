@@ -36,6 +36,8 @@ const HEAL_MARKER = '<!-- factory-heal -->';
 // Name of the step relay.yml fails when GitHub's rate limit stopped the relay: the next tick re-runs that run.
 export const RATE_LIMIT_STEP = 'Rate limited: retried at the next tick';
 export const MAX_RATE_LIMIT_ATTEMPTS = 3;
+// The commands whose step in relay.yml is followed by RATE_LIMIT_STEP: only they may end quietly on the limit.
+export const rateLimitHandled = (command) => ['decide', 'release', 'report'].includes(command);
 // Saved at the end of a request's description when the agent closes it by itself: the step to resume and its PRs.
 const REOPEN_MARKER = '<!-- factory-reopen';
 const REOPEN_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.resumeQueued, L.autoGo];
@@ -592,8 +594,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function retryRateLimited() {
     if (!gh.failedRuns) return;
     const since = now() - 24 * 3600_000;
+    // A run stopped by the limit is seen at the tick right after it ends: one that has not moved for an hour was
+    // looked at already, and its jobs are not read again at every tick.
+    const moved = now() - 60 * 60_000;
     for (const run of await gh.failedRuns(PROJECT_WORKFLOW)) {
       if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
+      if (run.updated_at && Date.parse(run.updated_at) < moved) continue;
       const jobs = await gh.runJobs(run.id);
       // A checks report stopped this way is made again by reportLost, from the checks' own result: not re-run twice.
       const stopped = jobs.filter((j) => (j.steps || []).some((st) => st.name === RATE_LIMIT_STEP && st.conclusion === 'failure'));
@@ -784,8 +790,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const isWait = (card) => (e) => e.event === 'labeled' && e.label?.name === card.label;
       for (const card of cards) {
         try {
-          const wait = recent.find((e) => e.issue?.number === card.number && isWait(card)(e))
-            || ((await gh.listEvents(card.number)) || []).filter(isWait(card)).pop();
+          const newest = (list) => list.reduce((a, e) => (!a || Number(e.id) > Number(a.id) ? e : a), null);
+          const wait = newest(recent.filter((e) => e.issue?.number === card.number && isWait(card)(e)))
+            || newest(((await gh.listEvents(card.number)) || []).filter(isWait(card)));
           const key = `${card.label}@${wait?.id ?? 'x'}`;
           // The key of this wait was written after it began: only comments updated since then can hold it.
           const fresh = wait?.created_at && gh.listCommentsSince ? (await gh.listCommentsSince(card.number, wait.created_at)) || [] : null;
@@ -1172,7 +1179,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error(e);
     // GitHub's « too many requests » for longer than a pause: the step `RATE_LIMIT_STEP` of relay.yml fails on this
     // output, and the next tick re-runs the run (retryRateLimited), so the event is taken up instead of lost.
-    if (isRateLimited(e)) { writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ratelimited: 'true' }); return; }
+    if (isRateLimited(e) && rateLimitHandled(process.argv[2])) { writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ratelimited: 'true' }); return; }
     process.exit(1);
   });
 }

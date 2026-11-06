@@ -142,7 +142,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
     // The project's factory runs that failed lately, their jobs, and a re-run of their failed jobs (same event again).
-    failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=30&created=>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`))?.workflow_runs || [],
+    failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=30&created=${encodeURIComponent(`>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`)}`))?.workflow_runs || [],
     runJobs: async (id) => (await request('GET', `/repos/{repo}/actions/runs/${id}/jobs?per_page=50`))?.jobs || [],
     rerunFailed: (id) => request('POST', `/repos/{repo}/actions/runs/${id}/rerun-failed-jobs`, {}),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),

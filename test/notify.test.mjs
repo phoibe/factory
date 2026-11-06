@@ -122,3 +122,25 @@ test('an alert already sent costs no read of the whole thread nor of the card\'s
   await relay.notifyWaiting();
   assert.deepEqual([sent.length, reads], [0, []]);
 });
+
+test('the newest wait of a card is the one alerted, whatever order GitHub lists the events in', async () => {
+  const label = L.blocked;
+  const comments = { 1: [{ id: 5, updated_at: '2026-02-01T00:01:00Z', body: notifiedComment([`${label}@8`]) }] };
+  const gh = {
+    listIssues: async ({ labels }) => (labels === label ? [card(1, [label])] : []),
+    listRepoEvents: async () => [
+      { id: 7, event: 'labeled', label: { name: label }, created_at: '2026-01-01T00:00:00Z', issue: { number: 1 } },
+      { id: 8, event: 'labeled', label: { name: label }, created_at: '2026-02-01T00:00:00Z', issue: { number: 1 } },
+    ],
+    listCommentsSince: async (n, since) => comments[n].filter((c) => c.updated_at >= since),
+    listEvents: async () => [],
+    listComments: async (n) => comments[n],
+    comment: async () => { writes.push('comment'); return { id: 6 }; },
+    updateComment: async () => { writes.push('update'); },
+  };
+  const sent = [];
+  const writes = [];
+  const relay = createRelay({ gh, repo: 'o/p', config: { runner: 'claude-cloud', maxParallel: 2, stages: {}, review: { maxLoops: 3 } }, env: { NTFY_TOPIC: 't' }, fetchImpl: async () => { sent.push(1); return { ok: true }; }, log: () => {} });
+  await relay.notifyWaiting();
+  assert.deepEqual([sent.length, writes], [0, []]);
+});
