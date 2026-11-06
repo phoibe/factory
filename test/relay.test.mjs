@@ -2006,3 +2006,17 @@ test('the safety net counts any open undo of the delivery as under way, even one
   assert.deepEqual(prodChecks(gh), []);
   assert.ok(card.labels.includes(L.noPick));
 });
+
+test('any event brings a project whose agent instructions are behind the stable version up to date', async () => {
+  // yoldmewhen2, 2026-11-06: the sync only ran on a config change or the rare tick, so its agents kept old rules.
+  const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
+  const synced = (fingerprint) => ({ content: Buffer.from(JSON.stringify({ fingerprint })).toString('base64') });
+  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true };
+  for (const [fingerprint, expected] of [['old', true], [syncFingerprint('.'), false]]) {
+    const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }], prs: [] });
+    gh.getContent = async (path) => (path === '.factory/synced.json' ? synced(fingerprint) : null);
+    const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk([]), log: quiet });
+    await relay.handle(ev);
+    assert.equal(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'), expected, fingerprint);
+  }
+});
