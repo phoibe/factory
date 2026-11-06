@@ -14,7 +14,7 @@ const axeSource = await readFile(require.resolve('axe-core/axe.min.js'), 'utf8')
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PANEL = join(ROOT, 'panel');
 // The Pages workflow copies these next to the panel files; the test server does the same.
-const EXTRA = { '/config-core.mjs': 'scripts/lib/config-core.mjs', '/catalog.json': 'packs/catalog.json', '/factory.config.json': 'defaults/factory.config.json' };
+const EXTRA = { '/config-core.mjs': 'scripts/lib/config-core.mjs', '/ratelimit.mjs': 'scripts/lib/ratelimit.mjs', '/catalog.json': 'packs/catalog.json', '/factory.config.json': 'defaults/factory.config.json' };
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json', '.woff2': 'font/woff2' };
 
 // A fake GitHub account: one project with a ticket waiting for the owner, one being built, one queued,
@@ -86,7 +86,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
               return input && { value: input.value, min: input.min, max: input.max, label: document.querySelector('label[for=maxQuestions]')?.textContent,
                 afterPick: pickRow?.contains(input) === true && Boolean(pickRow.querySelector('label[for=autoPick]').compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING) };
             });
-            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'Features en questions en même temps' || !q.afterPick)
+            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'En attente de vos réponses, au plus' || !q.afterPick)
               found.push(`Règles (${scheme}): réglage maxQuestions absent ou mal placé : ${JSON.stringify(q)}`);
             // Nested under the auto-pick switch: off while picking is off, aligned with the switch's label.
             const nest = await page.evaluate(() => ({ disabled: document.getElementById('maxQuestions').disabled,

@@ -1,4 +1,5 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
+import { rateLimitDelay, RateLimited, MAX_PAUSE_MS } from './ratelimit.mjs';
 const HTML = 'application/vnd.github.full+json';
 
 // GitHub answers 5xx now and then (503 « Service Unavailable », 500 on pushes…). One such answer used to kill a whole
@@ -6,15 +7,33 @@ const HTML = 'application/vnd.github.full+json';
 // A POST is retried only on 503 (not served at all), so a comment or a label is never written twice.
 const RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
 const transient = (method, status) => (method === 'POST' ? status === 503 : status >= 500);
+// « Too many requests »: GitHub applied nothing, so any call (POST included) is sent again after the wait it asks.
+// At most 3 pauses per call and 3 minutes of pauses per run: the job (15 min) must end on the rate-limit step, not on
+// its timeout, so that its event is taken up again.
+const MAX_RATE_PAUSES = 3;
+const MAX_PAUSED_MS = 3 * 60_000;
+const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the queue lock first: no pause past this
 
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
+  const started = now();
+  let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried like a 503.
   async function send(method, url, init) {
+    let pauses = 0;
     for (let attempt = 0; ; attempt++) {
       let res;
       try { res = await fetchImpl(url, { method, ...init }); } catch (e) {
         if (attempt >= RETRY_DELAYS_MS.length) throw e;
         await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      const wait = rateLimitDelay(res.status, res.headers);
+      if (wait !== null) {
+        if (wait > MAX_PAUSE_MS || pauses >= MAX_RATE_PAUSES || paused + wait > MAX_PAUSED_MS || now() - started + wait > RUN_BUDGET_MS) throw new RateLimited(wait);
+        pauses++;
+        paused += wait;
+        attempt--; // a pause is not one of the 5xx retries
+        await sleep(wait);
         continue;
       }
       if (!transient(method, res.status) || attempt >= RETRY_DELAYS_MS.length) return res;
@@ -52,7 +71,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
   const LOCK_REF = 'factory/lock';
-  let mine = null; // sha of the lock commit this run created
+  let mine = null; // sha of the lock commit this run created (moved forward by each sign of life)
+  let tree = null; // the lock's content, reused by the signs of life
   let seen = null; // sha of the lock commit last seen held by someone else
   const lockSha = async () => (await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
   const dropIf = async (sha) => {
@@ -64,8 +84,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async acquire() {
       seen = await lockSha();
       if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
-      const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] });
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree: tree.sha, parents: [] });
+      tree = (await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
       try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
       catch (e) { if (String(e).includes('422')) return false; throw e; }
     },
@@ -74,16 +94,63 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
       return commit ? Date.now() - Date.parse(commit.committer.date) : null;
     },
+    // A sign of life: a new commit on top of ours, so its date is now. A fast-forward only (force: false): a run that
+    // took the lock over has put an unrelated commit there, and GitHub refuses the move (422) instead of stealing it back.
+    // Works on the hold it started from: a late answer never touches a newer hold of the same run.
+    async refresh() {
+      const held = mine;
+      if (!held) return false;
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      let moved = true;
+      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      catch (e) {
+        if (!/422/.test(String(e))) throw e;
+        // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
+        // Still on our previous commit: the lock is ours, only this sign of life failed (the next one retries).
+        const now = await lockSha();
+        if (now === held) throw e;
+        moved = now === commit.sha;
+      }
+      if (mine === held) mine = moved ? commit.sha : null;
+      return moved;
+    },
     release: () => dropIf(mine), // never the lock of the run that took over from us
     takeOver: () => dropIf(seen),
   };
+  // Small factory states kept out of sight in the project: a ref per name, whose commit message is the JSON.
+  const stateRef = (name) => `factory/state-${name}`;
+  const getState = async (name) => {
+    const ref = await request('GET', `/repos/{repo}/git/ref/${stateRef(name)}`);
+    if (!ref) return null;
+    const commit = await request('GET', `/repos/{repo}/git/commits/${ref.object.sha}`);
+    try { return JSON.parse(commit?.message || 'null'); } catch { return null; }
+  };
+  const setState = async (name, value) => {
+    if (!value) {
+      try { await request('DELETE', `/repos/{repo}/git/refs/${stateRef(name)}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+      return;
+    }
+    const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'state', mode: '100644', type: 'blob', content: name }] });
+    const commit = await request('POST', '/repos/{repo}/git/commits', { message: JSON.stringify(value), tree: tree.sha, parents: [] });
+    try { await request('PATCH', `/repos/{repo}/git/refs/${stateRef(name)}`, { sha: commit.sha, force: true }); }
+    catch (e) { if (!/404|422/.test(String(e))) throw e; await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${stateRef(name)}`, sha: commit.sha }); }
+  };
   return {
     queueLock,
+    getState,
+    setState,
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
     listIssues: (q) => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`),
     listPulls: () => paginate('/repos/{repo}/pulls?state=open&per_page=100'),
+    listOpenIssues: () => paginate('/repos/{repo}/issues?state=open&per_page=100'),
+    // The repository's latest issue events, all cards together (newest first).
+    listRepoEvents: () => request('GET', '/repos/{repo}/issues/events?per_page=100'),
+    // Comments updated at or after `since` (ISO time): only what moved, not the whole thread.
+    listCommentsSince: (n, since) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100&since=${encodeURIComponent(since)}`),
+    // Every PR (open, closed, merged) of one branch of this repository.
+    pullsByHead: (branch) => request('GET', `/repos/{repo}/pulls?state=all&per_page=30&head=${enc(`${repo.split('/')[0]}:${branch}`)}`),
     listClosedPulls: () => request('GET', '/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=30'),
     paginate,
     getRepo: () => request('GET', '/repos/{repo}'),
@@ -124,6 +191,10 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     checkRuns: async (sha) => (await request('GET', `/repos/{repo}/commits/${sha}/check-runs?per_page=100`))?.check_runs || [],
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
+    // The project's factory runs that failed lately, their jobs, and a re-run of their failed jobs (same event again).
+    failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=100&created=${encodeURIComponent(`>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`)}`))?.workflow_runs || [],
+    runJobs: async (id) => (await request('GET', `/repos/{repo}/actions/runs/${id}/jobs?per_page=50`))?.jobs || [],
+    rerunFailed: (id) => request('POST', `/repos/{repo}/actions/runs/${id}/rerun-failed-jobs`, {}),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),
   };
 }

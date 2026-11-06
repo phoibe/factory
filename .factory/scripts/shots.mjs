@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
 export const ASSETS_BRANCH = 'claude/factory-assets';
@@ -63,7 +64,7 @@ export function differs(a, b) {
 async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(launchOptions());
   const shoot = async (viewport, scheme, applyToggle) => {
     const context = await browser.newContext({ viewport, colorScheme: scheme });
     if (cookies.length) await context.addCookies(cookies);
@@ -104,6 +105,12 @@ async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
     : 'no dark theme detected: light screenshots only. If the app has a dark theme switched by a button/class, rerun with --dark-class or --dark-attr; if you cannot find how, say so in the PR.');
 }
 
+// The cloud sessions have a Chromium of their own whose version may not match the project's Playwright: use it.
+export function launchOptions(env = process.env, exists = existsSync) {
+  if (env.CHROMIUM_PATH) return { executablePath: env.CHROMIUM_PATH };
+  return exists('/opt/pw-browsers/chromium') ? { executablePath: '/opt/pw-browsers/chromium' } : {};
+}
+
 // Light screenshots first, then dark ones, each sorted by name.
 export function orderFiles(files) {
   const isDark = (f) => f.endsWith(`--${DARK_SUFFIX}.png`);
@@ -127,7 +134,7 @@ const dataUri = (file) => `data:image/png;base64,${readFileSync(file).toString('
 export async function compose({ before, after, out, only = null }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(launchOptions());
   try {
     const page = await browser.newPage();
     for (const f of readdirSync(after).filter((x) => x.endsWith('.png') && (!only || only.includes(x)))) {
@@ -174,21 +181,32 @@ async function publish({ pr, before, after }) {
     git(['checkout', '--orphan', ASSETS_BRANCH], wt);
     git(['rm', '-rf', '--quiet', '.'], wt);
   }
-  const from = before && existsSync(before) ? before : null;
-  const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-  const unchanged = sameScreens(from, after, all);
-  const files = all.filter((f) => !unchanged.includes(f));
-  if (files.length) {
-    await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
-    git(['add', '.'], wt);
-    git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
-    git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt);
+  // Always removed, even on a failure: a leftover worktree holds the branch and makes the next try fail.
+  try {
+    const from = before && existsSync(before) ? before : null;
+    const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
+    const unchanged = sameScreens(from, after, all);
+    const files = all.filter((f) => !unchanged.includes(f));
+    if (files.length) {
+      await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
+      git(['add', '.'], wt);
+      git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
+      // Another PR may have pushed its captures meanwhile: each PR writes its own folder, so a rebase never conflicts.
+      for (let attempt = 0; ; attempt++) {
+        try { git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt); break; } catch (e) {
+          if (!exists || attempt >= 2) throw e;
+          git(['pull', '--quiet', '--rebase', 'origin', ASSETS_BRANCH], wt);
+        }
+      }
+    }
+    return markdownTable({ repo, dir, files, unchanged });
+  } finally {
+    try { git(['worktree', 'remove', '--force', wt]); } catch { rmSync(wt, { recursive: true, force: true }); }
   }
-  git(['worktree', 'remove', '--force', wt]);
-  return markdownTable({ repo, dir, files, unchanged });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compared as paths: the URL form is percent-encoded (a space becomes %20) and never matched argv.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   if (cmd === 'capture') {

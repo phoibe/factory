@@ -67,3 +67,9 @@ test('a general review cannot open its PR without both passes', () => {
   assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /revue de code/);
   assert.equal(decide(bash('gh pr create'), env(j(run('audit'), skill('impeccable'), skill('requesting-code-review')))), null);
 });
+
+test('a command continued on the next line with a backslash still hands over', async () => {
+  const { handsOver } = await import('../agent/scripts/gate.mjs');
+  assert.equal(handsOver('Bash', { command: 'gh api repos/o/r/pulls \\\n  -f title=x -f head=b -f base=main' }), true);
+  assert.equal(handsOver('Bash', { command: 'gh api repos/o/r/issues/5/labels \\\n  -f "labels[]=factory:checks"' }), true);
+});

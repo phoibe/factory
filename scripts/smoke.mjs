@@ -18,6 +18,16 @@ export function smokeRoutes(text) {
   return [...new Set(['/', ...listed])];
 }
 
+// The address of one screen. Routes are relative to the site, not to the domain: a site hosted in a sub-folder
+// (GitHub Pages: https://owner.github.io/project/) must open « / » as its own home, never the domain's root.
+export function routeUrl(route, base) {
+  const u = new URL(base);
+  if (!u.pathname.endsWith('/')) u.pathname += '/';
+  u.search = '';
+  u.hash = '';
+  return new URL('./' + String(route).replace(/^\/+/, ''), u).toString();
+}
+
 // A deployment protected by its host's sign-in (Vercel Authentication…) cannot be opened by a robot: not a failure.
 export function isProtected(status, location = '') {
   return status === 401 || status === 403 || /vercel\.com\/(login|sso)|\/sso-api|_vercel_sso/.test(String(location));
@@ -47,7 +57,28 @@ function loadPlaywright(dir) {
   return null;
 }
 
-export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.error } = {}) {
+// The live site right after a delivery may still be published (a 404 for a minute): a failure is checked again every
+// `intervalMs` until `retryMs` has passed (issue #227). Only a failure is retried; a pass or a skip is final.
+export async function smokeUntil({ check, retryMs, intervalMs = 60_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
+  const deadline = now() + retryMs;
+  let out = await check(0);
+  for (let attempt = 1; out.result === 'failed' && now() < deadline; attempt++) {
+    await sleep(Math.min(intervalMs, Math.max(0, deadline - now())));
+    out = await check(attempt);
+  }
+  if (out.result === 'failed' && retryMs > 0) out = { ...out, detail: `${out.detail} (toujours après ${Math.round(retryMs / 60_000)} min)` };
+  return out;
+}
+
+// The attempts of smokeUntil: the project's tools are installed once, by the first attempt that gets that far (an
+// attempt that stops earlier, on an address that does not answer yet, installs nothing).
+export function smokeAttempts({ url, dir = '.', run = smoke }) {
+  let installed = false;
+  return () => run({ url, dir, install: !installed, onInstalled: () => { installed = true; } });
+}
+
+// `install: false` reuses the tools a previous attempt installed (see smokeAttempts).
+export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.error, install = true, onInstalled = () => {} } = {}) {
   const first = await probe(url, fetchImpl);
   if (first.status === 0) return { result: 'failed', detail: `l'adresse ne répond pas (${first.error})` };
   if (isProtected(first.status, first.location)) return { result: 'skipped', detail: "la version est protégée par l'hébergeur : pas d'ouverture automatique possible" };
@@ -57,11 +88,14 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
   const setup = pkg && browserSetup(pkg);
   if (!setup) return first.status < 400 ? { result: 'passed', detail: "la page d'accueil répond (pas de navigateur dans ce projet)" } : { result: 'failed', detail: `la page d'accueil répond ${first.status}` };
   const run = (cmd) => spawnSync(cmd[0], cmd.slice(1), { cwd: dir, stdio: ['ignore', 'inherit', 'inherit'], env: { ...process.env, CI: 'true' } }).status;
-  if (run(existsSync(join(dir, 'package-lock.json')) ? ['npm', 'ci', '--ignore-scripts'] : ['npm', 'install', '--ignore-scripts']) !== 0) {
-    return { result: 'skipped', detail: "les outils du projet ne s'installent pas : vérification sautée" };
+  if (install) {
+    if (run(existsSync(join(dir, 'package-lock.json')) ? ['npm', 'ci', '--ignore-scripts'] : ['npm', 'install', '--ignore-scripts']) !== 0) {
+      return { result: 'skipped', detail: "les outils du projet ne s'installent pas : vérification sautée" };
+    }
+    run(setup.install);
+    if (run(setup.probe) !== 0) run(setup.deps);
+    onInstalled();
   }
-  run(setup.install);
-  if (run(setup.probe) !== 0) run(setup.deps);
   const pw = loadPlaywright(resolve(dir));
   if (!pw) return { result: 'skipped', detail: 'navigateur introuvable : vérification sautée' };
   const routesFile = join(dir, 'e2e/smoke-routes.txt');
@@ -76,7 +110,7 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
       const serverErrors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('response', (r) => { if (r.status() >= 500 && r.url().startsWith(origin)) serverErrors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
-      const target = new URL(route, url).toString();
+      const target = routeUrl(route, url);
       let status = 0;
       try {
         const res = await page.goto(target, { waitUntil: 'networkidle', timeout: 45_000 });
@@ -103,7 +137,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
   let out;
   try {
-    out = await smoke({ url: arg('url'), dir: arg('dir') || '.' });
+    const retryMs = (Number(arg('retry-minutes')) || 0) * 60_000;
+    out = await smokeUntil({ retryMs, check: smokeAttempts({ url: arg('url'), dir: arg('dir') || '.' }) });
   } catch (e) {
     out = { result: 'skipped', detail: `vérification impossible (${String(e.message || e).slice(0, 120)})` };
   }

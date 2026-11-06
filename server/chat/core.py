@@ -1,7 +1,7 @@
 """Pure logic of the chat server (no network, no Modal): tested by test_core.py.
 
 The panel's « Discussion » tab talks to this server. Each message runs Claude Code (the owner's subscription)
-in an up-to-date copy of the project, read-only, and streams the answer back. Conversations are stored as JSON
+in an up-to-date copy of the project, read-only and confined to it, and streams the answer back. Conversations are stored as JSON
 files on the project's `factory-chat` branch.
 """
 import json
@@ -27,7 +27,8 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
 - La réponse d'abord (« Oui, c'est prévu : … », « Non, aujourd'hui … »), puis ce qu'il voit concrètement, puis ta
   certitude : couvert par un test, lu dans le code, ou seulement prévu dans la fiche produit.
 - Le dossier courant est le projet à jour (branche principale). Tu peux seulement le lire (Read, Grep, Glob) :
-  tu ne modifies rien. Lis PRODUCT.md (ou docs/PRODUCT.md) et DESIGN.md s'ils servent la question.
+  tu ne modifies rien. Hors du projet et des images jointes, tu n'as accès à rien : si on te demande un autre
+  fichier de la machine, dis simplement que tu n'as accès qu'au projet. Lis PRODUCT.md (ou docs/PRODUCT.md) et DESIGN.md s'ils servent la question.
 - Ne parle ni de GitHub, ni d'issue, ni de commentaire : pour lui, c'est un chat.
 - Tu ne crées JAMAIS de feature ou de bug de toi-même, même quand la discussion révèle un manque ou un défaut,
   et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
@@ -88,8 +89,13 @@ def extract_issues(text):
         {"kind": "bug" if k.strip() == "bug" else "feature", "title": t.strip(), "body": b.strip()}
         for k, t, b in BLOCK_RE.findall(text or "")
         if t.strip()
-    ][:MAX_ISSUES]
-    return BLOCK_RE.sub("", text or "").strip(), issues
+    ]
+    answer = BLOCK_RE.sub("", text or "").strip()
+    dropped = len(issues) - MAX_ISSUES
+    if dropped > 0:
+        answer += (f"\n\n_{dropped} autres demandes n'ont pas été créées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
+                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été créée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
+    return answer, issues[:MAX_ISSUES]
 
 
 def visible_text(draft):

@@ -14,7 +14,7 @@ const ACTIONS = {
   grilling: 'Répondez aux questions',
   spec: 'Validez la spec',
   visual: 'Validez les captures',
-  acceptance: 'Testez la preview',
+  acceptance: 'Testez l\'aperçu',
   blocked: "Débloquez l'agent",
 };
 
@@ -113,3 +113,15 @@ export function yoursList(cards) {
 // shifts the cards below by a few pixels: that must not animate.
 export const SLIDE_MIN_PX = 8;
 export const shouldSlide = (a, b) => Math.abs(a.top - b.top) >= SLIDE_MIN_PX || Math.abs(a.left - b.left) >= SLIDE_MIN_PX;
+
+// What says a card may have new comments: GitHub moves `updated_at` and the count on each new message.
+export const cardSig = (card) => `${card.updated_at || ''}|${card.comments || 0}`;
+
+// True when the board must read the card's comments again (seen: its cardSig at the last read).
+// A running card's session note and a Vercel bot's preview comment are edited in place, which may not move the
+// card: those are read at every refresh (an unchanged answer is a free 304 thanks to the ETag).
+export function commentsStale(card, seen, { preview = null } = {}) {
+  if (seen !== cardSig(card)) return true;
+  if ((card.labels || []).includes('factory:running')) return true;
+  return Boolean(card.pull_request) && !preview;
+}
