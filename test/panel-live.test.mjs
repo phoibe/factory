@@ -136,3 +136,28 @@ test('a hidden browser tab counts as idle, so it polls every 30 s instead of sto
   assert.equal(isIdle(1_000, 1_000 + 5_000, false), false);
   assert.equal(isIdle(1_000, 1_000 + 5_000), false);
 });
+
+// #211: the board reads a card's comments only when the card may have changed.
+import { cardSig, commentsStale } from '../panel/live.mjs';
+
+test('a card that did not change is not read again', () => {
+  const c = { number: 1, updated_at: '2026-11-06T10:00:00Z', comments: 4, labels: ['factory:spec-review'] };
+  assert.equal(commentsStale(c, cardSig(c), { preview: null }), false);
+});
+
+test('a card with a new message is read again', () => {
+  const c = { number: 1, updated_at: '2026-11-06T10:00:00Z', comments: 4, labels: [] };
+  assert.equal(commentsStale({ ...c, comments: 5, updated_at: '2026-11-06T10:05:00Z' }, cardSig(c), { preview: null }), true);
+  assert.equal(commentsStale(c, undefined, { preview: null }), true); // never read
+});
+
+test('a card an agent works on is always read: its session note is edited, not added', () => {
+  const c = { number: 1, updated_at: '2026-11-06T10:00:00Z', comments: 4, labels: ['factory:running'] };
+  assert.equal(commentsStale(c, cardSig(c), { preview: null }), true);
+});
+
+test('a PR card still waiting for its preview link is always read: the bot edits its comment', () => {
+  const c = { number: 2, pull_request: {}, updated_at: '2026-11-06T10:00:00Z', comments: 2, labels: [] };
+  assert.equal(commentsStale(c, cardSig(c), { preview: null }), true);
+  assert.equal(commentsStale(c, cardSig(c), { preview: 'https://preview.example' }), false);
+});
