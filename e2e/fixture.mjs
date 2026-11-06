@@ -41,7 +41,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403);
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json(repos.map((full) => ({ full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: '' })));
+      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: '' })));
       // The factory's own branch files (dev server status and general setting, issue #271).
       const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
       if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);

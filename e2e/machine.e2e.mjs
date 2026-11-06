@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { withPanel } from './fixture.mjs';
 import { repoKey } from '../panel/machine.mjs';
 
-const H = await repoKey('o/r');
+const H = await repoKey(1);
 const open = async (page, url) => {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Paramètres' }).click();

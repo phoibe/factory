@@ -51,7 +51,8 @@ function store(files = {}) {
   return { data, writes, read: async (p) => data[p] ?? null, write: async (p, v) => { data[p] = v; writes.push(p); } };
 }
 
-const priv = (name, config = {}) => ({ full_name: `pierre/${name}`, name, private: true, config });
+const ids = { app: 101, 'secret-app': 102, site: 103, tool: 104, notes: 105 };
+const priv = (name, config = {}) => ({ id: ids[name], full_name: `pierre/${name}`, name, private: true, config });
 const online = [{ status: 'online', labels: [{ name: 'self-hosted' }] }];
 const run = (deps) => checkRunners({ now: () => NOW, sleep: async () => {}, log: () => {}, topic: 'topic', ...deps });
 
@@ -67,7 +68,7 @@ test('a private project with its server online gets the runs-on variable', async
   const s = store();
   const res = await run({ keyApi: a.keyApi, store: s });
   assert.equal(a.state.vars['pierre/app'], '["self-hosted"]');
-  const p = res.status.projects[await repoKey('pierre/app')];
+  const p = res.status.projects[await repoKey('101')];
   assert.deepEqual([p.machine, p.reason, p.online], ['dev-server', 'online', 1]);
 });
 
@@ -96,14 +97,14 @@ test('the general setting on GitHub keeps every project there', async () => {
 });
 
 test('a repository without factory.config.json is not a project', async () => {
-  const a = account({ repos: [{ full_name: 'pierre/notes', name: 'notes', private: true }] });
+  const a = account({ repos: [{ id: 105, full_name: 'pierre/notes', name: 'notes', private: true }] });
   const res = await run({ keyApi: a.keyApi, store: store() });
   assert.deepEqual(res.status.projects, {});
   assert.deepEqual(a.calls, []);
 });
 
 test('server down: the variable goes, the stuck runs are cancelled and re-run on GitHub, one alert', async () => {
-  const key = await repoKey('pierre/app');
+  const key = await repoKey('101');
   const a = account({
     repos: [priv('app')],
     vars: { 'pierre/app': '["self-hosted"]' },
@@ -126,7 +127,7 @@ test('server down: the variable goes, the stuck runs are cancelled and re-run on
 });
 
 test('a run that will not stop yet is re-run at the next check', async () => {
-  const key = await repoKey('pierre/app');
+  const key = await repoKey('101');
   const a = account({
     repos: [priv('app')],
     vars: { 'pierre/app': '["self-hosted"]' },
@@ -162,4 +163,53 @@ test('an unchanged status is not written again within the hour', async () => {
   await run({ keyApi: a.keyApi, store: s });
   await run({ keyApi: a.keyApi, store: s });
   assert.equal(s.writes.filter((p) => p === 'status.json').length, 1);
+});
+
+test('the public logs never name a private project', async () => {
+  const key = await repoKey('101');
+  const a = account({
+    repos: [priv('app')],
+    vars: { 'pierre/app': '["self-hosted"]' },
+    runs: { 'pierre/app': [{ id: 7, status: 'queued', event: 'issues' }] },
+    jobs: { 7: [{ status: 'queued', labels: ['self-hosted'] }] },
+  });
+  const lines = [];
+  const s = store({ 'status.json': { key: 'ok', projects: { [key]: { machine: 'dev-server', reason: 'online' } } } });
+  await checkRunners({ keyApi: a.keyApi, store: s, topic: 't', now: () => NOW, sleep: async () => {}, log: (l) => lines.push(l), fetchImpl: async () => ({ ok: true }) });
+  assert.ok(lines.length > 0);
+  for (const l of lines) assert.doesNotMatch(l, /pierre|app/, l);
+});
+
+test('a switch cut halfway is finished at the next check: stuck runs are still cancelled', async () => {
+  const key = await repoKey('101');
+  // The variable is already gone, but the last check saw the project on the server.
+  const a = account({
+    repos: [priv('app')],
+    runs: { 'pierre/app': [{ id: 7, status: 'queued', event: 'issues' }] },
+    jobs: { 7: [{ status: 'queued', labels: ['self-hosted'] }] },
+  });
+  const s = store({ 'status.json': { key: 'ok', projects: { [key]: { machine: 'dev-server', reason: 'online', error: true } } } });
+  await run({ keyApi: a.keyApi, store: s, fetchImpl: async () => ({ ok: true }) });
+  assert.ok(a.calls.some(([m, p]) => m === 'POST' && p.endsWith('/runs/7/cancel')));
+});
+
+test('runs asking for custom runner labels are found too', async () => {
+  const key = await repoKey('101');
+  const a = account({
+    repos: [priv('app')],
+    vars: { 'pierre/app': '["factory","linux"]' },
+    runs: { 'pierre/app': [{ id: 7, status: 'queued', event: 'issues' }] },
+    jobs: { 7: [{ status: 'queued', labels: ['factory', 'linux'] }] },
+  });
+  const s = store({ 'settings.json': { labels: ['factory', 'linux'] }, 'status.json': { key: 'ok', projects: { [key]: { machine: 'dev-server', reason: 'online' } } } });
+  await run({ keyApi: a.keyApi, store: s, fetchImpl: async () => ({ ok: true }) });
+  assert.ok(a.calls.some(([m, p]) => m === 'POST' && p.endsWith('/runs/7/cancel')));
+});
+
+test('GitHub having a hiccup is not a refused key: nothing is written, no alert', async () => {
+  const s = store({ 'status.json': { key: 'ok', projects: {} } });
+  const keyApi = { repos: async () => ({ ok: false, status: 502, repos: [] }), request: async () => assert.fail() };
+  const res = await run({ keyApi, store: s, fetchImpl: async () => assert.fail('no alert') });
+  assert.equal(res.status, null);
+  assert.deepEqual(s.writes, []);
 });

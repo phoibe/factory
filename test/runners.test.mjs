@@ -46,6 +46,7 @@ test('stuck jobs are the unfinished ones waiting for a self-hosted runner', () =
     { id: 5, status: 'waiting', labels: ['self-hosted'] },
   ];
   assert.deepEqual(stuckJobs(jobs).map((j) => j.id), [1, 2, 5]);
+  assert.deepEqual(stuckJobs([{ id: 6, status: 'queued', labels: ['Factory', 'linux'] }, { id: 7, status: 'queued', labels: ['linux'] }], ['factory', 'linux']).map((j) => j.id), [6]);
 });
 
 test('alerts only on a switch between online and offline, never at the first check', () => {

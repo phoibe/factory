@@ -795,7 +795,9 @@ async function runnersFile(path) {
 }
 
 async function loadMachine(project) {
-  const [settings, status, hash] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json'), repoKey(project.repo.full_name)]);
+  // Never the previous project's state while this one loads (or if it cannot be read).
+  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
+  const [settings, status, hash] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json'), repoKey(String(project.repo.id))]);
   if (current !== project) return;
   const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
   Object.assign(machine, { settings: settings.json, sha: settings.sha, general, savedGeneral: general, status: status.json, hash, repo: project.repo.full_name });
@@ -813,17 +815,16 @@ function machineFieldset(update) {
   return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     el('p', { class: `machine-status ${line.tone}`, role: 'status' }, line.text),
     el('div', { role: 'radiogroup', 'aria-labelledby': 'machine-general-title' },
-      el('h3', { id: 'machine-general-title', class: 'machine-title' }, 'Pour tous les projets'),
+      el('p', { id: 'machine-general-title', class: 'machine-title' }, 'Pour tous les projets'),
       ...radios('machine-general', MACHINE_CHOICES, general, (v) => { machine.general = v; renderRules(); })),
     el('div', { role: 'radiogroup', 'aria-labelledby': 'machine-project-title' },
-      el('h3', { id: 'machine-project-title', class: 'machine-title' }, 'Pour ce projet'),
+      el('p', { id: 'machine-project-title', class: 'machine-title' }, 'Pour ce projet'),
       ...radios('machine-project', [['default', `Comme le réglage général (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))),
     el('p', { class: 'muted machine-note' }, 'Les projets publics tournent toujours sur les machines GitHub. Si le serveur ne répond plus, les tâches y passent en secours en 15 minutes au plus.'));
 }
 
 // Writes the general setting on the factory's branch (created if it does not exist yet).
 async function writeGeneral() {
-  const body = JSON.stringify({ ...(machine.settings || {}), machine: machine.general }, null, 2) + '\n';
   if (!(await api(`/repos/${FACTORY_REPO}/branches/${RUNNERS_BRANCH}`).catch(() => null))) {
     const tree = await api(`/repos/${FACTORY_REPO}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
       { path: 'README.md', mode: '100644', type: 'blob', content: 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' },
@@ -832,6 +833,8 @@ async function writeGeneral() {
     await api(`/repos/${FACTORY_REPO}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${RUNNERS_BRANCH}`, sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
   }
   const fresh = await runnersFile('settings.json');
+  // Keeps what changed there since the page loaded (runner labels): only the machine is written from here.
+  const body = JSON.stringify({ ...(fresh.json || machine.settings || {}), machine: machine.general }, null, 2) + '\n';
   const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
     method: 'PUT',
     body: JSON.stringify({ message: 'chore(factory): machine setting from the panel', content: toBase64(body), branch: RUNNERS_BRANCH, ...(fresh.sha ? { sha: fresh.sha } : {}) }),

@@ -7,6 +7,7 @@ export const RUNS_ON_VAR = 'FACTORY_RUNS_ON';
 // Where the factory keeps the general setting and the last check (a branch of the factory, never main).
 export const STATUS_BRANCH = 'factory-runners';
 export const EXPIRY_WARN_MS = 7 * 24 * 3600_000;
+export const EXPIRY_ALERT = "La clé d'accès des runners expire le";
 
 const lower = (s) => String(s).toLowerCase();
 
@@ -35,16 +36,25 @@ export function decideMachine({ isPrivate, project, general, key, online }) {
 export const runsOnValue = (labels) => JSON.stringify(labels);
 
 // Jobs of a run still waiting for (or held by) a self-hosted runner: cancelled and re-run on GitHub after a switch.
-export const stuckJobs = (jobs) => (jobs || []).filter((j) => ['queued', 'in_progress', 'waiting', 'pending'].includes(j.status) && (j.labels || []).some((l) => lower(l) === 'self-hosted'));
+// `labels`: those the project's jobs asked for (its FACTORY_RUNS_ON); a job asking for all of them, or for any
+// self-hosted runner, is one of the server's.
+export function stuckJobs(jobs, labels = DEFAULT_LABELS) {
+  const want = labels.map(lower);
+  return (jobs || []).filter((j) => {
+    if (!['queued', 'in_progress', 'waiting', 'pending'].includes(j.status)) return false;
+    const has = (j.labels || []).map(lower);
+    return has.includes('self-hosted') || want.every((w) => has.includes(w));
+  });
+}
 
 // The phone alerts between two checks: a project losing or getting back its server, a key lost or about to expire.
 export function alertsFor(prev, next, now = Date.now()) {
   const out = [];
   if (prev && prev.key === 'ok' && next.key !== 'ok') {
-    out.push("La clé d'accès des runners ne marche plus : vos projets privés repassent sur les machines GitHub. Créez-en une nouvelle (voir le guide du serveur de dev).");
+    out.push("La clé d'accès des runners ne marche plus : vos projets privés ne basculent plus tout seuls sur les machines GitHub si le serveur s'éteint. Créez-en une nouvelle (voir le guide du serveur de dev).");
   }
-  if (next.key === 'ok' && next.keyExpires && !prev?.expiryAlerted && Date.parse(next.keyExpires) - now < EXPIRY_WARN_MS) {
-    out.push(`La clé d'accès des runners expire le ${new Date(next.keyExpires).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} : renouvelez-la avant, sinon vos projets privés repasseront sur les machines GitHub.`);
+  if (next.key === 'ok' && next.keyExpires && !(prev?.expiryAlerted && prev.keyExpires === next.keyExpires) && Date.parse(next.keyExpires) - now < EXPIRY_WARN_MS) {
+    out.push(`${EXPIRY_ALERT} ${new Date(next.keyExpires).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} : renouvelez-la avant, sinon vos projets privés repasseront sur les machines GitHub.`);
   }
   if (!prev) return out;
   for (const [k, p] of Object.entries(next.projects || {})) {

@@ -9,36 +9,46 @@ import { fileURLToPath } from 'node:url';
 import { github } from './lib/github.mjs';
 import { parseRawConfig } from './lib/config-core.mjs';
 import { sendAlert } from './lib/notify.mjs';
-import { readSettings, onlineRunners, decideMachine, runsOnValue, stuckJobs, alertsFor, repoKey, RUNS_ON_VAR, STATUS_BRANCH } from './lib/runners.mjs';
+import { readSettings, onlineRunners, decideMachine, runsOnValue, stuckJobs, alertsFor, repoKey, RUNS_ON_VAR, STATUS_BRANCH, EXPIRY_ALERT } from './lib/runners.mjs';
 
 const REWRITE_MS = 60 * 60_000; // an unchanged status is still rewritten hourly, so the panel shows a recent check
 const RERUN_GIVE_UP_MS = 2 * 60 * 60_000;
 const STOP_POLLS = 6; // 6 × 10 s for a cancelled run to stop, then force-cancel
 
-// Cancels the runs of a project that wait for (or are held by) a self-hosted runner. Returns their ids.
-async function cancelStuck(api, repo, log) {
-  const ids = [];
-  for (const status of ['queued', 'in_progress', 'waiting', 'pending']) {
-    const runs = (await api('GET', `/repos/${repo}/actions/runs?status=${status}&per_page=50`))?.workflow_runs || [];
+// The factory is public: its logs are too. A project is named in them by its hash only, never by its name, and
+// GitHub's error texts (which carry the repository's path) are never printed, only their HTTP status.
+const status = (e) => /-> (\d{3})/.exec(String(e?.message || e))?.[1] || 'network';
+
+// Cancels the runs of a project whose jobs wait for (or are held by) one of its self-hosted runners. Returns their ids.
+async function cancelStuck(api, repo, labels, tag, log) {
+  const found = new Map();
+  for (const st of ['queued', 'in_progress', 'waiting', 'pending']) {
+    const runs = (await api('GET', `/repos/${repo}/actions/runs?status=${st}&per_page=100`))?.workflow_runs || [];
     for (const run of runs) {
-      const jobs = (await api('GET', `/repos/${repo}/actions/runs/${run.id}/jobs?per_page=50`))?.jobs || [];
-      if (!stuckJobs(jobs).length) continue;
+      if (found.has(run.id)) continue; // moved from queued to in progress between two lists
+      const jobs = (await api('GET', `/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`))?.jobs || [];
+      if (!stuckJobs(jobs, labels).length) continue;
       await api('POST', `/repos/${repo}/actions/runs/${run.id}/cancel`);
-      ids.push({ id: run.id, event: run.event });
-      log(`${repo}: run ${run.id} cancelled (stuck on the dev server)`);
+      found.set(run.id, { id: run.id, event: run.event });
+      log(`${tag}: run ${run.id} cancelled (stuck on the dev server)`);
     }
   }
-  return ids;
+  return [...found.values()];
 }
 
 // Re-runs the cancelled runs that have stopped. A cancelled scheduled tick is not re-run: the next tick does its work.
+// `budget.polls`: the 10-second waits left for this whole check (shared by every project, so the job ends in time).
 // Returns those that have not stopped yet, for the next check.
-async function rerunStopped(api, repo, pending, { sleep, now, log, polls }) {
+async function rerunStopped(api, repo, pending, { sleep, now, log, budget, tag }) {
   const left = [];
   for (const p of pending) {
     let run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
-    for (let i = 0; run && run.status !== 'completed' && i < polls; i++) { await sleep(10_000); run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`); }
-    if (run && run.status !== 'completed' && polls) {
+    for (let i = 0; run && run.status !== 'completed' && i < STOP_POLLS && budget.polls > 0; i++) {
+      budget.polls--;
+      await sleep(10_000);
+      run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
+    }
+    if (run && run.status !== 'completed') {
       await api('POST', `/repos/${repo}/actions/runs/${p.id}/force-cancel`).catch(() => {});
       run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
     }
@@ -49,39 +59,54 @@ async function rerunStopped(api, repo, pending, { sleep, now, log, polls }) {
       continue;
     }
     if (p.event === 'schedule') continue;
-    await api('POST', `/repos/${repo}/actions/runs/${p.id}/rerun-failed-jobs`, {}).catch((e) => log(`${repo}: re-run of ${p.id} refused (${e.message.slice(0, 80)})`));
-    log(`${repo}: run ${p.id} re-run on GitHub's machines`);
+    try {
+      await api('POST', `/repos/${repo}/actions/runs/${p.id}/rerun-failed-jobs`, {});
+      log(`${tag}: run ${p.id} re-run on GitHub's machines`);
+    } catch (e) { log(`${tag}: re-run of ${p.id} refused (${status(e)})`); }
   }
   return left;
 }
 
 const comparable = (s) => JSON.stringify({ ...s, checkedAt: undefined });
+const parseLabels = (value) => { try { const l = JSON.parse(value); return Array.isArray(l) && l.length ? l : null; } catch { return null; } };
 
 // `keyApi`: null without the key, else { repos() -> { ok, status, repos, expires }, request(method, path, body) }.
-// `store`: the status branch ({ read(path), write(path, json) }).
+// `store`: the status branch ({ read(path), write(path, json) }). Returns { status, alerts }; status null when GitHub
+// did not answer (nothing is changed then: the next check tries again).
 export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console.log }) {
   const settings = readSettings(await store.read('settings.json'));
   const prev = await store.read('status.json');
   const next = { checkedAt: new Date(now()).toISOString(), key: 'missing', general: settings.machine, labels: settings.labels, projects: {} };
   const names = {};
+  const budget = { polls: 3 * STOP_POLLS };
   if (keyApi) {
     const listed = await keyApi.repos();
+    if (!listed.ok && ![401, 403].includes(listed.status)) {
+      log(`GitHub did not answer (${listed.status}): nothing changed, next check in 15 minutes`);
+      return { status: null, alerts: [] };
+    }
     next.key = listed.ok ? 'ok' : 'refused';
     if (listed.expires) next.keyExpires = listed.expires;
     if (!listed.ok) log(`key refused by GitHub (${listed.status})`);
     const api = keyApi.request;
     for (const repo of listed.ok ? listed.repos : []) {
       const r = repo.full_name;
-      const file = await api('GET', `/repos/${r}/contents/factory.config.json`).catch(() => null);
-      if (!file) continue; // not a factory project
-      const k = await repoKey(r);
-      names[k] = repo.name;
+      const k = await repoKey(String(repo.id));
       const was = prev?.projects?.[k] || {};
+      let file;
+      try { file = await api('GET', `/repos/${r}/contents/factory.config.json`); }
+      catch (e) {
+        log(`${k}: rules unreadable (${status(e)}), left as they were`);
+        if (prev?.projects?.[k]) next.projects[k] = { ...was, error: true };
+        continue;
+      }
+      if (!file) continue; // not a factory project
+      names[k] = repo.name;
       const project = parseRawConfig(file.content ? Buffer.from(file.content, 'base64').toString('utf8') : null).raw.machine || 'default';
       let online = 0;
       if (repo.private) {
         try { online = onlineRunners((await api('GET', `/repos/${r}/actions/runners?per_page=100`))?.runners, settings.labels); }
-        catch (e) { log(`${r}: runners unreadable (${e.message.slice(0, 80)}), counted offline`); }
+        catch (e) { log(`${k}: runners unreadable (${status(e)}), counted offline`); }
       }
       const { machine, reason } = decideMachine({ isPrivate: Boolean(repo.private), project, general: settings.machine, key: 'ok', online });
       const entry = { machine, reason, online, since: was.machine === machine ? (was.since || next.checkedAt) : next.checkedAt };
@@ -92,28 +117,30 @@ export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, no
           const value = runsOnValue(settings.labels);
           if (current === null) await api('POST', `/repos/${r}/actions/variables`, { name: RUNS_ON_VAR, value });
           else if (current !== value) await api('PATCH', `/repos/${r}/actions/variables/${RUNS_ON_VAR}`, { name: RUNS_ON_VAR, value });
-        } else if (current !== null) {
-          await api('DELETE', `/repos/${r}/actions/variables/${RUNS_ON_VAR}`);
-          log(`${r}: now on GitHub's machines (${reason})`);
-          const cancelled = await cancelStuck(api, r, log);
-          rerun = [...rerun, ...cancelled.map((c) => ({ ...c, since: now() }))];
-          rerun = await rerunStopped(api, r, rerun, { sleep, now, log, polls: STOP_POLLS });
+        } else if (current !== null || was.machine === 'dev-server' || was.error) {
+          // Also when the last check stopped halfway through the switch: the stuck runs are looked for again.
+          if (current !== null) await api('DELETE', `/repos/${r}/actions/variables/${RUNS_ON_VAR}`);
+          log(`${k}: now on GitHub's machines (${reason})`);
+          const cancelled = await cancelStuck(api, r, (current && parseLabels(current)) || settings.labels, k, log);
+          const known = new Set(rerun.map((x) => x.id));
+          rerun = [...rerun, ...cancelled.filter((c) => !known.has(c.id)).map((c) => ({ ...c, since: now() }))];
         }
-        if (was.rerun?.length && rerun === was.rerun) rerun = await rerunStopped(api, r, rerun, { sleep, now, log, polls: 0 });
+        if (rerun.length) rerun = await rerunStopped(api, r, rerun, { sleep, now, log, budget, tag: k });
       } catch (e) {
-        log(`${r}: could not switch (${e.message.slice(0, 120)})`);
+        log(`${k}: could not switch (${status(e)}), tried again at the next check`);
         entry.error = true;
       }
       if (rerun.length) entry.rerun = rerun;
       next.projects[k] = entry;
     }
   }
-  const named = { ...next, projects: Object.fromEntries(Object.entries(next.projects).map(([k, p]) => [k, { ...p, name: names[k] }])) };
+  const named = { ...next, projects: Object.fromEntries(Object.entries(next.projects).map(([k, p]) => [k, { ...p, name: names[k] || 'un projet' }])) };
   const alerts = alertsFor(prev, named, now());
-  if (next.keyExpires && (alerts.some((a) => a.includes('expire')) || (prev?.expiryAlerted && prev.keyExpires === next.keyExpires))) next.expiryAlerted = true;
+  const expiryAlert = alerts.some((a) => a.startsWith(EXPIRY_ALERT));
+  if (next.keyExpires && (expiryAlert || (prev?.expiryAlerted && prev.keyExpires === next.keyExpires))) next.expiryAlerted = true;
   for (const message of alerts) {
     const sent = await sendAlert({ topic, message, title: 'Factory · serveur de dev', fetchImpl });
-    log(`alert ${sent ? 'sent' : 'not sent'}: ${message}`);
+    log(`alert ${sent ? 'sent' : 'not sent'}`);
   }
   const stale = !prev?.checkedAt || now() - Date.parse(prev.checkedAt) >= REWRITE_MS;
   if (!prev || stale || comparable(prev) !== comparable(next)) await store.write('status.json', next);
@@ -131,7 +158,8 @@ function keyClient(token, fetchImpl = fetch) {
       const res = await fetchImpl(`https://api.github.com/user/repos?affiliation=owner&per_page=100&page=${page}`, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
       });
-      if (!res.ok) return { ok: false, status: res.status, repos: [] };
+      // A 403 of the rate limit is not a refused key.
+      if (!res.ok) return { ok: false, status: res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0' ? 429 : res.status, repos: [] };
       const exp = res.headers.get('github-authentication-token-expiration');
       if (exp) { const t = Date.parse(exp.replace(' UTC', 'Z').replace(' ', 'T')); if (!Number.isNaN(t)) expires = new Date(t).toISOString(); }
       const batch = await res.json();
@@ -156,8 +184,10 @@ function branchStore(gh) {
     async write(path, value) {
       const text = JSON.stringify(value, null, 2) + '\n';
       if (!(await gh.getBranch(STATUS_BRANCH))) {
-        await gh.createOrphanBranch(STATUS_BRANCH, { [path]: text, 'README.md': 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' });
-        return;
+        try {
+          await gh.createOrphanBranch(STATUS_BRANCH, { [path]: text, 'README.md': 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' });
+          return;
+        } catch (e) { if (!/422/.test(String(e))) throw e; } // the panel created it meanwhile
       }
       await gh.request('PUT', `/repos/{repo}/contents/${path}`, { message: `chore(factory): ${path}`, content: Buffer.from(text).toString('base64'), branch: STATUS_BRANCH, ...(shas[path] ? { sha: shas[path] } : {}) });
     },
@@ -168,6 +198,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const key = (process.env.FACTORY_RUNNERS_TOKEN || '').trim();
   const gh = github({ token: process.env.GITHUB_TOKEN, repo: process.env.GITHUB_REPOSITORY });
   checkRunners({ keyApi: key ? keyClient(key) : null, store: branchStore(gh), topic: (process.env.NTFY_TOPIC || '').trim() })
-    .then(({ status }) => console.log(`key: ${status.key}; projects: ${Object.values(status.projects).map((p) => `${p.machine}/${p.reason}`).join(', ') || 'none'}`))
+    .then(({ status: s }) => console.log(s ? `key: ${s.key}; projects: ${Object.values(s.projects).map((p) => `${p.machine}/${p.reason}`).join(', ') || 'none'}` : 'not checked'))
     .catch((e) => { console.error(e); process.exit(1); });
 }
