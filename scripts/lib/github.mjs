@@ -87,7 +87,10 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       catch (e) {
         if (!/422/.test(String(e))) throw e;
         // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
-        moved = (await lockSha()) === commit.sha;
+        // Still on our previous commit: the lock is ours, only this sign of life failed (the next one retries).
+        const now = await lockSha();
+        if (now === held) throw e;
+        moved = now === commit.sha;
       }
       if (mine === held) mine = moved ? commit.sha : null;
       return moved;

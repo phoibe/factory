@@ -124,3 +124,28 @@ test('a late sign of life from an earlier hold never spoils the next hold of the
   await gh.queueLock.release();
   assert.ok(calls.slice(before).includes('DELETE /git/refs/factory/lock'), 'the next hold is still released');
 });
+
+test('a sign of life refused while the lock is still ours keeps the lock (a failed send, not a lost lock)', async () => {
+  const calls = [];
+  const replies = {
+    'GET /git/ref/factory/lock': [null, { object: { sha: 'c1' } }, { object: { sha: 'c1' } }],
+    'POST /git/trees': [{ sha: 't1' }],
+    'POST /git/commits': [{ sha: 'c1' }, { sha: 'c2' }],
+    'POST /git/refs': [{}],
+  };
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const key = `${init.method} ${url.replace('https://api.github.com/repos/o/r', '')}`;
+      calls.push(key);
+      if (key.startsWith('PATCH')) return answer(422);
+      if (key.startsWith('DELETE')) return answer(204);
+      const a = (replies[key] || []).shift();
+      return a === null ? answer(404) : answer(200, a);
+    },
+  });
+  await gh.queueLock.acquire();
+  await assert.rejects(gh.queueLock.refresh(), /422/);
+  await gh.queueLock.release();
+  assert.ok(calls.includes('DELETE /git/refs/factory/lock'), 'still released at the end');
+});
