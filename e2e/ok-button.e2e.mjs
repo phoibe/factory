@@ -81,3 +81,26 @@ test('changer de projet pendant le décompte annule l\'envoi', async () => {
     assert.equal(writes.filter((w) => w.path.endsWith('/comments')).length, 0);
   });
 });
+
+test('ouvrir l\'aperçu puis revenir laisse la carte « Tester » dans « À vous de jouer », prête pour « Ok »', async () => {
+  await withPanel({ issues: [acceptance], comments: { 11: previewComment } }, async ({ page, url }) => {
+    await page.goto(url);
+    const link = page.locator('.you-item[data-number="11"] a[href="https://preview.example.com/"]');
+    await link.waitFor();
+    await link.click({ modifiers: ['ControlOrMeta'] });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('.ticket.pending[data-number="11"]').count(), 0);
+    assert.equal(await page.locator('.you-item[data-number="11"] button.go').textContent(), 'Ok');
+  });
+});
+
+test('si l\'envoi échoue, un message le dit et le bouton redevient « Ok »', async () => {
+  await withPanel({ issues: [visual], failing: new Set(['/repos/o/r/issues/10/comments']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="10"]').click();
+    await page.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Envoi impossible'), null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('button.go[data-go="10"]')?.textContent === 'Ok');
+    assert.equal(await page.locator('button.go[data-go="10"]').isDisabled(), false);
+  });
+});

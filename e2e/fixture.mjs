@@ -34,7 +34,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-      if (req.method() !== 'GET') { writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null }); return json({}); }
+      if (req.method() !== 'GET') { writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null }); return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({}); }
       if (path === '/user/repos') return json(repos.map((full) => ({ full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: true, html_url: `https://github.com/${full}`, homepage: '' })));
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from('{}').toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);

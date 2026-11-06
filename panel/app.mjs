@@ -438,6 +438,7 @@ async function sendGo(c, btn, repo, key) {
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
     sentGo.delete(key);
+    if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
     btn.textContent = goText(c);
     btn.classList.remove('undo');
@@ -487,7 +488,9 @@ for (const type of ['click', 'auxclick']) {
     const link = e.target.closest?.('a');
     if (!li || !current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
-    if (link.classList.contains('you-title') && li.querySelector('button.go')) return; // reading a « go » plate is not answering it
+    // Reading a plate answered by a button (« go », « Ok ») is not answering it: looking at the captures, the preview or
+    // the recette keeps it in « À vous de jouer »; only the button sends it to « En attente de GitHub ».
+    if (li.querySelector('button.go')) return;
     const c = live.issues && boardItems(live.issues).find((x) => x.number === Number(li.dataset.number));
     if (c) savePending(noteClick(pendingState(), c, Date.now()));
   });
