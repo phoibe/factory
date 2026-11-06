@@ -1,0 +1,5 @@
+{"t":"2026-11-06T10:40:56.320Z","kind":"run","stage":"build","issue":203,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-06T10:42:16.776Z","kind":"skill","name":"writing-plans","id":"toolu_01UZCHfc9wUnAh1FTv1LhskP"}
+{"t":"2026-11-06T10:43:07.653Z","kind":"skill","name":"test-driven-development","id":"toolu_015CfBesXnHZ6dUgVThMon3L"}
+{"t":"2026-11-06T10:43:22.443Z","kind":"test","cmd":"cat >> test/decide.test.mjs <<'EOF'\n\n// Issue #203: a request the agent closed itself (already done, duplicate, obsolete) comes back when the owner writes in it.\ntest('an owner message on an agent-clo","ok":false,"id":"toolu_018n27vbPyyJUvsfDXEhBKat"}
+{"t":"2026-11-06T10:43:35.456Z","kind":"test","cmd":"python3 - <<'EOF'\np='scripts/lib/labels.mjs'; s=open(p).read()\ns=s.replace(\"  close: 'factory:close',\\n};\",\"\"\"  close: 'factory:close',\n  alreadyDone: 'factory:already-done',\n  duplicate: 'factory:dup","ok":true,"id":"toolu_01KJDBTWT5wG68jC56QXJPWp"}

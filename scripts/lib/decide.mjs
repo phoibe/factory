@@ -1,4 +1,4 @@
-import { L } from './labels.mjs';
+import { L, closeReason } from './labels.mjs';
 
 // Words allowed in an approval. Every word of the message must be one of them, and one must be a "core" word,
 // so "ok, le bouton en rouge" is a change request, not an approval.
@@ -163,6 +163,8 @@ export function decide(ev, config, ctx) {
     if (!ev.fromOwner) return ignore("message de quelqu'un d'autre que le propriétaire");
     if (ev.event === 'issue_comment' && ev.action !== 'created') return ignore('commentaire modifié');
     if (ev.event === 'pull_request_review' && ev.action !== 'submitted') return ignore('revue non soumise');
+    // A request the agent closed by itself comes back as soon as the owner writes in it (issue #203).
+    if (ev.kind === 'issue' && ev.closed && closeReason(ev.labels)) return { type: 'reopen', reason: "le propriétaire répond à une demande fermée par l'agent" };
     if (ctx.lockFresh) return { type: 'defer', add: [L.pending], remove: [], reason: 'un agent travaille : message traité dès qu\'il a fini' };
   }
   return ev.kind === 'pr' ? onPr(ev, config) : onIssue(ev, config, ctx);
