@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Stand-in for tar: « extracts » a runner whose config.sh registers it in the fake GitHub and whose svc.sh logs.
+# A cut-off archive (one that contains « partial ») is refused like a real damaged archive.
+echo "tar $*" >> "$FAKE/log"
+dir=.; archive=""; while [ $# -gt 0 ]; do case "$1" in -C) dir=$2 ;; -xzf) archive=$2 ;; esac; shift; done
+grep -q partial "$archive" 2>/dev/null && { echo "gzip: unexpected end of file" >&2; exit 2; }
+mkdir -p "$dir/bin"
+cat > "$dir/config.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "config.sh $*" >> "$FAKE/log"
+[ -n "${FAKE_CONFIG_FAILS:-}" ] && { echo "config failed" >&2; exit 1; }
+name=""; labels=""; URL=""
+while [ $# -gt 0 ]; do case "$1" in --name) name=$2 ;; --labels) labels=$2 ;; --url) URL=$2 ;; esac; shift; done
+echo "$((RANDOM + 1000)) $name self-hosted,Linux,X64,$labels online" >> "$FAKE/runners.txt"
+printf '{\n  "agentId": 1,\n  "agentName": "%s",\n  "gitHubUrl": "%s"\n}\n' "$name" "$URL" > .runner
+EOS
+cat > "$dir/svc.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"
+case "$1" in install) touch .service ;; uninstall) rm -f .service ;; esac
+exit 0
+EOS
+cat > "$dir/bin/installdependencies.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "installdependencies.sh" >> "$FAKE/log"
+EOS
+chmod +x "$dir/config.sh" "$dir/svc.sh" "$dir/bin/installdependencies.sh"

@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+case "$1" in -s) echo "${FAKE_OS:-Linux}" ;; -m) echo x86_64 ;; *) echo Linux ;; esac

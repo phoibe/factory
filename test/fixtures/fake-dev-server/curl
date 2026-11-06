@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stand-in for curl: « downloads » an empty file, or a cut-off one then fails when $FAKE/curl-fails exists.
+echo "curl $*" >> "$FAKE/log"
+out=""; while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done
+if [ -f "$FAKE/curl-fails" ]; then [ -n "$out" ] && echo partial > "$out"; rm -f "$FAKE/curl-fails"; exit 18; fi
+[ -n "$out" ] && : > "$out"
+exit 0
