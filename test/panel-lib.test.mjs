@@ -222,3 +222,14 @@ test('an idea written by a stranger on a public project is not an idea to sort',
   const idea = (number, author_association) => ({ number, body: '<!-- factory-agent -->\nIdée', labels: ['factory:feature'], author_association, user: { login: 'x' } });
   assert.deepEqual(ideaItems([idea(1, 'NONE'), idea(2, 'OWNER')]).map((i) => i.number), [2]);
 });
+
+test('ideasToShow hides the ideas being sorted and forgets those GitHub no longer lists', async () => {
+  const { ideasToShow } = await import('../panel/lib.mjs');
+  const ideas = [{ number: 5 }, { number: 6 }, { number: 7 }];
+  // 6 and 8 are on their way to GitHub, 9 was sorted and GitHub already dropped it, 7 was sorted but GitHub still lists it.
+  const sorting = new Map([[6, 'sending'], [8, 'sending'], [7, 'sent'], [9, 'sent']]);
+  const { shown, settled } = ideasToShow(ideas, sorting);
+  assert.deepEqual(shown.map((i) => i.number), [5]);
+  assert.deepEqual(settled, [9]);
+  assert.deepEqual(ideasToShow(ideas, new Map()).shown, ideas);
+});
