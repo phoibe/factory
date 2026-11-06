@@ -77,11 +77,20 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     },
     // A sign of life: a new commit on top of ours, so its date is now. A fast-forward only (force: false): a run that
     // took the lock over has put an unrelated commit there, and GitHub refuses the move (422) instead of stealing it back.
+    // Works on the hold it started from: a late answer never touches a newer hold of the same run.
     async refresh() {
-      if (!mine) return false;
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [mine] });
-      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); mine = commit.sha; return true; }
-      catch (e) { if (/422/.test(String(e))) { mine = null; return false; } throw e; }
+      const held = mine;
+      if (!held) return false;
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      let moved = true;
+      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      catch (e) {
+        if (!/422/.test(String(e))) throw e;
+        // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
+        moved = (await lockSha()) === commit.sha;
+      }
+      if (mine === held) mine = moved ? commit.sha : null;
+      return moved;
     },
     release: () => dropIf(mine), // never the lock of the run that took over from us
     takeOver: () => dropIf(seen),

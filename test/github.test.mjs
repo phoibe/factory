@@ -42,7 +42,7 @@ test('a 4xx is not retried', async () => {
 test('the queue lock gives a sign of life by moving its ref forward, and knows when it lost it', async () => {
   const calls = [];
   const replies = {
-    'GET /git/ref/factory/lock': [null],
+    'GET /git/ref/factory/lock': [null, { object: { sha: 'taken-over' } }],
     'POST /git/trees': [{ sha: 'tree1' }],
     'POST /git/commits': [{ sha: 'c1' }, { sha: 'c2' }, { sha: 'c3' }],
     'POST /git/refs': [{}],
@@ -71,4 +71,56 @@ test('the queue lock gives a sign of life by moving its ref forward, and knows w
   const before = calls.length;
   await gh.queueLock.release();
   assert.ok(!calls.slice(before).some((c) => c.key.startsWith('DELETE')), 'never drops a lock it lost');
+});
+
+test('a sign of life whose answer was lost but that went through is not taken for a lost lock', async () => {
+  const replies = {
+    'GET /git/ref/factory/lock': [null, { object: { sha: 'c2' } }],
+    'POST /git/trees': [{ sha: 'tree1' }],
+    'POST /git/commits': [{ sha: 'c1' }, { sha: 'c2' }],
+    'POST /git/refs': [{}],
+    'PATCH /git/refs/factory/lock': [422],
+  };
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const a = (replies[`${init.method} ${url.replace('https://api.github.com/repos/o/r', '')}`] || []).shift();
+      return a === null ? answer(404) : a === 422 ? answer(422) : answer(200, a);
+    },
+  });
+  await gh.queueLock.acquire();
+  assert.equal(await gh.queueLock.refresh(), true);
+});
+
+test('a late sign of life from an earlier hold never spoils the next hold of the same run', async () => {
+  let releasePatch;
+  const replies = {
+    'GET /git/ref/factory/lock': [null, { object: { sha: 'c1' } }, null, { object: { sha: 'd1' } }, { object: { sha: 'd1' } }],
+    'POST /git/trees': [{ sha: 't1' }, { sha: 't2' }],
+    'POST /git/commits': [{ sha: 'c1' }, { sha: 'c2' }, { sha: 'd1' }],
+    'POST /git/refs': [{}, {}],
+    'DELETE /git/refs/factory/lock': [{}, {}],
+  };
+  const calls = [];
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const key = `${init.method} ${url.replace('https://api.github.com/repos/o/r', '')}`;
+      calls.push(key);
+      if (key === 'PATCH /git/refs/factory/lock') return new Promise((r) => { releasePatch = () => r(answer(422)); });
+      const a = (replies[key] || []).shift();
+      if (key.startsWith('DELETE')) return answer(204);
+      return a === null ? answer(404) : answer(200, a);
+    },
+  });
+  await gh.queueLock.acquire(); // c1
+  const late = gh.queueLock.refresh(); // PATCH c1 -> c2 hangs
+  await new Promise((r) => setImmediate(r));
+  await gh.queueLock.release(); // ref is c1: dropped
+  await gh.queueLock.acquire(); // d1, the next hold
+  releasePatch();
+  assert.equal(await late, false);
+  const before = calls.length;
+  await gh.queueLock.release();
+  assert.ok(calls.slice(before).includes('DELETE /git/refs/factory/lock'), 'the next hold is still released');
 });

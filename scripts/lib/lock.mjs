@@ -20,11 +20,11 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
     if (now() - start > waitMs) throw new Error('queue lock: waited too long');
     await sleep(pollMs + Math.floor(Math.random() * 500));
   }
-  let beating = false;
-  const stop = store.refresh ? every(async () => {
-    if (beating) return;
-    beating = true;
-    try { if (!(await store.refresh())) log('queue lock: lost (taken over by another run)'); } catch (e) { log(`queue lock: no sign of life sent (${e.message || e})`); } finally { beating = false; }
-  }, beatMs) : () => {};
-  try { return await fn(); } finally { stop(); await store.release(); }
+  let beating = null; // the sign of life on its way, waited for before the lock is given back
+  let lost = false;
+  const beat = async () => {
+    try { if (!(await store.refresh()) && !lost) { lost = true; log('queue lock: lost (taken over by another run)'); } } catch (e) { log(`queue lock: no sign of life sent (${e.message || e})`); }
+  };
+  const stop = store.refresh ? every(() => { if (!beating && !lost) beating = beat().finally(() => { beating = null; }); return beating; }, beatMs) : () => {};
+  try { return await fn(); } finally { stop(); await beating; await store.release(); }
 }

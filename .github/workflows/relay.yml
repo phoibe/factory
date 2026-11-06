@@ -184,8 +184,9 @@ jobs:
     needs: decide
     if: needs.decide.outputs.preview != ''
     runs-on: ubuntu-24.04
-    # The wait for the preview (5 min), its opening (12) and the report's turn on the queue lock (13).
-    timeout-minutes: 35
+    # The wait for the preview (5 min), its opening (12), then the report and the alert, each waiting its turn on the
+    # queue lock (13 at worst, seconds in practice now that no decision waits under it).
+    timeout-minutes: 45
     permissions:
       contents: write
       issues: write
@@ -216,11 +217,14 @@ jobs:
         if: steps.wait.outputs.url != ''
         continue-on-error: true
         timeout-minutes: 12
-        run: node .factory-src/scripts/smoke.mjs --url "${{ steps.wait.outputs.url }}" --dir project --out "$RUNNER_TEMP/smoke.json"
+        run: node .factory-src/scripts/smoke.mjs --url "$PREVIEW_URL" --dir project --out "$RUNNER_TEMP/smoke.json"
+        env:
+          PREVIEW_URL: ${{ steps.wait.outputs.url }}
       - name: Report
         if: always()
-        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json" --url "${{ steps.wait.outputs.url }}"
+        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json" --url "$PREVIEW_URL"
         env:
+          PREVIEW_URL: ${{ steps.wait.outputs.url }}
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.preview }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}

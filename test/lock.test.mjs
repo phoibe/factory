@@ -97,3 +97,15 @@ test('the sign of life stops when the work ends, and a failed one does not break
   assert.ok(stopped);
   assert.equal(store.held, false);
 });
+
+test('a sign of life still on its way is waited for before the lock is given back', async () => {
+  const store = fakeStore();
+  const order = [];
+  let beat;
+  store.refresh = async () => { await new Promise((r) => setTimeout(r, 10)); order.push('beat done'); return true; };
+  const release = store.release;
+  store.release = async () => { order.push('release'); await release(); };
+  const every = (fn) => { beat = fn; return () => {}; };
+  await withLock(store, async () => { beat(); }, { every, sleep: async () => {}, now: () => 0 });
+  assert.deepEqual(order, ['beat done', 'release']);
+});

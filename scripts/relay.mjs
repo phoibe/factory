@@ -730,7 +730,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The preview job's wait for the preview (outside the queue lock): the URL the report found, or the one that appears.
   async function previewWait(check) {
-    return check?.url || previewUrl(check.sha, check.pr);
+    if (!check?.sha) return check?.url || null;
+    return check.url || previewUrl(check.sha, check.pr);
   }
 
   // Owner messages (comments and PR reviews) written since the lock was taken, joined into one, or null.
