@@ -13,7 +13,8 @@ test('je vois « À vous de jouer » en haut avec son nombre, puis une carte ble
     await page.goto(url);
     await yours(page).first().waitFor();
     const lane = page.locator('section.lane-yours');
-    assert.equal((await lane.locator('h2').textContent()).replace(/\s+/g, ' ').trim(), 'À vous de jouer 3');
+    assert.match(await lane.locator('h2').textContent(), /^À vous de jouer/);
+    assert.equal(await lane.locator('h2 .count').textContent(), '3');
     assert.equal(await page.locator('#board > :first-child').evaluate((n) => n.classList.contains('lane-yours')), true, 'the lane comes first');
     assert.equal(await yours(page).count(), 3);
     assert.equal(await page.getByText('choses vous attendent').count(), 0, 'the big sentence is gone');
@@ -24,7 +25,8 @@ test('je vois « À vous de jouer » en haut avec son nombre, puis une carte ble
 });
 
 test('chaque carte montre type et numéro, « depuis … », titre, action attendue, boutons, barre d\'étapes et temps restant', async () => {
-  await withPanel({ issues: [spec(1, 'Partager une recette', 30)] }, async ({ page, url }) => {
+  const events = [{ id: 1, event: 'labeled', label: { name: 'factory:spec-review' }, issue: { number: 1 }, created_at: at(30) }];
+  await withPanel({ issues: [spec(1, 'Partager une recette', 30)], events }, async ({ page, url }) => {
     await page.goto(url);
     const c = page.locator('.ticket.yours[data-number="1"]');
     await c.waitFor();
@@ -39,13 +41,16 @@ test('chaque carte montre type et numéro, « depuis … », titre, action atten
 });
 
 test('le bouton bleu vient en premier, avant les boutons discrets', async () => {
-  const withPreview = { ...spec(1, 'Partager une recette', 30), comments: 1 };
+  // A capture card has the three kinds of buttons: blue « Ok », then the quiet preview and captures links.
+  const visual = { ...issue(2, 'Imprimer la liste', ['factory:feature', 'factory:visual-review'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/2' }), comments: 1 };
   const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
-  await withPanel({ issues: [withPreview], comments: { 1: comment } }, async ({ page, url }) => {
+  await withPanel({ issues: [visual, spec(1, 'Partager une recette', 30)], comments: { 2: comment } }, async ({ page, url }) => {
     await page.goto(url);
-    const actions = page.locator('.ticket.yours[data-number="1"] .card-actions');
+    const actions = page.locator('.ticket.yours[data-number="2"] .card-actions');
     await actions.locator('a[href="https://preview.example.com/"]').waitFor();
-    assert.deepEqual((await actions.locator('a.button, button').allTextContents()).map((t) => t.replace(' ↗', '').trim()), ['go', 'Voir l\'aperçu']);
+    assert.deepEqual((await actions.locator('a.button, button').allTextContents()).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Voir l\'aperçu', 'Voir les captures']);
+    assert.equal(await actions.locator('> *').first().evaluate((n) => n.matches('button.go')), true);
+    assert.equal(await page.locator('.ticket.yours[data-number="1"] .card-actions > *').first().evaluate((n) => n.matches('button.go')), true, '« go » first on a spec card');
   });
 });
 
@@ -69,12 +74,16 @@ test('la demande la plus ancienne vient en premier', async () => {
   });
 });
 
-test('un clic sur « go » fait passer la carte en « Prise en compte en cours… »', async () => {
-  await withPanel({ issues: [spec(1, 'Partager une recette', 30)] }, async ({ page, writes, url }) => {
+test('un clic sur « Ok » fait passer la carte en « Prise en compte en cours… », et « go » part comme avant', async () => {
+  const visual = issue(2, 'Imprimer la liste', ['factory:feature', 'factory:visual-review'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/2' });
+  await withPanel({ issues: [visual, spec(1, 'Partager une recette', 30)] }, async ({ page, writes, url }) => {
     await page.goto(url);
+    await page.locator('.ticket.yours button.go[data-go="2"]').click();
     await page.locator('.ticket.yours button.go[data-go="1"]').click();
-    for (let i = 0; i < 100 && !writes.some((w) => w.path.endsWith('/issues/1/comments')); i++) await page.waitForTimeout(100);
-    await page.locator('.pending-zone .ticket.pending[data-number="1"]').waitFor();
+    const sent = (n) => writes.filter((w) => w.path.endsWith(`/issues/${n}/comments`)).map((w) => w.body.body);
+    for (let i = 0; i < 100 && !(sent(1).length && sent(2).length); i++) await page.waitForTimeout(100);
+    assert.deepEqual([sent(1), sent(2)], [['go'], ['ok']]);
+    await page.locator('.pending-zone .ticket.pending[data-number="2"]').waitFor();
   });
 });
 
