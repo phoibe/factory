@@ -66,6 +66,30 @@ test('sur ordinateur les cartes se rangent jusqu\'à trois par ligne, sur télé
   }
 });
 
+test('toutes les cartes ont les mêmes dimensions, quel que soit leur contenu (pas d\'effet d\'escalier)', async () => {
+  // Five cards of very different lengths: two rows on a computer, so every row must share one height too.
+  const long = 'Afficher la liste des courses de la semaine regroupée par rayon, avec les quantités additionnées et une case à cocher';
+  const visual = { ...issue(4, long, ['factory:feature', 'factory:visual-review'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/4' }), comments: 1 };
+  const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
+  const blocked = issue(5, 'Exporter en PDF', ['factory:feature', 'factory:blocked'], { updated_at: at(2) });
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await withPanel({ issues: [...three, visual, blocked], comments: { 4: comment }, viewport }, async ({ page, url }) => {
+      await page.goto(url);
+      await page.locator('.ticket.yours[data-number="4"] a[href="https://preview.example.com/"]').waitFor();
+      await yours(page).nth(4).waitFor();
+      const boxes = await yours(page).evaluateAll((n) => n.map((x) => { const r = x.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }));
+      assert.equal(new Set(boxes.map((b) => b.h)).size, 1, `${viewport.width}px: same height for every card ${JSON.stringify(boxes)}`);
+      assert.equal(new Set(boxes.map((b) => b.w)).size, 1, `${viewport.width}px: same width for every card`);
+      // The steps bar lines up at the bottom of every card, whatever comes above it.
+      const gaps = await yours(page).evaluateAll((n) => n.map((x) => {
+        const t = x.querySelector('.step'); return t ? Math.round(x.getBoundingClientRect().bottom - t.getBoundingClientRect().bottom) : null;
+      }).filter((g) => g != null));
+      assert.ok(gaps.length >= 2);
+      assert.equal(new Set(gaps).size, 1, `${viewport.width}px: steps bar at the same place ${JSON.stringify(gaps)}`);
+    });
+  }
+});
+
 test('la demande la plus ancienne vient en premier', async () => {
   await withPanel({ issues: three }, async ({ page, url }) => {
     await page.goto(url);

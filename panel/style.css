@@ -421,12 +421,16 @@ details summary { color: var(--text); }
 @media (max-width: 600px) { .you-card.lane-yours { margin-bottom: 32px; } }
 /* The preview link reads like the other quiet buttons of the card, not like the small link of the other lanes. */
 .ticket.yours .card-actions .preview.secondary { padding: 8px 14px; font-size: inherit; }
-/* Design pass (#269): quiet buttons share one row and wrap their text instead of stacking; short cards keep their height;
+/* Design pass (#269): quiet buttons share one row and wrap their text instead of stacking;
    a near miss around the buttons does not open GitHub; the action line has no arrow pointing at nothing. */
 .ticket.yours .card-actions > :not(.go) { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .ticket.yours .card-actions .button.secondary { border-color: var(--you-line); }
 .ticket.yours .card-actions::before { content: ""; position: absolute; inset: -8px; z-index: -1; }
-.lane-yours .tickets { align-items: start; }
+/* Retouch (#269): every card of the lane has the same size whatever its content (no staircase); the steps bar and
+   the time left sit at the bottom of each card, so they line up from one card to the next. */
+.lane-yours .tickets { grid-auto-rows: 1fr; align-items: stretch; }
+.ticket.yours .card-actions { margin-bottom: auto; }
+.ticket.yours .eta { margin-top: 0 !important; } /* the free space goes above the steps bar only */
 .ticket.yours .cta .arrow { display: none; }
 /* Only the title and the buttons answer: a tap on the card's background does nothing (it used to be a list row, not a link). */
 .ticket.yours .main::after { content: none; }

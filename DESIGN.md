@@ -142,7 +142,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px bleu avec 2 px de marge.
 - **Bouton discret** : surface, filet, texte encre ; pour toutes les autres actions.
 - **Carte** : surface, filet d'un pixel, coins 14 px, marge intérieure 24 px.
-- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », 5 s pour annuler), toujours en premier, suivi des boutons discrets « Voir… ». Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
+- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », 5 s pour annuler), toujours en premier, suivi des boutons discrets « Voir… ». Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
 - **Ligne de tâche** : numéro en mono, titre, état en gris ; une seule ligne, détail au clic.
 
 ## 8. Do's and Don'ts
