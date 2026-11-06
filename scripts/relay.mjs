@@ -481,7 +481,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       } catch (e) { log(`live deploy re-run failed: ${String(e.message || e).slice(0, 80)}`); }
     }
     const said = detail ? ` Son message : « ${detail} ».` : '';
-    await gh.comment(prNumber, say(`Cette version n'a pas été mise en ligne : l'hébergeur refuse de la publier${retried ? ', même après une nouvelle tentative' : ''}.${said} L'ancienne version reste en ligne et marche : je ne retire rien.`));
+    await gh.comment(prNumber, say(`Cette version n'a pas été mise en ligne : l'hébergeur refuse de la publier${retried ? ', même après une nouvelle tentative' : ''}.${said} ${newest ? "L'ancienne version reste en ligne et marche : je ne retire rien." : 'Je ne retire rien : une livraison plus récente, qui la contient, est en cours de publication et la mettra en ligne si elle passe.'}`));
     log(`live deploy of #${prNumber} failed, reported`);
   }
 
@@ -497,16 +497,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     const branch = `claude/revert-pr-${prNumber}`;
-    if (((await gh.listPulls?.().catch(() => null)) || []).some((p) => p.head?.ref === branch)) return log('already undone');
+    // An undo already open is done, unless a passing error stopped the run right after opening it (no card marker):
+    // then the run goes on from there, without a second undo branch.
+    const open = ((await gh.listPulls?.().catch(() => null)) || []).find((p) => p.head?.ref === branch);
+    if (open && String(open.body || '').includes(REVERT_REDO)) return log('already undone');
     // A relaunch after an undo that was never opened reuses the card it left behind (issue #227); a card already
     // started (the undo was refused) repairs the live site itself: nothing more to do.
     const found = await findRedo(prNumber);
     if (found && !names(found.labels).includes(L.noPick)) return log(`redo #${found.number} already started`);
     const def = (await gh.getRepo())?.default_branch || 'main';
-    git(['fetch', 'origin', def]);
-    git(['checkout', '-B', branch, `origin/${def}`]);
-    git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
-    git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
+    if (!open) {
+      git(['fetch', 'origin', def]);
+      git(['checkout', '-B', branch, `origin/${def}`]);
+      git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
+      git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
+    }
     // The undo PR is opened first: when GitHub refuses it (the repository does not let workflows open PRs, #231),
     // nothing was undone, so no card may say it was. The redo card then starts at once as a normal urgent fix that
     // repairs the live site directly, instead of waiting in no-pick for an undo that will never come (#227).
@@ -514,9 +519,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const why = `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}.`;
     const issueNumber = prIssue(pr);
     const facts = { prNumber, issueNumber, sha, url, detail, link };
-    let revert;
+    let revert = open;
     try {
-      revert = await gh.createPr(title, branch, def, [REVERT_MARKER, why].join('\n'));
+      revert ??= await gh.createPr(title, branch, def, [REVERT_MARKER, why].join('\n'));
     } catch (e) {
       const msg = String(e?.message || e);
       const blockedBySetting = /not permitted to create or approve pull requests/i.test(msg);
@@ -535,7 +540,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     // A relaunch after an undo that was never opened reuses the card it left behind.
-    const redo = found || await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, redoBody({ ...facts, undone: true, revert: revert.number }), [L.bug, L.urgent, L.kept, L.noPick]);
+    const undoneBody = redoBody({ ...facts, undone: true, revert: revert.number });
+    const redo = found || await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, undoneBody, [L.bug, L.urgent, L.kept, L.noPick]);
+    if (found) await gh.updateIssue(found.number, { body: undoneBody });
     await gh.updateIssue(revert.number, { body: [
       REVERT_MARKER,
       `${REVERT_REDO}${redo.number} -->`,
@@ -722,8 +729,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       try {
         const { pr, sha } = redoOf(card.body);
         // Every undo of that delivery, however old (an error here skips the card until the next tick).
-        const undos = ((await gh.pullsByHead(`claude/revert-pr-${pr}`)) || []).filter((p) => String(p.body || '').includes(`${REVERT_REDO}${card.number} -->`));
-        if (undos.some((p) => p.state === 'open')) continue; // undo under way
+        const all = (await gh.pullsByHead(`claude/revert-pr-${pr}`)) || [];
+        const undos = all.filter((p) => String(p.body || '').includes(`${REVERT_REDO}${card.number} -->`));
+        // Any open undo of that delivery is under way, even one a passing error left without its card marker.
+        if (all.some((p) => p.state === 'open')) continue;
         // The undo went live without the factory's own merge (merged by hand): the card redoes it, as planned.
         if (undos.some((p) => p.merged_at)) { await startRedo(card.number); continue; }
         const asked = Number(new RegExp(`${RECHECK_MARKER}(\\d+) -->`).exec(card.body || '')?.[1]) || 0;

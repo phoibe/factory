@@ -1947,6 +1947,7 @@ test('a re-run is asked with its time, and never for an older version or a re-ch
   await createRelay({ gh: older, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', runId: 7 });
   assert.ok(!older.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch'));
   assert.match(older.calls.find((c) => c[0] === 'comment')[2], /hébergeur refuse de la publier/); // never silent
+  assert.match(older.calls.find((c) => c[0] === 'comment')[2], /livraison plus récente/);
 });
 
 test('the safety net starts at once a card whose undo was merged by hand, without a re-check', async () => {
@@ -1982,4 +1983,26 @@ test('the safety net does nothing for a card when the undo PRs cannot be read', 
   assert.deepEqual(prodChecks(gh), []);
   assert.ok(card.labels.includes(L.noPick));
   assert.ok(!/factory-redo-recheck/.test(card.body));
+});
+
+test('a relaunch finishes an undo left half done (PR opened, card never created): card, checks and message follow', async () => {
+  const issues = [];
+  const gh = undoSetup({ issues });
+  gh.listPulls = async () => [{ number: 21, body: `${REVERT_MARKER}\nRetour à la version d'avant la PR #10`, head: { ref: 'claude/revert-pr-10' } }];
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'u', result: 'failed', detail: 'x', git: (a) => git.push(a) });
+  assert.equal(git.length, 0, 'no second undo branch');
+  assert.ok(!gh.calls.some((c) => c[0] === 'createPr'));
+  assert.ok(gh.calls.some((c) => c[0] === 'createIssue'));
+  assert.match(gh.calls.find((c) => c[0] === 'update' && c[1] === 21)[2].body, /<!-- factory-revert-redo #20 -->/);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 21 && c[2] === L.checks));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10));
+});
+
+test('the safety net counts any open undo of the delivery as under way, even one without its card marker', async () => {
+  const { gh, card } = stuckSetup();
+  gh.pullsByHead = async () => [{ number: 21, state: 'open', body: REVERT_MARKER }];
+  await guardTick(gh, []);
+  assert.deepEqual(prodChecks(gh), []);
+  assert.ok(card.labels.includes(L.noPick));
 });
