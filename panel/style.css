@@ -424,4 +424,6 @@ details summary { color: var(--text); }
 .ticket.idea { box-shadow: none; }
 .ticket.idea .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .ticket.idea .card-actions button { padding: 6px 16px; }
+/* GitHub refused the sort: the card came back, this line says why until the next click on it. */
+.ticket.idea .idea-error { margin: 0; font-size: .8125rem; color: var(--danger); }
 ::placeholder { color: var(--muted); opacity: 1; }

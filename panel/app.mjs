@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, deliveredIssue } from './lib.mjs?v=21';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue } from './lib.mjs?v=22';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=14';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
@@ -537,7 +537,15 @@ function youCard(yours, headline, sub) {
 // « Idées à trier »: what the agent proposed by itself. Calm on purpose (never in « À vous », no alert): the owner
 // sorts them when he likes. « Garder » lets the factory take it like any request; « Jeter » closes it, and the
 // agent reads closed ideas before proposing again, so it is not proposed twice.
-const sortingIdea = new Set();
+// A sorted card leaves at the click and GitHub is told in the background: the owner can sort the next one at once.
+// Kept per project: an answer that arrives after the owner switched project still lands in the right one.
+const sortingIdeas = new Map(); // repo → (number → 'sending' | 'sent', see ideasToShow)
+const refusedIdeas = new Map(); // repo → numbers GitHub refused: the card is back, with a red line until the next click on it
+const sortingIdea = (repo = current?.repo.full_name) => sortingIdeas.get(repo) || sortingIdeas.set(repo, new Map()).get(repo);
+const refusedIdea = (repo = current?.repo.full_name) => refusedIdeas.get(repo) || refusedIdeas.set(repo, new Set()).get(repo);
+let ideaFocus = null; // the button the focus goes on to once the sorted card is gone
+const announceIdea = new Set(); // refusals not yet drawn: read aloud once, not again at every later redraw
+const ideaRects = () => new Map([...$('board').querySelectorAll('.ticket.idea[data-idea]')].map((n) => [n.dataset.idea, n.getBoundingClientRect()]));
 function ideasLane(ideas) {
   if (!ideas.length) return null;
   const pick = current?.config?.autoPick === true;
@@ -546,28 +554,64 @@ function ideasLane(ideas) {
     el('div', { class: 'tickets' }, ideas.map((i) => el('article', { class: 'ticket idea', 'data-idea': String(i.number) },
       el('div', { class: 'ticket-top' }, el('span', { class: 'kind' }, `${i.labels.includes('factory:bug') ? 'Bug' : 'Idée'} · demande #${i.number}`)),
       el('h3', {}, el('a', { class: 'main', href: i.html_url, target: '_blank', rel: 'noopener', 'data-key': `idea-${i.number}` }, i.title)),
+      refusedIdea().has(i.number) ? el('p', { class: 'idea-error', id: `idea-error-${i.number}`, role: announceIdea.has(i.number) ? 'alert' : null }, 'GitHub a refusé : réessayez.') : null,
       el('div', { class: 'card-actions' },
-        el('button', { type: 'button', class: 'secondary', disabled: sortingIdea.has(i.number), 'data-key': `keep-${i.number}`, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
-        el('button', { type: 'button', class: 'secondary', disabled: sortingIdea.has(i.number), 'data-key': `drop-${i.number}`, 'aria-label': `Jeter l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, false, pick) }, 'Jeter'))))));
+        el('button', { type: 'button', class: 'secondary', 'data-key': `keep-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
+        el('button', { type: 'button', class: 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Jeter l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, false, pick) }, 'Jeter'))))));
+}
+// Redraws the board; the idea cards slide from where they were, and a card GitHub refused (`back`) fades in.
+function redrawIdeas(back) {
+  const before = ideaRects();
+  drawBoard();
+  if (reduced()) return;
+  for (const [k, b] of ideaRects()) {
+    const node = $('board').querySelector(`.ticket.idea[data-idea="${k}"]`), a = before.get(k);
+    if (Number(k) === back) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: EASE });
+    else if (a && (a.left !== b.left || a.top !== b.top)) node.animate([{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: 'none' }], { duration: 200, easing: EASE });
+  }
+}
+// The card leaves in 0.2 s (a kept one rises, a dropped one shrinks), then the others slide up into its place;
+// the count drops at the click. The last idea takes its whole section with it.
+function leaveIdea(n, keep) {
+  const board = $('board');
+  const node = board.querySelector(`.ticket.idea[data-idea="${n}"]`);
+  const lane = node?.closest('.lane-ideas');
+  const left = lane ? lane.querySelectorAll('.ticket.idea:not(.leaving)').length - 1 : 0;
+  // Keyboard: the focus goes on to the same button of the next card (or the previous one), not back to the top.
+  const next = node && (node.nextElementSibling || node.previousElementSibling)?.dataset?.idea;
+  if (node && node.contains(document.activeElement)) ideaFocus = next ? `${keep ? 'keep' : 'drop'}-${next}` : null;
+  if (!node || reduced()) return redrawIdeas();
+  node.classList.add('leaving');
+  node.inert = true;
+  if (left) lane.querySelector('.count').textContent = String(left);
+  if (left) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: keep ? 'translateY(-8px)' : 'scale(.96)' }], { duration: 200, easing: EASE, fill: 'forwards' });
+  else lane.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE, fill: 'forwards' });
+  setTimeout(() => {
+    if (!node.isConnected) return; // a refresh already redrew the board
+    node.dataset.gone = '';
+    if (!board.querySelector('.ticket.idea.leaving:not([data-gone])')) redrawIdeas(); // one redraw once every fade is over
+  }, 200);
 }
 async function sortIdea(i, keep, pick) {
   const repo = current.repo.full_name;
-  sortingIdea.add(i.number);
-  drawBoard();
+  refusedIdea(repo).delete(i.number);
+  sortingIdea(repo).set(i.number, 'sending');
+  leaveIdea(i.number, keep);
+  // The one message left: without automatic pick, a kept idea still waits for the owner to write in it.
+  const reminder = 'Idée gardée. Écrivez dedans pour la lancer.';
+  if (keep && !pick) toast(reminder);
   try {
     if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
     else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
-    toast(keep
-      ? (pick ? 'Idée gardée.' : 'Idée gardée. Écrivez dedans pour la lancer.')
-      : 'Idée jetée : elle ne vous sera plus proposée.');
-    // At once on the board, without waiting for GitHub's next answer.
-    live.issues = keep ? live.issues.map((x) => (x.number === i.number ? { ...x, labels: [...x.labels, 'factory:kept'] } : x)) : live.issues.filter((x) => x.number !== i.number);
-    await refresh();
+    sortingIdea(repo).set(i.number, 'sent');
+    if (live.repo === repo) refresh();
   } catch (e) {
-    toast(`Impossible pour le moment : ${e.message}`);
-  } finally {
-    sortingIdea.delete(i.number);
-    drawBoard();
+    console.warn(`Idea #${i.number} not sorted`, e);
+    sortingIdea(repo).delete(i.number);
+    refusedIdea(repo).add(i.number);
+    if (live.repo === repo) announceIdea.add(i.number);
+    if (keep && $('toast').textContent === reminder) $('toast').classList.remove('show'); // it was not kept after all
+    if (live.repo === repo) redrawIdeas(i.number);
   }
 }
 
@@ -603,8 +647,10 @@ function drawBoard() {
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
-  const ideas = ideaItems(live.issues);
-  const ideasSig = JSON.stringify(ideas.map((i) => [i.number, i.title, sortingIdea.has(i.number)]));
+  const sorted = ideasToShow(ideaItems(live.issues), sortingIdea());
+  for (const n of sorted.settled) sortingIdea().delete(n);
+  const ideas = sorted.shown;
+  const ideasSig = JSON.stringify(ideas.map((i) => [i.number, i.title, refusedIdea().has(i.number)]));
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
@@ -666,6 +712,7 @@ function drawBoard() {
     live.yoursSig = yoursSig;
     live.ideasSig = ideasSig;
     board.replaceChildren(...holder.childNodes);
+    announceIdea.clear();
     flip(before);
     if (!reduced()) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
     for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
@@ -677,6 +724,8 @@ function drawBoard() {
     }, 300);
   }
   if (focusKey) board.querySelector(`[data-key="${focusKey}"]`)?.focus();
+  // After a sorted card left (even if a refresh redrew the board during its fade).
+  if (ideaFocus && !board.querySelector('.ticket.idea.leaving')) { board.querySelector(`[data-key="${ideaFocus}"]`)?.focus(); ideaFocus = null; }
   drawStatus();
 }
 

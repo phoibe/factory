@@ -13,8 +13,9 @@ const TYPES = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascri
 export const issue = (number, title, labels, extra = {}) => ({ number, title, state: 'open', labels: labels.map((name) => ({ name })), comments: 0, html_url: `https://github.com/o/r/issues/${number}`, created_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date().toISOString(), user: { login: 'o' }, author_association: 'OWNER', body: '', ...extra });
 
 // Runs `journey` with a page on the panel. `issues` is the open list GitHub returns; every write is recorded.
+// `config`: the project's factory.config.json. `writeDelay`: how long GitHub takes to answer a write (ms).
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, repos = ['o/r'], comments = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -30,13 +31,18 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
     await context.route('https://github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
     const page = await context.newPage();
     if (viewport) await page.setViewportSize(viewport);
-    await page.route('https://api.github.com/**', (route) => {
+    await page.route('https://api.github.com/**', async (route) => {
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-      if (req.method() !== 'GET') { writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null }); if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403); return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({}); }
+      if (req.method() !== 'GET') {
+        writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
+        if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
+        if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403);
+        return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
+      }
       if (path === '/user/repos') return json(repos.map((full) => ({ full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: true, html_url: `https://github.com/${full}`, homepage: '' })));
-      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from('{}').toString('base64'), encoding: 'base64', sha: 's' });
+      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
       const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];

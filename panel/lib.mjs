@@ -208,3 +208,14 @@ export function ideaItems(items) {
     .filter((i) => !columnFor(i.labels) && !i.labels.some((l) => ['factory:running', 'factory:pending', 'factory:close'].includes(l)))
     .sort((a, b) => a.number - b.number);
 }
+
+// The ideas the owner just sorted leave the board at the click. `sorting`: number → 'sending' (GitHub has not answered)
+// or 'sent' (GitHub agreed). A sent one stays hidden until GitHub's list drops it too (`settled`: those to forget),
+// so that a refresh answered before GitHub caught up never brings it back.
+export function ideasToShow(ideas, sorting) {
+  const listed = new Set(ideas.map((i) => i.number));
+  return {
+    shown: ideas.filter((i) => !sorting.has(i.number)),
+    settled: [...sorting].filter(([n, s]) => s === 'sent' && !listed.has(n)).map(([n]) => n),
+  };
+}
