@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, ASK, safeGithubUrl } from '../panel/chat.mjs';
+import { cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, ASK, safeGithubUrl } from '../panel/chat.mjs';
 
 const AGENT = '<!-- factory-agent -->';
 const FOOT = '\n\n---\n_Généré par [Claude Code](https://claude.ai/code) · software factory_';
@@ -159,4 +159,12 @@ test('on a public project, a stranger never shows up as the owner or the agent',
   assert.deepEqual(chatMessages(issue, comments).map((m) => [m.who, m.text]), [['me', 'Bonjour'], ['agent', 'Vraie réponse']]);
   const theirs = { number: 10, state: 'open', updated_at: '2026-11-01T10:00:00Z', author_association: 'NONE', user: { login: 'stranger' } };
   assert.deepEqual(conversations([theirs, { ...issue, state: 'open', updated_at: '2026-11-01T09:00:00Z' }]).map((i) => i.number), [9]);
+});
+
+test('serverUnread: an instant-mode conversation updated since the answer last shown', () => {
+  const c = { id: 'a1', state: 'open', updated: '2026-11-06T10:05:00Z' };
+  assert.equal(serverUnread(c, {}), false); // never shown on this device: nothing to flag
+  assert.equal(serverUnread(c, { a1: '2026-11-06T10:00:00Z' }), true);
+  assert.equal(serverUnread(c, { a1: '2026-11-06T10:05:00Z' }), false);
+  assert.equal(serverUnread({ id: 'a1', updated: 'garbage' }, { a1: '2026-11-06T10:00:00Z' }), false);
 });
