@@ -104,3 +104,30 @@ test('si GitHub refuse, la carte revient à sa place avec la ligne rouge, qui pa
     assert.equal(await page.locator('.lane-ideas .count').textContent(), '2');
   });
 });
+
+test('un refus sur une carte ne touche pas les autres cartes en cours', async () => {
+  await withPanel({ issues: IDEAS(), writeDelay: 600, failing: new Set(['/repos/o/r/issues/6']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #6/ }).click();
+    await page.getByRole('button', { name: /Jeter l'idée #7/ }).click();
+    await page.waitForSelector('[data-idea="6"] .idea-error');
+    await page.waitForTimeout(300);
+    assert.deepEqual(await shown(page), ['Importer depuis un site', 'Exporter en PDF']);
+    assert.equal(await page.locator('.idea-error').count(), 1);
+    // The refusal is announced, and tied to the card's buttons.
+    assert.equal(await page.locator('[data-idea="6"] .idea-error').getAttribute('role'), 'alert');
+    const id = await page.locator('[data-idea="6"] .idea-error').getAttribute('id');
+    assert.equal(await page.getByRole('button', { name: /Garder l'idée #6/ }).getAttribute('aria-describedby'), id);
+  });
+});
+
+test('si GitHub refuse la dernière idée, la section revient avec son nombre', async () => {
+  await withPanel({ issues: [idea(5, 'Importer depuis un site')], failing: new Set(['/repos/o/r/issues/5']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.waitForSelector('[data-idea="5"] .idea-error');
+    assert.equal(await page.locator('.lane-ideas .count').textContent(), '1');
+  });
+});
