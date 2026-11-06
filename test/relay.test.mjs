@@ -1771,3 +1771,66 @@ test('a relaunch finds the undo prepared but never opened: it opens it for the e
   assert.match(gh.calls.find((c) => c[0] === 'createPr')[4], /<!-- factory-revert-redo #20 -->/);
   assert.ok(stuck.labels.includes(L.noPick));
 });
+
+// Issue #227: the tick's safety net for a « Remettre en ligne » card left in no-pick without an undo under way.
+function stuckSetup({ age = 2 * 3600_000, stamp = null, undoOpen = false, live = true } = {}) {
+  const body = `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->\nAprès la mise en ligne de la PR #10, la version en ligne ne marchait plus : x.${stamp ? `\n\n<!-- factory-redo-recheck ${stamp} -->` : ''}`;
+  const card = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body, created_at: new Date(Date.now() - age).toISOString() };
+  const prs = undoOpen ? [{ number: 21, body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->`, head: { sha: 'r1', ref: 'claude/revert-pr-10' } }] : [];
+  const gh = fakeGh({ issues: [card], prs, deployments: [{ id: 1, environment: live ? 'Production' : 'Preview' }] });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); if (n === 20) Object.assign(card, fields); };
+  return { gh, card };
+}
+const guardTick = (gh, sent = []) => createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+const prodChecks = (gh) => gh.calls.filter((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')).map((c) => JSON.parse(c[3].payload).prodCheck);
+
+test('a card stuck in no-pick for over an hour without an undo: the live site is checked again', async () => {
+  const { gh, card } = stuckSetup();
+  await guardTick(gh);
+  assert.deepEqual(prodChecks(gh), [{ pr: 10, sha: 'abc1234', redo: 20 }]);
+  assert.match(card.body, /<!-- factory-redo-recheck \d+ -->/);
+  assert.ok(card.labels.includes(L.noPick));
+});
+
+test('a card whose re-check never came back within an hour starts as a normal urgent fix', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() - 2 * 3600_000 });
+  const sent = [];
+  await guardTick(gh, sent);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+  assert.deepEqual(prodChecks(gh), []);
+});
+
+test('the safety net leaves alone a card whose undo is open, or that is less than an hour old', async () => {
+  for (const opts of [{ undoOpen: true }, { age: 30 * 60_000 }, { undoOpen: true, stamp: Date.now() - 5 * 3600_000 }]) {
+    const { gh, card } = stuckSetup(opts);
+    await guardTick(gh);
+    assert.deepEqual(prodChecks(gh), [], JSON.stringify(opts));
+    assert.ok(card.labels.includes(L.noPick), JSON.stringify(opts));
+  }
+});
+
+test('a stuck card of a project without a live site to open starts at once', async () => {
+  const { gh, card } = stuckSetup({ live: false });
+  await guardTick(gh, []);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(prodChecks(gh), []);
+});
+
+test('the re-check of a stuck card: a live site that works closes it as obsolete', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() });
+  gh.closeIssue = async (n, reason) => { gh.calls.push(['close', n, reason]); if (n === 20) card.open = false; };
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'https://app.example', result: 'passed', detail: 'ok', redo: 20, git: () => { throw new Error('no undo'); } });
+  const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 20).map((c) => c[2]).join('\n');
+  assert.match(said, /Obsolète : la version en ligne marche/);
+  assert.ok(card.labels.includes(L.obsolete));
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'close'), ['close', 20, 'not_planned']);
+});
+
+test('the re-check of a stuck card: a live site still broken starts the card as a normal urgent fix', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'https://app.example', result: 'failed', detail: 'erreur 500', redo: 20, git: () => { throw new Error('no undo'); } });
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+});

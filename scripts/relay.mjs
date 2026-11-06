@@ -55,6 +55,8 @@ const CLOSE_STATE = { [L.alreadyDone]: 'completed', [L.duplicate]: 'duplicate', 
 const REVERT_REDO = '<!-- factory-revert-redo #';
 // On a « Remettre en ligne » card: the delivery it redoes (issue #227). Older cards only say it in their text.
 const REDO_OF = '<!-- factory-redo-of #';
+const RECHECK_MARKER = '<!-- factory-redo-recheck ';
+const REDO_STUCK_MS = 60 * 60_000;
 export function redoOf(body) {
   const text = String(body || '');
   if (!text.includes(PROD_BUG_MARKER)) return null;
@@ -455,7 +457,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The live site does not work after a merge: undo the delivery at once (a PR that goes live on green checks), and
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
-  async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git }) {
+  async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null }) {
+    if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
     const pr = await gh.getPr(prNumber);
     const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
@@ -656,7 +659,46 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await reportLost();
     await closeAsked(ownerLogin);
     await retryOutages();
+    await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
+  }
+
+  // Safety net (issue #227): a « Remettre en ligne » card in no-pick for over an hour with no undo PR open would wait
+  // forever. The live site is checked again (prodReport with `redo`): it works, the card is closed as obsolete;
+  // it does not, the card starts. A re-check that never reports back within an hour starts the card all the same.
+  async function unstickRedos() {
+    const stuck = ((await gh.listIssues({ labels: L.noPick })) || []).filter((i) => !i.pull_request && redoOf(i.body)
+      && now() - Date.parse(i.created_at || 0) > REDO_STUCK_MS && !names(i.labels).includes(L.running));
+    if (!stuck.length) return;
+    const pulls = (await gh.listPulls?.().catch(() => null)) || [];
+    let live = null;
+    for (const card of stuck) {
+      if (pulls.some((p) => String(p.body || '').includes(`${REVERT_REDO}${card.number} -->`))) continue; // undo under way
+      const asked = Number(new RegExp(`${RECHECK_MARKER}(\\d+) -->`).exec(card.body || '')?.[1]) || 0;
+      const { pr, sha } = redoOf(card.body);
+      live ??= ((await gh.recentDeployments?.().catch(() => null)) || []).some((d) => isLiveEnv(d.environment));
+      if (asked && now() - asked > REDO_STUCK_MS || !live || !sha) {
+        log(`guard: redo card #${card.number} stuck in no-pick, started`);
+        await startRedo(card.number);
+        continue;
+      }
+      if (asked) continue; // re-check under way
+      await gh.updateIssue(card.number, { body: `${card.body}\n\n${RECHECK_MARKER}${now()} -->` });
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr, sha, redo: card.number } }) });
+      log(`guard: redo card #${card.number} stuck in no-pick, live site checked again`);
+    }
+  }
+
+  // The re-check of a stuck card (unstickRedos): a live site that works means a false alarm, the card is obsolete.
+  async function recheckedRedo(n, { result, detail }) {
+    const card = await gh.getIssue(n);
+    if (!card || card.state !== 'open' || !names(card.labels).includes(L.noPick)) return;
+    if (result !== 'passed') return startRedo(n);
+    await gh.comment(n, say(`Obsolète : la version en ligne marche (vérifiée à nouveau : ${detail}). Cette alerte était fausse, il n'y a rien à refaire. En cas de désaccord, écrivez ici : la demande se rouvrira et reprendra là où elle en était.`));
+    await gh.removeLabel(n, L.noPick);
+    await gh.addLabels(n, [L.obsolete, L.close]);
+    await dropCard(n);
   }
 
   // A relay run stopped by GitHub's « too many requests » left its event undone: re-running its failed jobs replays
@@ -1368,7 +1410,7 @@ async function main() {
     const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
-    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: arg('url') || '', ...res, runId: process.env.GITHUB_RUN_ID, git }));
+    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: arg('url') || '', ...res, runId: process.env.GITHUB_RUN_ID, git, redo: check.redo || null }));
   } else if (command === 'dequeue') {
     await withLock(gh.queueLock, () => relay.dequeue());
   } else {
