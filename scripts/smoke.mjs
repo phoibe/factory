@@ -22,6 +22,8 @@ export function smokeRoutes(text) {
 // lives at https://<owner>.github.io/<repo>/, where « / » is that folder (issue #218: the domain root answers 404).
 export function screenUrl(route, base) {
   const u = new URL(base);
+  u.search = '';
+  u.hash = '';
   if (!u.pathname.endsWith('/')) u.pathname += '/';
   return new URL(String(route).replace(/^\/+/, ''), u).toString();
 }

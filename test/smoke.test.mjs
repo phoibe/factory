@@ -16,6 +16,9 @@ test('a screen is opened under the site address, even when the site lives in a s
   // A site at the root of its domain (Vercel, Netlify…) is unchanged.
   assert.equal(screenUrl('/', 'https://app.vercel.app'), 'https://app.vercel.app/');
   assert.equal(screenUrl('/a/b?x=1', 'https://app.vercel.app/'), 'https://app.vercel.app/a/b?x=1');
+  // A query or anchor on the site address is not carried to the screens, « / » included.
+  assert.equal(screenUrl('/', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/');
+  assert.equal(screenUrl('/s', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/s');
 });
 
 test('a version protected by its host is not a failure', () => {
