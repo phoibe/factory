@@ -146,7 +146,7 @@ guide_new_routine() {
     ask "     (Entrée pour continuer)" >/dev/null
   fi
   step "c) Repositories : ajoute $REPO, et seulement lui"
-  step "d) Environment : laisse « Default ». Connectors : retire-les tous"
+  step "d) Modèle : choisissez « Opus 5.5 » (pas « Default », qui prend un modèle plus faible). Environment : laissez « Default ». Connectors : retirez-les tous"
   step "e) Trigger : choisis « API », puis enregistre la routine"
   step "f) Rouvre la routine (crayon), section du déclencheur API : clique « Generate token »"
   echo "  g) Copiez l'URL puis le jeton : je vous les demande juste après (le jeton n'est affiché qu'une fois)."
