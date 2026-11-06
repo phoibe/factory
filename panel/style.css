@@ -438,3 +438,14 @@ details summary { color: var(--text); }
 .ticket.yours.blocked:hover { border-color: var(--danger); }
 /* The ↗ stays in the label's text run (one flex item), so the label wraps like a sentence. */
 .ticket.yours .card-actions > :not(.go) > span { display: contents; }
+/* Retouch 2 (#269): the cards were too tall. Their buttons take the small size of the waiting cards' buttons (32 px seen,
+   44 px under the finger); the blue « go » / « Ok » stays blue and first, on its own row, the quiet buttons side by side under it. */
+.ticket.yours .card-actions { align-items: center; gap: 12px 10px; margin-top: 2px; }
+.ticket.yours .card-actions .button, .ticket.yours .card-actions button {
+  position: relative; z-index: 1; align-self: auto; min-height: 32px; padding: 5px 12px; border-radius: 10px;
+  font-size: .8125rem; font-weight: 500; line-height: 1.25;
+}
+.ticket.yours .card-actions .preview.secondary { padding: 5px 12px; font-size: .8125rem; }
+.ticket.yours .card-actions button.go { flex: 0 0 auto; width: 9em; min-width: 9em; margin-right: calc(100% - 9em); font-weight: 600; } /* alone on its row: the quiet buttons share the next one */
+.ticket.yours .card-actions > :not(.go) { flex: 0 1 auto; }
+.ticket.yours .card-actions .button::after, .ticket.yours .card-actions button::after { content: ""; position: absolute; inset: -7px -5px; }
