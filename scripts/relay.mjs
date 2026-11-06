@@ -405,13 +405,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // The new version of the live site, once its host reports it deployed (polls up to `attempts` × `delayMs`).
+  // A deploy the host cancelled because a newer push started its own (GitHub Pages marks it "error") is not a
+  // broken delivery: the newer deploy of the same environment, which contains this commit, decides instead.
   async function liveUrl(sha, { attempts = 30, delayMs = 20_000 } = {}) {
+    const outcome = async (d) => {
+      const statuses = (await gh.deploymentStatuses(d.id)) || [];
+      const ok = statuses.find((s) => s.state === 'success');
+      if (ok) return ok.environment_url || ok.target_url || config.siteUrl || null;
+      return statuses.some((s) => ['failure', 'error'].includes(s.state)) ? { failed: true } : undefined;
+    };
     for (let i = 0; i < attempts; i++) {
       for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment))) {
-        const statuses = (await gh.deploymentStatuses(d.id)) || [];
-        const ok = statuses.find((s) => s.state === 'success');
-        if (ok) return ok.environment_url || ok.target_url || config.siteUrl || null;
-        if (statuses.some((s) => ['failure', 'error'].includes(s.state))) return { failed: true };
+        const result = await outcome(d);
+        if (result === undefined) continue;
+        if (!result?.failed) return result;
+        const newest = ((await gh.recentDeployments?.().catch(() => null)) || [])
+          .filter((x) => x.environment === d.environment && x.id !== d.id && String(x.created_at) > String(d.created_at))
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+        if (!newest) return result;
+        const next = await outcome(newest);
+        if (next !== undefined) return next;
       }
       if (i < attempts - 1) await sleep(delayMs);
     }
