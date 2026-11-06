@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle } from './lib.mjs?v=18';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems } from './lib.mjs?v=19';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
@@ -31,11 +31,11 @@ const STAGES = [
   ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
   ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
   ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
-  ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, failles.'],
+  ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, parcours, failles.'],
   ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
 ];
 const CHECKS = [
-  ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['audit', 'Failles connues des dépendances'],
+  ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['e2e', 'Parcours rejoués à chaque livraison'], ['audit', 'Failles connues des dépendances'],
 ];
 
 // A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
@@ -470,6 +470,43 @@ function youCard(yours, headline, sub) {
     status);
 }
 
+// « Idées à trier »: what the agent proposed by itself. Calm on purpose (never in « À vous », no alert): the owner
+// sorts them when he likes. « Garder » lets the factory take it like any request; « Jeter » closes it, and the
+// agent reads closed ideas before proposing again, so it is not proposed twice.
+const sortingIdea = new Set();
+function ideasLane(ideas) {
+  if (!ideas.length) return null;
+  const pick = current?.config?.autoPick === true;
+  return el('section', { class: 'lane lane-ideas', 'aria-label': 'Idées à trier' },
+    el('h2', {}, 'Idées à trier', el('span', { class: 'count' }, String(ideas.length))),
+    el('div', { class: 'tickets' }, ideas.map((i) => el('article', { class: 'ticket idea', 'data-idea': String(i.number) },
+      el('div', { class: 'ticket-top' }, el('span', { class: 'kind' }, `${i.labels.includes('factory:bug') ? 'Bug' : 'Idée'} · demande #${i.number}`)),
+      el('h3', {}, el('a', { class: 'main', href: i.html_url, target: '_blank', rel: 'noopener', 'data-key': `idea-${i.number}` }, i.title)),
+      el('div', { class: 'card-actions' },
+        el('button', { type: 'button', class: 'secondary', disabled: sortingIdea.has(i.number), 'data-key': `keep-${i.number}`, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
+        el('button', { type: 'button', class: 'secondary', disabled: sortingIdea.has(i.number), 'data-key': `drop-${i.number}`, 'aria-label': `Jeter l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, false, pick) }, 'Jeter'))))));
+}
+async function sortIdea(i, keep, pick) {
+  const repo = current.repo.full_name;
+  sortingIdea.add(i.number);
+  drawBoard();
+  try {
+    if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
+    else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
+    toast(keep
+      ? (pick ? 'Idée gardée : la factory la prendra dès qu\'une place se libère.' : 'Idée gardée. Écrivez dedans pour la lancer.')
+      : 'Idée jetée : elle ne vous sera plus proposée.');
+    // At once on the board, without waiting for GitHub's next answer.
+    live.issues = keep ? live.issues.map((x) => (x.number === i.number ? { ...x, labels: [...x.labels, 'factory:kept'] } : x)) : live.issues.filter((x) => x.number !== i.number);
+    await refresh();
+  } catch (e) {
+    toast(`Impossible pour le moment : ${e.message}`);
+  } finally {
+    sortingIdea.delete(i.number);
+    drawBoard();
+  }
+}
+
 function drawBoard() {
   const board = $('board');
   const now = Date.now();
@@ -502,6 +539,8 @@ function drawBoard() {
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
+  const ideas = ideaItems(live.issues);
+  const ideasSig = JSON.stringify(ideas.map((i) => [i.number, i.title, sortingIdea.has(i.number)]));
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
@@ -513,6 +552,7 @@ function drawBoard() {
       byLane[id].length
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
         : el('p', { class: 'lane-empty' }, empty))),
+    ideasLane(ideas),
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', el('span', { class: 'count' }, String(live.done.length))),
       live.done.length
@@ -530,7 +570,7 @@ function drawBoard() {
   const oldIndex = new Map([...oldCards].map(([n, node]) => [n, [...node.parentNode.children].indexOf(node)]));
   // Decided first: reusing a card moves its node out of the board, so nothing may be reused when the board is left as it is
   // (otherwise the cards leave with the discarded draw and the lane stays empty until the next change).
-  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig;
+  const unchanged = fresh.length && !changes.added.length && !changes.removed.length && !changes.changed.length && !moved.length && !doneChanged && board.querySelector('.you-card') && live.yoursSig === yoursSig && live.ideasSig === ideasSig;
   // Cards that did not change keep their DOM node: no flicker, no lost hover or focus.
   // (a card that just moved is always redrawn, so that it gets its halo; a card unknown to the previous draw is never reused)
   // Their clocks are brought up to date in place.
@@ -558,6 +598,7 @@ function drawBoard() {
   }
   if (!unchanged) {
     live.yoursSig = yoursSig;
+    live.ideasSig = ideasSig;
     board.replaceChildren(...holder.childNodes);
     flip(before);
     if (!reduced()) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });

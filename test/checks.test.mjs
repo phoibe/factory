@@ -33,3 +33,12 @@ test('the browser is downloaded alone; system packages only when it cannot start
   assert.match(browserSetup({ devDependencies: { '@playwright/test': '1.56.1' } }).probe.join(' '), /@playwright\/test/);
   assert.equal(browserSetup({ dependencies: { react: '19' } }), null);
 });
+
+test('user journeys (test:e2e) run when present; a project without them yet is not turned red', () => {
+  const pkg = { scripts: { typecheck: 'tsc', lint: 'l', test: 't', build: 'b', 'test:a11y': 'a' } };
+  const missing = planChecks({ ...all, e2e: true }, pkg).find((p) => p.id === 'e2e');
+  assert.equal(missing.skipped, true);
+  assert.match(summary([{ label: 'Parcours', status: 'skipped', script: 'test:e2e' }]), /pas encore de tests/);
+  const present = planChecks({ ...all, e2e: true }, { scripts: { ...pkg.scripts, 'test:e2e': 'playwright test' } }).find((p) => p.id === 'e2e');
+  assert.deepEqual(present.run, ['npm', 'run', 'test:e2e']);
+});

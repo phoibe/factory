@@ -21,6 +21,14 @@ export const uiChanged = (files) => files.some((f) => {
   return UI_FILE.test(name) && !TEST_FILE.test(name) && !(typeof f === 'object' && cacheBustOnly(f.patch));
 });
 
+// A small change (a few source files) is built without a written plan: the plan only pays off on bigger work.
+// Tests, docs, lock files and the factory's own files do not count.
+const NOT_SOURCE = /(^|\/)(\.factory|\.impeccable|docs|\.github)\/|\.md$|(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/;
+export const SMALL_FILES = 3;
+export const smallChange = (files) => files
+  .map((f) => (typeof f === 'string' ? f : f.filename))
+  .filter((f) => !NOT_SOURCE.test(f) && !TEST_FILE.test(f)).length <= SMALL_FILES;
+
 export function parseJournal(files) {
   const runs = [];
   for (const text of files) {
@@ -44,11 +52,11 @@ export const redThenGreen = (run) => {
 };
 
 // What each stage must show, given the stages the owner turned on.
-export function expectations(stage, stages, ui) {
+export function expectations(stage, stages, ui, { small = false } = {}) {
   const on = (k) => stages[k] !== false;
   const out = [];
   if (stage === 'build') {
-    if (on('plan')) out.push({ skill: 'writing-plans', label: 'plan' });
+    if (on('plan') && !small) out.push({ skill: 'writing-plans', label: 'plan' });
     if (on('tdd')) out.push({ skill: 'test-driven-development', label: 'TDD', tdd: true });
   }
   if (stage === 'bugfix') out.push({ skill: 'systematic-debugging', label: 'recherche de la cause', tdd: true });
@@ -65,10 +73,10 @@ export function expectations(stage, stages, ui) {
 export const CATCH_UP = ['requesting-code-review', 'impeccable'];
 
 // What the whole PR is missing: a skill counts when any run of the PR used it (a catch-up run fills the gap).
-export function missingSkills(runs, { stages = {}, ui = false } = {}) {
+export function missingSkills(runs, { stages = {}, ui = false, small = false } = {}) {
   const out = [];
   for (const run of runs) {
-    for (const exp of expectations(run.stage, stages, ui)) {
+    for (const exp of expectations(run.stage, stages, ui, { small })) {
       if (!runs.some((r) => used(r, exp.skill)) && !out.some((o) => o.skill === exp.skill)) out.push({ ...exp, stage: run.stage });
     }
   }
@@ -81,7 +89,7 @@ const STAGE_NAMES = {
   'skills-fix': 'Rattrapage des étapes', audit: 'Review générale',
 };
 
-export function summarize(runs, { stages = {}, ui = false } = {}) {
+export function summarize(runs, { stages = {}, ui = false, small = false } = {}) {
   const alerts = [];
   const lines = [];
   for (const run of runs) {
@@ -94,7 +102,7 @@ export function summarize(runs, { stages = {}, ui = false } = {}) {
       if (exp.tdd && used(run, exp.skill) && !redThenGreen(run)) alerts.push(`${name} : pas de preuve TDD (aucun test rouge suivi d'un test vert).`);
     }
   }
-  const missing = missingSkills(runs, { stages, ui });
+  const missing = missingSkills(runs, { stages, ui, small });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
   // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
   const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit'].includes(r.stage))

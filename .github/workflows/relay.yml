@@ -34,6 +34,8 @@ jobs:
       pr: ${{ steps.relay.outputs.pr }}
       agent: ${{ steps.relay.outputs.agent }}
       payload: ${{ steps.relay.outputs.payload }}
+      preview: ${{ steps.relay.outputs.preview }}
+      production: ${{ steps.relay.outputs.production }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -171,6 +173,95 @@ jobs:
       - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }} --started ${{ needs.checks.outputs.started }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+  # Before the owner is given a preview to test, the factory opens it like a visitor (read-only page loads, see
+  # scripts/smoke.mjs). A broken or empty preview goes back to the agent; then the report goes on as usual.
+  preview:
+    needs: decide
+    if: needs.decide.outputs.preview != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      deployments: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(needs.decide.outputs.preview).sha }}
+          path: project
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Open the preview
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node .factory-src/scripts/smoke.mjs --url "${{ fromJSON(needs.decide.outputs.preview).url }}" --dir project --out "$RUNNER_TEMP/smoke.json"
+      - name: Report
+        if: always()
+        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.preview }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+  # After a merge: once the host has deployed it, the live site is opened the same way. If it does not work, the
+  # delivery is undone at once and an urgent bug redoes it properly (relay.mjs prodReport).
+  production:
+    needs: decide
+    if: needs.decide.outputs.production != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      deployments: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: live
+        name: Wait for the new version
+        run: node .factory-src/scripts/relay.mjs live-url
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.production }}
+      - uses: actions/checkout@v4
+        if: steps.live.outputs.url != '' || steps.live.outputs.deployFailed == 'true'
+        with:
+          ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
+          path: project
+          fetch-depth: 0
+      - name: Open the live site
+        if: steps.live.outputs.url != ''
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node .factory-src/scripts/smoke.mjs --url "${{ steps.live.outputs.url }}" --dir project --out "$RUNNER_TEMP/smoke.json"
+      - name: Report
+        if: always() && (steps.live.outputs.url != '' || steps.live.outputs.deployFailed == 'true')
+        run: node .factory-src/scripts/relay.mjs prod-report --result-file "$RUNNER_TEMP/smoke.json" --url "${{ steps.live.outputs.url }}" --deploy-failed "${{ steps.live.outputs.deployFailed }}" --dir project
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.production }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}

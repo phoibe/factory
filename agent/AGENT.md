@@ -107,8 +107,21 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
   Quand le propriétaire demande de fermer ou d'abandonner (une demande, une PR), ajoute le label `factory:close`
   à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
   factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
-- Quand tu ouvres une issue pour une idée nouvelle, mets `<!-- factory-agent -->` au début de sa description
-  et le label `factory:feature` : elle ne démarrera que quand le propriétaire y écrira.
+- **Ouvrir une issue.** Mets toujours `<!-- factory-agent -->` au début de sa description et le label
+  `factory:feature` (ou `factory:bug`). Puis :
+  - **L'idée vient du propriétaire** (une remarque de sa part qui sort de la PR en cours, une feature de la
+    fiche produit qu'il a validée) : ajoute aussi le label `factory:kept`. Elle suit alors son parcours habituel.
+  - **L'idée vient de toi** (repérée pendant une construction, une review générale…) : pas de `factory:kept`.
+    Elle attend dans « Idées à trier » du tableau, où il la garde ou la jette d'un clic : n'en parle pas comme
+    d'une chose à faire.
+  - **Avant de proposer une idée à toi**, vérifie qu'il ne l'a pas déjà refusée : relis les décisions du projet
+    (`docs/adr/`, le glossaire) et les demandes qu'il a abandonnées
+    (`gh api "R/issues?state=closed&per_page=100" --jq '.[] | select(.state_reason=="not_planned") | "#\(.number) \(.title)"'`,
+    puis le fil de celles qui ressemblent à ton idée). Une idée refusée, ou contraire à `PRODUCT.md`, ne se repropose
+    pas, même autrement formulée. Cherche aussi dans les issues ouvertes : jamais deux fois le même sujet.
+- **Quand il refuse une idée ou un choix** (« non, on n'a pas besoin de… »), note-le dans les décisions du projet
+  (`docs/adr/`, une phrase : ce qui a été refusé et pourquoi) dans la PR en cours ou la prochaine petite PR de
+  documents : c'est la mémoire qui évite de le lui reproposer.
 
 ## Code et Git
 
@@ -132,5 +145,5 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
   phrase, donne le lien exact où il doit aller (ex. « Settings → Secrets and variables → Actions »), mets
   `factory:blocked` et termine.
 - Ne désactive, ne saute et ne supprime jamais un test ou un contrôle pour obtenir du vert.
-- N'élargis jamais une PR à une idée nouvelle : ouvre une nouvelle issue avec le label `factory:feature`.
+- N'élargis jamais une PR à une idée nouvelle : ouvre une nouvelle issue (voir « Ouvrir une issue »).
 - Ne lis pas de secrets, ne les affiche jamais.

@@ -25,7 +25,7 @@
       "type": "object",
       "properties": {
         "typecheck": { "type": "boolean" }, "lint": { "type": "boolean" }, "test": { "type": "boolean" },
-        "build": { "type": "boolean" }, "a11y": { "type": "boolean" }, "audit": { "type": "boolean" }
+        "build": { "type": "boolean" }, "a11y": { "type": "boolean" }, "e2e": { "type": "boolean" }, "audit": { "type": "boolean" }
       },
       "additionalProperties": false
     },
