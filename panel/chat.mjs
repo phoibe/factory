@@ -94,6 +94,9 @@ export function conversations(issues = []) {
 // seen: { [number]: comment count when the owner last looked }. A conversation never opened is not flagged.
 export const unread = (c, seen) => seen[c.number] != null && (c.comments || 0) > seen[c.number];
 
+// Instant mode (chat server): seen is { [id]: the conversation's `updated` time when its answer was last shown }.
+export const serverUnread = (c, seen) => seen[c.id] != null && Date.parse(c.updated) > Date.parse(seen[c.id]);
+
 // ---- A small Markdown reader --------------------------------------------------------------------
 // Turns the agent's answer into a tree the page builds with DOM nodes (never innerHTML), so nothing in a
 // message can run code. Supports what the agent writes: paragraphs, **bold**, *italic*, `code`, links,
