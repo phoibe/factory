@@ -1,0 +1,7 @@
+{"t":"2026-11-06T13:26:22.151Z","kind":"run","stage":"bugfix","issue":218,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-06T13:27:12.788Z","kind":"skill","name":"systematic-debugging","id":"toolu_01WqfnQw17jhj7gL1qXbf5BL"}
+{"t":"2026-11-06T13:27:13.001Z","kind":"skill","name":"test-driven-development","id":"toolu_019yGwij1VNxwcvNNhoMaaGt"}
+{"t":"2026-11-06T13:27:22.580Z","kind":"test","cmd":"python3 - <<'EOF'\np='test/smoke.test.mjs'\ns=open(p).read()\ns=s.replace(\"import { smokeRoutes, isProtected, pageProblem, smoke } from '../scripts/smoke.mjs';\",\"import { smokeRoutes, isProtected, pagePr","ok":false,"id":"toolu_012moKXEeZvLRYsVekmkNjDV"}
+{"t":"2026-11-06T13:27:27.352Z","kind":"test","cmd":"python3 - <<'EOF'\np='scripts/smoke.mjs'\ns=open(p).read()\ns=s.replace(\"\"\"// A deployment protected\"\"\",\"\"\"// The address of one screen. A route is under the site's own address, not its domain: a GitHub ","ok":true,"id":"toolu_01UQJzXenW9jpjeTz7DjSKr6"}
+{"t":"2026-11-06T13:27:58.687Z","kind":"test","cmd":"grep -rn \"new URL(\" scripts --include=*.mjs | grep -v \"^scripts/smoke.mjs\" | head; npm test 2>&1 | tail -9","ok":true,"id":"toolu_01MHexxbxk64cPexQkEHWkdd"}
+{"t":"2026-11-06T13:28:28.441Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (tests|pass|fail)\"","ok":true,"id":"toolu_017o2UXC26cWNpGsidm9HrZG"}

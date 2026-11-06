@@ -18,6 +18,14 @@ export function smokeRoutes(text) {
   return [...new Set(['/', ...listed])];
 }
 
+// The address of one screen. A route is under the site's own address, not its domain: a GitHub Pages project site
+// lives at https://<owner>.github.io/<repo>/, where « / » is that folder (issue #218: the domain root answers 404).
+export function screenUrl(route, base) {
+  const u = new URL(base);
+  if (!u.pathname.endsWith('/')) u.pathname += '/';
+  return new URL(String(route).replace(/^\/+/, ''), u).toString();
+}
+
 // A deployment protected by its host's sign-in (Vercel Authentication…) cannot be opened by a robot: not a failure.
 export function isProtected(status, location = '') {
   return status === 401 || status === 403 || /vercel\.com\/(login|sso)|\/sso-api|_vercel_sso/.test(String(location));
@@ -76,7 +84,7 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
       const serverErrors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('response', (r) => { if (r.status() >= 500 && r.url().startsWith(origin)) serverErrors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
-      const target = new URL(route, url).toString();
+      const target = screenUrl(route, url);
       let status = 0;
       try {
         const res = await page.goto(target, { waitUntil: 'networkidle', timeout: 45_000 });
