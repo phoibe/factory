@@ -60,3 +60,13 @@ test('a cache-busting ?v=N bump is not a visual change (no design pass expected)
   assert.equal(uiChanged([{ filename: 'panel/index.html', patch: '-<p>a</p>\n+<p>b</p>' }]), true);
   assert.equal(uiChanged(['panel/index.html']), true);
 });
+
+test('a small change (3 source files or fewer) needs no written plan; a bigger one does', async () => {
+  const { expectations, smallChange } = await import('../scripts/lib/fabrication.mjs');
+  assert.equal(smallChange(['src/a.js', 'src/b.js', 'test/a.test.js', 'docs/plans/x.md', '.factory/journal/s.jsonl', 'package-lock.json']), true);
+  assert.equal(smallChange(['src/a.js', 'src/b.js', 'src/c.js', 'src/d.js']), false);
+  const skills = (small) => expectations('build', {}, false, { small }).map((e) => e.skill);
+  assert.ok(!skills(true).includes('writing-plans'));
+  assert.ok(skills(false).includes('writing-plans'));
+  assert.ok(skills(true).includes('test-driven-development'));
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slug, markdownTable, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { sameScreens, slug, markdownTable, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -19,7 +19,7 @@ test('dark rows are named "sombre" and follow the light rows', () => {
     repo: 'o/r', dir: 'd',
     files: ['accueil--desktop--sombre.png', 'accueil--desktop.png', 'accueil--mobile.png', 'accueil--mobile--sombre.png'],
   });
-  const labels = md.split('\n').slice(2).map((l) => l.split('|')[1].trim());
+  const labels = md.split('\n').slice(3).map((l) => l.split('|')[1].trim());
   assert.deepEqual(labels, ['accueil · desktop', 'accueil · mobile', 'accueil · desktop · sombre', 'accueil · mobile · sombre']);
   assert.deepEqual(orderFiles(['b--mobile--sombre.png', 'a--mobile.png']), ['a--mobile.png', 'b--mobile--sombre.png']);
 });
@@ -60,4 +60,25 @@ test('cookiesFor turns --cookie into session cookies for the app being captured'
   ]);
   assert.deepEqual(cookiesFor(undefined, 'http://localhost:3000'), []);
   assert.deepEqual(cookiesFor(true, 'http://localhost:3000'), []);
+});
+
+test('screens identical before and after are listed, not shown, and the table still names the assets branch', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  for (const [f, b, a] of [['accueil--mobile.png', 'x', 'x'], ['reglages--mobile.png', 'x', 'y'], ['nouveau--mobile.png', null, 'z']]) {
+    if (b) writeFileSync(join(before, f), b);
+    writeFileSync(join(after, f), a);
+  }
+  const all = ['accueil--mobile.png', 'nouveau--mobile.png', 'reglages--mobile.png'];
+  const same = sameScreens(before, after, all);
+  assert.deepEqual(same, ['accueil--mobile.png']);
+  assert.deepEqual(sameScreens(null, after, all), []);
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: all.filter((f) => !same.includes(f)), unchanged: same });
+  assert.match(md, /claude\/factory-assets/);
+  assert.match(md, /identiques avant et après, non montrés : accueil · mobile/);
+  assert.doesNotMatch(md, /\| accueil · mobile \|/);
+  assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /Aucun écran n'a changé/);
 });

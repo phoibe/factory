@@ -23,6 +23,7 @@ export const L = {
   urgent: 'factory:urgent',
   autoPicked: 'factory:auto-picked',
   close: 'factory:close',
+  kept: 'factory:kept',
 };
 
 // Colors and French descriptions, used to create the labels in a project.
@@ -49,6 +50,7 @@ export const LABEL_DEFS = [
   [L.urgent, 'e11d48', 'Fiche à piocher en premier par la factory'],
   [L.autoPicked, 'c2e0c6', "La factory a pris cette fiche d'elle-même (place libre)"],
   [L.close, 'ededed', 'Le propriétaire abandonne cette fiche : la factory la ferme'],
+  [L.kept, 'c2e0c6', "Idée de l'agent gardée par le propriétaire : la factory peut la prendre"],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 
@@ -58,3 +60,16 @@ export const CHECKS_RESET_MARKER = '<!-- factory-checks-reset -->';
 export const UPDATE_BRANCH_MARKER = '<!-- factory-update-branch -->';
 export const VISUAL_OK_MARKER = '<!-- factory-visual-ok -->';
 export const SESSION_MARKER = '<!-- factory-session -->';
+// In a PR body: the agent says the owner has nothing to see or try (tests, refactoring, robustness).
+export const NOTHING_TO_TEST_MARKER = '<!-- factory-nothing-to-test -->';
+// In a PR body: the factory undoes a delivery that broke the live site. Merged as soon as its checks are green.
+export const REVERT_MARKER = '<!-- factory-revert -->';
+// In an issue body: written by the factory after a broken delivery. Not an idea to sort: it starts at once.
+export const PROD_BUG_MARKER = '<!-- factory-prod-check -->';
+
+// An idea the agent proposed (its issue body carries the agent marker) that the owner has not sorted yet: it waits
+// in « Idées à trier » and is never picked automatically. Writing in it, or « Garder » on the board, makes it a request.
+export const isIdea = (issue) => {
+  const labels = (issue?.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
+  return String(issue?.body || '').includes(AGENT_MARKER) && !labels.includes(L.kept);
+};

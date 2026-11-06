@@ -200,7 +200,7 @@
           "id": "improve-codebase-architecture",
           "path": "packs/matt-pocock/improve-codebase-architecture",
           "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.",
-          "defaultEnabled": false
+          "defaultEnabled": true
         },
         {
           "id": "pr",
@@ -212,7 +212,7 @@
           "id": "prototype",
           "path": "packs/matt-pocock/prototype",
           "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.",
-          "defaultEnabled": false
+          "defaultEnabled": true
         },
         {
           "id": "research",
@@ -248,7 +248,7 @@
           "id": "to-tickets",
           "path": "packs/matt-pocock/to-tickets",
           "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).",
-          "defaultEnabled": false
+          "defaultEnabled": true
         },
         {
           "id": "triage",
@@ -281,6 +281,21 @@
           "id": "impeccable",
           "path": "packs/impeccable/impeccable",
           "description": "Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend interface: websites, landing pages, dashboards, product UI, components, forms, settings, onboarding, empty states, and native iOS or Android screens. Handles UX review, hierarchy, layout, typography, color, motion, UX copy, accessibility, responsive behavior, edge cases, and capturing or documenting design systems (DESIGN.md, tokens). Also for making bland UI bolder, loud UI quieter, or ambitious visual effects. Not for backend-only or non-UI tasks.",
+          "defaultEnabled": true
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic skills",
+      "repo": "anthropics/skills",
+      "commit": "ca45fc496a3436251f191354091d557da31c15b5",
+      "license": "Apache-2.0",
+      "skills": [
+        {
+          "id": "webapp-testing",
+          "path": "packs/anthropic/webapp-testing",
+          "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.",
           "defaultEnabled": true
         }
       ]

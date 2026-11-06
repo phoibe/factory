@@ -35,7 +35,10 @@
       ],
       "defaultEnabled": [
         "grilling",
-        "to-spec"
+        "to-spec",
+        "prototype",
+        "improve-codebase-architecture",
+        "to-tickets"
       ]
     },
     {
@@ -50,6 +53,20 @@
       ],
       "defaultEnabled": [
         "impeccable"
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic skills",
+      "repo": "anthropics/skills",
+      "commit": "ca45fc496a3436251f191354091d557da31c15b5",
+      "license": "Apache-2.0",
+      "licenseFile": "skills/webapp-testing/LICENSE.txt",
+      "include": [
+        "skills/webapp-testing"
+      ],
+      "defaultEnabled": [
+        "webapp-testing"
       ]
     }
   ]

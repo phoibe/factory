@@ -1,6 +1,9 @@
 # Sous-étape : captures avant/après (clair et sombre, côte à côte)
 
-1. Liste les routes (URL) dont l'apparence change.
+1. Liste **tous les écrans principaux** de l'appli (pas seulement ceux que la feature touche) : chaque page, et
+   l'état le plus parlant de chacune (connecté ou non). Une feature peut abîmer un écran qu'elle ne touche pas
+   (un en-tête partagé, un style commun) : c'est ce que cette capture complète attrape. L'outil ne montre au
+   propriétaire que les écrans qui ont changé, et liste les autres en une ligne.
 2. **Thème sombre** : cherche dans le code si l'appli a un thème sombre.
    - Thème qui suit le réglage du navigateur (`prefers-color-scheme`) : rien à faire, l'outil le simule tout seul.
    - Thème activé par un bouton ou une option (classe ou attribut posé sur la page) : repère laquelle et ajoute
@@ -26,4 +29,5 @@
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
 6. Commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
-   sombre), le tableau, puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »
+   sombre), le tableau (un écran que la feature ne devait pas toucher et qui a changé : corrige-le d'abord, ou
+   explique pourquoi en une phrase), puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »

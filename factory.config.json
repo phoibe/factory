@@ -24,7 +24,8 @@
     "test": true,
     "build": true,
     "a11y": true,
-    "audit": true
+    "audit": true,
+    "e2e": true
   },
   "skills": {
     "superpowers": {
@@ -65,15 +66,15 @@
         "grill-with-docs": true,
         "implement": false,
         "implement-spec": false,
-        "improve-codebase-architecture": false,
+        "improve-codebase-architecture": true,
         "pr": false,
-        "prototype": false,
+        "prototype": true,
         "research": false,
         "retro": false,
         "setup-matt-pocock-skills": false,
         "tdd": false,
         "to-spec": true,
-        "to-tickets": false,
+        "to-tickets": true,
         "triage": false,
         "wayfinder": false,
         "wizard": false

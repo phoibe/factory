@@ -184,3 +184,19 @@ test('openIssueCount counts issues, not pull requests', () => {
   assert.equal(issuesLinkText(0), 'Voir les demandes sur GitHub (0)');
   assert.equal(issuesLinkText(null), 'Voir les demandes sur GitHub');
 });
+
+test('ideas to sort: what the agent proposed, not kept, not started; the owner\'s own requests never', async () => {
+  const { ideaItems } = await import('../panel/lib.mjs');
+  const A = '<!-- factory-agent -->\nRepéré pendant la review';
+  const items = [
+    { number: 1, body: A, labels: ['factory:feature'] },
+    { number: 2, body: A, labels: ['factory:feature', 'factory:kept'] },
+    { number: 3, body: A, labels: ['factory:feature', 'factory:grilling'] },
+    { number: 4, body: 'Ma demande', labels: ['factory:feature'] },
+    { number: 5, body: A, labels: ['factory:bug'] },
+    { number: 6, body: A, labels: ['factory:feature'], pull_request: {} },
+    { number: 7, body: A, labels: ['factory:question'] },
+    { number: 8, body: A, labels: ['factory:feature', 'factory:running'] },
+  ];
+  assert.deepEqual(ideaItems(items).map((i) => i.number), [1, 5]);
+});

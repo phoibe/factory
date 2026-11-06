@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const catalog = JSON.parse(readFileSync(join(root, 'packs/catalog.json'), 'utf8'));
 
-test('catalog has the three packs', () => {
-  assert.deepEqual(catalog.packs.map((p) => p.id), ['superpowers', 'matt-pocock', 'impeccable']);
+test('catalog has the four packs', () => {
+  assert.deepEqual(catalog.packs.map((p) => p.id), ['superpowers', 'matt-pocock', 'impeccable', 'anthropic']);
 });
 
 test('skill ids are unique across packs', () => {
@@ -27,7 +27,7 @@ test('every skill path holds a SKILL.md and a description', () => {
 
 test('expected defaults are enabled', () => {
   const on = catalog.packs.flatMap((p) => p.skills.filter((s) => s.defaultEnabled).map((s) => s.id));
-  for (const id of ['grilling', 'grill-with-docs', 'domain-modeling', 'test-driven-development', 'impeccable', 'requesting-code-review']) {
+  for (const id of ['grilling', 'grill-with-docs', 'domain-modeling', 'test-driven-development', 'impeccable', 'requesting-code-review', 'webapp-testing', 'prototype', 'improve-codebase-architecture', 'to-tickets']) {
     assert.ok(on.includes(id), id);
   }
   assert.ok(!on.includes('brainstorming'));

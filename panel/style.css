@@ -392,3 +392,9 @@ details summary { color: var(--text); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .ticket.pending .card-actions > :not(.undo):not(:hover) { border-color: color-mix(in srgb, var(--muted) 35%, var(--line)); }
 }
+
+/* « Idées à trier »: calm cards, sorted by the owner when he likes. */
+.lane-ideas h2 { color: var(--muted); }
+.ticket.idea { box-shadow: none; }
+.ticket.idea .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.ticket.idea .card-actions button { padding: 6px 16px; }
