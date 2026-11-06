@@ -226,3 +226,10 @@ test('a sign of life refused while the lock is still ours keeps the lock (a fail
   await gh.queueLock.release();
   assert.ok(calls.includes('DELETE /git/refs/factory/lock'), 'still released at the end');
 });
+
+test('the PRs of one branch are asked with the owner prefix GitHub expects, closed and merged ones included', async () => {
+  const urls = [];
+  const gh = github({ token: 't', repo: 'o/r', sleep: async () => {}, fetchImpl: async (url) => { urls.push(url); return answer(200, []); } });
+  await gh.pullsByHead('claude/revert-pr-10');
+  assert.match(urls[0], /\/repos\/o\/r\/pulls\?state=all&per_page=30&head=o%3Aclaude%2Frevert-pr-10$/);
+});

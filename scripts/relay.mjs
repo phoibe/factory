@@ -471,11 +471,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A newer delivery was merged since: re-running this one would publish an older version over it, and the newer
     // one's own live check covers the site (its deploy carries this commit too).
     const head = gh.getBranch ? (await gh.getBranch(ref).catch(() => null))?.object?.sha : sha;
-    if (head && head !== sha) return log(`live deploy of #${prNumber} failed, but ${String(head).slice(0, 7)} is newer: its own check decides`);
-    if (!retried && runId && gh.rerunFailed) {
+    const newest = !head || head === sha;
+    if (!retried && runId && gh.rerunFailed && newest) {
       try {
+        const retriedAt = now() - 60_000; // a minute of slack: GitHub's clock, rounded to the second
         await gh.rerunFailed(runId);
-        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true, retriedAt: now() } }) });
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true, retriedAt } }) });
         return log(`live deploy of #${prNumber} failed: run ${runId} re-run`);
       } catch (e) { log(`live deploy re-run failed: ${String(e.message || e).slice(0, 80)}`); }
     }
@@ -691,27 +692,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await reportLost();
     await closeAsked(ownerLogin);
     await retryOutages();
-    await unstickRedos(closed).catch((e) => log(`stuck redo cards: ${e.message}`));
+    await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
   }
 
   // Safety net (issue #227): a « Remettre en ligne » card in no-pick for over an hour with no undo PR open would wait
   // forever. The live site is checked again (prodReport with `redo`): it works, the card is closed as obsolete;
   // it does not, the card starts. A re-check that never reports back within an hour starts the card all the same.
-  async function unstickRedos(closed = []) {
+  async function unstickRedos() {
     const stuck = ((await gh.listIssues({ labels: L.noPick })) || []).filter((i) => !i.pull_request && redoOf(i.body)
       && now() - Date.parse(i.created_at || 0) > REDO_STUCK_MS && !names(i.labels).includes(L.running));
-    if (!stuck.length) return;
-    const pulls = (await gh.listPulls?.().catch(() => null)) || [];
-    const undoOf = (list, n) => list.find((p) => String(p.body || '').includes(`${REVERT_REDO}${n} -->`));
     let live = null;
     for (const card of stuck) {
       try {
-        if (undoOf(pulls, card.number)) continue; // undo under way
-        // The undo went live without the factory's own merge (merged by hand): the card redoes it, as planned.
-        if (undoOf(closed, card.number)?.merged_at) { await startRedo(card.number); continue; }
-        const asked = Number(new RegExp(`${RECHECK_MARKER}(\\d+) -->`).exec(card.body || '')?.[1]) || 0;
         const { pr, sha } = redoOf(card.body);
+        // Every undo of that delivery, however old (an error here skips the card until the next tick).
+        const undos = ((await gh.pullsByHead(`claude/revert-pr-${pr}`)) || []).filter((p) => String(p.body || '').includes(`${REVERT_REDO}${card.number} -->`));
+        if (undos.some((p) => p.state === 'open')) continue; // undo under way
+        // The undo went live without the factory's own merge (merged by hand): the card redoes it, as planned.
+        if (undos.some((p) => p.merged_at)) { await startRedo(card.number); continue; }
+        const asked = Number(new RegExp(`${RECHECK_MARKER}(\\d+) -->`).exec(card.body || '')?.[1]) || 0;
         if (live === null) {
           const deploys = gh.recentDeployments ? await gh.recentDeployments() : [];
           live = (deploys || []).some((d) => isLiveEnv(d.environment));
@@ -734,7 +734,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // agent is told it is still live, so it repairs it instead of redoing it.
   async function startUndoneRedo(card) {
     if (!String(card.body || '').includes(STILL_LIVE)) {
-      await gh.updateIssue(card.number, { body: `${card.body}\n\n${STILL_LIVE} Le retour en arrière n'a jamais été ouvert : cette livraison est toujours en ligne. Ne refais pas de cherry-pick : répare directement la version en ligne.` });
+      await gh.updateIssue(card.number, { body: `${card.body}\n\n${STILL_LIVE} Le retour en arrière n'a pas été mis en ligne : cette livraison est toujours en ligne. Ne refais pas de cherry-pick : répare directement la version en ligne.` });
     }
     await startRedo(card.number);
   }
@@ -1447,7 +1447,7 @@ async function main() {
     const check = JSON.parse(process.env.CHECK || '{}');
     let url = await relay.liveUrl(check.sha, { since: Number(check.retriedAt) || 0 });
     // The re-run of a failed publication published nothing at all: as good as a second failure.
-    if (url === null && check.deployRetried) url = { failed: true, detail: "la nouvelle tentative n'a rien publié" };
+    if (url === null && check.deployRetried) url = { failed: true, detail: "la nouvelle tentative n'a rien publié en 10 minutes" };
     writeOutputs({ url: typeof url === 'string' ? url : '', deployFailed: url?.failed ? 'true' : 'false', deployFailure: url?.failed ? JSON.stringify(url) : '' });
     return;
   } else if (command === 'prod-report') {

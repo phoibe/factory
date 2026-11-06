@@ -1773,7 +1773,7 @@ test('a failed publication is re-run once and checked again, nothing undone and 
   const git = [];
   await createRelay({ gh, repo: 'r', config, env, log: quiet, now: () => 42 }).deployFailed({ pr: 10, sha: 'm1', detail: 'Deployment failed', runId: 777, git: (a) => git.push(a) });
   assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 777]]);
-  assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 42 } });
+  assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 42 - 60_000 } });
   assert.equal(git.length, 0);
   assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
 });
@@ -1834,6 +1834,7 @@ function stuckSetup({ age = 2 * 3600_000, stamp = null, undoOpen = false, live =
   const prs = undoOpen ? [{ number: 21, body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->`, head: { sha: 'r1', ref: 'claude/revert-pr-10' } }] : [];
   const gh = fakeGh({ issues: [card], prs, deployments: [{ id: 1, environment: live ? 'Production' : 'Preview' }] });
   gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); if (n === 20) Object.assign(card, fields); };
+  gh.pullsByHead = async (branch) => prs.filter((p) => p.head?.ref === branch).map((p) => ({ state: 'open', ...p }));
   return { gh, card };
 }
 const guardTick = (gh, sent = []) => createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
@@ -1908,15 +1909,16 @@ test('a re-run is asked with its time, and never for an older version or a re-ch
   };
   const head = mk('m1');
   await createRelay({ gh: head, repo: 'r', config, env, log: quiet, now: () => 1234 }).deployFailed({ pr: 10, sha: 'm1', runId: 7 });
-  assert.deepEqual(JSON.parse(head.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 1234 } });
+  assert.deepEqual(JSON.parse(head.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 1234 - 60_000 } });
   const older = mk('newer');
   await createRelay({ gh: older, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', runId: 7 });
-  assert.ok(!older.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch' || c[0] === 'comment'));
+  assert.ok(!older.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch'));
+  assert.match(older.calls.find((c) => c[0] === 'comment')[2], /hébergeur refuse de la publier/); // never silent
 });
 
 test('the safety net starts at once a card whose undo was merged by hand, without a re-check', async () => {
   const { gh, card } = stuckSetup();
-  gh.listClosedPulls = async () => [{ number: 21, state: 'closed', merged_at: '2026-11-06T10:00:00Z', body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->` }];
+  gh.pullsByHead = async (branch) => (branch === 'claude/revert-pr-10' ? [{ number: 21, state: 'closed', merged_at: '2026-11-06T10:00:00Z', body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->` }] : []);
   const sent = [];
   await guardTick(gh, sent);
   assert.deepEqual(prodChecks(gh), []);
@@ -1938,4 +1940,13 @@ test('a relaunch after a refused undo leaves alone the card already started: no 
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'u', result: 'failed', detail: 'x', git: (a) => git.push(a) });
   assert.equal(git.length, 0);
   assert.ok(!gh.calls.some((c) => c[0] === 'createPr' || c[0] === 'comment' || c[0] === 'createIssue'));
+});
+
+test('the safety net does nothing for a card when the undo PRs cannot be read', async () => {
+  const { gh, card } = stuckSetup();
+  gh.pullsByHead = async () => { throw new Error('GitHub 502'); };
+  await guardTick(gh, []);
+  assert.deepEqual(prodChecks(gh), []);
+  assert.ok(card.labels.includes(L.noPick));
+  assert.ok(!/factory-redo-recheck/.test(card.body));
 });
