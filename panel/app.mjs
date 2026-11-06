@@ -652,12 +652,18 @@ function renderRules() {
           onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))),
     el('div', { class: 'row' }, checkbox('autoPick', c.autoPick === true, (on) => update(setPath(c, 'autoPick', on))),
       el('div', {}, el('label', { for: 'autoPick' }, 'Piocher dans les fiches existantes'),
-        el('p', {}, 'Quand une place est libre et la file vide, la factory prend une fiche ouverte. Étiquettes : factory:urgent, factory:no-pick.'))),
-    el('div', { class: 'row' },
-      el('div', {}, el('label', { for: 'maxQuestions' }, 'Features en questions en même temps'),
-        el('p', {}, 'Features que la factory prend d\'elle-même et qui attendent vos réponses. Celles sur lesquelles vous écrivez vous-même démarrent toujours tout de suite.'),
-        el('input', { type: 'number', id: 'maxQuestions', min: '1', max: '10', value: String(c.maxQuestions ?? 2),
-          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= 10) update(setPath(c, 'maxQuestions', v)); else e.target.value = String(c.maxQuestions ?? 2); } }))));
+        el('p', {}, 'Quand une place est libre et la file vide, la factory prend une fiche ouverte. Étiquettes : factory:urgent, factory:no-pick.'),
+        // Only acts on picked features: nested under the switch, and off while picking is off.
+        el('div', { class: 'sub-setting', 'aria-disabled': c.autoPick === true ? 'false' : 'true' },
+          el('label', { for: 'maxQuestions' }, 'Features en questions en même temps'),
+          el('p', {}, 'Features que la factory prend d\'elle-même et qui attendent vos réponses. Celles sur lesquelles vous écrivez vous-même démarrent toujours tout de suite.'),
+          el('input', { type: 'number', id: 'maxQuestions', min: '1', max: '10', inputmode: 'numeric', disabled: c.autoPick !== true, value: String(c.maxQuestions ?? 2),
+            onchange: (e) => {
+              const v = Number(e.target.value);
+              if (Number.isInteger(v) && v >= 1 && v <= 10) return update(setPath(c, 'maxQuestions', v));
+              e.target.value = String(c.maxQuestions ?? 2);
+              toast('Entre 1 et 10.');
+            } })))));
   const stages = el('fieldset', {}, el('legend', {}, 'Étapes'),
     STAGES.map(([k, t, d]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
       el('div', {}, el('label', { for: `stage-${k}` }, t), el('p', {}, d)))));
