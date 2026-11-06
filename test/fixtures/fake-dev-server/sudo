@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stand-in for sudo: logs, drops its own options, runs the command as the current user.
+echo "sudo $*" >> "$FAKE/log"
+while [ $# -gt 0 ]; do case "$1" in -u) shift 2 ;; -*) shift ;; *) break ;; esac; done
+exec "$@"

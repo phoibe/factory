@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+case "${1:-}" in
+  -u) echo "${FAKE_UID:-1000}" ;;
+  -un) echo "${FAKE_USER:-pierre}" ;;
+  '') echo "uid=1000(pierre)" ;;
+  *) [ "$1" = "${FAKE_USER:-pierre}" ] ;;
+esac

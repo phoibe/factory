@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Stand-in for the GitHub CLI used by test/dev-server.test.mjs. GitHub's runner list lives in $FAKE/runners.txt
+# (one « id name labels » line per runner); each call is logged in $FAKE/log.
+echo "gh $*" >> "$FAKE/log"
+case "$*" in
+  "auth status"*) exit 0 ;;
+  "api user --jq .login") echo phoibe ;;
+  "auth setup-git"*) exit 0 ;;
+  "repo list"*) printf 'phoibe/prive\nphoibe/autre\n' ;;
+  *"repos/phoibe/prive/contents/factory.config.json"*) echo '{}' ;;
+  *"/contents/factory.config.json"*) exit 1 ;;
+  "api repos/actions/runner/releases/latest"*) echo v2.329.0 ;;
+  *"actions/runners/registration-token"*) echo REGTOKEN ;;
+  *"actions/runners/"*"/labels"*)
+    id=$(printf '%s' "$*" | sed -E 's#.*actions/runners/([0-9]+)/labels.*#\1#')
+    awk -v id="$id" '$1==id { $3 = $3 ",factory-dev" } { print }' "$FAKE/runners.txt" > "$FAKE/r.tmp" && mv "$FAKE/r.tmp" "$FAKE/runners.txt" ;;
+  *"actions/runners"*) cat "$FAKE/runners.txt" ;;
+  "api repos/phoibe/inconnu"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  "api repos/"*"--jq .private"*) if [ -n "${FAKE_PUBLIC:-}" ]; then echo false; else echo true; fi ;;
+  *) exit 0 ;;
+esac

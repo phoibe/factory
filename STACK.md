@@ -10,6 +10,7 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 ## Moteur / serveur
 - **Node.js 22** — fait tourner le moteur de la factory (file d'attente, lancement de l'agent, contrôles, mise en ligne) ; **aucun framework**
 - **Hébergement : GitHub Actions** — lance le moteur à chaque nouveauté dans vos projets (message, étape qui change, livraison) et toutes les quelques minutes
+- **Serveur de dev : runners GitHub Actions auto-hébergés** — font tourner les tâches automatiques de vos projets privés sur votre propre serveur (2 par projet), installés par une seule commande (voir le guide « serveur de dev »)
 - **Claude Code 2.1** — l'agent qui pose les questions, rédige les fiches et construit ; il est lancé par les routines Claude Code dans le cloud, ou par GitHub Actions en secours
 
 ## Autres services

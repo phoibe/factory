@@ -245,4 +245,17 @@ test('resuming keeps the saved routine by default and never opens a second frami
   assert.doesNotMatch(log, /issue create/);
   assert.match(out, /C'est prêt/);
 });
+test('a private project is reminded to run the dev-server command, filled in for this project', async () => {
+  const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', '']);
+  assert.match(out, /serveur de dev/);
+  assert.match(out, /bash <\(curl -fsSL https:\/\/raw\.githubusercontent\.com\/phoibe\/factory\/stable\/scripts\/dev-server\.sh\) phoibe\/mon-appli/);
+  assert.match(out, /docs\/serveur-de-dev\.md/);
+});
+
+test('a public project gets no dev-server reminder', async () => {
+  const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_PUBLIC: 'phoibe/mon-appli' });
+  assert.match(out, /C'est prêt/);
+  assert.doesNotMatch(out, /dev-server\.sh|serveur de dev/);
+});
+
 });

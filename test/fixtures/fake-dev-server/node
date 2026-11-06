@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo "${FAKE_NODE_VERSION:-v22.11.0}"

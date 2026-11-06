@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stand-in for tar: « extracts » a runner whose config.sh registers it in the fake GitHub and whose svc.sh logs.
+echo "tar $*" >> "$FAKE/log"
+dir=.; while [ $# -gt 0 ]; do [ "$1" = -C ] && dir=$2; shift; done
+cat > "$dir/config.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "config.sh $*" >> "$FAKE/log"
+name=""; labels=""
+while [ $# -gt 0 ]; do case "$1" in --name) name=$2 ;; --labels) labels=$2 ;; esac; shift; done
+echo "$((RANDOM + 1000)) $name self-hosted,Linux,X64,$labels" >> "$FAKE/runners.txt"
+echo '{}' > .runner
+EOS
+cat > "$dir/svc.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"
+[ "$1" = install ] && touch .service
+exit 0
+EOS
+chmod +x "$dir/config.sh" "$dir/svc.sh"

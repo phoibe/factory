@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+echo "curl $*" >> "$FAKE/log"
+while [ $# -gt 0 ]; do [ "$1" = -o ] && : > "$2"; shift; done
+exit 0
