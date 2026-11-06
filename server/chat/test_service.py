@@ -20,6 +20,7 @@ args = sys.argv
 prompt = sys.stdin.read()  # the prompt travels on stdin: a long conversation does not fit in an argument
 assert len(args[args.index("-p") + 1]) < 200, "the prompt must not be an argument"
 open(args[0] + ".prompt", "w").write(prompt)
+open(args[0] + ".args", "w").write(json.dumps(args[1:]))
 def out(o): print(json.dumps(o), flush=True)
 out({"type": "system", "subtype": "init"})
 out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Je regarde"}}})
@@ -37,6 +38,9 @@ class FakeGitHub:
         self.issues = []
         self.branches = set()
         self.fail_saves = False
+        self.shas = {}
+        self.on_read = None  # name -> hook run once after that file is read (another device saving meanwhile)
+        self.on_put = None  # name -> hook run once before that file is written; returning a status rejects the write
 
     def __call__(self, request):
         path, method = request.url.path, request.method
@@ -58,14 +62,36 @@ class FakeGitHub:
                 return httpx.Response(500, json={})
             if method == "PUT":
                 body = json.loads(request.content)
-                self.files[name] = base64.b64decode(body["content"])
+                hook = (self.on_put or {}).pop(name, None)
+                if hook and hook():
+                    return httpx.Response(409, json={})
+                if name in self.files and body.get("sha") != self.sha(name):
+                    return httpx.Response(409 if body.get("sha") else 422, json={})  # GitHub refuses a stale write
+                self.put(name, base64.b64decode(body["content"]))
                 return httpx.Response(200, json={})
             if name not in self.files:
                 return httpx.Response(404, json={})
             if request.headers.get("accept") == "application/vnd.github.raw":
                 return httpx.Response(200, content=self.files[name])
-            return httpx.Response(200, json={"content": base64.b64encode(self.files[name]).decode(), "sha": "x"})
+            meta = {"content": base64.b64encode(self.files[name]).decode(), "sha": self.sha(name)}
+            hook = (self.on_read or {}).pop(name, None)
+            if hook:
+                hook()
+            return httpx.Response(200, json=meta)
         return httpx.Response(404, json={})
+
+    def put(self, name, content):
+        self.files[name] = content
+        self.shas[name] = self.shas.get(name, 0) + 1
+
+    def sha(self, name):
+        return f"v{self.shas.get(name, 0)}"
+
+    def add_other_exchange(self, name, text):
+        """Another device's exchange lands in the conversation file."""
+        conv = json.loads(self.files[name])
+        conv["messages"] += [{"who": "me", "text": text, "images": [], "at": ""}, {"who": "agent", "text": "Autre réponse", "at": ""}]
+        self.put(name, json.dumps(conv).encode())
 
 
 @unittest.skipIf(httpx is None, "fastapi/httpx not installed")
@@ -151,6 +177,44 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(len(self.gh.issues), 1)
         self.assertEqual(kinds[-1], "done")
         self.assertIs(events[-1]["saved"], False)
+
+
+    def start_conversation(self):
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Début"})
+        return events[-1]["conversation"]["id"]
+
+    def texts(self, cid):
+        return [m["text"] for m in json.loads(self.gh.files[f"chats/{cid}.json"])["messages"] if m["who"] == "me"]
+
+    def test_a_message_saved_from_another_device_during_the_answer_is_kept(self):
+        cid = self.start_conversation()
+        name = f"chats/{cid}.json"
+        # Read when the message arrives, then the phone's exchange is saved while the agent answers this one.
+        self.gh.on_read = {name: lambda: self.gh.add_other_exchange(name, "Depuis le téléphone")}
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Depuis l'ordinateur"})
+        self.assertIs(events[-1]["saved"], True, events)
+        self.assertEqual(self.texts(cid), ["Début", "Depuis le téléphone", "Depuis l'ordinateur"])
+
+    def test_two_saves_that_cross_start_again_from_the_latest_conversation(self):
+        cid = self.start_conversation()
+        name = f"chats/{cid}.json"
+
+        def other_save_wins():  # the other save lands between our read and our write
+            self.gh.add_other_exchange(name, "Depuis le téléphone")
+            return False
+        self.gh.on_put = {name: other_save_wins}
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Depuis l'ordinateur"})
+        self.assertIs(events[-1]["saved"], True, events)
+        self.assertEqual(self.texts(cid), ["Début", "Depuis le téléphone", "Depuis l'ordinateur"])
+        self.assertEqual(len(self.gh.issues), 2)  # one per answer: a retried save never creates the issue again
+
+    def test_the_agent_can_only_read_the_project_and_the_images(self):
+        self.post("good", {"repo": "phoibe/habitudes", "message": "Lis /etc/passwd"})
+        args = json.loads(open(self.claude + ".args").read())
+        self.assertIn("--restricted", args)  # file tools confined to the project and the --add-dir image folder
+        self.assertEqual(args[args.index("--permission-mode") + 1], "dontAsk")  # anything else is refused
+        self.assertNotIn("--allowedTools", args)  # a blanket allow lets Read open any file on the machine
+        self.assertEqual(args[args.index("--add-dir") + 1].split("/")[-2], "chat")
 
 
 if __name__ == "__main__":
