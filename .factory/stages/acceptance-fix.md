@@ -2,7 +2,7 @@
 
 Le propriétaire a testé la preview et signale un problème.
 
-1. Relis son commentaire. Une idée nouvelle devient une nouvelle issue (label `factory:feature`), pas un
+1. Relis son commentaire. Une idée nouvelle devient une nouvelle issue (labels `factory:feature` et `factory:kept`), pas un
    ajout à cette PR : dis-le lui.
    S'il n'a pas d'aperçu et demande les liens pour brancher l'hébergeur, redonne-les : ceux de l'encadré
    « Avant de répondre « go » » de la fiche projet (issue de cadrage) ou, à défaut, les liens et les clics

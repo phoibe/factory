@@ -16,9 +16,17 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    manquants sur ce qui compte, accessibilité, performances, code mort ou dupliqué, écarts avec
    `PRODUCT.md`. Corrige chaque point (skill `receiving-code-review`) ; pour un bug, écris d'abord le test qui
    échoue. Puis une revue neuve des corrections, au plus 3 tours.
+3 bis. **Architecture** : skill `improve-codebase-architecture` (s'il est installé), en autonomie : repère les
+   endroits où le code s'est alourdi au fil des features (modules trop bavards, logique dupliquée, parties
+   difficiles à tester). Simplifie ici ce qui est petit et sans risque, tests à l'appui ; pour un vrai chantier,
+   ouvre une idée (point 4). Saute ses questions et son rapport HTML : tu travailles seul.
+3 ter. **Parcours** : si le projet n'a pas encore `test:e2e`, ajoute-le (voir l'étape 4 bis de `build.md`) avec
+   un parcours par feature déjà en ligne, d'après les critères d'acceptation des specs validées, et remplis
+   `e2e/smoke-routes.txt`.
 4. **Hors périmètre** : ce qui demande une vraie nouvelle feature ou un gros chantier ne se fait pas ici.
-   Ouvre une issue par sujet (`factory:feature` ou `factory:bug`), expliquée simplement, et cite-les dans la PR.
-5. **Vérifie** localement (`typecheck`, `lint`, `test`, `build`, `test:a11y`), puis
+   Ouvre une issue par sujet, expliquée simplement (voir « Ouvrir une issue » dans AGENT.md : pas de
+   `factory:kept`, elles iront dans « Idées à trier » ; et jamais une idée qu'il a déjà refusée), et cite-les dans la PR.
+5. **Vérifie** localement (`typecheck`, `lint`, `test`, `build`, `test:a11y`, `test:e2e`), puis
    `node .factory/scripts/journal-check.mjs` : il doit dire que rien ne manque.
 6. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français pour le propriétaire (« Review générale :
    ce qui a été amélioré »), avec la section « Design » de `design-pass.md` (score de la première et de la

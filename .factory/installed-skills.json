@@ -12,7 +12,11 @@
     "grilling",
     "domain-modeling",
     "grill-with-docs",
+    "improve-codebase-architecture",
+    "prototype",
     "to-spec",
-    "impeccable"
+    "to-tickets",
+    "impeccable",
+    "webapp-testing"
   ]
 }
