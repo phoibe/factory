@@ -11,3 +11,5 @@
 {"t":"2026-11-06T12:31:07.734Z","kind":"test","cmd":"cat >> test/relay.test.mjs <<'EOF'\n\ntest('sync: an update that does not go through is retried after 5 min, 30 min, 2 h, then daily, with one alert after a day', async () => {\n  const content = { conte","ok":false,"id":"toolu_01SdegXPH49ZZUQRMSZd8Tv9"}
 {"t":"2026-11-06T12:31:23.539Z","kind":"test","cmd":"python3 - <<'EOF'\np='scripts/relay.mjs'\ns=open(p).read()\na=\"\"\"    if (theirs === mine) return;\n    const ref = (await gh.getRepo())?.default_branch || 'main';\n    try { await gh.dispatch('factory-sync","ok":true,"id":"toolu_017oi8CV6hf9zBfyLuwZauHv"}
 {"t":"2026-11-06T12:31:37.949Z","kind":"test","cmd":"cat >> test/github.test.mjs <<'EOF'\n\ntest('a factory state is kept in a ref whose commit message is the JSON, and removed with null', async () => {\n  const refs = {};\n  const commits = {};\n  let seq =","ok":true,"id":"toolu_015yytMvdZ7gBGfNqHhXx1Dx"}
+{"t":"2026-11-06T12:31:54.878Z","kind":"skill","name":"requesting-code-review","id":"toolu_01DpJMaTTUBVeg3n8wbsdBjF"}
+{"t":"2026-11-06T12:32:25.881Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_01NBaYHTqcR1TVjbYxwCS67L"}
