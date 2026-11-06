@@ -23,8 +23,16 @@ export const L = {
   urgent: 'factory:urgent',
   autoPicked: 'factory:auto-picked',
   close: 'factory:close',
+  alreadyDone: 'factory:already-done',
+  duplicate: 'factory:duplicate',
+  obsolete: 'factory:obsolete',
   kept: 'factory:kept',
 };
+
+// Why the agent closed a feature or bug by itself (issue #203). The label stays on the closed issue: the board shows
+// the reason, and a message from the owner reopens the request.
+export const CLOSE_REASONS = [L.alreadyDone, L.duplicate, L.obsolete];
+export const closeReason = (labels) => CLOSE_REASONS.find((l) => (labels || []).includes(l)) || null;
 
 // Colors and French descriptions, used to create the labels in a project.
 export const LABEL_DEFS = [
@@ -50,6 +58,9 @@ export const LABEL_DEFS = [
   [L.urgent, 'e11d48', 'Fiche à piocher en premier par la factory'],
   [L.autoPicked, 'c2e0c6', "La factory a pris cette fiche d'elle-même (place libre)"],
   [L.close, 'ededed', 'Le propriétaire abandonne cette fiche : la factory la ferme'],
+  [L.alreadyDone, 'ededed', "Fermée par l'agent : déjà réglée. Écrivez dedans pour la rouvrir"],
+  [L.duplicate, 'ededed', "Fermée par l'agent : en double. Écrivez dedans pour la rouvrir"],
+  [L.obsolete, 'ededed', "Fermée par l'agent : obsolète. Écrivez dedans pour la rouvrir"],
   [L.kept, 'c2e0c6', "Idée de l'agent gardée par le propriétaire : la factory peut la prendre"],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];

@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea } from './lib/labels.mjs';
+import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
@@ -32,6 +32,15 @@ export const MAX_BRANCH_UPDATES = 2;
 // A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
 export const IDLE_MINUTES = 30;
 const HEAL_MARKER = '<!-- factory-heal -->';
+// Saved at the end of a request's description when the agent closes it by itself: the step to resume and its PRs.
+const REOPEN_MARKER = '<!-- factory-reopen';
+const REOPEN_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.resumeQueued, L.autoGo];
+// A PR comes back only at the steps where it waits for the owner; at any other step the end of the agent's run
+// restarts its checks.
+const REOPEN_PR_LABELS = [L.visualReview, L.acceptance];
+const stripReopen = (body) => String(body || '').replace(/\n*<!-- factory-reopen \{.*?\} -->\s*$/s, '');
+// GitHub's own close reason for each of the agent's reasons.
+const CLOSE_STATE = { [L.alreadyDone]: 'completed', [L.duplicate]: 'duplicate', [L.obsolete]: 'not_planned' };
 // In an undo PR's body: the issue that redoes the delivery, started once the undo is merged.
 const REVERT_REDO = '<!-- factory-revert-redo #';
 // The deployments that are the live site (not a PR preview).
@@ -249,7 +258,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // then bugs, then the rest, oldest first. Ideas the agent proposed are left for the owner to sort. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
   async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
-    const SKIP = [L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
+    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     // Picked features still waiting for the owner's answers (questions or spec): at most `maxQuestions` of them.
@@ -468,20 +477,54 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The owner gave up on a card (PR or issue): close it with its PR or issue, and free its place. The agent's run is
   // refused closing anything, so it only asks for it with factory:close and the factory does it here.
-  async function dropCard(n) {
+  async function dropCard(n, owner) {
     const item = await gh.getIssue(n);
     if (!item || item.state !== 'open') return;
     const isPr = Boolean(item.pull_request);
     const pr = isPr ? await gh.getPr(n) : null;
     const issue = isPr ? linkedIssue(pr?.body) || branchIssue(pr) : n;
     const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
+    // The agent closing by itself (already done, duplicate, obsolete: issue #203). Only a feature or a bug; its own
+    // message is the only one, and the card's state is saved so that a message from the owner brings it back.
+    const it0 = issue ? (issue === n ? item : await gh.getIssue(issue)) : null;
+    const reason = closeReason(names(item.labels)) || closeReason(names(it0?.labels));
+    if (reason) {
+      const kinds = names(it0?.labels);
+      if (!it0 || it0.state !== 'open' || ![L.feature, L.bug].some((l) => kinds.includes(l))) {
+        for (const k of new Set([n, issue].filter(Boolean))) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(k, l);
+        log(`drop: #${n} refused, the agent only closes a feature or a bug by itself`);
+        await gh.comment(issue || n, say("La factory ne ferme pas seule ce type de demande : elle reste ouverte. Dites « fermer » ici si vous voulez l'abandonner."));
+        return;
+      }
+      // The owner wrote during the run (on the request or its PR): his message wins, nothing is closed.
+      const cards = [...new Set([issue, ...prs])];
+      const waiting = [];
+      for (const k of cards) if ((await liveLabels(k)).includes(L.pending)) waiting.push(k);
+      if (waiting.length) {
+        for (const k of cards) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(k, l);
+        log(`drop: #${n} not closed, the owner wrote meanwhile`);
+        for (const k of waiting) await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: k, labels: [] }, { ownerLogin: owner });
+        return;
+      }
+      if (!kinds.includes(reason)) await gh.addLabels(issue, [reason]);
+      const prSteps = [];
+      for (const p of prs) prSteps.push({ n: p, labels: (await liveLabels(p)).filter((l) => REOPEN_PR_LABELS.includes(l)) });
+      const saved = { labels: kinds.filter((l) => REOPEN_LABELS.includes(l)), prs: prSteps };
+      await gh.updateIssue(issue, { body: `${stripReopen(it0.body)}\n\n${REOPEN_MARKER} ${JSON.stringify(saved)} -->`.replace(/^\n\n/, '') });
+    }
     const dropLabels = async (k) => { for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l); };
-    for (const p of prs) { await gh.closePr(p); await dropLabels(p); }
+    for (const p of prs) {
+      await gh.closePr(p);
+      await dropLabels(p);
+      // The reason lives on the request only: a closed PR keeping it would start the agent on a message.
+      for (const l of CLOSE_REASONS) if ((await liveLabels(p)).includes(l)) await gh.removeLabel(p, l);
+    }
     if (issue) {
       const it = issue === n ? item : await gh.getIssue(issue);
       await dropLabels(issue);
-      if (it?.state === 'open') await gh.closeIssue(issue, 'not_planned');
+      if (it?.state === 'open') await gh.closeIssue(issue, CLOSE_STATE[reason] || 'not_planned');
     }
+    if (reason) { log(`drop: #${n} closed by the agent (${reason})`); return dequeue({ freed: issue }); }
     const what = isPr ? (issue ? `cette PR est abandonnée et la demande #${issue} est fermée` : 'cette PR est abandonnée')
       : (prs.length ? `cette demande est fermée, avec sa PR #${prs[0]}` : 'cette demande est fermée');
     await gh.comment(n, say(`C'est fait : ${what}. Rien n'a été mis en ligne. Pour reprendre le sujet plus tard, rouvrez-la.`));
@@ -491,8 +534,40 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // A card the agent marked factory:close but whose run ended without removing factory:running (or whose event was
   // lost): closed on the next tick all the same.
-  async function closeAsked() {
-    for (const item of (await gh.listIssues({ labels: L.close })) || []) await dropCard(item.number);
+  async function closeAsked(ownerLogin) {
+    for (const item of (await gh.listIssues({ labels: L.close })) || []) {
+      // An agent still at work closes its card itself when it ends: the tick only takes the ones left behind.
+      if (await lockFresh(item.number, names(item.labels))) continue;
+      await dropCard(item.number, ownerLogin);
+    }
+  }
+
+  // The owner wrote in a request the agent closed by itself: it opens again with its PRs, at the step it was at, and
+  // blocked, so the usual « blocked card answered » path resumes it (or queues it when the factory is full).
+  async function reopenCard(n) {
+    const item = await gh.getIssue(n);
+    const m = new RegExp(`${REOPEN_MARKER} (\\{.*?\\}) -->`).exec(item?.body || '');
+    let saved = { labels: [], prs: [] };
+    try { if (m) saved = { ...saved, ...JSON.parse(m[1]) }; } catch { /* a damaged marker: reopen with no state */ }
+    if (item?.state === 'closed') await gh.reopenIssue(n);
+    if (m) await gh.updateIssue(n, { body: stripReopen(item.body) });
+    for (const l of CLOSE_REASONS) if (names(item?.labels).includes(l)) await gh.removeLabel(n, l);
+    // A card closed in the queue comes back as building: blocked, the answered path starts it or queues it again.
+    const step = [...new Set(saved.labels.filter((l) => REOPEN_LABELS.includes(l)).map((l) => ([L.queued, L.resumeQueued].includes(l) ? L.building : l)))];
+    // No saved step (never started, or closed by hand with the label): it starts like a new request.
+    if (step.length) await gh.addLabels(n, [...step, L.blocked]);
+    let stepless = null;
+    for (const p of saved.prs || []) {
+      const { n: number, labels = [] } = typeof p === 'number' ? { n: p } : p;
+      try {
+        await gh.reopenPr(number);
+        const back = labels.filter((l) => REOPEN_PR_LABELS.includes(l));
+        if (back.length) await gh.addLabels(number, back);
+        else stepless = number;
+      } catch (e) { log(`reopen PR #${number}: ${e.message}`); }
+    }
+    log(`reopen: #${n} (${step.join(', ') || 'no saved step'})`);
+    return { stepless };
   }
 
   // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
@@ -503,7 +578,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await relaunchIdle(closed, ownerLogin);
     await releaseStaleLocks(ownerLogin);
     await reportLost();
-    await closeAsked();
+    await closeAsked(ownerLogin);
     await syncIfBehind();
   }
 
@@ -726,7 +801,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
-      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed' }; // webhook labels can be stale
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
@@ -740,8 +815,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let action = decide(ev, config, ctx);
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
+    // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
+    // and its checks start again.
+    let reopenedPr = null;
+    if (action.type === 'reopen') {
+      ({ stepless: reopenedPr } = await reopenCard(n));
+      ev = { ...ev, closed: false, labels: await liveLabels(n) };
+      action = decide(ev, config, { ...ctx, inFlight: await inFlight() });
+      log(`after reopening: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
     if (action.type === 'replay') {
       await gh.removeLabel(n, L.pending);
+      // The agent wanted to close by itself, but the owner wrote meanwhile: his message wins, the card stays open.
+      if (closeReason(await liveLabels(n))) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(n, l);
       const text = await deferredMessage(n, ownerLogin, ev.kind === 'pr');
       if (!text) return { action, outputs };
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
@@ -763,7 +849,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
         const issue = pr ? linkedIssue(pr.body) : n;
-        await fireAgent({ stage: action.stage, issue, pr: pr ? n : null });
+        await fireAgent({ stage: action.stage, issue, pr: pr ? n : reopenedPr });
         await applyLabels(); // only once the agent really started
         // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
         if (pr && issue && action.remove?.includes(L.blocked)) await gh.removeLabel(issue, L.blocked);
@@ -808,7 +894,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'drop':
-        await dropCard(n);
+        await dropCard(n, ownerLogin);
         break;
       case 'docs-merge':
         await mergeDocsPr(n);

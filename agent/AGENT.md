@@ -107,6 +107,18 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
   Quand le propriétaire demande de fermer ou d'abandonner (une demande, une PR), ajoute le label `factory:close`
   à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
   factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
+- **Fermer de toi-même une demande inutile**, sans lui demander de confirmer : seulement une feature ou un bug (jamais
+  un cadrage `factory:project` ni une revue `factory:audit`), à n'importe quelle étape, et seulement dans trois cas
+  sans ambiguïté, avec une preuve (un lien) : **déjà réglée** par une autre demande ou PR, **en double** d'une
+  demande encore ouverte, ou **obsolète** (elle porte sur quelque chose qui n'existe plus). Au moindre doute (réglée
+  en partie, pas certain), pose-lui la question comme d'habitude, sans fermer. Pour fermer :
+  1. Pour un doublon, ferme la plus récente des deux, et recopie d'abord dans la plus ancienne, en commentaire
+     (avec `<!-- factory-agent -->`), ce que la récente apportait de nouveau (une précision, une capture).
+  2. Laisse **un seul message** court dans la demande : la raison avec son lien (« Déjà réglée par #… », « En double
+     de #… », « Obsolète : … »), et « Si vous n'êtes pas d'accord, écrivez ici : la demande se rouvrira et reprendra
+     là où elle en était. »
+  3. Ajoute à l'issue `factory:close` **et** le label de la raison : `factory:already-done`, `factory:duplicate` ou
+     `factory:obsolete`. La factory ferme l'issue et sa PR sans autre message, et la rouvre si le propriétaire y écrit.
 - **Ouvrir une issue.** Mets toujours `<!-- factory-agent -->` au début de sa description et le label
   `factory:feature` (ou `factory:bug`). Puis :
   - **L'idée vient du propriétaire** (une remarque de sa part qui sort de la PR en cours, une feature de la

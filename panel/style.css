@@ -79,6 +79,9 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .lane-done h2 { color: var(--ok); }
 .ticket.done { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); box-shadow: none; }
 .finished { margin: 0; font-weight: 650; color: var(--ok); }
+.ticket.done.closed { border-color: var(--line); }
+.finished.closed { color: var(--muted); font-weight: 400; }
+.finished.closed .reason { color: var(--text); font-weight: 650; }
 .finished .when { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .done-more { color: var(--muted); font-size: 0.85em; margin: 10px 2px 0; }

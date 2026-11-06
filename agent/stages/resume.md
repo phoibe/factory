@@ -3,6 +3,11 @@
 L'issue ou la PR était `factory:blocked` et le propriétaire a répondu. La factory a déjà retiré
 `factory:blocked` : le tableau de suivi montre que tu travailles.
 
+**Demande que tu avais fermée toi-même** (déjà réglée, en double, obsolète) et dans laquelle il vient d'écrire : la
+factory l'a rouverte, avec sa PR, à son étape. Relis ta raison de fermeture et sa réponse. S'il a raison, reprends
+l'étape où elle en était. Sinon, explique-lui simplement pourquoi et redemande-lui (`factory:blocked`) : ne la
+referme pas seul une seconde fois.
+
 1. Relis ton message de blocage et sa réponse.
 2. Si la réponse débloque : reprends l'étape interrompue (souvent `build.md` ou `bugfix.md`, en repartant de la
    branche existante).

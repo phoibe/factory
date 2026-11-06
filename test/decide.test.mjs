@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decide, isApproval, isDrop, afterChecks } from '../scripts/lib/decide.mjs';
-import { L } from '../scripts/lib/labels.mjs';
+import { L, closeReason } from '../scripts/lib/labels.mjs';
 
 const config = { maxParallel: 2, stages: { grilling: true, acceptance: true, screenshots: true }, review: { maxLoops: 3 } };
 const ctx = { inFlight: 0, lockFresh: false };
@@ -319,4 +319,42 @@ test('« fermer » on a factory issue is a drop too', () => {
 
 test('an agent run that ends with factory:close is a drop', () => {
   assert.equal(decide(ev({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.close] }), config, ctx).type, 'drop');
+});
+
+// Issue #203: a request the agent closed itself (already done, duplicate, obsolete) comes back when the owner writes in it.
+test('an owner message on an agent-closed request reopens it', () => {
+  for (const reason of [L.alreadyDone, L.duplicate, L.obsolete]) {
+    const a = decide(ev({ labels: [L.feature, reason], closed: true, text: 'non, ce n\'est pas réglé' }), config, ctx);
+    assert.equal(a.type, 'reopen', reason);
+  }
+});
+
+test('a message on a request closed the usual way is not a reopen', () => {
+  const a = decide(ev({ labels: [L.feature], closed: true, text: 'encore une chose' }), config, ctx);
+  assert.notEqual(a.type, 'reopen');
+});
+
+test('the agent\'s own message on an agent-closed request reopens nothing', () => {
+  const a = decide(ev({ labels: [L.bug, L.obsolete], closed: true, fromAgent: true }), config, ctx);
+  assert.equal(a.type, 'ignore');
+});
+
+test('an open request keeping a reason label is not reopened again', () => {
+  const a = decide(ev({ labels: [L.feature, L.obsolete, L.blocked], closed: false, text: 'oui' }), config, ctx);
+  assert.notEqual(a.type, 'reopen');
+});
+
+test('closeReason names the reason label of an agent-closed request', () => {
+  assert.equal(closeReason([L.feature, L.duplicate]), L.duplicate);
+  assert.equal(closeReason([L.feature, L.close]), null);
+});
+
+test('an agent-closed request reopened with the GitHub button is a reopen', () => {
+  const a = decide(ev({ event: 'issues', action: 'reopened', labels: [L.feature, L.obsolete] }), config, ctx);
+  assert.equal(a.type, 'reopen');
+});
+
+test('the owner writing during the run comes before the agent closing by itself', () => {
+  const a = decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.close, L.obsolete, L.pending] }), config, ctx);
+  assert.equal(a.type, 'replay');
 });

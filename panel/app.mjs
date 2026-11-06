@@ -229,6 +229,8 @@ async function refresh() {
       if (res.data.length < 100) break;
     }
     const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
+    // Requests the agent closed by itself (already done, duplicate, obsolete): shown in « Terminé » with their reason.
+    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
     const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
     if (first) {
       for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
@@ -239,7 +241,7 @@ async function refresh() {
     }
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
-    if (closed.data) { live.done = doneItems(closed.data); live.doneLoaded = true; }
+    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
@@ -273,7 +275,7 @@ async function refresh() {
     if (live.repo !== repo) return;
     live.last = Date.now();
     live.failures = 0;
-    if (issues.changed || closed.changed || ev.changed || previewsChanged || first) drawBoard();
+    if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
@@ -519,7 +521,7 @@ function drawBoard() {
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
-    for (const d of live.done) if (!known.has(String(d.number))) toast(`« ${d.title} » : ${COLUMNS.find((c) => c.id === 'done').title}`);
+    for (const d of live.done) if (!known.has(String(d.number))) toast(`« ${d.title} » : ${d.reason ? `fermée (${d.reason.toLowerCase()})` : COLUMNS.find((c) => c.id === 'done').title}`);
   }
   live.doneSig = doneSig;
   const sizes = Object.fromEntries([...live.plans].filter(([, p]) => p).map(([n, p]) => [n, p.size]));
@@ -556,10 +558,12 @@ function drawBoard() {
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', el('span', { class: 'count' }, String(live.done.length))),
       live.done.length
-        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: 'ticket done' },
+        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
-          el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`)))))
-        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"),
+          (d.reason
+            ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
+            : el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminée', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))))))
+        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant."),
       doneShown.hidden ? el('p', { class: 'done-more' }, olderNote(doneShown.hidden)) : null)];
   const yoursSig = JSON.stringify([held.pending.map((c) => [c.number, c.title]), ...yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')])]);
   const holder = el('div', {}, ...fresh);
