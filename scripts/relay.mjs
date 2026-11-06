@@ -20,6 +20,7 @@ import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notif
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
+import { forwardedAnswer } from './lib/answer.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -1115,6 +1116,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return { action: { type: ev.kind }, outputs };
     }
     const ctx = { inFlight: 0, lockFresh: false };
+    // The panel's « Ok » for a PR, written on its issue because the panel's token cannot comment on PRs: handled as
+    // if written on the PR. Only the owner's, and only for the PR that really delivers this issue.
+    const fwd = ev.event === 'issue_comment' && ev.kind === 'issue' && ev.fromOwner && !ev.fromAgent ? forwardedAnswer(ev.text) : null;
+    if (fwd) {
+      const pr = await gh.getPr(fwd.pr);
+      if (pr && prIssue(pr) === ev.number) {
+        log(`panel answer on #${ev.number} applied to PR #${fwd.pr}`);
+        ev = { ...ev, kind: 'pr', number: fwd.pr, text: fwd.text, commentId: undefined };
+      } else return { action: { type: 'ignore', reason: `réponse pour une PR #${fwd.pr} qui ne livre pas #${ev.number}` }, outputs };
+    }
     if (ev.kind === 'replay') {
       const issue = await gh.getIssue(ev.number);
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };

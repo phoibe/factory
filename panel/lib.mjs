@@ -29,6 +29,8 @@ export function waitsForOwner(labels) {
 
 // Every issue number a pull request body closes (« Closes #1, closes #2 »).
 const closedIssues = (body) => [...String(body || '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map((m) => Number(m[1]));
+// The issue a pull request delivers (its first « Closes #n »), or null.
+export const deliveredIssue = (pr) => closedIssues(pr?.body)[0] || null;
 
 // An issue whose PR is already open shows only once, on the PR's column.
 export function boardItems(items) {

@@ -116,3 +116,14 @@ test('après l\'envoi, recharger la page ne permet pas d\'envoyer un second « o
     assert.equal(await page.locator('.ticket.pending[data-number="10"] button.go').isDisabled(), true);
   });
 });
+
+test('jeton sans droit d\'écrire sur les PR : le « ok » part sur la demande liée, avec le numéro de la PR', async () => {
+  const delivering = { ...visual, body: 'Résumé\n\nCloses #3' };
+  await withPanel({ issues: [delivering], forbidden: new Set(['/repos/o/r/issues/10/comments']) }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="10"]').click();
+    await waitFor(() => sentOn(writes, 3)().length, page);
+    assert.deepEqual(sentOn(writes, 3)(), ['<!-- factory-answer-pr:10 -->\nok']);
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Captures validées'));
+  });
+});

@@ -233,3 +233,9 @@ test('ideasToShow hides the ideas being sorted and forgets those GitHub no longe
   assert.deepEqual(settled, [9]);
   assert.deepEqual(ideasToShow(ideas, new Map()).shown, ideas);
 });
+
+test('deliveredIssue reads the first « Closes #n » of a PR', async () => {
+  const { deliveredIssue } = await import('../panel/lib.mjs');
+  assert.equal(deliveredIssue({ body: 'Résumé\n\nCloses #12, closes #13' }), 12);
+  assert.equal(deliveredIssue({ body: 'see #4' }), null);
+});

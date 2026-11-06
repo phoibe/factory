@@ -149,6 +149,10 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
 - **Tests navigateur dans le cloud** : le Chromium de la session est `/opt/pw-browsers/chromium`. Lance `test:a11y`
   (et tout test Playwright) avec `CHROMIUM_PATH=/opt/pw-browsers/chromium` et un `timeout 300` : sans lui, un
   Chromium introuvable peut bloquer le test plusieurs minutes. Ne lance pas `playwright install`.
+- **Dépendances** : si `node_modules` manque ou qu'un paquet (par exemple `playwright`) est introuvable, lance
+  `npm ci`. Ne crée jamais de lien symbolique vers un dossier hors du dépôt (comme les paquets globaux de
+  `/opt`) et n'en supprime jamais : le run tourne sans personne pour accepter une demande d'autorisation, il
+  resterait figé et garderait la carte bloquée pendant 2 h 30.
 - Les captures d'écran vont sur la branche `claude/factory-assets` via `.factory/scripts/shots.mjs publish`.
 
 ## Interdits
