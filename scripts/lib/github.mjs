@@ -71,7 +71,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
   const LOCK_REF = 'factory/lock';
-  let mine = null; // sha of the lock commit this run created
+  let mine = null; // sha of the lock commit this run created (moved forward by each sign of life)
+  let tree = null; // the lock's content, reused by the signs of life
   let seen = null; // sha of the lock commit last seen held by someone else
   const lockSha = async () => (await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
   const dropIf = async (sha) => {
@@ -83,8 +84,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async acquire() {
       seen = await lockSha();
       if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
-      const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] });
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree: tree.sha, parents: [] });
+      tree = (await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
       try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
       catch (e) { if (String(e).includes('422')) return false; throw e; }
     },
@@ -92,6 +93,26 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       if (!seen) return null;
       const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
       return commit ? Date.now() - Date.parse(commit.committer.date) : null;
+    },
+    // A sign of life: a new commit on top of ours, so its date is now. A fast-forward only (force: false): a run that
+    // took the lock over has put an unrelated commit there, and GitHub refuses the move (422) instead of stealing it back.
+    // Works on the hold it started from: a late answer never touches a newer hold of the same run.
+    async refresh() {
+      const held = mine;
+      if (!held) return false;
+      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      let moved = true;
+      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      catch (e) {
+        if (!/422/.test(String(e))) throw e;
+        // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
+        // Still on our previous commit: the lock is ours, only this sign of life failed (the next one retries).
+        const now = await lockSha();
+        if (now === held) throw e;
+        moved = now === commit.sha;
+      }
+      if (mine === held) mine = moved ? commit.sha : null;
+      return moved;
     },
     release: () => dropIf(mine), // never the lock of the run that took over from us
     takeOver: () => dropIf(seen),
