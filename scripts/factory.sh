@@ -260,6 +260,21 @@ $extra"
   ok "Cadrage lancé : $url"
 }
 
+# ---- Serveur de dev (projets privés seulement) ----------------------------------------------------
+# A private project runs its automatic tasks on the dev server: remind the owner to add its runners there.
+DEV_SERVER_GUIDE="https://github.com/phoibe/factory/blob/stable/docs/serveur-de-dev.md"
+dev_server_reminder() {
+  [ "$(gh api "repos/$REPO" --jq .private 2>/dev/null || true)" = true ] || return 0
+  local cmd="bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/stable/scripts/dev-server.sh) $REPO"
+  say "7. Runners sur votre serveur de dev"
+  echo "  Ce projet est privé : ses tâches automatiques tourneront sur votre serveur de dev, pour ne pas consommer"
+  echo "  votre quota GitHub. Ouvrez un terminal sur le serveur et collez-y cette commande (une seule fois) :"
+  printf '\n     %s\n\n' "$cmd"
+  if copy "$cmd"; then echo "  Je viens de la copier pour vous : il suffit de la coller (Cmd+V) dans le terminal du serveur."; fi
+  echo "  Le guide pas à pas : $DEV_SERVER_GUIDE"
+  echo "  Tant que ce n'est pas fait, le projet n'a pas de runner sur le serveur."
+}
+
 # Questions posées quand le script est lancé sans arguments.
 choose_mode() {
   say "Bienvenue dans la software factory 👋"
@@ -390,6 +405,7 @@ main() {
   alerts
   first_sync
   framing_issue
+  dev_server_reminder
   say "C'est prêt 🎉"
   echo "  L'agent vous pose ses questions dans l'issue de cadrage, dans quelques minutes."
   echo "  Tableau de bord : https://phoibe.github.io/factory/"
