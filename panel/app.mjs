@@ -1,4 +1,5 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems } from './lib.mjs?v=20';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, deliveredIssue } from './lib.mjs?v=21';
+import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=14';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
@@ -430,9 +431,20 @@ const SENT = {
   visual: '« ok » envoyé. Captures validées : la fusion se fera dès que les contrôles automatiques sont verts.',
   acceptance: '« ok » envoyé. Recette validée : la mise en ligne se fait maintenant.',
 };
+// The panel's token may be read-only on pull requests (the one created from the sign-in link was, until 2026-11-06):
+// GitHub then refuses the comment with a 403. The answer goes on the issue the PR delivers, and the relay applies
+// it to the PR.
+async function postAnswer(repo, c, word) {
+  const post = (n, body) => api(`/repos/${repo}/issues/${n}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+  try { await post(c.number, word); } catch (e) {
+    const issue = c.pull_request ? deliveredIssue(c) : null;
+    if (e.status !== 403 || !issue) throw e;
+    await post(issue, answerForPr(c.number, word));
+  }
+}
 async function sendGo(c, btn, repo, key) {
   try {
-    await api(`/repos/${repo}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: goWord(c) }) });
+    await postAnswer(repo, c, goWord(c));
     toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
     // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }

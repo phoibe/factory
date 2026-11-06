@@ -222,3 +222,9 @@ test('an idea written by a stranger on a public project is not an idea to sort',
   const idea = (number, author_association) => ({ number, body: '<!-- factory-agent -->\nIdée', labels: ['factory:feature'], author_association, user: { login: 'x' } });
   assert.deepEqual(ideaItems([idea(1, 'NONE'), idea(2, 'OWNER')]).map((i) => i.number), [2]);
 });
+
+test('deliveredIssue reads the first « Closes #n » of a PR', async () => {
+  const { deliveredIssue } = await import('../panel/lib.mjs');
+  assert.equal(deliveredIssue({ body: 'Résumé\n\nCloses #12, closes #13' }), 12);
+  assert.equal(deliveredIssue({ body: 'see #4' }), null);
+});
