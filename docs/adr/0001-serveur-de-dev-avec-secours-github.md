@@ -1,0 +1,3 @@
+# Serveur de dev pour les projets privés, secours GitHub piloté par la factory
+
+Les tâches automatiques des projets privés tournent sur le serveur de dev pour économiser le quota GitHub ; les projets publics restent sur les machines GitHub, gratuites pour eux, ce qui évite aussi d'exécuter sur le serveur le code de demandes venant d'inconnus. GitHub ne bascule pas seul vers ses machines quand le serveur est éteint, et le serveur, derrière Tailscale, est injoignable de l'extérieur : c'est donc la factory (projet public, tâches gratuites) qui, toutes les 15 minutes, demande à GitHub si les runners sont connectés, avec une clé personnelle limitée, et bascule les projets. Sans cette clé, tout reste sur les machines GitHub, pour que rien ne reste bloqué.
