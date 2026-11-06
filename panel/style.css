@@ -74,9 +74,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .live.down { color: var(--danger); }
 .lane { margin: 0 0 32px; }
 .lane h2 { display: flex; align-items: center; gap: 8px; font-size: 1rem; margin: 0 0 12px; }
-.lane-yours h2 { color: var(--you); }
 .count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--track); color: var(--text); font-size: .8125rem; font-variant-numeric: tabular-nums; }
-.lane-yours .count { background: var(--you); color: var(--surface); }
 .lane-done h2 { color: var(--ok); }
 .ticket.done { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); box-shadow: none; }
 .finished { margin: 0; font-weight: 650; color: var(--ok); }
@@ -293,12 +291,6 @@ main { max-width: 1100px; padding: 24px 16px 96px; }
 .you-card { background: var(--you-bg); border: 1px solid var(--you-line); border-radius: 14px; padding: 24px; margin: 0 0 48px; display: flex; flex-direction: column; gap: 16px; }
 .you-card.calm { background: var(--surface); border-color: var(--line); }
 .you-card .headline { font-size: 1.75rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; color: var(--text); }
-.you-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.you-item { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--you-line); border-radius: 10px; }
-.you-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.you-title { display: inline-block; padding: 10px 0; margin: -10px 0; font-weight: 600; color: var(--text); text-underline-offset: 3px; } /* 44 px to the thumb, same layout */
-.you-item .alert { margin: 0; }
-.you-item .button, .you-item .go { align-self: stretch; text-align: center; }
 button.go { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 1.125rem; min-height: 48px; padding: 12px 24px; }
 button.go:hover { filter: brightness(1.08); border-color: var(--accent); }
 button.go:disabled { opacity: .6; cursor: default; }
@@ -312,14 +304,6 @@ button.go:disabled { opacity: .6; cursor: default; }
 .doing, .ticket .session, details summary { color: var(--text); }
 .tabs button, .actions .button { font-weight: 500; }
 .actions .button:first-child { font-weight: 600; }
-@media (min-width: 700px) {
-  .you-item { flex-direction: row; align-items: center; justify-content: space-between; }
-  .you-item .button { align-self: auto; min-width: 120px; }
-  /* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
-  .you-item .go { align-self: auto; min-width: 9.5em; }
-  /* The text takes the free space, so a plate's buttons sit together on the right instead of spreading out. */
-  .you-what { flex: 1 1 auto; min-width: 0; }
-}
 @media (max-width: 600px) { .you-card { padding: 16px; margin-bottom: 32px; } }
 @media (max-width: 600px) {
   .top { position: static; }
@@ -328,9 +312,6 @@ button.go:disabled { opacity: .6; cursor: default; }
 }
 .site-line a, .quiet-link { display: inline-block; padding: 12px 0; }
 .site-line { margin: 0; }
-.you-what .num { color: var(--muted); font-size: .8125rem; }
-.you-item.blocked { border-color: var(--danger); }
-.you-item .blocked-tag { font-weight: 600; color: var(--danger); }
 button.go:focus-visible { outline-color: var(--text); }
 /* ---- Mono Numbers Rule: every figure is set in Geist Mono (see numbers.mjs for the text figures) ---- */
 .num { font-size: .92em; letter-spacing: -.01em; }
@@ -342,8 +323,7 @@ button.go:focus-visible { outline-color: var(--text); }
 /* Blue is for what waits for an answer: links are ink and underlined, focus rings are ink. */
 a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 a.button { text-decoration: none; }
-.brand, .ticket .main, .you-title { text-decoration: none; }
-.you-title { text-decoration: underline; }
+.brand, .ticket .main { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
@@ -427,3 +407,50 @@ details summary { color: var(--text); }
 /* GitHub refused the sort: the card came back, this line says why until the next click on it. */
 .ticket.idea .idea-error { margin: 0; font-size: .8125rem; color: var(--danger); }
 ::placeholder { color: var(--muted); opacity: 1; }
+
+/* ---- Issue 269: « À vous de jouer » as cards, like the other lanes, tinted soft blue ---- */
+.you-card.lane-yours { display: block; background: none; border: 0; border-radius: 0; padding: 0; margin: 0 0 48px; }
+.lane-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin: 0 0 12px; }
+.lane-head h2 { margin: 0; }
+.ticket.yours { background: var(--you-bg); border-color: var(--you-line); }
+.ticket.yours.blocked { background: var(--danger-bg); border-color: var(--danger); }
+.ticket.yours .blocked-tag { align-self: flex-start; font-weight: 600; color: var(--danger); }
+.ticket.yours .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+/* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
+.ticket.yours .card-actions button.go { flex: 1 1 100%; min-width: 9.5em; }
+@media (max-width: 600px) { .you-card.lane-yours { margin-bottom: 32px; } }
+/* The preview link reads like the other quiet buttons of the card, not like the small link of the other lanes. */
+.ticket.yours .card-actions .preview.secondary { padding: 8px 14px; font-size: inherit; }
+/* Design pass (#269): quiet buttons share one row and wrap their text instead of stacking;
+   a near miss around the buttons does not open GitHub; the action line has no arrow pointing at nothing. */
+.ticket.yours .card-actions > :not(.go) { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+.ticket.yours .card-actions .button.secondary { border-color: var(--you-line); }
+.ticket.yours .card-actions::before { content: ""; position: absolute; inset: -8px; z-index: -1; }
+/* Retouch (#269): every card of the lane has the same size whatever its content (no staircase); the steps bar and
+   the time left sit at the bottom of each card, so they line up from one card to the next. */
+.lane-yours .tickets { grid-auto-rows: 1fr; align-items: stretch; }
+/* Retouch 3: a card of this lane is never narrower than its row of three buttons (fewer columns on a mid-size screen). */
+.lane-yours .tickets { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.ticket.yours .card-actions { margin-bottom: auto; padding-bottom: 4px; }
+.ticket.yours .eta { margin-top: 0 !important; } /* the free space goes above the steps bar only */
+.ticket.yours .cta .arrow { display: none; }
+/* Only the title and the buttons answer: a tap on the card's background does nothing (it used to be a list row, not a link). */
+.ticket.yours .main::after { content: none; }
+.ticket.yours:hover { transform: none; border-color: var(--you-line); }
+.ticket.yours.blocked:hover { border-color: var(--danger); }
+/* The ↗ stays in the label's text run (one flex item), so the label wraps like a sentence. */
+.ticket.yours .card-actions > :not(.go) > span { display: contents; }
+/* Retouch 2 (#269): the cards were too tall. Their buttons take the small size of the waiting cards' buttons (32 px seen,
+   44 px under the finger); the blue « go » / « Ok » stays blue and first, on its own row, the quiet buttons side by side under it. */
+.ticket.yours .card-actions { align-items: center; gap: 12px 10px; margin-top: 2px; }
+.ticket.yours .card-actions .button, .ticket.yours .card-actions button {
+  position: relative; z-index: 1; align-self: auto; min-height: 32px; padding: 5px 12px; border-radius: 10px;
+  font-size: .8125rem; font-weight: 500; line-height: 1.25;
+}
+.ticket.yours .card-actions .preview.secondary { padding: 5px 12px; font-size: .8125rem; }
+/* Retouch 3 (#269): « go » / « Ok » and its quiet buttons share one row (the quiet buttons say it in one word, see
+   SHORT_LABELS); the blue button stays first and keeps the width of « Annuler (5 s) », so the countdown moves nothing. */
+.ticket.yours .card-actions { gap: 8px; }
+.ticket.yours .card-actions button.go { flex: 0 0 auto; width: auto; min-width: 8.25em; padding-inline: 8px; font-weight: 600; white-space: nowrap; }
+.ticket.yours .card-actions > :not(.go) { flex: 0 1 auto; white-space: nowrap; overflow-wrap: normal; }
+.ticket.yours .card-actions .button::after, .ticket.yours .card-actions button::after { content: ""; position: absolute; inset: -7px -5px; }

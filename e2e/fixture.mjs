@@ -14,8 +14,9 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 
 // Runs `journey` with a page on the panel. `issues` is the open list GitHub returns; every write is recorded.
 // `config`: the project's factory.config.json. `writeDelay`: how long GitHub takes to answer a write (ms).
+// `events`: the issue events GitHub returns (labels put on or taken off), first page only.
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, events = [] }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -54,6 +55,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       }
       const thread = /^\/repos\/o\/r\/issues\/(\d+)\/comments$/.exec(path)?.[1];
       if (thread && comments[thread]) return json(comments[thread]);
+      if (path === '/repos/o/r/issues/events') return json(new URL(req.url()).searchParams.get('page') === '1' ? events : []);
       if (path === '/repos/o/r/issues') return json(new URL(req.url()).searchParams.get('state') === 'closed' ? [] : issues);
       return json([]);
     });

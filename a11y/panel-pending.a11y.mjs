@@ -38,17 +38,17 @@ test('a plate acted on leaves « À vous de jouer » for the waiting zone, and s
     });
     await context.route('http://x/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
     await page.goto(`http://localhost:${server.address().port}/`);
-    await page.waitForSelector('.you-item');
+    await page.waitForSelector('.ticket.yours');
     assert.equal(await page.locator('.pending-zone').count(), 0, 'no zone while nothing waits');
-    assert.equal(await page.locator('.you-item').count(), 2);
+    assert.equal(await page.locator('.ticket.yours').count(), 2);
     // Click « Répondre » on plate 2 (opens GitHub in a new tab), then come back.
     const popup = page.waitForEvent('popup');
-    await page.locator('.you-item[data-number="2"] a.button').click();
+    await page.locator('.ticket.yours[data-number="2"] a.button').click();
     await (await popup).close();
     assert.equal(await page.locator('.pending-zone').count(), 0, 'not before coming back');
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForSelector('.pending-zone');
-    assert.deepEqual(await page.locator('.you-item').evaluateAll((n) => n.map((x) => x.dataset.number)), ['1']);
+    assert.deepEqual(await page.locator('.ticket.yours').evaluateAll((n) => n.map((x) => x.dataset.number)), ['1']);
     assert.match(await page.locator('.pending-zone').textContent(), /Carte 2/);
     // The waiting card keeps its shape and status line, and its « Répondre » button.
     assert.match(await page.locator('.pending-zone').textContent(), /En attente de GitHub/);
@@ -57,7 +57,7 @@ test('a plate acted on leaves « À vous de jouer » for the waiting zone, and s
     assert.equal(await reply.getAttribute('href'), 'http://x/2');
     await page.reload();
     await page.waitForSelector('.pending-zone');
-    assert.deepEqual(await page.locator('.you-item').evaluateAll((n) => n.map((x) => x.dataset.number)), ['1']);
+    assert.deepEqual(await page.locator('.ticket.yours').evaluateAll((n) => n.map((x) => x.dataset.number)), ['1']);
     // Clicking « Répondre » again on the waiting card restarts the wait: it is noted as a new click.
     const before = await page.evaluate(() => JSON.parse(localStorage.getItem('factory.pending.o/r'))['2'].clickedAt);
     const again = page.waitForEvent('popup');
@@ -108,7 +108,7 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     });
     await page.goto(`http://localhost:${server.address().port}/`);
     await page.waitForSelector('.pending-zone .ticket[data-number="1"]');
-    assert.equal(await page.locator('.you-item').count(), 0);
+    assert.equal(await page.locator('.ticket.yours').count(), 0);
     const go = page.locator('.pending-zone button.go[data-go="1"]');
     assert.equal(await go.textContent(), 'go');
     // Grey, not blue: never the accent colour.
