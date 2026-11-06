@@ -780,6 +780,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // For the same reason, every event also fills the free places: a feature leaving its questions (« go »), an agent's
     // comment or a label change lets a waiting card start now instead of hours later at the next tick.
     if (!own && result?.action?.type !== 'dequeue') await dequeue().catch((e) => log(`queue check: ${e.message}`));
+    // And it brings the project's agent instructions up to the stable version: waiting for the tick left yoldmewhen2
+    // a day behind (2026-11-06), its agents still announcing 50 min to 2 h for 20-minute builds.
+    if (!own) await syncIfBehind().catch((e) => log(`sync check: ${e.message}`));
     await notifyWaiting();
     return result;
   }

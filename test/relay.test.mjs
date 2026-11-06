@@ -1336,3 +1336,17 @@ test('an undo is never undone: a live site still broken after it is only reporte
   assert.equal(git.length, 0);
   assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
 });
+
+test('any event brings a project whose agent instructions are behind the stable version up to date', async () => {
+  // yoldmewhen2, 2026-11-06: the sync only ran on a config change or the rare tick, so its agents kept old rules.
+  const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
+  const synced = (fingerprint) => ({ content: Buffer.from(JSON.stringify({ fingerprint })).toString('base64') });
+  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true };
+  for (const [fingerprint, expected] of [['old', true], [syncFingerprint('.'), false]]) {
+    const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }], prs: [] });
+    gh.getContent = async (path) => (path === '.factory/synced.json' ? synced(fingerprint) : null);
+    const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk([]), log: quiet });
+    await relay.handle(ev);
+    assert.equal(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'), expected, fingerprint);
+  }
+});

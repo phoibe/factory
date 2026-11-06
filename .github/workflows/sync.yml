@@ -11,6 +11,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Every relay event may ask for a sync while one is running: they wait in line, the next one finds nothing to do.
+    concurrency:
+      group: factory-sync-${{ github.repository }}
+      cancel-in-progress: false
     permissions:
       contents: write
       issues: write
