@@ -29,6 +29,7 @@ from core import (
 ATTACHMENTS = "factory-attachments"
 FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched again
 MAX_IMAGES = 4
+SAVE_PAUSE = 0.4  # seconds, grows with each try
 SAVE_TRIES = 5  # two saves that cross: the later one starts again from the latest version this many times
 BRANCH_README = "# Discussions\n\nConversations du chat du tableau de suivi avec l'agent. Ne pas fusionner.\n"
 VERCEL_OFF = '{ "git": { "deploymentEnabled": false } }\n'
@@ -272,6 +273,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
                     raise
+                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())  # GitHub may still serve the old version
         for attempt in range(SAVE_TRIES):  # the panel may have changed the index meanwhile (« Terminer »)
             index, sha = await gh.read_json("index.json", [])
             try:
@@ -280,5 +282,6 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
                     raise
+                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())
 
     return app

@@ -208,6 +208,23 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(self.texts(cid), ["Début", "Depuis le téléphone", "Depuis l'ordinateur"])
         self.assertEqual(len(self.gh.issues), 2)  # one per answer: a retried save never creates the issue again
 
+    def test_a_save_refused_every_time_says_not_saved_without_creating_the_issue_twice(self):
+        cid = self.start_conversation()
+        name = f"chats/{cid}.json"
+
+        class Always(dict):  # every write of the conversation crosses another save
+            def pop(self, key, default=None):
+                return (lambda: True) if key == name else default
+
+            def __bool__(self):
+                return True
+        self.gh.on_put = Always()
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Encore"})
+        self.assertNotIn("error", [e["type"] for e in events], events)
+        self.assertIs(events[-1]["saved"], False)
+        self.assertEqual(len(self.gh.issues), 2)  # one for the first message, one for this one
+        self.assertEqual(self.texts(cid), ["Début"])
+
     def test_the_agent_can_only_read_the_project_and_the_images(self):
         self.post("good", {"repo": "phoibe/habitudes", "message": "Lis /etc/passwd"})
         args = json.loads(open(self.claude + ".args").read())

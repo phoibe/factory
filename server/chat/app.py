@@ -14,7 +14,9 @@ image = (
     .run_commands(
         "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -",
         "apt-get install -y nodejs",
-        "npm install -g @anthropic-ai/claude-code",
+        # Pinned: the chat relies on --restricted and --permission-mode dontAsk (checked with this version), and a
+        # changed line makes Modal rebuild the image instead of keeping an older cached CLI.
+        "npm install -g @anthropic-ai/claude-code@2.1.318",
     )
     .pip_install("fastapi[standard]==0.115.12", "httpx==0.28.1")
     .add_local_python_source("core", "service")
