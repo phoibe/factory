@@ -1,0 +1,3 @@
+{"t":"2026-11-06T12:21:34.202Z","kind":"run","stage":"visual-fix","issue":209,"pr":216,"repo":"phoibe/factory"}
+{"t":"2026-11-06T12:25:44.739Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; CHROMIUM_PATH=/opt/pw-browsers/chromium timeout 300 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)\"; CHROMIUM_PATH=/opt/pw-browsers/chromium timeout 300 npm","ok":true,"id":"toolu_01Xq7ah7UcH4CabfmuTDmpV1"}
+{"t":"2026-11-06T12:27:39.955Z","kind":"test","cmd":"cd /tmp/claude-0/-home-user-factory/b5ab076d-d7b2-592c-ab13-f7c586194d44/scratchpad && rm -rf after && timeout 300 node tools/cap.mjs /home/user/factory after 2>&1 | grep -v proxy | tail -2; cd /home/","ok":true,"id":"toolu_017mnLdc4Zw9H4pMwDJ3tA25"}

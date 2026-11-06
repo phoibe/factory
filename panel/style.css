@@ -235,7 +235,9 @@ html { touch-action: manipulation; }
   #chat.viewing .chat-thread { display: flex; position: fixed; inset: 0; z-index: 5; background: var(--surface); height: 100dvh; }
   #chat-back { display: inline-block; }
   .chat-head { padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
-  .chat-tools { flex-basis: 100%; }
+  .chat-tools { flex-basis: 100%; flex-wrap: nowrap; overflow-wrap: normal; }
+  .chat-tools .small-btn { flex: none; padding: 4px 8px; line-height: 1.2; }
+  .chat-tools #chat-feature { flex: 0 1 auto; min-width: 0; }
   .messages { padding: 16px 12px; }
   .composer { padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 }
