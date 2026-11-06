@@ -1336,3 +1336,145 @@ test('an undo is never undone: a live site still broken after it is only reporte
   assert.equal(git.length, 0);
   assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
 });
+
+// ---- passing outages (issue #213) ----
+const { readOutage, writeOutage, OUTAGE_TOLD } = await import('../scripts/lib/outage.mjs');
+const outagePr = (marker, labels = [L.checks]) => ({ number: 10, body: writeOutage('Closes #1', marker), head: { sha: 'abc' }, labels, state: 'open' });
+function outageWorld(marker, { prLabels, issueLabels = [L.feature, L.building] } = {}) {
+  const state = { issues: [{ number: 1, labels: issueLabels }], prs: [outagePr(marker, prLabels)], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); Object.assign(state.prs.find((p) => p.number === n) || {}, fields); };
+  return { state, gh, pr: state.prs[0] };
+}
+const T = Date.parse('2026-11-06T10:00:00Z');
+
+test('outage: checks failing on the network are retried silently in about 2 minutes, no fix, no attempt counted', async () => {
+  const { gh, pr } = outageWorld(null);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[2] === L.checks));
+  assert.equal(relay.outputs.retryInMs, 120_000);
+  assert.deepEqual([readOutage(pr.body).tries, readOutage(pr.body).since], [1, T]);
+});
+
+test('outage: the second retry is left to the tick, about 10 minutes later', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 1 });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T + 5 * 60_000 });
+  assert.equal(readOutage(pr.body).next, T + 15 * 60_000);
+  assert.equal(relay.outputs.retryInMs, undefined);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
+test('outage: still down after both retries, the owner reads one sentence and the agent does not start', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 2 });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T + 20 * 60_000 });
+  const said = gh.calls.filter((c) => c[0] === 'comment');
+  assert.equal(said.length, 1);
+  assert.equal(said[0][1], 10);
+  assert.ok(said[0][2].includes(OUTAGE_TOLD));
+  assert.ok(!said[0][2].includes(CHECKS_FAILED_MARKER));
+  assert.equal(sent.length, 0);
+  assert.equal(readOutage(pr.body).next, T + 50 * 60_000);
+  gh.calls.length = 0;
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T + 55 * 60_000 });
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'), 'said once');
+});
+
+test('outage: after 3 hours the card is blocked, and the owner may answer « réessaie »', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T + 3 * 3_600_000 });
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.checks));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 1 && /réessaie/.test(c[2]) && /3 heures/.test(c[2])));
+  assert.equal(readOutage(pr.body).blocked, true);
+  assert.equal(sent.length, 0);
+});
+
+test('outage: a real test failure still goes to the agent, and the outage is forgotten', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 2, told: true });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10, sha: 'abc', now: T + 30 * 60_000 });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
+  assert.equal(readOutage(pr.body), null);
+  assert.equal(pr.body, 'Closes #1');
+});
+
+test('outage: the tick starts a due retry once, never one that is not due or while an agent works', async () => {
+  for (const [marker, labels, due] of [
+    [{ sha: 'abc', since: T, tries: 1, next: T + 10 * 60_000 }, [L.checks], true],
+    [{ sha: 'abc', since: T, tries: 1, next: T + 30 * 60_000 }, [L.checks], false],
+    [{ sha: 'abc', since: T, tries: 1, next: T + 10 * 60_000 }, [L.checks, L.running], false],
+    [{ sha: 'abc', since: T, tries: 3, next: T, blocked: true }, [], false],
+  ]) {
+    const { gh, pr } = outageWorld(marker, { prLabels: labels });
+    await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => T + 12 * 60_000, log: quiet }).handle(tick);
+    const retries = gh.calls.filter((c) => c[0] === 'dispatch' && c[1] === 'factory.yml' && JSON.parse(c[3].payload).checksFor === 10);
+    assert.equal(retries.length, due ? 1 : 0, JSON.stringify(marker));
+    if (due) assert.deepEqual([readOutage(pr.body).tries, readOutage(pr.body).next > T + 12 * 60_000], [2, true]);
+  }
+});
+
+test('outage: « réessaie » on the blocked card relaunches the checks, not the agent', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle(ownerSays(1, [L.feature, L.building, L.blocked], 'Réessaie'));
+  assert.equal(action.type, 'outage-retry');
+  assert.equal(sent.length, 0);
+  assert.deepEqual([relay.outputs.checks, relay.outputs.pr], ['true', '10']);
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.blocked));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.checks));
+  assert.equal(readOutage(pr.body), null);
+});
+
+test('outage: « réessaie » on a card blocked for another reason resumes the agent as before', async () => {
+  const { gh } = outageWorld(null, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  const sent = [];
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle(ownerSays(1, [L.feature, L.building, L.blocked], 'réessaie'));
+  assert.equal(action.stage, 'resume');
+  assert.equal(sent.length, 1);
+});
+
+test('sync: an update that does not go through is retried after 5 min, 30 min, 2 h, then daily, with one alert after a day', async () => {
+  const content = { content: Buffer.from(JSON.stringify({ fingerprint: 'old' })).toString('base64') };
+  const stored = {};
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.getContent = async () => content;
+  gh.getState = async (name) => stored[name] || null;
+  gh.setState = async (name, value) => { if (value) stored[name] = value; else delete stored[name]; };
+  const sent = [];
+  let t = T;
+  const at = async (ms) => {
+    t = T + ms;
+    gh.calls.length = 0;
+    await createRelay({ gh, repo: 'phoibe/mon-appli', config, env: { ...env, NTFY_TOPIC: 'topic' }, fetchImpl: fetchOk(sent), now: () => t, log: quiet }).handle(tick);
+    return gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml');
+  };
+  const M = 60_000;
+  const H = 60 * M;
+  assert.equal(await at(0), true);
+  assert.equal(await at(4 * M), false);
+  assert.equal(await at(5 * M), true);
+  assert.equal(await at(30 * M), false);
+  assert.equal(await at(35 * M), true);
+  assert.equal(await at(2 * H + 30 * M), false);
+  assert.equal(await at(2 * H + 35 * M), true);
+  assert.equal(await at(20 * H), false);
+  const alerts = () => sent.filter((s) => s.url === 'https://ntfy.sh');
+  assert.equal(alerts().length, 0);
+  await at(24 * H);
+  assert.equal(alerts().length, 1);
+  assert.match(JSON.parse(alerts()[0].init.body).message, /La mise à jour du projet mon-appli ne passe pas depuis hier/);
+  assert.equal(await at(26 * H + 35 * M), true);
+  assert.equal(await at(27 * H), false);
+  assert.equal(alerts().length, 1, 'one alert only');
+  content.content = Buffer.from(JSON.stringify({ fingerprint: (await import('../scripts/lib/fingerprint.mjs')).syncFingerprint(new URL('..', import.meta.url).pathname) })).toString('base64');
+  assert.equal(await at(28 * H), false);
+  assert.equal(stored.sync, undefined, 'success starts again from zero');
+});

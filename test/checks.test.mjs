@@ -42,3 +42,13 @@ test('user journeys (test:e2e) run when present; a project without them yet is n
   const present = planChecks({ ...all, e2e: true }, { scripts: { ...pkg.scripts, 'test:e2e': 'playwright test' } }).find((p) => p.id === 'e2e');
   assert.deepEqual(present.run, ['npm', 'run', 'test:e2e']);
 });
+
+test('a download that fails on the network is an outage, a test that mentions the network is not', async () => {
+  const { isOutage } = await import('../scripts/checks.mjs');
+  assert.equal(isOutage('install', 1, 'npm error code ECONNRESET'), true);
+  assert.equal(isOutage('browser', 1, 'Error: Download failed: server returned code 503'), true);
+  assert.equal(isOutage('audit', 1, 'npm error code E503 Service Unavailable'), true);
+  assert.equal(isOutage('install', 1, 'npm error code ERESOLVE'), false);
+  assert.equal(isOutage('install', 0, 'npm warn ECONNRESET, retrying'), false);
+  assert.equal(isOutage('test', 1, 'connect ECONNREFUSED 127.0.0.1:3000'), false);
+});
