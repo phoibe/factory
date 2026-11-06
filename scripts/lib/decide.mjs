@@ -1,4 +1,4 @@
-import { L, closeReason } from './labels.mjs';
+import { L, closeReason, buildStage } from './labels.mjs';
 
 // Words allowed in an approval. Every word of the message must be one of them, and one must be a "core" word,
 // so "ok, le bouton en rouge" is a change request, not an approval.
@@ -36,7 +36,7 @@ const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
 const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked];
-const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit].some((l) => has(labels, l));
+const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit, L.stack].some((l) => has(labels, l));
 // A project issue (framing) always grills, whatever the config: the vision and the stack are decided there.
 const grillStage = (labels) => (has(labels, L.project) ? 'framing' : 'grilling');
 // The steps a factory PR can be at. An open PR with none of them (and not blocked) is stuck: no one will act on it.
@@ -49,10 +49,10 @@ function startIssue(ev, config, ctx) {
   // A question is answered right away, never queued, and changes no state: each follow-up gets an answer.
   if (has(ev.labels, L.question)) return fire('question');
   if (has(ev.labels, L.project)) return fire('framing', { add: [L.grilling] });
-  // A bug or a general review needs no spec: it is built right away, or queued.
-  if (has(ev.labels, L.bug) || has(ev.labels, L.audit)) {
+  // A bug, a general review or a stack sheet needs no spec: it is built right away, or queued.
+  if (has(ev.labels, L.bug) || has(ev.labels, L.audit) || has(ev.labels, L.stack)) {
     if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [], reason: 'factory pleine' };
-    return fire(has(ev.labels, L.bug) ? 'bugfix' : 'audit', { add: [L.building] });
+    return fire(buildStage(ev.labels), { add: [L.building] });
   }
   if (config.stages.grilling) return fire('grilling', { add: [L.grilling] });
   return fire('spec');
@@ -65,7 +65,7 @@ function onIssue(ev, config, ctx) {
     if (ev.action === 'reopened' && closeReason(ev.labels)) return { type: 'reopen', reason: "demande fermée par l'agent, rouverte" };
     // A card that gets blocked gives up its place: the queue can move on.
     if (ev.action === 'labeled' && ev.addedLabel === L.blocked && has(ev.labels, L.building)) return { type: 'dequeue', reason: 'carte bloquée : sa place est libre' };
-    const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit].includes(ev.addedLabel));
+    const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit, L.stack].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (ev.action === 'labeled' && ev.openedRecently) return ignore("label posé à l'ouverture : l'ouverture s'en charge");
     if (!ev.fromOwner) return ignore("issue ouverte par quelqu'un d'autre que le propriétaire");

@@ -161,3 +161,8 @@ test('a PR card still waiting for its preview link is always read: the bot edits
   assert.equal(commentsStale(c, cardSig(c), { preview: null }), true);
   assert.equal(commentsStale(c, cardSig(c), { preview: 'https://preview.example' }), false);
 });
+
+test('a stack sheet card has no questions and no spec, like a bug', async () => {
+  const { stepsFor } = await import('../panel/live.mjs');
+  assert.deepEqual(stepsFor(['factory:stack']), stepsFor(['factory:bug']));
+});

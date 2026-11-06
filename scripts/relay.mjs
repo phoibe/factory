@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea } from './lib/labels.mjs';
+import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
@@ -267,7 +267,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!labels.includes(L.queued)) continue; // another relay run took it
       const resumed = labels.includes(L.resumeQueued);
       try {
-        await fireAgent({ stage: resumed ? 'resume' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build', issue: issue.number, quiet: true });
+        await fireAgent({ stage: resumed ? 'resume' : buildStage(labels), issue: issue.number, quiet: true });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
         failed = true;
@@ -286,7 +286,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // then bugs, then the rest, oldest first. Ideas the agent proposed are left for the owner to sort. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
   async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
-    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
+    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.stack, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     // Picked features still waiting for the owner's answers (questions or spec): at most `maxQuestions` of them.
@@ -718,6 +718,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await retryOutages();
     await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
+    await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
+  }
+
+  // Issue #242: every framed project keeps a stack sheet (STACK.md). One without it gets an « Établir la fiche » card,
+  // once (a card closed or abandoned is never reopened by itself), as soon as its synced agent instructions have the
+  // `stack` stage, and it starts like a bug: at once, or first free place. Never while the framing is under way.
+  async function ensureStackSheet() {
+    if (!gh.getContent || !gh.createIssue) return;
+    const exists = (path) => gh.getContent(path).then(Boolean, () => false);
+    if (await exists('STACK.md')) return;
+    if (!(await exists('PRODUCT.md')) && !(await exists('docs/PRODUCT.md'))) return;
+    if (!(await exists('.factory/stages/stack.md'))) return;
+    if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
+    if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).length) return;
+    const body = [AGENT_MARKER, 'La factory établit la **fiche stack technique** de ce projet : les technologies, la façon dont les données sont stockées, les bibliothèques et les services nécessaires.', '',
+      'Elle s\'affiche ensuite avec le bouton « Stack technique » du panneau, et l\'agent la tient à jour à chaque construction.'].join('\n');
+    const card = await gh.createIssue('Établir la fiche stack technique', body, [L.stack, L.kept]);
+    log(`stack sheet: card #${card.number} opened`);
+    const labels = await liveLabels(card.number);
+    await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
   }
 
   // Safety net (issue #227): a « Remettre en ligne » card in no-pick for over an hour with no undo PR open would wait
@@ -958,7 +978,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         log(`guard: #${n} blocked after a second stop`);
         continue;
       }
-      const stage = labels.includes(L.project) ? 'foundation' : labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : 'build';
+      const stage = labels.includes(L.project) ? 'foundation' : buildStage(labels);
       try {
         await fireAgent({ stage, issue: n, extra: { relaunch: true }, quiet: true });
       } catch (e) {

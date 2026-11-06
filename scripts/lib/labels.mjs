@@ -4,6 +4,7 @@ export const L = {
   project: 'factory:project',
   question: 'factory:question',
   audit: 'factory:audit',
+  stack: 'factory:stack',
   grilling: 'factory:grilling',
   specReview: 'factory:spec-review',
   queued: 'factory:queued',
@@ -40,6 +41,7 @@ export const LABEL_DEFS = [
   [L.bug, 'd73a4a', 'Bug à corriger par la factory'],
   [L.project, '1d76db', 'Cadrage du projet : vision, périmètre et stack'],
   [L.audit, '1d76db', 'Review générale : critique et correction de tous les écrans, puis revue de tout le code'],
+  [L.stack, '1d76db', 'Fiche stack technique à établir : technologies, bibliothèques et services du projet'],
   [L.question, 'd4c5f9', "Question au sujet du projet : l'agent répond sans rien modifier"],
   [L.grilling, 'fbca04', 'Questions en cours pour clarifier la feature'],
   [L.specReview, 'fbca04', 'Spec à valider : réponds « go »'],
@@ -80,6 +82,9 @@ export const PROD_BUG_MARKER = '<!-- factory-prod-check -->';
 
 // An idea the agent proposed (its issue body carries the agent marker) that the owner has not sorted yet: it waits
 // in « Idées à trier » and is never picked automatically. Writing in it, or « Garder » on the board, makes it a request.
+// The stage that builds a card with no spec: a bug, a general review, a stack sheet, or else a feature.
+export const buildStage = (labels) => (labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : labels.includes(L.stack) ? 'stack' : 'build');
+
 export const isIdea = (issue) => {
   const labels = (issue?.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
   return String(issue?.body || '').includes(AGENT_MARKER) && !labels.includes(L.kept);
