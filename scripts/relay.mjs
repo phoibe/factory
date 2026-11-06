@@ -892,6 +892,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   };
 
   // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
+  // A factory label typed wrong by an agent (« une semaine à la fois:factory:feature » on yoldmewhen2 #55, 2026-11-06)
+  // hides the card from the factory: nothing picks it, the board does not show it. Put the real label back.
+  const KNOWN = new Set(Object.values(L).filter((v) => typeof v === 'string' && v.startsWith('factory:')));
+  const meant = (label) => { const m = /(factory:[a-z-]+)\s*$/.exec(label); return m && m[1] !== label && KNOWN.has(m[1]) ? m[1] : null; };
+  async function repairLabels() {
+    if (!gh.listOpenIssues) return;
+    for (const issue of (await gh.listOpenIssues()) || []) {
+      for (const label of names(issue.labels)) {
+        const fixed = meant(label);
+        if (!fixed) continue;
+        await gh.addLabels(issue.number, [fixed]);
+        await gh.removeLabel(issue.number, label);
+        log(`#${issue.number}: label « ${label} » replaced by ${fixed}`);
+      }
+    }
+  }
+
   // One read of the open issues instead of one per recently closed PR: a finished card costs nothing.
   async function closeMerged(closed) {
     const merged = closed.filter((p) => p.merged_at);
@@ -1047,6 +1064,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   async function handle(ev, { ownerLogin } = {}) {
+    if (!['dispatch', 'preview-check', 'prod-check'].includes(ev.kind)) await repairLabels().catch((e) => log(`labels: ${e.message}`));
     const result = await handleEvent(ev, { ownerLogin });
     // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to
     // count on (a few runs a day): every event the relay sees looks for a PR stuck that way.
@@ -1209,9 +1227,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         outputs.pr = String(action.pr);
         break;
       }
-      case 'dequeue':
+      case 'dequeue': {
         if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
-        await dequeue({ freed: ev.kind === 'issue' ? n : null });
+        // A PR merged by hand (not by the factory): its issue kept factory:building and held a place until the next
+        // tick, hours later (yoldmewhen2 #56, 2026-11-06). Tidy it now, before the places are counted.
+        let freed = ev.kind === 'issue' ? n : null;
+        if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.action === 'closed') {
+          const pr = await gh.getPr(n);
+          if (pr?.merged_at) {
+            for (const l of [L.acceptance, L.checks, L.fixing, L.visualReview, L.running, L.blocked]) if (ev.labels.includes(l)) await gh.removeLabel(n, l);
+            await closeMerged([pr]).catch((e) => log(`close after merge: ${e.message}`));
+            freed = prIssue(pr);
+          }
+        }
+        await dequeue({ freed });
+        break;
+      }
         break;
       default:
         break;
