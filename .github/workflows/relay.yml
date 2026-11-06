@@ -150,6 +150,13 @@ jobs:
           else
             cat "$RUNNER_TEMP/err"; exit 1
           fi
+      # The default branch, for the stack sheet check (libraries changed → STACK.md updated). Never fails the job:
+      # without it the check is skipped.
+      - name: Default branch for the stack sheet check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch) && git fetch -q --depth=1 origin "+refs/heads/$branch:refs/factory/base" || echo "::notice::Branche principale introuvable : fiche stack non comparée."
       - uses: actions/checkout@v4
         with:
           repository: phoibe/factory
@@ -159,7 +166,7 @@ jobs:
         with:
           node-version: 22
       - id: run
-        run: node .factory-src/scripts/checks.mjs . --config "$RUNNER_TEMP/factory.config.json"
+        run: node .factory-src/scripts/checks.mjs . --config "$RUNNER_TEMP/factory.config.json" --base refs/factory/base
       # A failure before the checks could even start (checkout, rules, Node download) is never the code's fault.
       - id: outage
         if: failure() && steps.run.outcome != 'failure'
