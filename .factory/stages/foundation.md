@@ -32,6 +32,7 @@ ne refais **pas** l'appli et ne change pas son comportement.
    Si la fiche retient un hébergeur et que le dépôt n'y est pas encore déployé, fais comme à l'étape 5
    ci-dessous (puce « l'hébergeur retenu dans la fiche ») ; sinon ne touche pas à l'hébergement.
    Si un contrôle échoue à cause du code existant, corrige ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
+4 bis. **Fiche stack** : écris `STACK.md` à la racine d'après le code existant, au format de `.factory/stages/stack.md`.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
    directement `factory:checks` ; sinon fais les captures (étape 8).
@@ -81,6 +82,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
        ne sait pas encore quoi construire). Ne te connecte jamais à son compte.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
+5 bis. **Fiche stack** : écris `STACK.md` à la racine d'après le squelette, au format de `.factory/stages/stack.md`.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
    localement que les six scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),

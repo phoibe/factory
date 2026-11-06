@@ -47,6 +47,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    (critique impeccable de chaque écran créé ou modifié, puis correction de tout ce qu'elle trouve), en
    respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
    « Textes à l'écran » de `design-pass.md`.
+6 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
