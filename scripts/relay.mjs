@@ -406,26 +406,32 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The new version of the live site, once its host reports it deployed (polls up to `attempts` × `delayMs`).
   // A deploy the host cancelled because a newer push started its own (GitHub Pages marks it "error") is not a
-  // broken delivery: the newer deploy of the same environment, which contains this commit, decides instead.
-  async function liveUrl(sha, { attempts = 30, delayMs = 20_000 } = {}) {
+  // broken delivery: the newer deploy of the same environment, which contains this commit, decides instead. That
+  // newer deploy is created a moment after the cancel, so a lone failure is only believed after a few polls.
+  async function liveUrl(sha, { attempts = 30, delayMs = 20_000, lonePolls = 3 } = {}) {
     const outcome = async (d) => {
       const statuses = (await gh.deploymentStatuses(d.id)) || [];
       const ok = statuses.find((s) => s.state === 'success');
       if (ok) return ok.environment_url || ok.target_url || config.siteUrl || null;
       return statuses.some((s) => ['failure', 'error'].includes(s.state)) ? { failed: true } : undefined;
     };
+    let lone = 0;
     for (let i = 0; i < attempts; i++) {
+      let failedAlone = false;
       for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment))) {
         const result = await outcome(d);
         if (result === undefined) continue;
         if (!result?.failed) return result;
+        // Deployment ids only grow: the highest one of the same environment is the newest.
         const newest = ((await gh.recentDeployments?.().catch(() => null)) || [])
-          .filter((x) => x.environment === d.environment && x.id !== d.id && String(x.created_at) > String(d.created_at))
-          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-        if (!newest) return result;
+          .filter((x) => x.environment === d.environment && Number(x.id) > Number(d.id))
+          .sort((a, b) => Number(b.id) - Number(a.id))[0];
+        if (!newest) { failedAlone = true; continue; }
         const next = await outcome(newest);
         if (next !== undefined) return next;
       }
+      lone = failedAlone ? lone + 1 : 0;
+      if (failedAlone && (lone >= lonePolls || i === attempts - 1)) return { failed: true };
       if (i < attempts - 1) await sleep(delayMs);
     }
     return null;

@@ -1370,11 +1370,24 @@ test('a live deploy replaced by a newer one still deploying waits for it', async
   assert.equal(await relay.liveUrl('e243ee1', { attempts: 3, delayMs: 0 }), 'https://site.example/');
 });
 
+test('a live deploy cancelled just before the newer one is created waits for it to appear', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  let polls = 0;
+  const first = { id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' };
+  gh.deployments = async () => [first];
+  gh.recentDeployments = async () => (++polls < 2 ? [first] : [{ id: 2, environment: 'github-pages', created_at: '2026-11-06T12:54:11Z' }, { id: 3, environment: 'Preview', created_at: '2026-11-06T12:55:00Z' }, first]);
+  gh.deploymentStatuses = async (id) => ({ 1: [{ state: 'error' }], 2: [{ state: 'success', environment_url: 'https://site.example/' }], 3: [{ state: 'failure' }] })[id];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 5, delayMs: 0 }), 'https://site.example/');
+});
+
 test('a live deploy that failed with no newer one, or whose newer one failed too, is a broken delivery', async () => {
   const alone = fakeGh({ issues: [], prs: [], deployments: [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }] });
   alone.deployments = async () => [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }];
   alone.deploymentStatuses = async () => [{ state: 'failure' }];
-  assert.deepEqual(await createRelay({ gh: alone, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('x', { attempts: 2, delayMs: 0 }), { failed: true });
+  let naps = 0;
+  assert.deepEqual(await createRelay({ gh: alone, repo: 'r', config, env, log: quiet, sleep: async () => { naps++; } }).liveUrl('x', { attempts: 30, delayMs: 0 }), { failed: true });
+  assert.equal(naps, 2, 'a lone failure is believed after three polls, not after the whole wait');
   const both = liveWorld({ 1: [{ state: 'error' }], 2: [{ state: 'failure' }] });
   assert.deepEqual(await both.liveUrl('x', { attempts: 2, delayMs: 0 }), { failed: true });
 });
