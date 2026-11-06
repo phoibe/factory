@@ -7,6 +7,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig } from './lib/config.mjs';
+import { isNetworkFailure } from './lib/outage.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const CHECKS = [
@@ -53,6 +54,12 @@ export function browserSetup(pkg) {
   };
 }
 
+// Steps that only download things (dependencies, the browser, the advisories database): when they fail with a clear
+// network or GitHub error, the code is not at fault and the relay retries instead of sending the agent (issue #213).
+// The project's own checks never count as an outage, even when their output mentions the network.
+const DOWNLOADS = ['install', 'browser', 'audit'];
+export const isOutage = (step, status, output) => status !== 0 && DOWNLOADS.includes(step) && isNetworkFailure(output);
+
 // The factory repository: no package.json, but its own scripts and test suite.
 export function isFactoryRepo(dir) {
   return ['scripts/relay.mjs', 'packs/catalog.json', 'test'].every((f) => existsSync(join(dir, f)));
@@ -83,13 +90,28 @@ function main() {
   }
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   const run = (cmd) => spawnSync(cmd[0], cmd.slice(1), { cwd: projectDir, stdio: 'inherit', env: { ...process.env, CI: 'true' } }).status;
-  if (run(existsSync(join(projectDir, 'package-lock.json')) ? ['npm', 'ci'] : ['npm', 'install']) !== 0) {
+  // A download step: its output is kept to tell an outage from a real error (then shown as usual).
+  const fetchStep = (cmd) => {
+    const r = spawnSync(cmd[0], cmd.slice(1), { cwd: projectDir, stdio: ['inherit', 'pipe', 'pipe'], env: { ...process.env, CI: 'true' }, maxBuffer: 256 * 1024 * 1024 });
+    process.stdout.write(r.stdout || '');
+    process.stderr.write(r.stderr || '');
+    return { status: r.status ?? 1, output: `${r.stdout || ''}\n${r.stderr || ''}${r.error ? `\n${r.error.message}` : ''}` };
+  };
+  const outage = (what) => {
+    console.log(`::error::${what} : GitHub ou le réseau n'a pas répondu (panne passagère, pas un problème de code).`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'transient=true\n');
+    process.exit(1);
+  };
+  const install = fetchStep(existsSync(join(projectDir, 'package-lock.json')) ? ['npm', 'ci'] : ['npm', 'install']);
+  if (isOutage('install', install.status, install.output)) outage("L'installation des dépendances");
+  if (install.status !== 0) {
     console.log("::error::L'installation des dépendances a échoué.");
     process.exit(1);
   }
   const browser = (config.checks.a11y || (config.checks.e2e && pkg.scripts?.['test:e2e'])) && browserSetup(pkg);
   if (browser) {
-    run(browser.install);
+    const got = fetchStep(browser.install);
+    if (isOutage('browser', got.status, got.output)) outage('Le téléchargement du navigateur');
     if (run(browser.probe) !== 0) {
       console.log('Chromium ne démarre pas sans paquets système : installation (plus lente).');
       run(browser.deps);
@@ -100,7 +122,12 @@ function main() {
     if (c.skipped) { results.push({ ...c, status: 'skipped' }); console.log(`::notice::Script npm « ${c.script} » absent : pas encore de ${c.label.toLowerCase()} à rejouer.`); continue; }
     if (c.missing) { results.push({ ...c, status: 'missing' }); console.log(`::error::Script npm « ${c.script} » absent.`); continue; }
     console.log(`::group::${c.label}`);
-    const status = run(c.run) === 0 ? 'pass' : 'fail';
+    let status;
+    if (c.id === 'audit') {
+      const r = fetchStep(c.run);
+      if (isOutage('audit', r.status, r.output)) { console.log('::endgroup::'); outage('La vérification des failles'); }
+      status = r.status === 0 ? 'pass' : 'fail';
+    } else status = run(c.run) === 0 ? 'pass' : 'fail';
     console.log('::endgroup::');
     if (status === 'fail') console.log(`::error::${c.label} : échec`);
     results.push({ ...c, status });

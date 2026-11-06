@@ -8,6 +8,7 @@ repositories. The same token reads the project and writes the conversation, so t
 """
 import asyncio
 import base64
+import copy
 import json
 import os
 import random
@@ -28,6 +29,8 @@ from core import (
 ATTACHMENTS = "factory-attachments"
 FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched again
 MAX_IMAGES = 4
+SAVE_PAUSE = 0.4  # seconds, grows with each try
+SAVE_TRIES = 5  # two saves that cross: the later one starts again from the latest version this many times
 BRANCH_README = "# Discussions\n\nConversations du chat du tableau de suivi avec l'agent. Ne pas fusionner.\n"
 VERCEL_OFF = '{ "git": { "deploymentEnabled": false } }\n'
 
@@ -181,8 +184,11 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             proc = await asyncio.create_subprocess_exec(
                 claude_bin, "-p",
                 "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-                "--model", model, "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob",
-                "--add-dir", folder, "--setting-sources", "user", "--strict-mcp-config", "--no-session-persistence",
+                # Read-only tools, confined to the project and this message's images: --restricted keeps the file
+                # tools inside the working directories (no /etc, no other project, no /proc with the agent's token)
+                # and dontAsk refuses anything else instead of waiting for an approval nobody can give.
+                "--model", model, "--tools", "Read,Grep,Glob", "--restricted", "--permission-mode", "dontAsk",
+                "--add-dir", folder, "--strict-mcp-config", "--no-session-persistence",
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 limit=16 * 1024 * 1024)
@@ -233,16 +239,17 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if refused:
                 lost = "Une demande n'a pas pu être créée" if refused == 1 else f"{refused} demandes n'ont pas pu être créées"
                 text += f"\n\n_{lost} sur GitHub : redemandez dans un moment._"
-            add_exchange(conv, {"text": message, "images": images}, text, now_iso(), created)
+            mine, at = {"text": message, "images": images}, now_iso()
             # The answer is given and the issues exist: a failed save must not make the panel offer to send the
             # message again (that would create the issues twice). It is reported as « not saved » instead.
             saved = True
             yield ev({"type": "status", "text": "Enregistre…"})
             try:
                 # Shielded: a phone that drops during the save must not leave the conversation half written.
-                await asyncio.shield(save(gh, conv))
+                conv = await asyncio.shield(save(gh, conv, mine, text, at, created))
             except Exception:
                 saved = False
+                add_exchange(conv, mine, text, at, created)
             # Saved before answering: if the phone drops during the answer, the conversation (and the issues it
             # created) is already stored, so a resend does not create the issues twice.
             yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
@@ -260,17 +267,30 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             finally:
                 await gh.close()
 
-    async def save(gh, conv):
+    async def save(gh, base, mine, text, at, created):
+        """Adds the exchange to the latest stored conversation, never over an exchange saved meanwhile (another
+        device, a second message sent before this answer came). Returns the conversation as saved."""
         await gh.ensure_branch(BRANCH, {"README.md": BRANCH_README, "vercel.json": VERCEL_OFF})
-        _, sha = await gh.read_json(f"chats/{conv['id']}.json", None)
-        await gh.write_json(f"chats/{conv['id']}.json", conv, sha, f"chore(factory): chat {conv['id']}")
-        for attempt in range(3):  # the panel may have changed the index meanwhile (« Terminer »)
+        path = f"chats/{base['id']}.json"
+        for attempt in range(SAVE_TRIES):
+            latest, sha = await gh.read_json(path, None)
+            conv = add_exchange(latest or copy.deepcopy(base), mine, text, at, created)
+            try:
+                # With the sha just read, GitHub refuses the write if another save landed in between.
+                await gh.write_json(path, conv, sha, f"chore(factory): chat {base['id']}")
+                break
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
+                    raise
+                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())  # GitHub may still serve the old version
+        for attempt in range(SAVE_TRIES):  # the panel may have changed the index meanwhile (« Terminer »)
             index, sha = await gh.read_json("index.json", [])
             try:
                 await gh.write_json("index.json", upsert_index(index, conv), sha, "chore(factory): chat index")
-                return
+                return conv
             except httpx.HTTPStatusError as e:
-                if e.response.status_code not in (409, 422) or attempt == 2:
+                if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
                     raise
+                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())
 
     return app

@@ -38,6 +38,34 @@ test('a 4xx is not retried', async () => {
   assert.equal(sink.length, 1);
 });
 
+test('a factory state is kept in a ref whose commit message is the JSON, and removed with null', async () => {
+  const refs = {};
+  const commits = {};
+  let seq = 0;
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname.replace('/repos/o/r', '');
+      const body = init.body ? JSON.parse(init.body) : null;
+      if (init.method === 'POST' && path === '/git/trees') return answer(201, { sha: 'tree' });
+      if (init.method === 'POST' && path === '/git/commits') { const sha = `c${++seq}`; commits[sha] = body.message; return answer(201, { sha }); }
+      if (init.method === 'POST' && path === '/git/refs') { refs[body.ref.replace('refs/', '')] = body.sha; return answer(201, {}); }
+      const ref = path.replace(/^\/git\/refs?\//, '');
+      if (init.method === 'PATCH') { if (!refs[ref]) return answer(422); refs[ref] = body.sha; return answer(200, {}); }
+      if (init.method === 'DELETE') { delete refs[ref]; return answer(204); }
+      if (path.startsWith('/git/commits/')) return answer(200, { message: commits[path.split('/').pop()] });
+      return refs[ref] ? answer(200, { object: { sha: refs[ref] } }) : answer(404);
+    },
+  });
+  assert.equal(await gh.getState('sync'), null);
+  await gh.setState('sync', { tries: 1 });
+  assert.deepEqual(await gh.getState('sync'), { tries: 1 });
+  await gh.setState('sync', { tries: 2 });
+  assert.deepEqual(await gh.getState('sync'), { tries: 2 });
+  await gh.setState('sync', null);
+  assert.equal(await gh.getState('sync'), null);
+});
+
 // Issue #212: the queue lock's sign of life moves the lock forward, never over a run that took it over.
 test('the queue lock gives a sign of life by moving its ref forward, and knows when it lost it', async () => {
   const calls = [];
