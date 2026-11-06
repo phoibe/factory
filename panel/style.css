@@ -432,3 +432,5 @@ details summary { color: var(--text); }
 .ticket.yours .main::after { content: none; }
 .ticket.yours:hover { transform: none; border-color: var(--you-line); }
 .ticket.yours.blocked:hover { border-color: var(--danger); }
+/* The ↗ stays in the label's text run (one flex item), so the label wraps like a sentence. */
+.ticket.yours .card-actions > :not(.go) > span { display: contents; }
