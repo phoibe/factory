@@ -431,3 +431,4 @@ details summary { color: var(--text); }
 .ticket.yours .card-actions::before { content: ""; position: absolute; inset: -8px; z-index: -1; }
 .lane-yours .tickets { align-items: start; }
 .ticket.yours .cta .arrow { display: none; }
+.ticket.yours .card-actions > :not(.go) { display: inline-flex; align-items: center; justify-content: center; }
