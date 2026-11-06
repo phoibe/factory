@@ -150,9 +150,10 @@ jobs:
   report:
     needs: [decide, checks]
     if: always() && needs.decide.outputs.checks == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'failure' || needs.checks.result == 'cancelled')
+    # A newer report waits for the running one (a merge and what follows it is never cut in the middle), then runs.
     concurrency:
       group: factory-report-${{ github.repository }}-${{ needs.decide.outputs.pr }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -183,7 +184,9 @@ jobs:
     needs: decide
     if: needs.decide.outputs.preview != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The wait for the preview (5 min), its opening (12), then the report and the alert, each waiting its turn on the
+    # queue lock (13 at worst, seconds in practice now that no decision waits under it).
+    timeout-minutes: 45
     permissions:
       contents: write
       issues: write
@@ -203,14 +206,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The host can take minutes to publish the preview: waited for here, outside the queue lock (issue #212).
+      - id: wait
+        name: Wait for the preview
+        run: node .factory-src/scripts/relay.mjs preview-url
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.preview }}
       - name: Open the preview
+        if: steps.wait.outputs.url != ''
         continue-on-error: true
         timeout-minutes: 12
-        run: node .factory-src/scripts/smoke.mjs --url "${{ fromJSON(needs.decide.outputs.preview).url }}" --dir project --out "$RUNNER_TEMP/smoke.json"
+        run: node .factory-src/scripts/smoke.mjs --url "$PREVIEW_URL" --dir project --out "$RUNNER_TEMP/smoke.json"
+        env:
+          PREVIEW_URL: ${{ steps.wait.outputs.url }}
       - name: Report
         if: always()
-        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json"
+        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json" --url "$PREVIEW_URL"
         env:
+          PREVIEW_URL: ${{ steps.wait.outputs.url }}
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.preview }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
