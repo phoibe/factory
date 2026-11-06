@@ -599,6 +599,34 @@ test('any event unsticks a PR opened in conflict, without waiting for the rare s
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 61 && c[2] === L.fixing));
 });
 
+test('a « go » that ends the questions of a picked feature lets the next feature start in the same run', async () => {
+  // yoldmewhen2, 2026-11-06: #39 left its questions, 4 places were free, and #40 waited hours for the scheduled tick.
+  const gh = fakeGh({ issues: [
+    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], created_at: '2026-01-01T00:00:00Z' },
+    { number: 40, labels: [L.feature], created_at: '2026-01-02T00:00:00Z' },
+  ], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 5, autoPick: true, maxQuestions: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 39, labels: [L.feature, L.autoPicked, L.specReview], text: 'go', fromOwner: true, fromAgent: false });
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[39, 'build'], [40, 'grilling']]);
+});
+
+test('any event starts a queued card when a place is free, without waiting for the rare scheduled tick', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }, { number: 8, labels: [L.feature, L.queued] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true });
+  assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 8 && payloadOf(s.init.body).stage === 'build'));
+});
+
+test('a tick checks the queue once, not twice', async () => {
+  const gh = fakeGh({ issues: [{ number: 8, labels: [L.feature, L.queued] }, { number: 9, labels: [L.feature, L.queued] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [8]);
+});
+
 // ---- auto-pick ----
 const pickConfig = { ...config, autoPick: true, maxQuestions: 1, stages: { grilling: true, acceptance: true } };
 async function runPick(issues, cfg = pickConfig) {
