@@ -104,3 +104,15 @@ test('si l\'envoi échoue, un message le dit et le bouton redevient « Ok »', a
     assert.equal(await page.locator('button.go[data-go="10"]').isDisabled(), false);
   });
 });
+
+test('après l\'envoi, recharger la page ne permet pas d\'envoyer un second « ok »', async () => {
+  await withPanel({ issues: [visual] }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="10"]').click();
+    await waitFor(() => sentOn(writes, 10)().length, page);
+    await page.locator('.ticket.pending[data-number="10"]').waitFor();
+    await page.reload();
+    await page.locator('.ticket.pending[data-number="10"] button.go').waitFor();
+    assert.equal(await page.locator('.ticket.pending[data-number="10"] button.go').isDisabled(), true);
+  });
+});

@@ -314,7 +314,9 @@ button.go:disabled { opacity: .6; cursor: default; }
 .actions .button:first-child { font-weight: 600; }
 @media (min-width: 700px) {
   .you-item { flex-direction: row; align-items: center; justify-content: space-between; }
-  .you-item .button, .you-item .go { align-self: auto; min-width: 120px; }
+  .you-item .button { align-self: auto; min-width: 120px; }
+  /* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
+  .you-item .go { align-self: auto; min-width: 9.5em; }
   /* The text takes the free space, so a plate's buttons sit together on the right instead of spreading out. */
   .you-what { flex: 1 1 auto; min-width: 0; }
 }

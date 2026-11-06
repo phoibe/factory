@@ -16,3 +16,5 @@
 {"t":"2026-11-06T17:39:06.821Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-06T17:39:09.365Z","kind":"skill","name":"writing-plans","id":"toolu_01PzSsQhDD4RBM41bcsWPLkS"}
 {"t":"2026-11-06T17:39:15.243Z","kind":"test","cmd":"CHROMIUM_PATH=/opt/pw-browsers/chromium timeout 300 node --test e2e/ok-button.e2e.mjs 2>&1 | grep -E \"^(not )?ok|# (pass|fail)\" ","ok":true,"id":"toolu_01WDVEcZAbjMjZecw48gD5hy"}
+{"t":"2026-11-06T17:40:26.364Z","kind":"test","cmd":"cat >> e2e/ok-button.e2e.mjs <<'EOF'\n\ntest('après l\\'envoi, recharger la page ne permet pas d\\'envoyer un second « ok »', async () => {\n  await withPanel({ issues: [visual] }, async ({ page, writes, u","ok":false,"id":"toolu_01LcaTU1n6ftzW941StAXcHs"}
+{"t":"2026-11-06T17:42:15.187Z","kind":"test","cmd":"python3 - <<'EOF'\np='DESIGN.md'\ns=open(p).read()\ndef rep(o,n):\n    global s\n    assert s.count(o)==1,o[:50]; s=s.replace(o,n)\nrep(\"**The One Voice Rule.** Le bleu apparaît sur un seul élément principa","ok":true,"id":"toolu_019nCwF65SZGAJkJzziZX4sK"}

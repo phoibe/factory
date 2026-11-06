@@ -339,8 +339,10 @@ const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 // The button's spoken name follows what a press does: send, cancel, or nothing while it is sent.
 const goWord = (c) => (c.reply === 'ok' ? 'ok' : 'go');
 const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
-const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : sentGo.has(goKey(c)) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
-const goButton = (c) => el('button', { type: 'button', disabled: sentGo.has(goKey(c)), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : sentGo.has(goKey(c)) ? 'Envoi…' : goText(c));
+const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : isSent(c) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
+// An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
+const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
 const replyLink = (c) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 const replyAction = (c) => (c.reply === 'go' ? goButton(c) : replyLink(c));
 // The buttons of a card waiting for the owner, in order. « Ok » comes first (blue), the preview and the page to read after it.
@@ -433,7 +435,7 @@ async function sendGo(c, btn, repo, key) {
     await api(`/repos/${repo}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: goWord(c) }) });
     toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
     // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
-    if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now } }); }
+    if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
@@ -451,7 +453,7 @@ function answerGo(c, btn) {
   const running = pendingGo.get(key);
   if (running) { running.cancel(); pendingGo.delete(key); toast(`« ${goWord(c)} » annulé.`); btn.textContent = goText(c); btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
-  toast(`« ${goWord(c)} » part dans 5 s. Touchez le bouton pour annuler.`);
+  toast(`« ${goWord(c)} » part dans 5 s.`);
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
