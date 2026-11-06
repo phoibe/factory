@@ -52,7 +52,7 @@ test('a project with a broken settings file still opens, with the default settin
     await page.goto(url);
     await page.waitForSelector('#project-view:not([hidden])', { timeout: 15000 });
     assert.equal(await page.locator('#project-name').textContent(), 'bad');
-    await page.waitForSelector('.you-item');
+    await page.waitForSelector('.ticket.yours');
   });
 });
 
