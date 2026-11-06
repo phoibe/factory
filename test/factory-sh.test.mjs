@@ -46,7 +46,7 @@ test('adopter installs the factory files, secrets, sync and framing issue', asyn
 });
 
 test('nouveau creates the repository from the template', async () => {
-  const { log } = await run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', 'Une appli de recettes']);
+  const { log } = await run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', 'Une appli de recettes']);
   assert.match(log, /repo create phoibe\/nouveau-projet --private --template phoibe\/factory-template/);
   assert.match(log, /issue create .*--body Une appli de recettes/);
 });
@@ -93,7 +93,7 @@ test('choice 3 updates the routine of the one project picked', async () => {
 });
 
 test('the install never connects a host: it says the host comes with the stack, at framing', async () => {
-  const { out, log } = await run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', 'Une appli']);
+  const { out, log } = await run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', 'Une appli']);
   assert.match(out, /L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer\./);
   assert.doesNotMatch(out, /Vercel|Appuyez sur Entrée/);
   assert.doesNotMatch(log, /vercel/i);
@@ -162,5 +162,24 @@ test('first sync waits for the run it just started, not an older one', async () 
   const { log } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', '']);
   assert.match(log, /run watch 7 /);
   assert.doesNotMatch(log, /run watch 6 /);
+});
+
+test('phone alerts: the ntfy channel is asked once, kept, then set in every project', async () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  const first = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', ' canal-secret-xyz ', '', ''], { XDG_CONFIG_HOME: cfg });
+  assert.match(first.out, /Nom du canal ntfy/);
+  assert.match(first.log, /secret set NTFY_TOPIC -R phoibe\/mon-appli/);
+  assert.equal(readFileSync(join(cfg, 'factory', 'ntfy'), 'utf8'), 'canal-secret-xyz\n');
+  const second = await run(['adopter', 'autre-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', ''], { XDG_CONFIG_HOME: cfg });
+  assert.doesNotMatch(second.out, /Nom du canal ntfy/);
+  assert.match(second.log, /secret set NTFY_TOPIC -R phoibe\/autre-appli/);
+});
+
+test('phone alerts can be skipped: no secret, nothing saved, the install goes on', async () => {
+  const { out, log, cfg } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', '']);
+  assert.match(out, /Pas d'alerte pour ce projet/);
+  assert.doesNotMatch(log, /NTFY_TOPIC/);
+  assert.ok(!existsSync(join(cfg, 'factory', 'ntfy')));
+  assert.match(out, /C'est prêt/);
 });
 });

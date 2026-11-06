@@ -185,9 +185,28 @@ routine() {
   ok "Secrets de la routine rangés dans le dépôt"
 }
 
+# ---- Alertes téléphone ---------------------------------------------------------------------------
+# The relay sends an ntfy alert when a card waits for the owner, only if the project has NTFY_TOPIC.
+# The channel is the same for every project: asked once, kept on this computer, then set in each project.
+alerts() {
+  say "4. Alertes sur votre téléphone"
+  local file topic=""
+  file="$CONFIG_DIR/ntfy"
+  [ -f "$file" ] && topic=$(tr -d '[:space:]' < "$file")
+  if [ -z "$topic" ]; then
+    echo "  Quand une carte attend votre réponse, la factory peut vous prévenir sur l'application « ntfy »."
+    echo "  Indiquez le nom du canal suivi dans votre application ntfy (le même que pour vos autres projets)."
+    topic=$(ask "  Nom du canal ntfy (Entrée pour passer) :" | tr -d '[:space:]')
+    if [ -z "$topic" ]; then echo "  Pas d'alerte pour ce projet. Relancez le script plus tard pour les ajouter."; return; fi
+    mkdir -p "$CONFIG_DIR"; ( umask 077; printf '%s\n' "$topic" > "$file" )
+  fi
+  printf '%s' "$topic" | gh secret set NTFY_TOPIC -R "$REPO" >/dev/null
+  ok "Alertes branchées (canal ntfy gardé sur cet ordinateur, on ne vous le redemandera plus)"
+}
+
 # ---- Labels et skills ----------------------------------------------------------------------------
 first_sync() {
-  say "4. Labels et skills de la factory"
+  say "5. Labels et skills de la factory"
   local i=0 run="" before
   # The last run listed before we dispatch may be an old, green one: remember it to wait for a newer one.
   before=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
@@ -211,7 +230,7 @@ first_sync() {
 
 # ---- Cadrage --------------------------------------------------------------------------------------
 framing_issue() {
-  say "5. Cadrage"
+  say "6. Cadrage"
   # An adopted project often has its host already: framing checks that itself.
   if [ "$MODE" = nouveau ]; then echo "  L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer."; fi
   local body url
@@ -308,6 +327,7 @@ main() {
   if [ "$MODE" = nouveau ]; then create_repo; else install_into_existing; fi
   claude_access
   routine
+  alerts
   first_sync
   framing_issue
   say "C'est prêt 🎉"
