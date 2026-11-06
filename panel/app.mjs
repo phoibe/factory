@@ -158,7 +158,7 @@ async function openProject(fullName) {
   const next = projects.find((p) => p.repo.full_name === fullName) || projects[0];
   // A broken settings file opens with the default settings: it must never lock the panel on that project.
   const { raw, warning } = parseRawConfig(next.file?.content ? fromBase64(next.file.content) : null);
-  if (warning) toast('Les réglages de ce projet sont illisibles : les réglages par défaut sont affichés.');
+  if (warning) toast('Les paramètres de ce projet sont illisibles : les paramètres par défaut sont affichés.');
   if (current && current.repo.full_name !== next.repo.full_name) cancelPendingGos();
   current = next;
   store.set(PROJECT_KEY, current.repo.full_name);
@@ -773,7 +773,7 @@ async function saveRules(e) {
 }
 async function writeRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
-  if (!fresh) throw new Error('les réglages de ce projet ont disparu de GitHub. Rechargez la page.');
+  if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
@@ -796,7 +796,7 @@ async function writeRules() {
   }
   renderRules();
   drawSite();
-  toast('Règles enregistrées. Elles s\'appliquent dans une minute environ.');
+  toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 
 function selectTab(name) {
