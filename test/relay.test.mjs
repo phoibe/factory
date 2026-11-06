@@ -121,6 +121,18 @@ test('acceptance approval merges, frees the issue and starts the oldest queued o
   assert.equal(payloadOf(sent[0].init.body).stage, 'build');
 });
 
+test('a message on a PR closed by hand starts nothing and merges nothing', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  for (const text of ['ok', 'merci, mais le bouton est trop petit']) {
+    await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text, fromOwner: true });
+  }
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fermée/.test(c[2])), 'the owner is told why nothing happens');
+});
+
 test('visual approval asks the workflow to run checks', async () => {
   const gh = fakeGh({ issues: [], prs: [{ number: 7, labels: [L.visualReview] }] });
   const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
@@ -297,6 +309,11 @@ test('when no preview shows up, the acceptance message names no host in particul
   gh.deploymentStatuses = async () => [{ state: 'pending' }];
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
   await relay.report({ result: 'success', pr: 10 });
+  const check = JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload).previewCheck;
+  // The preview job waits for it outside the queue lock, finds nothing, and the report goes on.
+  const url = await relay.previewWait(check);
+  assert.equal(url, null);
+  await relay.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'skipped', url } });
   const msg = gh.calls.find((c) => c[0] === 'comment')[2];
   assert.match(msg, /pas trouvé de preview/);
   assert.match(msg, /hébergeur/);
@@ -856,6 +873,25 @@ test('guard: an issue left open after its PR merged is closed and frees its plac
   assert.equal(payloadOf(sent[0].init.body).issue, 8); // the queue moves on
 });
 
+test('guard: a PR that forgot « Closes #n » still closes the issue of its branch', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Adds the cart', head: { ref: 'claude/issue-7-cart' }, labels: [] }],
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
+});
+
+test('a card whose open PR forgot « Closes #n » gives its place up all the same', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.queued] }],
+    prs: [{ number: 20, state: 'open', body: 'Adds the cart', head: { ref: 'claude/issue-7-cart' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(payloadOf(sent[0]?.init.body || '{}').issue, 8);
+});
+
 test('guard: an issue the owner reopened after the merge is left alone', async () => {
   const gh = fakeGh({
     issues: [{ number: 7, labels: [L.feature] }],
@@ -1335,4 +1371,30 @@ test('an undo is never undone: a live site still broken after it is only reporte
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 21, sha: 'm2', result: 'failed', detail: 'erreur 500', git: (a) => git.push(a) });
   assert.equal(git.length, 0);
   assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
+});
+
+// Issue #212: waiting minutes for a preview under the queue lock blocked every other decision and made the lock look dead.
+test('a late preview never makes the report wait under the queue lock', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  gh.deploymentStatuses = async () => [{ state: 'pending' }];
+  const sleep = async () => { throw new Error('the report waited under the lock'); };
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep }).report({ result: 'success', pr: 10, sha: 'abc' });
+  const d = gh.calls.find((c) => c[0] === 'dispatch');
+  assert.deepEqual(JSON.parse(d[3].payload), { previewCheck: { pr: 10, sha: 'abc' } });
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance), 'no recette before the preview was opened');
+});
+
+test('the preview job waits for a late preview, outside the lock, then the recette gets its link without waiting', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  let polls = 0;
+  gh.deploymentStatuses = async () => (++polls < 4 ? [{ state: 'pending' }] : [{ state: 'success', environment_url: 'https://late.example' }]);
+  let waited = 0;
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { waited++; } });
+  assert.equal(await relay.previewWait({ pr: 10, sha: 'abc' }), 'https://late.example');
+  assert.ok(waited >= 3);
+  assert.equal(await relay.previewWait({ pr: 10, sha: 'abc', url: 'https://known.example' }), 'https://known.example');
+  waited = 0;
+  await relay.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'passed', url: 'https://late.example' } });
+  assert.equal(waited, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://late.example')));
 });

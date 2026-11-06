@@ -89,8 +89,13 @@ def extract_issues(text):
         {"kind": "bug" if k.strip() == "bug" else "feature", "title": t.strip(), "body": b.strip()}
         for k, t, b in BLOCK_RE.findall(text or "")
         if t.strip()
-    ][:MAX_ISSUES]
-    return BLOCK_RE.sub("", text or "").strip(), issues
+    ]
+    answer = BLOCK_RE.sub("", text or "").strip()
+    dropped = len(issues) - MAX_ISSUES
+    if dropped > 0:
+        answer += (f"\n\n_{dropped} autres demandes n'ont pas été créées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
+                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été créée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
+    return answer, issues[:MAX_ISSUES]
 
 
 def visible_text(draft):

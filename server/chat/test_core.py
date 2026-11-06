@@ -123,8 +123,9 @@ class AccessTest(unittest.TestCase):
 class LimitsTest(unittest.TestCase):
     def test_an_answer_never_opens_more_than_the_cap(self):
         text = "".join(f'<creer-issue type="bug" titre="T{i}">corps</creer-issue>' for i in range(MAX_ISSUES + 5))
-        _, issues = extract_issues(text)
+        answer, issues = extract_issues(text)
         self.assertEqual(len(issues), MAX_ISSUES)
+        self.assertIn("5 autres demandes n'ont pas été créées", answer)  # never dropped silently
 
     def test_conversation_ids_cannot_climb_out_of_the_chats_folder(self):
         self.assertIsNone(CID_RE.match("../index"))

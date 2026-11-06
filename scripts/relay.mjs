@@ -46,7 +46,9 @@ const REVERT_REDO = '<!-- factory-revert-redo #';
 // The deployments that are the live site (not a PR preview).
 export const isLiveEnv = (env) => /^(production|github-pages)$/i.test(String(env || ''));
 // The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
-const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr.head?.ref || '')?.[1]) || null;
+const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr?.head?.ref || '')?.[1]) || null;
+// The issue a PR delivers: its « Closes #n », else the one its branch was made for.
+const prIssue = (pr) => linkedIssue(pr?.body) || branchIssue(pr);
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -132,7 +134,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
   async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
-    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map((p) => linkedIssue(p.body)).filter(Boolean));
+    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
     return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && !names(i.labels).includes(L.blocked)).length;
   }
 
@@ -327,7 +329,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
-    const issue = linkedIssue(pr.body);
+    const issue = prIssue(pr);
     try {
       await gh.merge(prNumber, sha);
     } catch (e) {
@@ -423,7 +425,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     git(['checkout', '-B', branch, `origin/${def}`]);
     git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
     git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
-    const issueNumber = linkedIssue(pr.body) || branchIssue(pr);
+    const issueNumber = prIssue(pr);
     const redo = await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, [
       PROD_BUG_MARKER,
       `Après la mise en ligne de la PR #${prNumber}${issueNumber ? ` (demande #${issueNumber})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`,
@@ -461,7 +463,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       const updates = ((await gh.listComments(item.number)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
-      const issue = linkedIssue(pr.body);
+      const issue = prIssue(pr);
       if (updates >= MAX_BRANCH_UPDATES) {
         await gh.removeLabel(item.number, L.checks);
         if (issue) await gh.addLabels(issue, [L.blocked]);
@@ -482,7 +484,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (!item || item.state !== 'open') return;
     const isPr = Boolean(item.pull_request);
     const pr = isPr ? await gh.getPr(n) : null;
-    const issue = isPr ? linkedIssue(pr?.body) || branchIssue(pr) : n;
+    const issue = isPr ? prIssue(pr) : n;
     const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
     // The agent closing by itself (already done, duplicate, obsolete: issue #203). Only a feature or a bug; its own
     // message is the only one, and the card's state is saved so that a message from the owner brings it back.
@@ -640,7 +642,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
   async function closeMerged(closed) {
     for (const pr of closed.filter((p) => p.merged_at)) {
-      const n = linkedIssue(pr.body);
+      const n = prIssue(pr);
       const issue = n && (await gh.getIssue(n));
       if (!issue || issue.state !== 'open' || issue.pull_request) continue;
       const labels = names(issue.labels);
@@ -726,6 +728,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (i < attempts - 1) await sleep(delayMs);
     }
     return null;
+  }
+
+  // The preview job's wait for the preview (outside the queue lock): the URL the report found, or the one that appears.
+  async function previewWait(check) {
+    if (!check?.sha) return check?.url || null;
+    return check.url || previewUrl(check.sha, check.pr);
   }
 
   // Owner messages (comments and PR reviews) written since the lock was taken, joined into one, or null.
@@ -841,6 +849,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
       return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
+    // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
+    // an agent on it. Only « fermer » (drop) still tidies up.
+    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type)) {
+      log('closed PR: nothing is started');
+      if (ev.fromOwner && ev.text) await gh.comment(n, say("Cette PR est fermée, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau."));
+      return { action: { type: 'ignore', reason: 'PR fermée' }, outputs };
+    }
     const applyLabels = async () => {
       for (const l of action.remove || []) await gh.removeLabel(n, l);
       if (action.add?.length) await gh.addLabels(n, action.add);
@@ -848,7 +863,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     switch (action.type) {
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
-        const issue = pr ? linkedIssue(pr.body) : n;
+        const issue = pr ? prIssue(pr) : n;
         await fireAgent({ stage: action.stage, issue, pr: pr ? n : reopenedPr });
         await applyLabels(); // only once the agent really started
         // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
@@ -908,7 +923,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // A PR just opened: its card gives up its place, so the next queued card starts now rather than at the tick.
     if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.action === 'opened' && action.type !== 'dequeue') {
-      const built = linkedIssue((await gh.getPr(n))?.body);
+      const built = prIssue(await gh.getPr(n));
       if (built) await dequeue({ freed: built }).catch((e) => log(`dequeue after PR: ${e.message}`));
     }
     return { action, outputs };
@@ -949,7 +964,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let missing = [];
     let ui = false;
     try { ({ missing, ui } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
-    const issueNumber = linkedIssue(pr.body);
+    const issueNumber = prIssue(pr);
     // The factory's own undo of a broken delivery: no agent built it, there is no step to catch up.
     const reverting = String(pr.body || '').includes(REVERT_MARKER);
     // A skipped review or design pass is caught up once, by a dedicated run, before the owner is asked anything.
@@ -987,15 +1002,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // Before the owner is given a preview, the factory opens it and replays the user journeys on it, in a separate
     // run (a browser and the project's tests are needed): a broken or empty preview goes back to the agent instead.
+    // The preview can take minutes to appear: it is looked for once here, then waited for by the preview job, outside
+    // the queue lock, so that no decision waits behind it (issue #212). Its report comes back with what it found.
     const previews = next === 'acceptance' && (preview ? true : await hasPreviews(prNumber));
     if (previews && !preview) {
-      const url = await previewUrl(pr.head.sha, prNumber);
-      if (url) {
-        const ref = (await gh.getRepo())?.default_branch || 'main';
-        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, url } }) });
-        log(`preview check started on ${url}`);
-        return;
-      }
+      const url = await previewUrl(pr.head.sha, prNumber, { attempts: 1 });
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, ...(url ? { url } : {}) } }) });
+      log(url ? `preview check started on ${url}` : 'preview check started: it waits for the preview');
+      return;
     }
     if (preview?.result === 'failed') {
       if (failures >= config.review.maxLoops) return blockOnRed(prNumber, issueNumber);
@@ -1009,7 +1024,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const knownUrl = preview?.url || null;
     if (inVisual) {
       // The checks ran while the owner looks at the captures: give him the preview, his « ok » will put it live.
-      const url = knownUrl || ((await hasPreviews(prNumber)) ? await previewUrl(pr.head.sha, prNumber) : null);
+      const url = knownUrl;
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       const where = url ? `\n\nVous pouvez aussi tester la nouvelle version ici : ${url}` : '';
       await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅${where}\n\nRépondez « ok » pour mettre en ligne directement, ou dites-moi ce qu'il faut retoucher.`));
@@ -1025,8 +1040,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.comment(prNumber, say("Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester et vous avez déjà validé la spec (et les captures s'il y en avait) : je mets en ligne directement."));
         return mergePr(prNumber, pr.head.sha);
       }
-      // The preview can take minutes to appear: the card moves to « Testez la preview » only with the message.
-      const url = knownUrl || await previewUrl(pr.head.sha, prNumber);
+      // The card moves to « Testez la preview » only with the message.
+      const url = knownUrl;
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
       const where = url
@@ -1069,7 +1084,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, outputs };
+  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1086,7 +1101,8 @@ function writeOutputs(outputs) {
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  const arg = (name) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : undefined; };
+  // An empty value must never swallow the next option (« --sha --started 12 » would read « --started » as the sha).
+  const arg = (name) => { const i = rest.indexOf(`--${name}`); const v = i >= 0 ? rest[i + 1] : undefined; return v?.startsWith('--') ? undefined : v; };
   const repo = process.env.GITHUB_REPOSITORY;
   const ownerLogin = process.env.GITHUB_REPOSITORY_OWNER;
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
@@ -1110,9 +1126,15 @@ async function main() {
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
     const check = JSON.parse(process.env.CHECK || '{}');
-    const res = readResult(arg('result-file'));
-    await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url: check.url, runId: process.env.GITHUB_RUN_ID } }));
+    const url = arg('url') || check.url || null;
+    const res = url ? readResult(arg('result-file')) : { result: 'skipped', detail: "la preview n'est pas apparue" };
+    await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url, runId: process.env.GITHUB_RUN_ID } }));
     await withLock(gh.queueLock, () => relay.notifyWaiting());
+  } else if (command === 'preview-url') {
+    // The preview job waits for the preview here, without the queue lock: minutes that block no decision.
+    const url = await relay.previewWait(JSON.parse(process.env.CHECK || '{}'));
+    writeOutputs({ url: url || '' });
+    return;
   } else if (command === 'live-url') {
     const check = JSON.parse(process.env.CHECK || '{}');
     const url = await relay.liveUrl(check.sha);

@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Code JavaScript sans dépendance d'exécution (modules Node.js et JS du navigateur), tests intégrés (`node --test`), GitHub Actions pour les contrôles, la fusion et la file d'attente, GitHub Pages pour le panneau. Le jeton GitHub reste dans le navigateur. Seuls outils de développement : Playwright et axe-core pour le contrôle d'accessibilité.
+Code JavaScript sans dépendance d'exécution (modules Node.js et JS du navigateur), tests intégrés (`node --test`), GitHub Actions pour les contrôles, la fusion et la file d'attente, GitHub Pages pour le panneau. Le jeton GitHub reste dans le navigateur. Seuls outils de développement : Playwright et axe-core pour le contrôle d'accessibilité. La discussion en direct du panneau passe par un petit serveur en Python hébergé sur Modal (offre gratuite), qui lit le code en lecture seule.
 
 ## Users
 
@@ -31,7 +31,7 @@ Issues et pull requests GitHub, labels `factory:*` comme machine à états, rout
 - Panneau web statique sur GitHub Pages : règles de chaque projet et suivi des tâches, thème clair/sombre automatique.
 - Les projets appartiennent au compte personnel (pas à une organisation).
 - Pas de compte multiple, pas de service payant, pas d'hébergement hors solutions gratuites.
-- Le seul secret manipulé est le jeton GitHub du panneau, gardé dans le navigateur ; aucune donnée d'autres personnes.
+- Le jeton GitHub du panneau reste dans le navigateur ; le serveur de discussion garde seulement son propre jeton Claude dans les secrets de Modal. Aucune donnée d'autres personnes.
 
 ## Brand Commitments
 
