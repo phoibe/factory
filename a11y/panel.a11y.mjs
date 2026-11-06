@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 
 const require = createRequire(import.meta.url);
 const axeSource = await readFile(require.resolve('axe-core/axe.min.js'), 'utf8');
@@ -56,7 +56,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
       res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'text/html' }).end(body);
     } catch { res.writeHead(404).end(); }
   }).listen(0);
-  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+  const browser = await launchBrowser(server);
   const found = [];
   try {
     for (const scheme of ['light', 'dark']) {
