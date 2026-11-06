@@ -15,7 +15,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // Runs `journey` with a page on the panel. `issues` is the open list GitHub returns; every write is recorded.
 // `config`: the project's factory.config.json. `writeDelay`: how long GitHub takes to answer a write (ms).
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, config = {}, writeDelay = 0 }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -40,7 +40,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json([{ full_name: 'o/r', name: 'r', owner: { login: 'o' }, private: true, html_url: 'https://github.com/o/r', homepage: '' }]);
+      if (path === '/user/repos') return json(repos.map((full) => ({ full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: true, html_url: `https://github.com/${full}`, homepage: '' })));
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
@@ -51,6 +51,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         const date = fileDates[new URL(req.url()).searchParams.get('path')];
         return json(date ? [{ sha: 'c', commit: { committer: { date } } }] : []);
       }
+      const thread = /^\/repos\/o\/r\/issues\/(\d+)\/comments$/.exec(path)?.[1];
+      if (thread && comments[thread]) return json(comments[thread]);
       if (path === '/repos/o/r/issues') return json(new URL(req.url()).searchParams.get('state') === 'closed' ? [] : issues);
       return json([]);
     });

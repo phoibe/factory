@@ -1,7 +1,7 @@
 """The chat server's web API (FastAPI). Run by app.py on Modal; runnable locally for tests.
 
 POST /chat        {repo, conversation: id|null, message, images: [paths]}  ->  NDJSON stream of events
-GET  /health      wakes the server up when the panel opens the « Discussion » tab
+GET  /health      wakes the server up when the panel opens the « Agent » tab
 
 The caller proves who it is with its GitHub token (the panel's): only the factory's owner, only on his own
 repositories. The same token reads the project and writes the conversation, so the server keeps no GitHub secret.

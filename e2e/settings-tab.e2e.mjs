@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withPanel } from './fixture.mjs';
 
-test('le troisième onglet, après « Suivi » et « Discussion », s\'appelle « Paramètres »', async () => {
+test('le troisième onglet, après « Suivi » et « Agent », s\'appelle « Paramètres »', async () => {
   await withPanel({}, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
     const tabs = await page.getByRole('tab').allTextContents();
-    assert.deepEqual(tabs.map((t) => t.trim()).slice(0, 3), ['Suivi', 'Discussion', 'Paramètres']);
+    assert.deepEqual(tabs.map((t) => t.trim()).slice(0, 3), ['Suivi', 'Agent', 'Paramètres']);
   });
 });
 

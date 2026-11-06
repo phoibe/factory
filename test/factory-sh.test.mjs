@@ -71,6 +71,7 @@ test('without a routine, it guides the creation of a routine for this project on
   assert.match(out, /Création de la routine de ce projet, pas à pas/);
   assert.match(out, /Nom : Factory - mon-appli/);
   assert.match(out, /Repositories : ajoute phoibe\/mon-appli, et seulement lui/);
+  assert.match(out, /Modèle : choisissez « Opus 5\.5 »/);
   assert.doesNotMatch(out, /Une seule routine|tous tes projets|Dernier clic/);
   assert.match(out, /C'est prêt/);
 });

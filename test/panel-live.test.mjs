@@ -72,7 +72,7 @@ test('cardChanges tells added, removed and changed cards, and nothing when ident
   assert.deepEqual(cardChanges(null, prev).added, [1, 2, 3]);
 });
 
-test('yoursList puts the oldest wait first, and only the spec step is a plain « go »', () => {
+test('yoursList puts the oldest wait first: the spec step is a plain « go », the captures and the recette a plain « ok »', () => {
   const item = (number, column, updated_at, labels = []) => ({ number, column, updated_at, labels });
   const list = yoursList([
     item(3, 'acceptance', '2026-11-04T12:00:00Z'),
@@ -81,7 +81,9 @@ test('yoursList puts the oldest wait first, and only the spec step is a plain «
     item(4, 'building', '2026-11-04T08:00:00Z'),
     item(5, 'grilling', '2026-11-04T11:00:00Z'),
   ]);
-  assert.deepEqual(list.map((c) => [c.number, c.reply]), [[1, 'go'], [5, 'open'], [3, 'open']]);
+  assert.deepEqual(list.map((c) => [c.number, c.reply]), [[1, 'go'], [5, 'open'], [3, 'ok']]);
+  assert.equal(yoursList([item(6, 'visual', '2026-11-04T10:00:00Z')])[0].reply, 'ok');
+  assert.equal(yoursList([item(7, 'blocked', '2026-11-04T10:00:00Z', ['factory:blocked'])])[0].reply, 'open');
 });
 
 test('the live status line is never empty, so the cards do not jump when its text arrives', () => {
