@@ -111,7 +111,7 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 - **Voile** (`rgb(0 0 0 / .45)`) : derrière une fenêtre (code QR) et sur les vignettes d'images, pour détacher ce qui est devant.
 - **Vert** (`#1a7f4b`) : terminé. **Rouge** (`#c62828`) : échec. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
 
-**The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. S'il n'y a rien à répondre, il n'y a pas de bleu.
+**The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. Dans la carte « À vous », c'est un bouton bleu par ligne (« go » pour une spec, « Ok » pour des captures ou une recette), les autres boutons de la ligne restent discrets. S'il n'y a rien à répondre, il n'y a pas de bleu.
 
 ## 3. Typography
 
@@ -142,7 +142,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px bleu avec 2 px de marge.
 - **Bouton discret** : surface, filet, texte encre ; pour toutes les autres actions.
 - **Carte** : surface, filet d'un pixel, coins 14 px, marge intérieure 24 px.
-- **Carte « À vous »** : fond bleu doux, grande, en tête de page, avec le bouton « go ». Absente quand rien n'attend.
+- **Carte « À vous »** : fond bleu doux, grande, en tête de page ; chaque ligne a au plus un bouton bleu (« go » ou « Ok », 5 s pour annuler), en premier pour « Ok », suivi des boutons discrets « Voir… ». Absente quand rien n'attend.
 - **Ligne de tâche** : numéro en mono, titre, état en gris ; une seule ligne, détail au clic.
 
 ## 8. Do's and Don'ts

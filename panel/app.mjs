@@ -2,7 +2,7 @@ import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSki
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=14';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale } from './live.mjs?v=7';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale } from './live.mjs?v=8';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -333,14 +333,20 @@ function stepTrack(c) {
 }
 
 // The button names what it asks for, not a generic « Répondre ».
-const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', acceptance: 'Tester', blocked: 'Débloquer' };
+const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Voir les captures', acceptance: 'Voir la recette', blocked: 'Débloquer' };
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
-// The card's answer: a « go » button (5 s to cancel) or the link to the message to answer.
-// The « go » button's spoken name follows what a press does: send, cancel, or nothing while it is sent.
-const goName = (c) => `${pendingGo.has(goKey(c)) ? 'Annuler le go' : sentGo.has(goKey(c)) ? 'Envoi du go' : 'go'} pour #${c.number} ${c.title}`;
-const replyAction = (c) => c.reply === 'go'
-  ? el('button', { type: 'button', disabled: sentGo.has(goKey(c)), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : sentGo.has(goKey(c)) ? 'Envoi…' : 'go')
-  : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
+// The card's answer: a « go » (spec) or « Ok » (captures, recette) button, 5 s to cancel, or the link to the message to answer.
+// The button's spoken name follows what a press does: send, cancel, or nothing while it is sent.
+const goWord = (c) => (c.reply === 'ok' ? 'ok' : 'go');
+const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
+const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : isSent(c) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
+// An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
+const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
+const replyLink = (c) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
+const replyAction = (c) => (c.reply === 'go' ? goButton(c) : replyLink(c));
+// The buttons of a card waiting for the owner, in order. « Ok » comes first (blue), the preview and the page to read after it.
+const answerButtons = (c, previewLink) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)] : [previewLink, replyAction(c)]);
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -374,7 +380,7 @@ function card(c, lane, minutes, now, moved) {
     waiting && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview ? null : status,
     // On a waiting card the buttons sit together on one compact row (within reach, without taking over the card).
-    waiting ? el('div', { class: 'card-actions' }, previewLink, replyAction(c)) : previewLink,
+    waiting ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink)) : previewLink,
     stepTrack(c),
     el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
@@ -413,20 +419,30 @@ const sentGo = new Set(); // « go » already posted this session: the card show
 const goKey = (c) => `${current.repo.full_name}#${c.number}`;
 function cancelPendingGos() {
   if (!pendingGo.size) return;
+  const words = new Set([...pendingGo.values()].map((h) => h.word));
   for (const h of pendingGo.values()) h.cancel();
   pendingGo.clear();
-  toast('« go » annulé : vous avez changé de projet.');
+  toast(`${words.size === 1 ? `« ${[...words][0]} » annulé` : 'Envoi annulé'} : vous avez changé de projet.`);
 }
+// What the toast says once the answer has left, by the column it answers.
+const SENT = {
+  spec: '« go » envoyé. La construction démarre.',
+  visual: '« ok » envoyé. Captures validées : la fusion se fera dès que les contrôles automatiques sont verts.',
+  acceptance: '« ok » envoyé. Recette validée : la mise en ligne se fait maintenant.',
+};
 async function sendGo(c, btn, repo, key) {
   try {
-    await api(`/repos/${repo}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
-    toast('« go » envoyé. La construction démarre.');
+    await api(`/repos/${repo}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: goWord(c) }) });
+    toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
+    // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
+    if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
     sentGo.delete(key);
+    if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
-    btn.textContent = 'go';
+    btn.textContent = goText(c);
     btn.classList.remove('undo');
     btn.setAttribute('aria-label', goName(c));
   }
@@ -435,18 +451,19 @@ const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.nu
 function answerGo(c, btn) {
   const repo = current.repo.full_name, key = goKey(c);
   const running = pendingGo.get(key);
-  if (running) { running.cancel(); pendingGo.delete(key); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
+  if (running) { running.cancel(); pendingGo.delete(key); toast(`« ${goWord(c)} » annulé.`); btn.textContent = goText(c); btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
-  toast('« go » part dans 5 s. Touchez le bouton pour annuler.');
+  toast(`« ${goWord(c)} » part dans 5 s.`);
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
   const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
+    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le ${goWord(c)} pour #${c.number} ${c.title}`); },
     done: () => { pendingGo.delete(key); const b = goBtn(c, null); if (!b) return; sentGo.add(key); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b, repo, key); },
   });
   handle.left = 5;
+  handle.word = goWord(c);
   pendingGo.set(key, handle);
 }
 
@@ -473,7 +490,9 @@ for (const type of ['click', 'auxclick']) {
     const link = e.target.closest?.('a');
     if (!li || !current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
-    if (link.classList.contains('you-title') && li.querySelector('button.go')) return; // reading a « go » plate is not answering it
+    // Reading a plate answered by a button (« go », « Ok ») is not answering it: looking at the captures, the preview or
+    // the recette keeps it in « À vous de jouer »; only the button sends it to « En attente de GitHub ».
+    if (li.querySelector('button.go')) return;
     const c = live.issues && boardItems(live.issues).find((x) => x.number === Number(li.dataset.number));
     if (c) savePending(noteClick(pendingState(), c, Date.now()));
   });
@@ -499,8 +518,7 @@ function youCard(yours, headline, sub) {
         c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
         el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
-      live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
-      replyAction(c)))),
+      answerButtons(c, live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null)))),
     status);
 }
 
