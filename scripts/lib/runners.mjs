@@ -55,8 +55,5 @@ export function alertsFor(prev, next, now = Date.now()) {
   return out;
 }
 
-// A project's key in the status file (on a public branch): a hash, so private project names never show.
-export async function repoKey(fullName) {
-  const bytes = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(lower(fullName)));
-  return [...new Uint8Array(bytes)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+// A project's key in the status file (on a public branch): a hash, shared with the panel.
+export { repoKey } from '../../panel/machine.mjs';

@@ -10,6 +10,7 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 ## Moteur / serveur
 - **Node.js 22** — fait tourner le moteur de la factory (file d'attente, lancement de l'agent, contrôles, mise en ligne) ; **aucun framework**
 - **Hébergement : GitHub Actions** — lance le moteur à chaque nouveauté dans vos projets (message, étape qui change, livraison) et toutes les quelques minutes
+- **Serveur de dev** — votre machine, derrière Tailscale : les tâches de vos projets privés y tournent quand elle est connectée, sinon sur les machines GitHub en secours (vérifié toutes les 15 minutes)
 - **Claude Code 2.1** — l'agent qui pose les questions, rédige les fiches et construit ; il est lancé par les routines Claude Code dans le cloud, ou par GitHub Actions en secours
 
 ## Autres services
@@ -22,7 +23,7 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 ## Données
 - **Pas de base de données classique** : tout est stocké dans GitHub.
 - **Demandes GitHub et leurs étiquettes** — vos demandes, leurs échanges et l'étape où elles en sont
-- **Branches dédiées** — les conversations de la discussion, les images collées et les captures avant/après
+- **Branches dédiées** — les conversations de la discussion, les images collées, les captures avant/après et l'état du serveur de dev
 - **Navigateur** — votre jeton GitHub reste dans le navigateur du panneau, jamais ailleurs
 
 ## Bibliothèques

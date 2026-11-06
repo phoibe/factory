@@ -24,7 +24,7 @@ Le panneau montre d'un coup d'œil ce qui attend la réponse de Pierre, et le re
 
 ## Operating Context
 
-Issues et pull requests GitHub, labels `factory:*` comme machine à états, routines Claude Code dans le cloud, GitHub Actions pour les étapes déterministes (contrôles, fusion, file d'attente de 2 tâches en parallèle), skills figés avec une mise à jour proposée chaque mois, branche `stable` promue depuis le panneau, deux outils Mac pour créer ou adopter un projet.
+Issues et pull requests GitHub, labels `factory:*` comme machine à états, routines Claude Code dans le cloud, GitHub Actions pour les étapes déterministes (contrôles, fusion, file d'attente de 2 tâches en parallèle), sur le serveur de dev pour les projets privés avec les machines GitHub en secours, skills figés avec une mise à jour proposée chaque mois, branche `stable` promue depuis le panneau, deux outils Mac pour créer ou adopter un projet.
 
 ## Capabilities and Constraints
 
