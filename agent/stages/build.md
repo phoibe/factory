@@ -6,7 +6,10 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    et le temps de travail réaliste qu'il te reste, en minutes, sous forme de fourchette (ni marge de sécurité excessive, ni
    vœu pieux ; le haut ne dépasse pas 2,5 fois le bas). Publie-la en commentaire sur l'issue, avec en 2e ligne le marqueur
    `<!-- factory-estimate size=<taille> min=<bas> max=<haut> -->` et une phrase en français pour le propriétaire
-   (ex. « Je pense que c'est une petite feature : entre 20 et 40 min »). Le tableau lit ce marqueur. Si en cours de route
+   (ex. « Je pense que c'est une petite feature : entre 10 et 20 min »). Le tableau lit ce marqueur.
+   **Repères mesurés** (de la spec validée à la PR ouverte, revue et passe design comprises) : une petite feature
+   prend 5 à 20 min, une moyenne 15 à 30 min, une grosse 30 à 60 min. Les estimations passées étaient 2 à 3 fois
+   trop hautes (« 40 à 90 min » pour des features faites en 10 à 25 min) : pars de ces repères, pas d'un temps humain. Si en cours de route
    tu dépasses le haut de ta fourchette, publie une nouvelle estimation (même format) pour ce qu'il reste à faire.
 1. **Branche** `claude/issue-<n>-<mot-clé>` depuis `main`.
 2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `PRODUCT.md` (sans fiche produit, choisis-la avec les critères de `.factory/stages/framing.md`), avec dès le
