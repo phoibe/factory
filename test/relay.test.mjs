@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay, eventFromPayload, linkedIssue } from '../scripts/relay.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER } from '../scripts/lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER } from '../scripts/lib/labels.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
 
@@ -244,12 +244,52 @@ test('missing routine secrets explain the fix in French and release the lock', a
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /FACTORY_ROUTINE_URL/.test(c[2])));
 });
 
-test('green checks on a feature open acceptance with the preview link', async () => {
+test('green checks on a feature: the factory opens the preview first, then opens acceptance with its link', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
   await relay.report({ result: 'success', pr: 10 });
+  const d = gh.calls.find((c) => c[0] === 'dispatch');
+  assert.deepEqual(JSON.parse(d[3].payload), { previewCheck: { pr: 10, sha: 'abc', url: 'https://preview.example' } });
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance), 'no recette before the preview was opened');
+  await relay.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'passed', url: 'https://preview.example' } });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://preview.example')));
+  assert.equal(gh.calls.filter((c) => c[0] === 'dispatch').length, 1);
+});
+
+test('a preview the host protects (skipped) still goes to the recette', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'skipped', url: 'https://p.example' } });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+});
+
+test('a broken preview goes back to the agent with what is wrong, never to the owner', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} })
+    .report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'failed', detail: '/ : la page est vide', url: 'https://p.example', runId: 7 } });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
+  assert.equal(payloadOf(sent[0].init.body).previewProblem, '/ : la page est vide');
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.fixing));
+  const msg = gh.calls.find((c) => c[0] === 'comment' && c[2].includes('factory-checks-failed'))[2];
+  assert.match(msg, /la page est vide/);
+});
+
+test('a PR the agent marks « nothing to test » goes live on green checks, without recette or alert', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: `Closes #1\n${NOTHING_TO_TEST_MARKER}`, head: { sha: 'abc' } }], files: { 10: [{ filename: 'test/db.test.js' }] } });
+  gh.getContent = async () => null;
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+  assert.ok(!gh.calls.some((c) => c[0] === 'dispatch' && /previewCheck/.test(c[3]?.payload || '')));
+});
+
+test('« nothing to test » is ignored when a screen changed', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: `Closes #1\n${NOTHING_TO_TEST_MARKER}`, head: { sha: 'abc' } }], files: { 10: [{ filename: 'src/App.tsx' }] } });
+  gh.getContent = async () => null;
+  await createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, screenshots: false } }, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
 });
 
 test('when no preview shows up, the acceptance message names no host in particular', async () => {
@@ -388,7 +428,7 @@ test('no captures catch-up when the screenshots step is off or the change is not
 test('the catch-up happens once: afterwards the PR goes on to acceptance with the alert', async () => {
   const gh = prWithSkippedSteps([SHOTS, { body: '<!-- factory-skills-fix -->\nrattrapage' }]);
   const sent = [];
-  await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  await createRelay({ gh, repo: 'r', config: allStages, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'https://p.example' } });
   assert.equal(sent.length, 0);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.skillsAlert));
@@ -1221,4 +1261,78 @@ test('guard: a project whose agent instructions are behind the factory gets sync
     await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
     assert.equal(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'), dispatched, String(fp));
   }
+});
+
+// ---- ideas, live site ----
+test('autoPick leaves the ideas the agent proposed for the owner to sort, but takes the ones he kept', async () => {
+  const idea = { ...fi(1, L.feature), body: `${AGENT_MARKER}\nRepéré pendant la review` };
+  const kept = { ...fi(2, L.feature, L.kept), body: `${AGENT_MARKER}\nFeature de la fiche` };
+  const { started } = await runPick([idea, kept], { ...pickConfig, maxParallel: 3, maxQuestions: 3 });
+  assert.deepEqual(started.map((p) => p.issue), [2]);
+});
+
+test('dispatched checks: the preview and live-site checks become job outputs, a factory PR gets its checks', async () => {
+  const repository = { owner: { login: 'phoibe' } };
+  const pv = eventFromPayload('workflow_dispatch', { inputs: { payload: JSON.stringify({ previewCheck: { pr: 4, sha: 's', url: 'https://p' } }) }, repository });
+  assert.equal(pv.kind, 'preview-check');
+  const live = eventFromPayload('workflow_dispatch', { inputs: { payload: JSON.stringify({ prodCheck: { pr: 4, sha: 's' } }) }, repository });
+  assert.equal(live.kind, 'prod-check');
+  const ck = eventFromPayload('workflow_dispatch', { inputs: { payload: JSON.stringify({ checksFor: 9 }) }, repository });
+  assert.deepEqual([ck.kind, ck.event, ck.addedLabel, ck.number, ck.fromOwner], ['pr', 'pull_request', L.checks, 9, true]);
+  const gh = fakeGh({ issues: [], prs: [] });
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet });
+  const { outputs } = await relay.handle(pv);
+  assert.deepEqual(JSON.parse(outputs.preview), { pr: 4, sha: 's', url: 'https://p' });
+  assert.equal(gh.calls.length, 0);
+});
+
+test('after a merge, the live site is checked once the host deploys it (only for a deployed project)', async () => {
+  const mk = (deployments) => fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments });
+  const gh = mk([{ id: 1, environment: 'Production' }]);
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'u' } });
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [L.acceptance], text: 'ok', fromOwner: true });
+  const d = gh.calls.filter((c) => c[0] === 'dispatch' && c[3]?.payload).map((c) => JSON.parse(c[3].payload));
+  assert.deepEqual(d.at(-1), { prodCheck: { pr: 10, sha: 'm1' } });
+  const none = mk([{ id: 1, environment: 'Preview' }]);
+  await createRelay({ gh: none, repo: 'r', config, env, log: quiet }).handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [L.acceptance], text: 'ok', fromOwner: true });
+  assert.ok(!none.calls.some((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')));
+});
+
+test('a broken live site: the delivery is undone at once, and an urgent bug redoes it once the undo is live', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] , open: false }], prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
+  const created = [];
+  gh.createIssue = async (title, body, labels) => { const i = { number: 20, title, body, labels: [...labels] }; gh.calls.push(['createIssue', title, body, labels]); created.push(i); return i; };
+  gh.createPr = async (title, head, base, body) => { gh.calls.push(['createPr', title, head, base, body]); return { number: 21 }; };
+  const git = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet });
+  await relay.prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', runId: 5, git: (a) => git.push(a.join(' ')) });
+  assert.ok(git.some((g) => g.endsWith('revert --no-edit m1')));
+  assert.ok(git.some((g) => g === 'push --force origin HEAD:refs/heads/claude/revert-pr-10'));
+  const [, , bugBody, bugLabels] = gh.calls.find((c) => c[0] === 'createIssue');
+  assert.ok(bugBody.includes(PROD_BUG_MARKER) && !bugBody.includes(AGENT_MARKER));
+  assert.deepEqual(bugLabels, [L.bug, L.urgent, L.kept, L.noPick]);
+  const prBody = gh.calls.find((c) => c[0] === 'createPr')[4];
+  assert.ok(prBody.includes(REVERT_MARKER) && prBody.includes('<!-- factory-revert-redo #20 -->'));
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 21 && c[2] === L.checks));
+  assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { checksFor: 21 });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /la page est vide/.test(c[2])));
+  assert.equal(created.length, 1);
+});
+
+test('an undo goes live on green checks without recette, then the redo bug starts', async () => {
+  const gh = fakeGh({ issues: [{ number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: PROD_BUG_MARKER }], prs: [{ number: 21, body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->`, head: { sha: 'r1' } }], files: { 21: [{ filename: 'src/App.tsx' }] } });
+  gh.getContent = async () => null;
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, screenshots: true } }, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 21 });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 21));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 20 && c[2] === L.noPick));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+});
+
+test('an undo is never undone: a live site still broken after it is only reported', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 21, body: REVERT_MARKER, head: { sha: 'r1' } }] });
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 21, sha: 'm2', result: 'failed', detail: 'erreur 500', git: (a) => git.push(a) });
+  assert.equal(git.length, 0);
+  assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
 });

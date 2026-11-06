@@ -194,3 +194,14 @@ export function mergeConfig(base, mine, theirs) {
 export function tabTitle(count) {
   return count > 0 ? `(${count}) Factory` : 'Factory';
 }
+
+// « Idées à trier »: requests the agent proposed by itself (its marker opens the body) that the owner has neither
+// kept nor started (no step label yet). Never picked automatically: « Garder » or « Jeter » sorts them.
+const IDEA_KINDS = ['factory:feature', 'factory:bug'];
+export function ideaItems(items) {
+  return (items || [])
+    .filter((i) => !i.pull_request && String(i.body || '').includes('<!-- factory-agent -->'))
+    .filter((i) => i.labels.some((l) => IDEA_KINDS.includes(l)) && !i.labels.includes('factory:kept'))
+    .filter((i) => !columnFor(i.labels) && !i.labels.some((l) => ['factory:running', 'factory:pending', 'factory:close'].includes(l)))
+    .sort((a, b) => a.number - b.number);
+}

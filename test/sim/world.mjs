@@ -23,7 +23,7 @@ function passes(eventName, p) {
   return true;
 }
 
-export function createWorld({ config, agent = {}, previews = false, checks = () => 'success' } = {}) {
+export function createWorld({ config, agent = {}, previews = false, checks = () => 'success', previewResult = { result: 'passed', detail: 'ok' } } = {}) {
   let now = Date.parse('2026-11-04T08:00:00Z');
   let seq = 0;
   let num = 0; // issue and PR numbers
@@ -31,6 +31,8 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
   const items = new Map(); // issues and PRs share their numbers, like on GitHub
   const events = []; // webhooks waiting for a relay run
   const fires = []; // every agent run the routine received
+  const previewChecks = []; // previews the factory opened before the recette
+  const liveChecks = []; // live sites the factory opened after a merge
   const pendingRuns = []; // agent runs not played yet
   const log = [];
   const iso = () => new Date(now).toISOString();
@@ -169,6 +171,14 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
       const result = pr.dirty ? null : checks(pr); // GitHub starts no checks on a conflicted PR
       if (result) await relayFor().report({ result, pr: pr.number, sha: pr.sha, started: Math.floor(now / 1000), now });
     }
+    // The preview job: the factory opens the preview (smoke.mjs), then the report goes on with its result.
+    if (outputs.preview) {
+      const check = JSON.parse(outputs.preview);
+      previewChecks.push(check);
+      const res = typeof previewResult === 'function' ? previewResult(check) : previewResult;
+      await relayFor().report({ result: 'success', pr: check.pr, sha: check.sha, now, preview: { ...res, url: check.url } });
+    }
+    if (outputs.production) liveChecks.push(JSON.parse(outputs.production));
   }
 
   const journal = (stage, skills, tests = []) => ({
@@ -234,7 +244,7 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
 
   return {
     get now() { return now; },
-    items, fires, log, get,
+    items, fires, log, get, previewChecks, liveChecks,
     owner: {
       openIssue: async (o) => { const n = openIssue('owner', o); await settle(); return n; },
       say: async (n, text) => { comment('owner', n, text); await settle(); },

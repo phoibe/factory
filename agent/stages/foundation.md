@@ -28,7 +28,7 @@ ne refais **pas** l'appli et ne change pas son comportement.
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
-   `build` et `test:a11y` existent et passent (configuration, un premier test de la page d'accueil).
+   `build`, `test:a11y` et `test:e2e` existent et passent (configuration, un premier test de la page d'accueil).
    Si la fiche retient un hébergeur et que le dépôt n'y est pas encore déployé, fais comme à l'étape 5
    ci-dessous (puce « l'hébergeur retenu dans la fiche ») ; sinon ne touche pas à l'hébergement.
    Si un contrôle échoue à cause du code existant, corrige ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
@@ -61,8 +61,10 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      chargées ;
    - une page d'accueil avec le nom de l'appli et une phrase qui dit à quoi elle sert, déjà dans la
      direction visuelle choisie : c'est la première chose que le propriétaire verra ;
-   - les scripts npm `typecheck`, `lint`, `test`, `build` et `test:a11y` (Playwright + axe-core sur les
-     pages principales), qui passent tous : ce sont ceux des contrôles automatiques ;
+   - les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
+     pages principales) et `test:e2e` (parcours Playwright dans `e2e/`, voir l'étape 4 bis de `build.md`, avec
+     un premier parcours « j'ouvre l'appli et je vois sa page d'accueil »), qui passent tous : ce sont ceux des
+     contrôles automatiques ; et `e2e/smoke-routes.txt` avec les écrans principaux ouverts sans connexion ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
    - un `README.md` technique court (en anglais) : lancer, tester, structure.
    - **l'hébergeur retenu dans la fiche** :
@@ -80,7 +82,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    Si la stack demande un service (base de données, authentification) que le propriétaire doit créer, ne le
    branche pas encore : la première feature qui en a besoin le demandera.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
-   localement que les cinq scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
+   localement que les six scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
    puis `Closes #<n>`, puis les détails techniques en anglais.
    **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
@@ -93,6 +95,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
 9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue (titre
    « Feature : … », description en deux ou trois phrases tirées de la fiche) avec `<!-- factory-agent -->` en
-   tête et le label `factory:feature`. Elles ne démarrent que quand le propriétaire y écrit.
+   tête et les labels `factory:feature` et `factory:kept` (il les a validées dans la fiche). Elles démarrent quand il y écrit,
+   ou d'elles-mêmes quand une place est libre si la prise automatique est active.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message : le lien de la PR, et la liste des
    issues créées en disant qu'il pourra lancer chacune en y écrivant « go » quand les fondations seront en ligne.

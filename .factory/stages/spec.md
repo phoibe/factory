@@ -20,5 +20,11 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
      changer. » (et, si la validation est désactivée, dis en une phrase pourquoi tu demandes quand même).
    - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
      projet). Si quelque chose ne va pas, écrivez-le ici : j'en tiendrai compte. »
+4 bis. **Feature trop grosse pour une seule construction ?** (plusieurs écrans indépendants, ou plus d'une demi-journée
+   de travail selon toi) : découpe-la avec le skill `to-tickets` s'il est installé, en tranches qui se livrent et se
+   testent chacune seule. Cette issue garde la première tranche (la spec ne décrit qu'elle, avec une ligne « Ensuite : »
+   qui liste les autres). Ouvre une issue par autre tranche (voir « Ouvrir une issue » dans AGENT.md, avec `factory:kept` :
+   elles viennent de sa demande), dont la description contient sa partie de la spec, `Découpée de #<n>.` et le marqueur
+   `<!-- factory-split -->` ; elles partiront en parallèle quand une place se libère.
 5. Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`, et aussi `factory:auto-go`
    si la spec n'est pas à valider : la construction démarrera dès la fin de ce run.

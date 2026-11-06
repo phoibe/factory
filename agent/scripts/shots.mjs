@@ -124,13 +124,13 @@ img{display:block;border:1px solid #ccc}.n{display:flex;align-items:center;justi
 const dataUri = (file) => `data:image/png;base64,${readFileSync(file).toString('base64')}`;
 
 // Writes one side-by-side image (before left, after right) per screenshot of `after` into `out`.
-export async function compose({ before, after, out }) {
+export async function compose({ before, after, out, only = null }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    for (const f of readdirSync(after).filter((x) => x.endsWith('.png'))) {
+    for (const f of readdirSync(after).filter((x) => x.endsWith('.png') && (!only || only.includes(x)))) {
       const b = before && join(before, f);
       const html = sideBySideHtml({ beforeUri: b && existsSync(b) ? dataUri(b) : null, afterUri: dataUri(join(after, f)) });
       await page.setContent(html, { waitUntil: 'load' });
@@ -141,13 +141,23 @@ export async function compose({ before, after, out }) {
   }
 }
 
-export function markdownTable({ repo, dir, files }) {
+const label = (f) => f.replace(/\.png$/, '').replace(/--/g, ' · ');
+
+// The screens that look exactly the same before and after (same pixels): not shown, only listed. Every main screen
+// is captured, so that a change breaking a screen the feature did not touch still shows up.
+export function sameScreens(before, after, files) {
+  if (!before) return [];
+  return files.filter((f) => existsSync(join(before, f)) && !differs(readFileSync(join(before, f)), readFileSync(join(after, f))));
+}
+
+export function markdownTable({ repo, dir, files, unchanged = [] }) {
   const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
-  const rows = orderFiles(files).map((f) => {
-    const label = f.replace(/\.png$/, '').replace(/--/g, ' · ');
-    return `| ${label} | ![avant · après](${url(f)}) |`;
-  });
-  return ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n');
+  const rows = orderFiles(files).map((f) => `| ${label(f)} | ![avant · après](${url(f)}) |`);
+  const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : "Aucun écran n'a changé d'apparence.";
+  // The hidden mark names the assets branch even when no image is shown: the factory reads it as « captures shown ».
+  const mark = `<!-- shots: ${ASSETS_BRANCH} -->`;
+  if (!unchanged.length) return `${mark}\n${table}`;
+  return `${mark}\n${table}\n\n_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._`;
 }
 
 async function publish({ pr, before, after }) {
@@ -164,13 +174,18 @@ async function publish({ pr, before, after }) {
     git(['checkout', '--orphan', ASSETS_BRANCH], wt);
     git(['rm', '-rf', '--quiet', '.'], wt);
   }
-  await compose({ before: before && existsSync(before) ? before : null, after, out: join(wt, dir, 'compare') });
-  git(['add', '.'], wt);
-  git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
-  git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt);
+  const from = before && existsSync(before) ? before : null;
+  const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
+  const unchanged = sameScreens(from, after, all);
+  const files = all.filter((f) => !unchanged.includes(f));
+  if (files.length) {
+    await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
+    git(['add', '.'], wt);
+    git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
+    git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt);
+  }
   git(['worktree', 'remove', '--force', wt]);
-  const files = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-  return markdownTable({ repo, dir, files });
+  return markdownTable({ repo, dir, files, unchanged });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

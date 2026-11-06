@@ -15,6 +15,9 @@ export const CHECKS = [
   { id: 'test', label: 'Tests', script: 'test' },
   { id: 'build', label: 'Build', script: 'build' },
   { id: 'a11y', label: 'Accessibilité', script: 'test:a11y' },
+  // The user journeys written from each spec's acceptance criteria. A project from before them has none yet: the
+  // next build adds the script, so its absence is noted but never turns the checks red.
+  { id: 'e2e', label: 'Parcours', script: 'test:e2e', optional: true },
   { id: 'audit', label: 'Failles des dépendances', command: ['npm', 'audit', '--omit=dev', '--audit-level=high'] },
 ];
 
@@ -23,14 +26,15 @@ export function planChecks(enabled, pkg) {
   const scripts = pkg?.scripts || {};
   return CHECKS.filter((c) => enabled[c.id]).map((c) => {
     if (c.command) return { ...c, run: c.command };
-    if (!scripts[c.script]) return { ...c, missing: true };
+    if (!scripts[c.script]) return { ...c, missing: true, ...(c.optional ? { skipped: true } : {}) };
     return { ...c, run: ['npm', 'run', c.script] };
   });
 }
 
 export function summary(results) {
-  const icon = { pass: '✅', fail: '❌', missing: '⚠️' };
-  const rows = results.map((r) => `| ${r.label} | ${icon[r.status]} ${r.status === 'missing' ? `script npm « ${r.script} » absent` : ''} |`);
+  const icon = { pass: '✅', fail: '❌', missing: '⚠️', skipped: '➖' };
+  const note = { missing: (r) => `script npm « ${r.script} » absent`, skipped: () => 'pas encore de tests (ajoutés à la prochaine construction)' };
+  const rows = results.map((r) => `| ${r.label} | ${icon[r.status]} ${note[r.status]?.(r) || ''} |`);
   return ['### Contrôles automatiques', '', '| Contrôle | Résultat |', '| --- | --- |', ...rows].join('\n');
 }
 
@@ -83,7 +87,7 @@ function main() {
     console.log("::error::L'installation des dépendances a échoué.");
     process.exit(1);
   }
-  const browser = config.checks.a11y && browserSetup(pkg);
+  const browser = (config.checks.a11y || (config.checks.e2e && pkg.scripts?.['test:e2e'])) && browserSetup(pkg);
   if (browser) {
     run(browser.install);
     if (run(browser.probe) !== 0) {
@@ -93,6 +97,7 @@ function main() {
   }
   const results = [];
   for (const c of planChecks(config.checks, pkg)) {
+    if (c.skipped) { results.push({ ...c, status: 'skipped' }); console.log(`::notice::Script npm « ${c.script} » absent : pas encore de ${c.label.toLowerCase()} à rejouer.`); continue; }
     if (c.missing) { results.push({ ...c, status: 'missing' }); console.log(`::error::Script npm « ${c.script} » absent.`); continue; }
     console.log(`::group::${c.label}`);
     const status = run(c.run) === 0 ? 'pass' : 'fail';
@@ -101,7 +106,7 @@ function main() {
     results.push({ ...c, status });
   }
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary(results) + '\n');
-  process.exit(results.every((r) => r.status === 'pass') ? 0 : 1);
+  process.exit(results.every((r) => r.status === 'pass' || r.status === 'skipped') ? 0 : 1);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

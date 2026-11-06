@@ -23,6 +23,7 @@
     "test": true,
     "build": true,
     "a11y": true,
+    "e2e": true,
     "audit": true
   },
   "skills": {}

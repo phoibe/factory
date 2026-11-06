@@ -102,6 +102,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     updateIssue: (n, fields) => request('PATCH', `/repos/{repo}/issues/${n}`, fields),
     reopenIssue: (n) => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'open' }),
     reopenPr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'open' }),
+    createIssue: (title, body, labels = []) => request('POST', '/repos/{repo}/issues', { title, body, labels }),
+    createPr: (title, head, base, body) => request('POST', '/repos/{repo}/pulls', { title, head, base, body }),
     merge: (n, sha) => request('PUT', `/repos/{repo}/pulls/${n}/merge`, { merge_method: 'squash', ...(sha ? { sha } : {}) }),
     getContent: (path, ref) => request('GET', `/repos/{repo}/contents/${path}${ref ? `?ref=${enc(ref)}` : ''}`),
     listPrFiles: (n) => paginate(`/repos/{repo}/pulls/${n}/files?per_page=100`),
