@@ -101,22 +101,6 @@ test('doneItems keeps every merged request, newest first', () => {
   assert.deepEqual(doneItems(null), []);
 });
 
-// Issue #203: a request the agent closed by itself shows in « Terminé » with its reason.
-test('doneItems adds agent-closed requests with their reason, newest first with merged ones', () => {
-  const closedIssue = (number, closedAt, label, extra = {}) => ({ number, title: `Demande ${number}`, closed_at: closedAt, html_url: `https://github.com/o/r/issues/${number}`, labels: [{ name: 'factory:feature' }, ...(label ? [{ name: label }] : [])], ...extra });
-  const out = doneItems([pr(110, '2026-11-02T10:00:00Z')], [
-    closedIssue(5, '2026-11-03T10:00:00Z', 'factory:already-done'),
-    closedIssue(6, '2026-11-01T10:00:00Z', 'factory:duplicate'),
-    closedIssue(7, '2026-11-04T10:00:00Z', 'factory:obsolete'),
-    closedIssue(8, '2026-11-05T10:00:00Z', null), // abandoned by the owner: not shown
-    closedIssue(9, '2026-11-05T10:00:00Z', 'factory:obsolete', { pull_request: {} }), // a PR, not a request
-  ]);
-  assert.deepEqual(out.map((d) => [d.issue, d.reason]), [[7, 'Obsolète'], [5, 'Déjà réglée'], [10, null], [6, 'En double']]);
-  assert.equal(out[0].url, 'https://github.com/o/r/issues/7');
-  assert.equal(out[0].mergedAt, '2026-11-04T10:00:00Z');
-  assert.equal(out[0].title, 'Demande 7');
-});
-
 test('doneView shows at most 9 items and counts the hidden older ones', () => {
   const mk = (n) => Array.from({ length: n }, (_, i) => ({ number: i }));
   assert.deepEqual([doneView(mk(14)).shown.length, doneView(mk(14)).hidden], [9, 5]);

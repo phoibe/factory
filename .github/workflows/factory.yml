@@ -2,7 +2,7 @@
 name: Factory
 on:
   issues:
-    types: [opened, labeled, unlabeled, closed, reopened]
+    types: [opened, labeled, unlabeled, closed]
   issue_comment:
     types: [created]
   pull_request:

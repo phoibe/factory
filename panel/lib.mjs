@@ -48,18 +48,10 @@ export const DONE_SHOWN = 9;
 // The « Terminé » column, from closed pull requests: only the merged ones that close a request
 // (feature, bug or project; questions have no PR), most recently merged first.
 // Closed without a merge (abandoned) never counts. Each item opens the original request.
-// `reason` is null for a delivered request.
-// Requests the agent closed by itself (already done, duplicate, obsolete) come from closed issues, with their reason.
-export const CLOSE_REASONS = { 'factory:already-done': 'Déjà réglée', 'factory:duplicate': 'En double', 'factory:obsolete': 'Obsolète' };
-const reasonOf = (labels) => (labels || []).map((l) => (typeof l === 'string' ? l : l.name)).map((l) => CLOSE_REASONS[l]).find(Boolean) || null;
-export function doneItems(pulls, issues = []) {
-  const merged = (pulls || [])
+export function doneItems(pulls) {
+  return (pulls || [])
     .filter((p) => p.merged_at)
-    .flatMap((p) => closedIssues(p.body).map((n) => ({ number: p.number, issue: n, title: p.title, mergedAt: p.merged_at, reason: null, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${n}`) })));
-  const closedByAgent = (issues || [])
-    .filter((i) => !i.pull_request && i.closed_at && reasonOf(i.labels))
-    .map((i) => ({ number: i.number, issue: i.number, title: i.title, mergedAt: i.closed_at, reason: reasonOf(i.labels), url: i.html_url }));
-  return [...merged, ...closedByAgent]
+    .flatMap((p) => closedIssues(p.body).map((n) => ({ number: p.number, issue: n, title: p.title, mergedAt: p.merged_at, url: String(p.html_url || '').replace(/\/pull\/\d+$/, `/issues/${n}`) })))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt));
 }
 
