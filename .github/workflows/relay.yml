@@ -36,6 +36,8 @@ jobs:
       payload: ${{ steps.relay.outputs.payload }}
       preview: ${{ steps.relay.outputs.preview }}
       production: ${{ steps.relay.outputs.production }}
+      previewSha: ${{ steps.relay.outputs.previewSha }}
+      productionSha: ${{ steps.relay.outputs.productionSha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -224,7 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ fromJSON(needs.decide.outputs.preview).sha }}
+          ref: ${{ needs.decide.outputs.previewSha }}
           path: project
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -329,7 +331,7 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.live.outputs.url != ''
         with:
-          ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
+          ref: ${{ needs.decide.outputs.productionSha }}
           path: project
           persist-credentials: false
       # Checked again for about 5 minutes before a failure counts: a site still being published answers 404 (#227).
@@ -372,7 +374,7 @@ jobs:
       # The project is checked out here only for git (an undo commit), never to run its code.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
+          ref: ${{ needs.decide.outputs.productionSha }}
           path: project
           fetch-depth: 0
       - uses: actions/download-artifact@v4

@@ -4,6 +4,7 @@
 // Scenarios in test/rehearsal.test.mjs drive the owner; the world runs everything else until it settles.
 import { createRelay, eventFromPayload } from '../../scripts/relay.mjs';
 import { L, AGENT_MARKER } from '../../scripts/lib/labels.mjs';
+import { fromJobOutput } from '../../scripts/lib/job-output.mjs';
 
 export const OWNER = 'phoibe';
 const MIN = 60_000;
@@ -173,14 +174,14 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
     }
     // The preview job: the factory opens the preview (smoke.mjs), then the report goes on with its result.
     if (outputs.preview) {
-      const check = JSON.parse(outputs.preview);
+      const check = JSON.parse(fromJobOutput(outputs.preview));
       previewChecks.push(check);
       // It first waits for the preview (outside the queue lock), then opens it.
       const url = await relayFor().previewWait(check);
       const res = url ? (typeof previewResult === 'function' ? previewResult(check) : previewResult) : { result: 'skipped' };
       await relayFor().report({ result: 'success', pr: check.pr, sha: check.sha, now, preview: { ...res, url } });
     }
-    if (outputs.production) liveChecks.push(JSON.parse(outputs.production));
+    if (outputs.production) liveChecks.push(JSON.parse(fromJobOutput(outputs.production)));
   }
 
   const journal = (stage, skills, tests = []) => ({
