@@ -61,12 +61,20 @@ export function differs(a, b) {
   return !Buffer.from(a).equals(Buffer.from(b));
 }
 
-async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
+// Everything that moves is frozen before each shot, so that a screen that did not change gives the very same
+// picture before and after: one fixed date and time (only in the captures, never in the app itself), animations
+// and transitions stopped in their final state, the text caret hidden. No tolerance on top: one pixel apart is a change.
+export const FROZEN_TIME = '2026-01-15T10:30:00.000Z';
+export const FROZEN_CONTEXT = { reducedMotion: 'reduce', timezoneId: 'Europe/Paris', locale: 'fr-FR' };
+export const FROZEN_SHOT = { fullPage: true, animations: 'disabled', caret: 'hide' };
+
+export async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
   const browser = await chromium.launch(launchOptions());
   const shoot = async (viewport, scheme, applyToggle) => {
-    const context = await browser.newContext({ viewport, colorScheme: scheme });
+    const context = await browser.newContext({ ...FROZEN_CONTEXT, viewport, colorScheme: scheme });
+    await context.clock.setFixedTime(new Date(FROZEN_TIME));
     if (cookies.length) await context.addCookies(cookies);
     if (applyToggle && toggle) {
       await context.addInitScript(({ toggle }) => {
@@ -79,7 +87,7 @@ async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
     const shots = {};
     for (const route of routes) {
       await page.goto(new URL(route, baseUrl).toString(), { waitUntil: 'networkidle' });
-      shots[route] = await page.screenshot({ fullPage: true });
+      shots[route] = await page.screenshot(FROZEN_SHOT);
     }
     await context.close();
     return shots;
