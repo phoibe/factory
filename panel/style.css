@@ -429,7 +429,7 @@ details summary { color: var(--text); }
 /* Retouch (#269): every card of the lane has the same size whatever its content (no staircase); the steps bar and
    the time left sit at the bottom of each card, so they line up from one card to the next. */
 .lane-yours .tickets { grid-auto-rows: 1fr; align-items: stretch; }
-.ticket.yours .card-actions { margin-bottom: auto; }
+.ticket.yours .card-actions { margin-bottom: auto; padding-bottom: 4px; }
 .ticket.yours .eta { margin-top: 0 !important; } /* the free space goes above the steps bar only */
 .ticket.yours .cta .arrow { display: none; }
 /* Only the title and the buttons answer: a tap on the card's background does nothing (it used to be a list row, not a link). */
