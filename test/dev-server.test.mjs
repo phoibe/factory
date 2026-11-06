@@ -22,6 +22,16 @@ function run(args, { runners = '', fake, answers = [], env = {} } = {}) {
   });
 }
 
+// A runner set up by hand before the factory, in another folder of the server.
+function handMadeRunner(name, repo) {
+  const fake = mkdtempSync(join(tmpdir(), 'dev-server-'));
+  const dir = join(fake, 'elsewhere', 'actions-runner');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.runner'), `{\n  "agentName": "${name}",\n  "gitHubUrl": "https://github.com/${repo}"\n}\n`);
+  writeFileSync(join(dir, 'svc.sh'), '#!/usr/bin/env bash\necho "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"\n[ "$1" = install ] && touch .service\nexit 0\n', { mode: 0o755 });
+  return fake;
+}
+
 const factoryDev = (runners) => runners.trim().split('\n').filter((l) => l && l.split(' ')[2].split(',').includes('factory-dev') && l.endsWith(' online'));
 
 describe('dev-server.sh', { concurrency: true }, () => {
@@ -53,13 +63,39 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.match(r.log, /npx -y playwright@1\.56\.1 install-deps chromium/);
   });
 
-  test('a project that already has a runner keeps it, gets the label, and only one more runner', async () => {
-    const r = await run(['phoibe/prive'], { runners: '77 ancien-runner self-hosted,Linux,X64 online\n' });
+  test('a project that already has a runner on this server keeps it, gets the label, and only one more runner', async () => {
+    const fake = handMadeRunner('ancien-runner', 'phoibe/prive');
+    const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64 online\n' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.runners, /^77 ancien-runner self-hosted,Linux,X64,factory-dev online$/m);
     assert.equal(r.runners.trim().split('\n').length, 2);
     assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
     assert.match(r.out, /déjà là, je le garde/);
+  });
+
+  test('a runner online on another machine is neither labelled nor counted', async () => {
+    const r = await run(['phoibe/prive'], { runners: '55 mac-de-pierre self-hosted,macOS,ARM64 online\n' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.runners, /^55 mac-de-pierre self-hosted,macOS,ARM64 online$/m);
+    assert.match(r.out, /mac-de-pierre.*pas sur ce serveur/);
+    assert.equal((r.log.match(/^config\.sh /gm) || []).length, 2);
+  });
+
+  test('a runner of another project with the same name is not taken for this one', async () => {
+    const fake = handMadeRunner('devbox', 'phoibe/autre');
+    const r = await run(['phoibe/prive'], { fake, runners: '66 devbox self-hosted,Linux,X64 offline\n' });
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.log, /svc\.sh install pierre in actions-runner/);
+    assert.equal((r.log.match(/^config\.sh /gm) || []).length, 2);
+  });
+
+  test('cleaning never touches the runners of a project whose name starts the same', async () => {
+    const other = await run(['phoibe/prive-web']);
+    writeFileSync(join(other.fake, 'runners.txt'), ''); // GitHub lists only the runners of phoibe/prive
+    const r = await run(['phoibe/prive'], { fake: other.fake });
+    assert.equal(r.code, 0, r.out);
+    assert.ok(existsSync(join(other.fake, 'runners', 'phoibe-prive-web-1', '.runner')));
+    assert.doesNotMatch(r.log, /uninstall/);
   });
 
   test('running the command again changes nothing', async () => {
@@ -133,10 +169,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
   });
 
   test('a runner installed by hand on this server is made to start with the server', async () => {
-    const fake = mkdtempSync(join(tmpdir(), 'dev-server-'));
-    mkdirSync(join(fake, 'elsewhere', 'actions-runner'), { recursive: true });
-    writeFileSync(join(fake, 'elsewhere', 'actions-runner', '.runner'), '{\n  "agentName": "ancien-runner"\n}\n');
-    writeFileSync(join(fake, 'elsewhere', 'actions-runner', 'svc.sh'), '#!/usr/bin/env bash\necho "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"\n[ "$1" = install ] && touch .service\nexit 0\n', { mode: 0o755 });
+    const fake = handMadeRunner('ancien-runner', 'phoibe/prive');
     const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64 offline\n' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.log, /^svc\.sh install pierre in actions-runner/m);

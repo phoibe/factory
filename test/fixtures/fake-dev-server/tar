@@ -7,10 +7,10 @@ cat > "$dir/config.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "config.sh $*" >> "$FAKE/log"
 [ -n "${FAKE_CONFIG_FAILS:-}" ] && { echo "config failed" >&2; exit 1; }
-name=""; labels=""
-while [ $# -gt 0 ]; do case "$1" in --name) name=$2 ;; --labels) labels=$2 ;; esac; shift; done
+name=""; labels=""; URL=""
+while [ $# -gt 0 ]; do case "$1" in --name) name=$2 ;; --labels) labels=$2 ;; --url) URL=$2 ;; esac; shift; done
 echo "$((RANDOM + 1000)) $name self-hosted,Linux,X64,$labels online" >> "$FAKE/runners.txt"
-printf '{\n  "agentId": 1,\n  "agentName": "%s"\n}\n' "$name" > .runner
+printf '{\n  "agentId": 1,\n  "agentName": "%s",\n  "gitHubUrl": "%s"\n}\n' "$name" "$URL" > .runner
 EOS
 cat > "$dir/svc.sh" <<'EOS'
 #!/usr/bin/env bash

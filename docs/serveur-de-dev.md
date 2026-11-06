@@ -39,8 +39,8 @@ choisissez par numéro.
    validez. Ensuite elle installe les logiciels
    dont les tâches ont besoin, y compris ceux des contrôles qui ouvrent un navigateur. Cela prend quelques minutes.
 2. Elle regarde les runners que le projet a déjà, et **ajoute seulement ce qui manque** pour arriver à 2.
-3. Elle fait démarrer les runners tout seuls à chaque redémarrage du serveur. Ils tournent sous un compte à part
-   du serveur, qui n'a pas accès à vos fichiers ni à votre connexion GitHub.
+3. Elle fait démarrer les runners tout seuls à chaque redémarrage du serveur. Les nouveaux runners tournent sous
+   un compte à part du serveur, qui n'a pas accès à votre connexion GitHub.
 4. Elle affiche « C'est prêt » avec le lien pour vérifier.
 
 ## Vérifier que ça marche
@@ -57,8 +57,8 @@ Quand une tâche tourne, ils affichent « Active ».
 seulement l'étiquette de la factory et le démarrage automatique, puis installe ce qui manque pour arriver à 2
 (un seul runner de plus s'il y en avait un).
 
-**Un ancien runner hors ligne, qui n'est pas sur ce serveur ?** La commande le laisse tel quel chez GitHub, mais ne le
-compte pas : elle installe 2 runners qui marchent sur le serveur. Vous pouvez le supprimer depuis la page des runners.
+**Un runner qui n'est pas sur ce serveur (un ancien, ou sur une autre machine) ?** La commande le laisse tel quel chez
+GitHub, mais ne le compte pas : elle installe 2 runners sur le serveur. Vous pouvez le supprimer depuis la page des runners.
 
 **Je ne sais plus si je l'ai déjà lancée.** Relancez-la sans crainte : elle ne change rien si tout est déjà en place,
 et le dit (« Rien à ajouter »).

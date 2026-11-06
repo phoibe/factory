@@ -7,7 +7,7 @@ case "$*" in
   "api user --jq .login") echo phoibe ;;
   "auth setup-git"*) exit 0 ;;
   "repo list"*) printf 'phoibe/prive\nphoibe/autre\n' ;;
-  *"repos/phoibe/prive/contents/factory.config.json"*) echo '{}' ;;
+  *"repos/phoibe/prive/contents/factory.config.json"*|*"repos/phoibe/prive-web/contents/factory.config.json"*) echo "{}" ;;
   *"/contents/factory.config.json"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   "api repos/actions/runner/releases/latest"*) echo v2.329.0 ;;
   *"actions/runners/registration-token"*) echo REGTOKEN ;;
