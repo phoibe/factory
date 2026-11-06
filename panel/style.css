@@ -434,4 +434,3 @@ details summary { color: var(--text); }
 .machine-status.warn { color: var(--danger); }
 .machine-status.muted { color: var(--muted); font-weight: 400; }
 .machine-title { margin: 12px 0 0; font-size: .8125rem; font-weight: 600; color: var(--muted); }
-.machine-note { margin-top: 8px; font-size: .8125rem; }

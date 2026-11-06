@@ -819,8 +819,7 @@ function machineFieldset(update) {
       ...radios('machine-general', MACHINE_CHOICES, general, (v) => { machine.general = v; renderRules(); })),
     el('div', { role: 'radiogroup', 'aria-labelledby': 'machine-project-title' },
       el('p', { id: 'machine-project-title', class: 'machine-title' }, 'Pour ce projet'),
-      ...radios('machine-project', [['default', `Comme le réglage général (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))),
-    el('p', { class: 'muted machine-note' }, 'Les projets publics tournent toujours sur les machines GitHub. Si le serveur ne répond plus, les tâches y passent en secours en 15 minutes au plus.'));
+      ...radios('machine-project', [['default', `Comme le réglage général (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v))))));
 }
 
 // Writes the general setting on the factory's branch (created if it does not exist yet).
