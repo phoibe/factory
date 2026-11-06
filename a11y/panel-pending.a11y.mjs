@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PANEL = join(ROOT, 'panel');
@@ -21,7 +21,7 @@ test('a plate acted on leaves « À vous de jouer » for the waiting zone, and s
       res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'text/html' }).end(body);
     } catch { res.writeHead(404).end(); }
   }).listen(0);
-  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+  const browser = await launchBrowser(server);
   try {
     const context = await browser.newContext();
     await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
@@ -85,7 +85,7 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
       res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'text/html' }).end(body);
     } catch { res.writeHead(404).end(); }
   }).listen(0);
-  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+  const browser = await launchBrowser(server);
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 480 } }); // short screen: the « go » sits low, where the toast shows
     await context.addInitScript(() => {

@@ -120,6 +120,9 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
   suivi de `factory:visual-review` ou `factory:checks` : `git fetch origin main && git merge origin/main` (pas de
   rebase), résous les conflits, relance les tests, puis pousse. Une PR en conflit ne déclenche aucun contrôle et
   reste bloquée jusqu'à ce que la factory s'en aperçoive.
+- **Tests navigateur dans le cloud** : le Chromium de la session est `/opt/pw-browsers/chromium`. Lance `test:a11y`
+  (et tout test Playwright) avec `CHROMIUM_PATH=/opt/pw-browsers/chromium` et un `timeout 300` : sans lui, un
+  Chromium introuvable peut bloquer le test plusieurs minutes. Ne lance pas `playwright install`.
 - Les captures d'écran vont sur la branche `claude/factory-assets` via `.factory/scripts/shots.mjs publish`.
 
 ## Interdits

@@ -19,6 +19,8 @@ say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  ✅ %s\n' "$*"; }
 warn() { printf '  ⚠️  %s\n' "$*"; }
 die()  { printf '\n❌ %s\n' "$*" >&2; exit 1; }
+# Pause between two GitHub polls. FACTORY_SH_NAP overrides it (the tests set 0).
+nap()  { sleep "${FACTORY_SH_NAP:-$1}"; }
 ask()  { local a; printf '%s ' "$1" >&2; read -r a </dev/tty; printf '%s' "$a"; }
 
 usage() {
@@ -63,7 +65,7 @@ create_repo() {
   local i=0
   until gh api "repos/$REPO/contents/factory.config.json" >/dev/null 2>&1; do
     i=$((i + 1)); [ "$i" -gt 30 ] && die "Le dépôt a été créé mais le modèle n'y est pas encore copié. Relancez le script dans une minute."
-    sleep 2
+    nap 2
   done
   ok "Dépôt créé : https://github.com/$REPO"
 }
@@ -191,12 +193,12 @@ first_sync() {
   before=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
   until gh workflow run factory-sync.yml -R "$REPO" >/dev/null 2>&1; do
     i=$((i + 1)); [ "$i" -gt 15 ] && die "GitHub n'a pas encore activé les workflows du dépôt. Relancez le script dans une minute."
-    sleep 4
+    nap 4
   done
   i=0
   while [ -z "$run" ]; do
     i=$((i + 1)); [ "$i" -gt 15 ] && break
-    sleep 3
+    nap 3
     run=$(gh run list -R "$REPO" --workflow factory-sync.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
     [ "$run" = "$before" ] && run=""
   done

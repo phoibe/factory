@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PANEL = join(ROOT, 'panel');
@@ -21,7 +21,7 @@ test('active cards stay visible when the board redraws with nothing changed', as
       res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'text/html' }).end(body);
     } catch { res.writeHead(404).end(); }
   }).listen(0);
-  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+  const browser = await launchBrowser(server);
   try {
     const context = await browser.newContext();
     await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
