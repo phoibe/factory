@@ -53,3 +53,38 @@ test('the date reads « Mise à jour le 6 novembre 2026 »', () => {
 test('the sheet sections are the ones of the spec, in order', () => {
   assert.deepEqual(STACK_SECTIONS, ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires']);
 });
+
+import { readFileSync } from 'node:fs';
+const factorySheet = () => parseStack(readFileSync(new URL('../STACK.md', import.meta.url), 'utf8'));
+const textOf = (s) => s.blocks.flatMap((b) => b.items || [b.text]).join('\n');
+
+test('the factory sheet has every section of the spec, in order', () => {
+  assert.deepEqual(factorySheet().sections.map((s) => s.title), STACK_SECTIONS);
+});
+
+test('the factory sheet says what criterion 3 of the spec lists', () => {
+  const s = Object.fromEntries(factorySheet().sections.map((x) => [x.title, textOf(x)]));
+  assert.match(s.Interface, /aucun framework/);
+  assert.match(s.Interface, /GitHub Pages/);
+  assert.match(s['Moteur / serveur'], /Node\.js 22/);
+  assert.match(s['Moteur / serveur'], /aucun framework/);
+  assert.match(s['Moteur / serveur'], /GitHub Actions/);
+  assert.match(s['Autres services'], /Python 3\.12/);
+  assert.match(s['Autres services'], /FastAPI 0\.115/);
+  assert.match(s['Autres services'], /Modal/);
+  assert.match(s.Données, /Pas de base de données classique/);
+  const libs = factorySheet().sections.find((x) => x.title === 'Bibliothèques').blocks;
+  const build = libs.findIndex((b) => b.type === 'h' && /fabrication et les tests/.test(b.text));
+  assert.ok(build > 0);
+  assert.match(libs.slice(build).map((b) => (b.items || []).join('\n')).join('\n'), /Playwright 1[\s\S]*axe-core 4/);
+});
+
+test('each library and service of the factory sheet has its version or terms, and a short explanation', () => {
+  const sheet = factorySheet().sections;
+  const libs = sheet.find((x) => x.title === 'Bibliothèques').blocks.flatMap((b) => b.items || []).filter((i) => i.startsWith('**'));
+  for (const l of libs) assert.match(l, /\*\* (\(.*\) )?— \S/, l);
+  for (const l of libs.filter((i) => !/copie intégrée/.test(i))) assert.match(l, /\*\*[^*]+ \d+(\.\d+)?\*\*/, l);
+  for (const svc of sheet.find((x) => x.title === 'Services nécessaires').blocks.flatMap((b) => b.items)) {
+    assert.match(svc, /— (gratuit|payant), (compte nécessaire|sans compte)\./, svc);
+  }
+});

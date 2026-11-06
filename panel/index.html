@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
   <header class="top">
@@ -54,6 +54,7 @@
           <a id="new-project" data-menu class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
           <button id="new-question" data-menu type="button" class="button secondary">Discuter avec l'agent</button>
           <button id="general-review" data-menu type="button" class="button secondary">Review générale</button>
+          <button id="stack-open" data-menu type="button" class="button secondary">Stack technique</button>
         </div>
       </div>
       <div class="tabs" role="tablist" aria-label="Sections du projet">
@@ -101,7 +102,17 @@
       <button id="phone-close" type="button">Fermer</button>
     </div>
   </dialog>
+  <dialog id="stack" aria-labelledby="stack-title">
+    <div class="stack-head">
+      <h2 id="stack-title">Stack technique</h2>
+      <p id="stack-date" class="muted small"></p>
+    </div>
+    <div id="stack-body" class="stack-body"></div>
+    <div class="dialog-actions">
+      <button id="stack-close" type="button">Fermer</button>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=37"></script>
+  <script type="module" src="app.mjs?v=38"></script>
 </body>
 </html>

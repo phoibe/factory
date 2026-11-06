@@ -9,6 +9,7 @@ import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
+import { parseStack, inlineParts, stackDate, STACK_FILE } from './stack.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -345,7 +346,7 @@ function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Fonctionnalité';
+  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running;
@@ -950,6 +951,97 @@ $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project').addEventListener('change', (e) => openProject(e.target.value).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); if (current) $('project').value = current.repo.full_name; }));
 $('general-review').addEventListener('click', () => startGeneralReview());
+$('stack-open').addEventListener('click', () => openStack().catch((err) => showStackError(err)));
+$('stack-close').addEventListener('click', () => $('stack').close());
+
+// ---- Stack sheet (issue #242) -----------------------------------------------------------------
+// The project's STACK.md, written and kept up to date by the agent; the panel only shows it. The last sheet read is
+// shown at once while a fresh copy loads. With no sheet, « Établir la fiche » opens a factory:stack card.
+const stackCache = new Map();
+const STACK_CARD = { title: 'Établir la fiche stack technique', labels: ['factory:stack'],
+  body: 'Fiche stack demandée depuis le tableau : les technologies du projet, la façon dont les données sont stockées, les bibliothèques et les services nécessaires.' };
+
+const stackInline = (text) => inlineParts(text).map((p) => (p.bold ? el('strong', {}, p.text) : document.createTextNode(p.text)));
+function stackNodes({ intro, sections }) {
+  const nodes = intro.map((t) => el('p', { class: 'muted' }, ...stackInline(t)));
+  for (const s of sections) {
+    nodes.push(el('h3', {}, s.title));
+    for (const b of s.blocks) {
+      if (b.type === 'h') nodes.push(el('h4', {}, b.text));
+      else if (b.type === 'p') nodes.push(el('p', {}, ...stackInline(b.text)));
+      else nodes.push(el('ul', {}, ...b.items.map((i) => el('li', {}, ...stackInline(i)))));
+    }
+  }
+  return nodes;
+}
+
+function showStack(repo, sheet) {
+  if (current?.repo.full_name !== repo) return;
+  $('stack-date').textContent = sheet.date;
+  $('stack-body').replaceChildren(...stackNodes(sheet.parsed));
+}
+
+async function openStack() {
+  if (!current) return;
+  const repo = current.repo.full_name;
+  const cached = stackCache.get(repo);
+  if (cached) showStack(repo, cached);
+  else { $('stack-date').textContent = ''; $('stack-body').replaceChildren(el('p', { class: 'muted' }, 'Chargement de la fiche…')); }
+  if (!$('stack').open) $('stack').showModal();
+  const [file, commits] = await Promise.all([
+    api(`/repos/${repo}/contents/${STACK_FILE}`),
+    api(`/repos/${repo}/commits?path=${STACK_FILE}&per_page=1`).catch(() => null),
+  ]);
+  if (current?.repo.full_name !== repo) return;
+  if (!file?.content) { stackCache.delete(repo); return showNoStack(repo); }
+  const sheet = { parsed: parseStack(fromBase64(file.content)), date: stackDate(commits?.[0]?.commit?.committer?.date) };
+  stackCache.set(repo, sheet);
+  showStack(repo, sheet);
+}
+
+// No sheet yet: either its card is already on its way, or the owner can ask for it.
+async function showNoStack(repo) {
+  const open = ((await api(`/repos/${repo}/issues?labels=factory:stack&state=open&per_page=10`).catch(() => [])) || [])
+    .find((i) => !i.pull_request && (i.labels || []).some((l) => (l.name || l) === 'factory:stack'));
+  if (current?.repo.full_name !== repo) return;
+  $('stack-date').textContent = '';
+  if (open) {
+    $('stack-body').replaceChildren(el('div', { class: 'stack-empty' },
+      el('h3', {}, 'Fiche en cours de rédaction'),
+      el('p', { class: 'muted' }, "L'agent la rédige en ce moment : elle apparaîtra ici dans quelques minutes."),
+      el('p', {}, el('a', { href: open.html_url, target: '_blank', rel: 'noopener' }, 'Suivre la demande', el('span', { 'aria-hidden': 'true' }, ' ↗')))));
+    return;
+  }
+  const ask = el('button', { type: 'button', onclick: () => askStack(repo, ask) }, 'Établir la fiche');
+  $('stack-body').replaceChildren(el('div', { class: 'stack-empty' },
+    el('h3', {}, 'Pas encore de fiche'),
+    el('p', { class: 'muted' }, "L'agent peut lire le projet et rédiger sa fiche : technologies, données, bibliothèques et services. Elle apparaîtra ici quelques minutes après."),
+    el('p', {}, ask)));
+}
+
+async function askStack(repo, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Envoi…';
+  try {
+    await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(STACK_CARD) });
+    toast("C'est parti : l'agent rédige la fiche");
+    if (current?.repo.full_name === repo) {
+      $('stack-body').replaceChildren(el('div', { class: 'stack-empty' },
+        el('h3', {}, 'Fiche en cours de rédaction'),
+        el('p', { class: 'muted' }, "L'agent la rédige en ce moment : elle apparaîtra ici dans quelques minutes.")));
+      renderBoard().catch(() => {});
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Établir la fiche';
+    toast(`Impossible de lancer l'agent : ${e.message}`);
+  }
+}
+
+function showStackError(err) {
+  $('stack-date').textContent = '';
+  $('stack-body').replaceChildren(el('p', { class: 'muted' }, `La fiche ne s'est pas chargée (${err.message}). Réessayez dans un instant.`));
+}
 
 // Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
 async function startGeneralReview() {
