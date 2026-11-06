@@ -600,7 +600,7 @@ test('any event unsticks a PR opened in conflict, without waiting for the rare s
 });
 
 // ---- auto-pick ----
-const pickConfig = { ...config, autoPick: true, stages: { grilling: true, acceptance: true } };
+const pickConfig = { ...config, autoPick: true, maxQuestions: 1, stages: { grilling: true, acceptance: true } };
 async function runPick(issues, cfg = pickConfig) {
   const gh = fakeGh({ issues, prs: [] });
   const sent = [];
@@ -649,6 +649,33 @@ test('autoPick starts the queue first and picks only for the slots left', async 
 test('autoPick stops picking features while an auto-picked one waits for the owner', async () => {
   const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature), fi(3, L.bug)]);
   assert.deepEqual(started.map((p) => p.issue), [3]);
+});
+
+test('maxQuestions 2: one picked feature waiting for the owner still lets one more feature be picked', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature), fi(3, L.feature)], { ...pickConfig, maxParallel: 5, maxQuestions: 2 });
+  assert.deepEqual(started.map((p) => [p.issue, p.stage]), [[2, 'grilling']]);
+});
+
+test('maxQuestions 2: two picked features waiting stop features, bugs are still picked', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature, L.autoPicked, L.specReview), fi(3, L.feature), fi(4, L.bug)], { ...pickConfig, maxParallel: 5, maxQuestions: 2 });
+  assert.deepEqual(started.map((p) => p.issue), [4]);
+});
+
+test('maxQuestions 2: two features can be picked in the same round, not a third', async () => {
+  const { started } = await runPick([fi(1, L.feature), fi(2, L.feature), fi(3, L.feature)], { ...pickConfig, maxParallel: 5, maxQuestions: 2 });
+  assert.deepEqual(started.map((p) => p.issue), [1, 2]);
+});
+
+test('maxQuestions lowered below the features already waiting: nothing is stopped, no new feature', async () => {
+  const { gh, started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature, L.autoPicked, L.grilling), fi(3, L.feature)], { ...pickConfig, maxParallel: 5, maxQuestions: 1 });
+  assert.deepEqual(started, []);
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && [1, 2].includes(c[1])));
+});
+
+test('maxQuestions missing from the config: 2 by default', async () => {
+  const { maxQuestions, ...cfg } = pickConfig;
+  const { started } = await runPick([fi(1, L.feature), fi(2, L.feature), fi(3, L.feature)], { ...cfg, maxParallel: 5 });
+  assert.deepEqual(started.map((p) => p.issue), [1, 2]);
 });
 
 test('autoPick takes the oldest bug first when several tie', async () => {

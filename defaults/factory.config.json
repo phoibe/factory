@@ -3,6 +3,7 @@
   "runner": "claude-cloud",
   "maxParallel": 2,
   "autoPick": false,
+  "maxQuestions": 2,
   "stack": "À choisir au cadrage",
   "stages": {
     "grilling": true,

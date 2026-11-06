@@ -78,6 +78,17 @@ test('panel screens have no axe violations, in the light and the dark theme', as
           await page.evaluate(axeSource);
           const result = await page.evaluate(() => axe.run());
           for (const v of result.violations) found.push(`${name} (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+          if (name === 'Règles') {
+            // The "Features en questions en même temps" setting sits right under the auto-pick switch, set to 2 by default.
+            const q = await page.evaluate(() => {
+              const input = document.getElementById('maxQuestions');
+              const pickRow = document.getElementById('autoPick')?.closest('.row');
+              return input && { value: input.value, min: input.min, max: input.max, label: document.querySelector('label[for=maxQuestions]')?.textContent,
+                afterPick: pickRow?.nextElementSibling?.contains(input) === true };
+            });
+            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'Features en questions en même temps' || !q.afterPick)
+              found.push(`Règles (${scheme}): réglage maxQuestions absent ou mal placé : ${JSON.stringify(q)}`);
+          }
         }
         await context.close();
       }
