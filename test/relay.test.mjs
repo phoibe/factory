@@ -1736,3 +1736,38 @@ test('a publication that fails again is only reported, with the host message, ne
   assert.match(body, /hébergeur refuse de la publier/);
   assert.match(body, /Deployment failed/);
 });
+
+// Issue #227: a « Remettre en ligne » card never waits in no-pick for an undo that was never opened.
+function undoSetup({ issues = [], createPr } = {}) {
+  issues.push({ number: 1, labels: [L.feature], open: false });
+  const gh = fakeGh({ issues, prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
+  gh.createIssue = async (title, body, labels) => { const i = { number: 20, title, body, labels: [...labels] }; issues.push(i); gh.calls.push(['createIssue', title, body, labels]); return i; };
+  gh.createPr = createPr || (async (title, head, base, body) => { gh.calls.push(['createPr', title, head, base, body]); return { number: 21 }; });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); const i = issues.find((x) => x.number === n); if (i) Object.assign(i, fields); };
+  gh.listOpenIssues = async () => issues.filter((i) => i.open !== false).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) }));
+  return gh;
+}
+
+test('an undo GitHub refuses to open: the redo card starts at once as a normal urgent fix, and the setting is named', async () => {
+  const issues = [];
+  const gh = undoSetup({ issues, createPr: async () => { throw new Error('GitHub Actions is not permitted to create or approve pull requests'); } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', git: () => '' });
+  const card = issues.find((i) => i.number === 20);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.ok(!/a retiré cette livraison/.test(card.body));
+  const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
+  assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
+  assert.ok(!/Je la retire tout de suite/.test(said));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+});
+
+test('a relaunch finds the undo prepared but never opened: it opens it for the existing card, no second card', async () => {
+  const stuck = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
+  const issues = [stuck];
+  const gh = undoSetup({ issues });
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur', git: () => '' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'createIssue'));
+  assert.match(gh.calls.find((c) => c[0] === 'createPr')[4], /<!-- factory-revert-redo #20 -->/);
+  assert.ok(stuck.labels.includes(L.noPick));
+});

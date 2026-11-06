@@ -53,6 +53,17 @@ const stripReopen = (body) => String(body || '').replace(/\n*<!-- factory-reopen
 const CLOSE_STATE = { [L.alreadyDone]: 'completed', [L.duplicate]: 'duplicate', [L.obsolete]: 'not_planned' };
 // In an undo PR's body: the issue that redoes the delivery, started once the undo is merged.
 const REVERT_REDO = '<!-- factory-revert-redo #';
+// On a « Remettre en ligne » card: the delivery it redoes (issue #227). Older cards only say it in their text.
+const REDO_OF = '<!-- factory-redo-of #';
+export function redoOf(body) {
+  const text = String(body || '');
+  if (!text.includes(PROD_BUG_MARKER)) return null;
+  const m = /<!-- factory-redo-of #(\d+) ([0-9a-f]{7,40}) -->/.exec(text);
+  if (m) return { pr: Number(m[1]), sha: m[2] };
+  const pr = Number(/la PR #(\d+)/.exec(text)?.[1]);
+  const sha = /cherry-pick ([0-9a-f]{7,40})/.exec(text)?.[1] || null;
+  return pr ? { pr, sha } : null;
+}
 // The deployments that are the live site (not a PR preview).
 export const isLiveEnv = (env) => /^(production|github-pages)$/i.test(String(env || ''));
 // The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
@@ -398,7 +409,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The factory undid a broken delivery (prodReport): once the undo is live, the issue that redoes it can start.
   async function redoAfterRevert(pr) {
     const n = Number(new RegExp(`${REVERT_REDO}(\\d+)`).exec(pr?.body || '')?.[1]);
-    if (!n) return;
+    if (n) await startRedo(n);
+  }
+
+  // A « Remettre en ligne » card leaves no-pick and starts like any urgent bug (or waits first in line).
+  async function startRedo(n) {
     await gh.removeLabel(n, L.noPick);
     const labels = await liveLabels(n);
     await handle({ kind: 'issue', event: 'issues', action: 'opened', number: n, labels, fromOwner: true, fromAgent: false, openedRecently: false });
@@ -456,21 +471,49 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
     git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
     const issueNumber = prIssue(pr);
-    const redo = await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, [
-      PROD_BUG_MARKER,
-      `Après la mise en ligne de la PR #${prNumber}${issueNumber ? ` (demande #${issueNumber})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`,
-      '',
-      `La factory a retiré cette livraison (retour à la version d'avant). Il faut la refaire : reprends les changements de la PR #${prNumber} (\`git cherry-pick ${sha}\`), trouve pourquoi ils cassaient la version en ligne (\`${url}\`), corrige, et vérifie la version déployée de ta PR avant de la rendre.`,
-    ].join('\n'), [L.bug, L.urgent, L.kept, L.noPick]);
-    const revert = await gh.createPr(`Retirer « ${pr.title} » : la version en ligne ne marchait plus`, branch, def, [
-      REVERT_MARKER,
-      `${REVERT_REDO}${redo.number} -->`,
-      `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}. Mis en ligne dès que les contrôles sont verts ; la demande #${redo.number} refait ensuite la livraison proprement.`,
-    ].join('\n'));
+    const facts = { prNumber, issueNumber, sha, url, detail, link };
+    // A relaunch after an undo that was never opened reuses the card it left behind (issue #227).
+    const redo = (await findRedo(prNumber)) || await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, redoBody({ ...facts, undone: true }), [L.bug, L.urgent, L.kept, L.noPick]);
+    let revert;
+    try {
+      revert = await gh.createPr(`Retirer « ${pr.title} » : la version en ligne ne marchait plus`, branch, def, [
+        REVERT_MARKER,
+        `${REVERT_REDO}${redo.number} -->`,
+        `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}. Mis en ligne dès que les contrôles sont verts ; la demande #${redo.number} refait ensuite la livraison proprement.`,
+      ].join('\n'));
+    } catch (e) {
+      // GitHub refused the undo (the repository forbids Actions to open PRs, an outage…): the card would wait in
+      // no-pick forever. It starts now and repairs the live site directly.
+      log(`undo of #${prNumber} refused: ${String(e.message || e).slice(0, 120)}`);
+      await gh.updateIssue(redo.number, { body: redoBody({ ...facts, undone: false }) });
+      await gh.comment(prNumber, say(`Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu la retirer : GitHub a refusé que la factory ouvre le retour en arrière. La correction urgente #${redo.number} démarre donc tout de suite pour réparer directement la version en ligne. Pour que la factory puisse retirer une livraison la prochaine fois, cochez dans le dépôt : Settings → Actions → General → « Allow GitHub Actions to create and approve pull requests ».`));
+      await startRedo(redo.number);
+      return;
+    }
     await gh.addLabels(revert.number, [L.checks]);
     await gh.dispatch(PROJECT_WORKFLOW, def, { payload: JSON.stringify({ checksFor: revert.number }) });
     await gh.comment(prNumber, say(`Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.\n\nJe la retire tout de suite (PR #${revert.number}), puis la factory la refait en corrigeant le problème (#${redo.number}). Rien à faire de votre côté.`));
     log(`live site broken after #${prNumber}: undo #${revert.number}, redo #${redo.number}`);
+  }
+
+  // The card that redoes a delivery: what broke, and how to redo it. `undone`: the live site went back to the old
+  // version; otherwise the delivery is still live and is repaired directly.
+  function redoBody({ prNumber, issueNumber, sha, url, detail, link, undone }) {
+    return [
+      PROD_BUG_MARKER,
+      `${REDO_OF}${prNumber} ${sha} -->`,
+      `Après la mise en ligne de la PR #${prNumber}${issueNumber ? ` (demande #${issueNumber})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`,
+      '',
+      undone
+        ? `La factory a retiré cette livraison (retour à la version d'avant). Il faut la refaire : reprends les changements de la PR #${prNumber} (\`git cherry-pick ${sha}\`), trouve pourquoi ils cassaient la version en ligne (\`${url}\`), corrige, et vérifie la version déployée de ta PR avant de la rendre.`
+        : `La factory n'a pas pu retirer cette livraison (GitHub a refusé le retour en arrière) : elle est toujours en ligne. Répare directement la version en ligne (\`${url}\`) : trouve pourquoi les changements de la PR #${prNumber} (commit \`${sha}\`) la cassent, corrige, et vérifie la version déployée de ta PR avant de la rendre.`,
+    ].join('\n');
+  }
+
+  // The open card that redoes the delivery of PR `prNumber`, if any (its marker, or the sentence of older cards).
+  async function findRedo(prNumber) {
+    const open = (await gh.listOpenIssues?.().catch(() => null)) || [];
+    return open.find((i) => !i.pull_request && redoOf(i.body)?.pr === prNumber) || null;
   }
 
   // Right after a push to main GitHub has not computed mergeability yet ("unknown"): ask again for a while.
