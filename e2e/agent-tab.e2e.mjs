@@ -49,3 +49,14 @@ test('quand l\'agent m\'a répondu, la pastille apparaît bien sur l\'onglet « 
     assert.match(await page.locator('#tab-chat').innerText(), /^Agent\s*1$/);
   });
 });
+
+test('la pastille de l\'onglet « Agent » se lit « 1 nouvelle réponse » à la voix', async () => {
+  await withPanel({ issues: [question] }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.chat.seen.o/r', JSON.stringify({ 7: 1 })));
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('#tab-chat #chat-badge:not([hidden])').waitFor({ timeout: 5000 });
+    const described = await page.locator('#tab-chat').evaluate((tab) => (tab.getAttribute('aria-describedby') || '').split(' ').map((id) => document.getElementById(id)?.textContent.trim()).join(' '));
+    assert.equal(described, '1 nouvelle réponse');
+  });
+});

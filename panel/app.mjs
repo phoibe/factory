@@ -1287,6 +1287,7 @@ function drawChatList() {
   const n = chat.server ? 0 : open.filter((c) => unread(c, chat.seen)).length;
   $('chat-badge').hidden = !n;
   $('chat-badge').textContent = String(n);
+  $('chat-badge-label').textContent = n ? `${n} ${n > 1 ? 'nouvelles réponses' : 'nouvelle réponse'}` : '';
 }
 
 function drawChat() {
