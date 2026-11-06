@@ -14,7 +14,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 
 // Runs `journey` with a page on the panel. `issues` is the open list GitHub returns; every write is recorded.
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -38,6 +38,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (path === '/user/repos') return json([{ full_name: 'o/r', name: 'r', owner: { login: 'o' }, private: true, html_url: 'https://github.com/o/r', homepage: '' }]);
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from('{}').toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
+      if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
       const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];
       if (file && file in files) return json({ content: Buffer.from(files[file]).toString('base64'), encoding: 'base64', sha: 's' });
       if (file && !path.endsWith('factory.config.json')) return json({ message: 'Not Found' }, 404);

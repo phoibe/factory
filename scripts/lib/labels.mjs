@@ -80,11 +80,11 @@ export const REVERT_MARKER = '<!-- factory-revert -->';
 // In an issue body: written by the factory after a broken delivery. Not an idea to sort: it starts at once.
 export const PROD_BUG_MARKER = '<!-- factory-prod-check -->';
 
-// An idea the agent proposed (its issue body carries the agent marker) that the owner has not sorted yet: it waits
-// in « Idées à trier » and is never picked automatically. Writing in it, or « Garder » on the board, makes it a request.
 // The stage that builds a card with no spec: a bug, a general review, a stack sheet, or else a feature.
 export const buildStage = (labels) => (labels.includes(L.bug) ? 'bugfix' : labels.includes(L.audit) ? 'audit' : labels.includes(L.stack) ? 'stack' : 'build');
 
+// An idea the agent proposed (its issue body carries the agent marker) that the owner has not sorted yet: it waits
+// in « Idées à trier » and is never picked automatically. Writing in it, or « Garder » on the board, makes it a request.
 export const isIdea = (issue) => {
   const labels = (issue?.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
   return String(issue?.body || '').includes(AGENT_MARKER) && !labels.includes(L.kept);

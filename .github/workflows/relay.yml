@@ -150,13 +150,20 @@ jobs:
           else
             cat "$RUNNER_TEMP/err"; exit 1
           fi
-      # The default branch, for the stack sheet check (libraries changed → STACK.md updated). Never fails the job:
-      # without it the check is skipped.
-      - name: Default branch for the stack sheet check
+      # Where the PR started from (its merge base with the default branch), for the stack sheet check: libraries the
+      # PR itself changed → STACK.md changed by the PR too. Comparing with the tip of main instead would blame the PR
+      # for what other PRs merged meanwhile. Never fails the job: without it the check is skipped.
+      - name: Merge base for the stack sheet check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch) && git fetch -q --depth=1 origin "+refs/heads/$branch:refs/factory/base" || echo "::notice::Branche principale introuvable : fiche stack non comparée."
+          if branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch) \
+            && base=$(gh api "repos/$GITHUB_REPOSITORY/compare/$branch...$(git rev-parse HEAD)" --jq .merge_base_commit.sha) \
+            && git fetch -q --depth=1 origin "$base" && git update-ref refs/factory/base FETCH_HEAD; then
+            echo "Fiche stack comparée à $base"
+          else
+            echo "::notice::Point de départ de la PR introuvable : fiche stack non comparée."
+          fi
       - uses: actions/checkout@v4
         with:
           repository: phoibe/factory

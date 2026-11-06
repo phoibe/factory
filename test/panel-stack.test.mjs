@@ -76,15 +76,21 @@ test('the factory sheet says what criterion 3 of the spec lists', () => {
   const libs = factorySheet().sections.find((x) => x.title === 'Bibliothèques').blocks;
   const build = libs.findIndex((b) => b.type === 'h' && /fabrication et les tests/.test(b.text));
   assert.ok(build > 0);
-  assert.match(libs.slice(build).map((b) => (b.items || []).join('\n')).join('\n'), /Playwright 1[\s\S]*axe-core 4/);
+  assert.match(libs.slice(build).map((b) => (b.items || []).join('\n')).join('\n'), /Playwright 1\.56[\s\S]*axe-core 4\.10/);
 });
 
 test('each library and service of the factory sheet has its version or terms, and a short explanation', () => {
   const sheet = factorySheet().sections;
   const libs = sheet.find((x) => x.title === 'Bibliothèques').blocks.flatMap((b) => b.items || []).filter((i) => i.startsWith('**'));
   for (const l of libs) assert.match(l, /\*\* (\(.*\) )?— \S/, l);
-  for (const l of libs.filter((i) => !/copie intégrée/.test(i))) assert.match(l, /\*\*[^*]+ \d+(\.\d+)?\*\*/, l);
+  for (const l of libs) assert.match(l, /\*\*[^*]+ \d+\.\d+\*\*|version non indiquée/, l);
   for (const svc of sheet.find((x) => x.title === 'Services nécessaires').blocks.flatMap((b) => b.items)) {
-    assert.match(svc, /— (gratuit|payant), (compte nécessaire|sans compte)\./, svc);
+    assert.match(svc, /^\*\*[^*]+\*\* — \S.*\. (Gratuit|Payant), (compte nécessaire|sans compte)\./, svc);
   }
+});
+
+test('French punctuation keeps its space: no colon or semicolon starts a line', async () => {
+  const { frenchSpaces } = await import('../panel/stack.mjs');
+  assert.equal(frenchSpaces('fiche : technologies ; données ! « Plus »'), 'fiche : technologies ; données ! « Plus »');
+  assert.equal(frenchSpaces('https://x.y'), 'https://x.y');
 });

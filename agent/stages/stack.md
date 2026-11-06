@@ -13,16 +13,18 @@ pas de spec : tu l'établis en lisant le projet.
    n'écris rien que tu n'as pas vu.
 3. **Écris `STACK.md`** au modèle ci-dessous (en français, vouvoiement, sans jargon inutile). Les titres `##` sont
    fixes, dans cet ordre ; le panneau les affiche tels quels. Règles :
-   - chaque nom est suivi de sa **version principale** seulement (« Node.js 22 », « FastAPI 0.115 ») :
-     le premier nombre, ou les deux premiers pour une version 0.x ; puis « — » et quelques mots qui disent à quoi il sert ;
+   - chaque nom est suivi de sa **version principale**, sans les numéros de détail : les deux premiers nombres
+     (« FastAPI 0.115 », « Playwright 1.49 »), ou le seul nombre sous lequel la techno se présente (« Node.js 22 ») ;
+     « version non indiquée » si tu ne la trouves nulle part. Puis « — » et quelques mots qui disent à quoi il sert ;
+   - pas de jargon : « demande » plutôt que « issue », « étiquette » plutôt que « label », « livraison » plutôt que « PR » ;
    - pour chaque partie : le langage, le framework ou « aucun framework », et l'hébergement ;
    - une partie qui n'existe pas dit « Aucun » en une ligne (ne supprime pas le titre) ;
    - **Données** : la base de données (nom, version, hébergeur), ou comment les données sont stockées s'il n'y en a
      pas de classique (fichiers, navigateur, GitHub…) ;
    - **Bibliothèques** : toutes celles des fichiers de dépendances, sous les deux sous-titres ; regroupe celles
      d'une même famille en une ligne si elles sont nombreuses (« <famille> (6 composants) — … ») ;
-   - **Services nécessaires** : chacun avec « gratuit » ou « payant », « compte nécessaire » ou « sans compte », et
-     pour un service gratuit la limite qui compte en une phrase (« gratuit jusqu'à 100 Go de trafic par mois »).
+   - **Services nécessaires** : d'abord à quoi il sert, puis « Gratuit » ou « Payant », « compte nécessaire » ou
+     « sans compte », et pour un service gratuit la limite qui compte en une phrase (« gratuit jusqu'à 100 Go de trafic par mois »).
      Vérifie la limite sur le site du service (WebFetch) ; si tu ne peux pas, écris « limite à vérifier ».
 
 ```markdown
@@ -49,7 +51,7 @@ pas de spec : tu l'établis en lisant le projet.
 - **<nom> <version>** — <à quoi elle sert>
 
 ## Services nécessaires
-- **<Service>** — gratuit, compte nécessaire. <Limite de l'offre gratuite en une phrase.> <À quoi il sert.>
+- **<Service>** — <à quoi il sert>. Gratuit, compte nécessaire. <Limite de l'offre gratuite en une phrase.>
 ```
 
 4. **Vérifie** : relis la fiche contre les fichiers de dépendances (aucune bibliothèque oubliée ni inventée), puis

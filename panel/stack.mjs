@@ -47,3 +47,8 @@ export function stackDate(iso) {
   if (Number.isNaN(t)) return '';
   return `Mise à jour le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris' })}`;
 }
+
+// French typography: a non-breaking space before « : ; ! ? » and inside « », so no punctuation starts a line.
+export function frenchSpaces(text) {
+  return String(text || '').replace(/ ([:;!?»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
+}

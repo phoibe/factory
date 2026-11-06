@@ -2093,3 +2093,10 @@ test('a queued stack card starts the stack stage when a place frees', async () =
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
   assert.equal(payloadOf(sent[0].init.body).stage, 'stack');
 });
+
+test('a failed lookup of the stack sheet (not a 404) opens no card', async () => {
+  const { gh } = stackWorld();
+  gh.getContent = async (path) => { if (path === 'STACK.md') throw new Error('502 Bad Gateway'); return { content: '' }; };
+  await guardTick(gh, []);
+  assert.ok(!gh.calls.some((c) => c[0] === 'create'));
+});

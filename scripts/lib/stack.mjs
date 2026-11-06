@@ -66,5 +66,7 @@ export function stackVerdict({ base, head }) {
   const removed = [...before].filter((l) => !after.has(l)).sort();
   const libsChanged = added.length + removed.length > 0;
   const sheetUpdated = head.sheet != null && head.sheet !== base.sheet;
-  return { status: libsChanged && !sheetUpdated ? 'fail' : 'pass', added, removed };
+  // Once a project has its sheet, it never loses it.
+  const sheetLost = base.sheet != null && head.sheet == null;
+  return { status: sheetLost || (libsChanged && !sheetUpdated) ? 'fail' : 'pass', added, removed, sheetLost };
 }

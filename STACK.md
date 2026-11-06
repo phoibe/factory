@@ -9,36 +9,36 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 
 ## Moteur / serveur
 - **Node.js 22** — fait tourner le moteur de la factory (file d'attente, lancement de l'agent, contrôles, mise en ligne) ; **aucun framework**
-- **Hébergement : GitHub Actions** — lance le moteur à chaque événement de vos projets (message, label, PR) et toutes les quelques minutes
-- **Claude Code 2** — l'agent qui pose les questions, écrit les specs et construit, lancé par les routines Claude Code dans le cloud (ou par GitHub Actions en secours)
+- **Hébergement : GitHub Actions** — lance le moteur à chaque nouveauté dans vos projets (message, étape qui change, livraison) et toutes les quelques minutes
+- **Claude Code 2.1** — l'agent qui pose les questions, rédige les fiches et construit ; il est lancé par les routines Claude Code dans le cloud, ou par GitHub Actions en secours
 
 ## Autres services
 - **Discussion en direct** — l'onglet « Discussion » du panneau
 - **Python 3.12** — langage du petit serveur de discussion
-- **FastAPI 0.115** — framework qui reçoit les messages de la discussion et renvoie la réponse au fil de l'eau
+- **FastAPI 0.115** — framework qui reçoit vos messages et renvoie la réponse au fil de l'eau
 - **Hébergement : Modal** — fait tourner ce serveur seulement quand vous discutez ; il s'endort après 10 minutes sans message
-- **Alertes téléphone : ntfy** — vous prévient quand une carte attend votre réponse
+- **Alertes téléphone : ntfy** — vous prévient quand une demande attend votre réponse
 
 ## Données
 - **Pas de base de données classique** : tout est stocké dans GitHub.
-- **Issues, pull requests et labels GitHub** — les demandes, leurs échanges et leur étape
+- **Demandes GitHub et leurs étiquettes** — vos demandes, leurs échanges et l'étape où elles en sont
 - **Branches dédiées** — les conversations de la discussion, les images collées et les captures avant/après
 - **Navigateur** — votre jeton GitHub reste dans le navigateur du panneau, jamais ailleurs
 
 ## Bibliothèques
 ### Pour faire tourner le logiciel
-- **httpx 0.28** — le serveur de discussion lit GitHub avec
-- **Modal 1** — outil qui met en ligne le serveur de discussion
-- **QR Code Generator** (copie intégrée au panneau) — dessine le code à scanner pour ouvrir le panneau sur votre téléphone
-- **Geist** (police, copie intégrée au panneau) — les caractères du panneau
+- **httpx 0.28** — permet au serveur de discussion de lire GitHub
+- **Modal 1.6** — met en ligne le serveur de discussion
+- **QR Code Generator** (copie intégrée au panneau, version non indiquée) — dessine le code à scanner pour ouvrir le panneau sur votre téléphone
+- **Geist** (police, copie intégrée au panneau, version non indiquée) — les caractères du panneau
 - Le moteur et le panneau n'utilisent aucune autre bibliothèque : seulement ce que Node.js et le navigateur fournissent.
 ### Pour la fabrication et les tests
-- **Playwright 1** — pilote un vrai navigateur pour rejouer les parcours du panneau et prendre les captures
-- **axe-core 4** — vérifie l'accessibilité de base du panneau
+- **Playwright 1.56** — pilote un vrai navigateur pour rejouer les parcours du panneau et prendre les captures
+- **axe-core 4.10** — vérifie l'accessibilité de base du panneau
 - Les tests du moteur utilisent ceux intégrés à Node.js et à Python, sans bibliothèque.
 
 ## Services nécessaires
-- **GitHub** — gratuit, compte nécessaire. Le dépôt factory est public : GitHub Actions y est illimité, et GitHub Pages accepte un site de 1 Go et environ 100 Go de trafic par mois. Garde le code, les demandes et les données, fait tourner le moteur et publie le panneau.
-- **Claude (abonnement)** — payant, compte nécessaire. Fait travailler l'agent (routines Claude Code) et répond dans la discussion ; le nombre de lancements par jour dépend de votre abonnement.
-- **Modal** — gratuit, compte nécessaire. Gratuit jusqu'à 30 $ d'usage par mois. Héberge le serveur de discussion en direct.
-- **ntfy** — gratuit, sans compte. Le service public limite le nombre de messages par jour, très au-dessus de l'usage de la factory. Envoie les alertes sur votre téléphone.
+- **GitHub** — garde le code, les demandes et les données, fait tourner le moteur et publie le panneau. Gratuit, compte nécessaire. Le dépôt factory est public : GitHub Actions y est illimité, et GitHub Pages accepte un site de 1 Go et environ 100 Go de trafic par mois.
+- **Claude (abonnement)** — fait travailler l'agent et répond dans la discussion. Payant, compte nécessaire. Le nombre de lancements de l'agent par jour dépend de votre abonnement.
+- **Modal** — héberge le serveur de discussion en direct. Gratuit, compte nécessaire. Gratuit jusqu'à 30 $ d'usage par mois.
+- **ntfy** — envoie les alertes sur votre téléphone. Gratuit, sans compte. Le service public limite le nombre de messages par jour (limite à vérifier), très au-dessus de l'usage de la factory.

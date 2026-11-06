@@ -726,12 +726,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // `stack` stage, and it starts like a bug: at once, or first free place. Never while the framing is under way.
   async function ensureStackSheet() {
     if (!gh.getContent || !gh.createIssue) return;
-    const exists = (path) => gh.getContent(path).then(Boolean, () => false);
+    // A missing file is null (404); any other error throws and the guard simply tries again at the next tick.
+    // The two cheap answers that settle it for good come first: the sheet exists, or its card was already opened.
+    const exists = async (path) => Boolean(await gh.getContent(path));
     if (await exists('STACK.md')) return;
+    if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).length) return;
     if (!(await exists('PRODUCT.md')) && !(await exists('docs/PRODUCT.md'))) return;
     if (!(await exists('.factory/stages/stack.md'))) return;
     if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
-    if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).length) return;
     const body = [AGENT_MARKER, 'La factory établit la **fiche stack technique** de ce projet : les technologies, la façon dont les données sont stockées, les bibliothèques et les services nécessaires.', '',
       'Elle s\'affiche ensuite avec le bouton « Stack technique » du panneau, et l\'agent la tient à jour à chaque construction.'].join('\n');
     const card = await gh.createIssue('Établir la fiche stack technique', body, [L.stack, L.kept]);

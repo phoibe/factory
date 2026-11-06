@@ -46,7 +46,7 @@ test('la fiche de la factory montre ses parties dans l\'ordre, avec « Mise à j
     assert.equal(await page.locator('#stack-date').textContent(), 'Mise à jour le 6 novembre 2026');
     assert.deepEqual(await page.locator('#stack-body h3').allTextContents(), ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires']);
     const text = await page.locator('#stack-body').textContent();
-    for (const name of ['GitHub Pages', 'GitHub Actions', 'FastAPI 0.115', 'Modal', 'Playwright 1', 'axe-core 4']) assert.ok(text.includes(name), name);
+    for (const name of ['GitHub Pages', 'GitHub Actions', 'FastAPI 0.115', 'Modal', 'Playwright 1.56', 'axe-core 4.10']) assert.ok(text.includes(name), name);
   });
 });
 
@@ -66,8 +66,22 @@ test('une fiche déjà demandée n\'est pas redemandée : la fenêtre dit qu\'el
   await withPanel({ issues: [issue(7, 'Établir la fiche stack technique', ['factory:stack', 'factory:building', 'factory:running'])] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.getByRole('button', { name: 'Stack technique' }).click();
-    await page.getByText(/en cours de rédaction/).waitFor();
+    await page.getByText("L'agent rédige la fiche.").waitFor();
+    assert.equal(await page.getByRole('link', { name: /Suivre la demande/ }).count(), 1);
     assert.equal(await page.getByRole('button', { name: 'Établir la fiche' }).count(), 0);
     assert.equal(writes.filter((w) => w.path === '/repos/o/r/issues').length, 0);
+  });
+});
+
+test('si la fiche ne se charge pas, je peux réessayer, sans message technique', async () => {
+  const failing = new Set(['/repos/o/r/contents/STACK.md']);
+  await withPanel({ ...withSheet, failing }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Stack technique' }).click();
+    await page.getByText("La fiche ne s'est pas chargée.").waitFor();
+    assert.doesNotMatch(await page.locator('#stack-body').textContent(), /500|Error/);
+    failing.clear();
+    await page.getByRole('button', { name: 'Réessayer' }).click();
+    await page.waitForSelector('#stack-body h3');
   });
 });

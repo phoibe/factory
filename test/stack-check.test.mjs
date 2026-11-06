@@ -86,3 +86,7 @@ test('without the default branch at hand, the check is skipped', () => {
   const { dir } = repo();
   assert.equal(stackFromGit(dir, 'refs/factory/nope').status, 'skip');
 });
+
+test('a sheet that disappears turns the check red even when the libraries stay the same', () => {
+  assert.equal(stackVerdict({ base: side({ a: '1' }, 'fiche'), head: side({ a: '1' }, null) }).status, 'fail');
+});

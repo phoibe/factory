@@ -61,7 +61,7 @@ export function browserSetup(pkg) {
 const DOWNLOADS = ['install', 'browser', 'audit'];
 export const isOutage = (step, status, output) => status !== 0 && DOWNLOADS.includes(step) && isNetworkFailure(output);
 
-// The stack sheet check (issue #242): the PR's manifests and STACK.md against the default branch's (`baseRef`, fetched
+// The stack sheet check (issue #242): the PR's manifests and STACK.md against where it started (`baseRef`, its merge base, fetched
 // by relay.yml). Without that branch at hand the check is skipped, never red.
 export function stackFromGit(dir, baseRef) {
   const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -81,6 +81,7 @@ export function stackFromGit(dir, baseRef) {
 
 // One line for the owner when the sheet was forgotten (shown in the checks' log and summary).
 export function stackMessage(v) {
+  if (v.sheetLost) return `La fiche stack (${STACK_FILE}) a été supprimée : remettez-la.`;
   const names = (l) => l.map((x) => x.replace(/^\w+:/, '')).join(', ');
   const what = [v.added.length ? `ajoutées : ${names(v.added)}` : '', v.removed.length ? `retirées : ${names(v.removed)}` : ''].filter(Boolean).join(' ; ');
   return `Fiche stack pas mise à jour (bibliothèques ${what}) : mettez à jour ${STACK_FILE} dans la même PR.`;
