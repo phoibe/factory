@@ -1336,3 +1336,33 @@ test('an undo is never undone: a live site still broken after it is only reporte
   assert.equal(git.length, 0);
   assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
 });
+
+// GitHub's « too many requests » (#211): a run stopped by it is marked by a failing step, re-run at the next tick.
+test('the tick re-runs a run stopped by GitHub\'s rate limit, so its event is not lost', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  const old = new Date(Date.now() - 26 * 3600_000).toISOString();
+  const runs = [
+    { id: 1, run_attempt: 1, created_at: recent }, // rate limited: re-run
+    { id: 2, run_attempt: 1, created_at: recent }, // a real error: reported as today, not re-run
+    { id: 3, run_attempt: 3, created_at: recent }, // already re-run twice: given up
+    { id: 4, run_attempt: 1, created_at: old }, // too old
+    { id: 5, run_attempt: 1, created_at: recent }, // a lost report: the reportLost guard makes it again, not a re-run
+  ];
+  const jobs = {
+    1: [{ steps: [{ name: 'relay', conclusion: 'success' }, { name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    2: [{ steps: [{ name: 'relay', conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    3: [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    4: [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    5: [{ name: 'relay / report', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+  };
+  Object.assign(gh, {
+    failedRuns: async () => runs,
+    runJobs: async (id) => jobs[id],
+    rerunFailed: async (id) => gh.calls.push(['rerun', id]),
+  });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 1]]);
+});

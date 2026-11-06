@@ -52,6 +52,10 @@ jobs:
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      - name: 'Rate limited: retried at the next tick'
+        if: steps.relay.outputs.ratelimited == 'true'
+        run: exit 1
 
   # Fallback runner (runner: "github-actions" in factory.config.json). Runs in a workflow_dispatch run started by the relay.
   agent:
@@ -100,10 +104,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/relay.mjs release
+      - id: release
+        run: node .factory-src/scripts/relay.mjs release
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PAYLOAD: ${{ needs.decide.outputs.payload }}
+      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      - name: 'Rate limited: retried at the next tick'
+        if: steps.release.outputs.ratelimited == 'true'
+        run: exit 1
 
   checks:
     needs: decide
@@ -170,12 +179,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }} --started ${{ needs.checks.outputs.started }}
+      - id: report
+        run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha ${{ needs.checks.outputs.sha }} --started ${{ needs.checks.outputs.started }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      - name: 'Rate limited: retried at the next tick'
+        if: steps.report.outputs.ratelimited == 'true'
+        run: exit 1
 
   # Before the owner is given a preview to test, the factory opens it like a visitor (read-only page loads, see
   # scripts/smoke.mjs). A broken or empty preview goes back to the agent; then the report goes on as usual.

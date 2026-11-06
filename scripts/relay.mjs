@@ -12,6 +12,7 @@ import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHEC
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { isRateLimited } from './lib/ratelimit.mjs';
 import { syncFingerprint } from './lib/fingerprint.mjs';
 import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
@@ -32,6 +33,9 @@ export const MAX_BRANCH_UPDATES = 2;
 // A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
 export const IDLE_MINUTES = 30;
 const HEAL_MARKER = '<!-- factory-heal -->';
+// Name of the step relay.yml fails when GitHub's rate limit stopped the relay: the next tick re-runs that run.
+export const RATE_LIMIT_STEP = 'Rate limited: retried at the next tick';
+export const MAX_RATE_LIMIT_ATTEMPTS = 3;
 // Saved at the end of a request's description when the agent closes it by itself: the step to resume and its PRs.
 const REOPEN_MARKER = '<!-- factory-reopen';
 const REOPEN_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.resumeQueued, L.autoGo];
@@ -573,6 +577,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
   // It only speaks to the owner when it cannot repair (a card that stops twice without finishing).
   async function heal(ownerLogin) {
+    await retryRateLimited().catch((e) => log(`rate-limited runs: ${e.message}`));
     const closed = (await gh.listClosedPulls?.().catch(() => null)) || [];
     await closeMerged(closed);
     await relaunchIdle(closed, ownerLogin);
@@ -580,6 +585,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await reportLost();
     await closeAsked(ownerLogin);
     await syncIfBehind();
+  }
+
+  // A relay run stopped by GitHub's « too many requests » left its event undone: re-running its failed jobs replays
+  // the very same event, now that the limit has passed. Runs of the last day only, a few attempts each.
+  async function retryRateLimited() {
+    if (!gh.failedRuns) return;
+    const since = now() - 24 * 3600_000;
+    for (const run of await gh.failedRuns(PROJECT_WORKFLOW)) {
+      if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
+      const jobs = await gh.runJobs(run.id);
+      // A checks report stopped this way is made again by reportLost, from the checks' own result: not re-run twice.
+      const stopped = jobs.filter((j) => (j.steps || []).some((st) => st.name === RATE_LIMIT_STEP && st.conclusion === 'failure'));
+      if (!stopped.length || stopped.every((j) => /(^|\/ )report$/.test(j.name || ''))) continue;
+      await gh.rerunFailed(run.id);
+      log(`guard: run ${run.id} stopped by the rate limit, re-run`);
+    }
   }
 
   // The project's agent instructions come from its last sync, which only ran on a config change or weekly: a fix to
@@ -1133,5 +1154,11 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((e) => { console.error(e); process.exit(1); });
+  main().catch((e) => {
+    console.error(e);
+    // GitHub's « too many requests » for longer than a pause: the step `RATE_LIMIT_STEP` of relay.yml fails on this
+    // output, and the next tick re-runs the run (retryRateLimited), so the event is taken up instead of lost.
+    if (isRateLimited(e)) { writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ratelimited: 'true' }); return; }
+    process.exit(1);
+  });
 }

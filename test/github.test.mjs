@@ -37,3 +37,36 @@ test('a 4xx is not retried', async () => {
   await assert.rejects(client([answer(422)], sink).merge(1), /422/);
   assert.equal(sink.length, 1);
 });
+
+const limited = (status, headers) => ({ ok: false, status, json: async () => ({}), text: async () => 'rate limit', headers: new Map(Object.entries(headers)) });
+
+test('a 429 pauses for the time GitHub asks, then the same call is retried', async () => {
+  const waits = [];
+  const answers = [limited(429, { 'retry-after': '3' }), answer(200, { number: 5 })];
+  const gh = github({ token: 't', repo: 'o/r', sleep: async (ms) => { waits.push(ms); }, fetchImpl: async () => answers.shift() });
+  assert.equal((await gh.getPr(5)).number, 5);
+  assert.deepEqual(waits, [3000]);
+});
+
+test('a rate-limited POST is retried (GitHub did not apply it)', async () => {
+  const sink = [];
+  const gh = client([limited(403, { 'retry-after': '1' }), answer(201, { id: 1 })], sink);
+  assert.ok(await gh.comment(1, 'hi'));
+  assert.equal(sink.length, 2);
+});
+
+test('a wait too long to spend in place throws RateLimited, the event is taken up later', async () => {
+  const gh = client([limited(403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 1800) })]);
+  await assert.rejects(gh.getPr(1), (e) => e.rateLimited === true && e.waitMs > 60_000);
+});
+
+test('a 403 without rate-limit headers is thrown at once (a refused permission)', async () => {
+  const sink = [];
+  await assert.rejects(client([limited(403, {})], sink).merge(1), (e) => /403/.test(e.message) && !e.rateLimited);
+  assert.equal(sink.length, 1);
+});
+
+test('paginated reads pause on the rate limit too', async () => {
+  const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1 }])]);
+  assert.deepEqual(await gh.listComments(1), [{ id: 1 }]);
+});
