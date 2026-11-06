@@ -24,6 +24,12 @@
 4. **Avant** : `git worktree add /tmp/before main`, installe, lance sur le port 3001, puis la même commande
    (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `main` n'a pas encore d'appli,
    pas de « avant ». Un écran ou un thème sombre absent de « avant » s'affiche « nouvel écran » côté avant.
+   L'outil fige l'écran avant chaque photo (date et heure fixes, animations arrêtées, curseur caché), « avant » comme
+   « après » : un écran identique donne la même image et n'est pas montré. Il reste montré au moindre point de
+   différence (aucune tolérance) : si un écran que tu n'as pas touché change quand même (tirage au hasard, données
+   d'internet), dis-le en une phrase dans le commentaire.
+   L'heure ne s'écoule pas pendant la photo : si un écran paraît inachevé ou vide alors que l'appli réelle va bien,
+   il attend sans doute que le temps passe ; dis-le aussi dans le commentaire.
 5. `node .factory/scripts/shots.mjs publish --pr <numéro> --before /tmp/shots/before --after /tmp/shots/after > /tmp/shots.md`
    (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
