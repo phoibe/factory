@@ -146,3 +146,25 @@ test('with no label history the elapsed time still comes from the estimate date'
   const e = estimate(item, [], DEFAULT_MINUTES, T0 + 90 * 60_000, { size: 'small', min: 20, max: 40, at: T0 });
   assert.equal(e.overrun, true);
 });
+
+// Real order of events: the relay adds « running » a few seconds before « building » (#209, 2026-11-06).
+const sec = (number, event, label, s) => ({ issue: { number }, event, label: { name: label }, created_at: new Date(T0 + s * 1000).toISOString() });
+
+test('a run started seconds before the building label still counts, so the card does not freeze at the start', () => {
+  const evs = [sec(9, 'labeled', 'factory:running', 0), sec(9, 'labeled', 'factory:building', 3)];
+  const item = { number: 9, labels: ['factory:audit', 'factory:building', 'factory:running'], column: 'building' };
+  const early = estimate(item, evs, { ...DEFAULT_MINUTES, building: 20 }, T0 + 2 * 60_000);
+  const later = estimate(item, evs, { ...DEFAULT_MINUTES, building: 20 }, T0 + 12 * 60_000);
+  assert.ok(later.nextHigh < early.nextHigh, `${early.nextHigh} -> ${later.nextHigh}`);
+  assert.equal(estimate(item, evs, { ...DEFAULT_MINUTES, building: 20 }, T0 + 25 * 60_000).overrun, true);
+});
+
+test('the build history counts the run that started just before the building label', () => {
+  const evs = [];
+  for (const [n, len] of [[1, 20], [2, 30]]) {
+    evs.push(sec(n, 'labeled', 'factory:running', 0), sec(n, 'labeled', 'factory:building', 3), sec(n, 'unlabeled', 'factory:running', len * 60),
+      sec(n, 'labeled', 'factory:running', 100 * 60), sec(n, 'unlabeled', 'factory:running', 101 * 60), sec(n, 'unlabeled', 'factory:building', 200 * 60));
+  }
+  assert.equal(Math.round(stageMinutes(evs, T0 + 300 * 60_000).building), 25);
+  assert.equal(Math.round(buildingMinutes(evs, T0 + 300 * 60_000, { 1: 'small', 2: 'small' }).small), 25);
+});

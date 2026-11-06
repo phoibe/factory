@@ -29,9 +29,10 @@ export function labelIntervals(events, number, label, now) {
 // Agent or machine minutes spent in one stay in a column.
 function workIn(col, stay, runs) {
   if (col === 'checks') return (stay.end - stay.start) / MIN; // checks run on Actions, without the running label
-  const inside = runs.filter((r) => r.start >= stay.start && r.start < stay.end);
+  // A run that began just before the stay counts too: the relay adds « running » a few seconds before the column label.
+  const inside = runs.filter((r) => r.end > stay.start && r.start < stay.end);
   const used = col === 'building' ? inside.slice(0, 1) : inside; // later runs on a built issue are PR fixes
-  return used.reduce((s, r) => s + (Math.min(r.end, stay.end) - r.start) / MIN, 0);
+  return used.reduce((s, r) => s + (Math.min(r.end, stay.end) - Math.max(r.start, stay.start)) / MIN, 0);
 }
 
 const median = (xs) => {
