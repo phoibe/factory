@@ -613,6 +613,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to
     // count on (a few runs a day): every event the relay sees looks for a PR stuck that way.
     if (ev.kind !== 'dispatch') await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
+    // For the same reason, every event also fills the free places: a feature leaving its questions (« go »), an agent's
+    // comment or a label change lets a waiting card start now instead of hours later at the next tick.
+    if (ev.kind !== 'dispatch' && result?.action?.type !== 'dequeue') await dequeue().catch((e) => log(`queue check: ${e.message}`));
     await notifyWaiting();
     return result;
   }
