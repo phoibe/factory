@@ -521,9 +521,9 @@ function drawBoard() {
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
-            ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), `Fermée · ${d.reason}`, el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
-            : el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminé', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))))))
-        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant"),
+            ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
+            : el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminée', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))))))
+        : el('p', { class: 'lane-empty' }, "Rien de livré pour l'instant."),
       doneShown.hidden ? el('p', { class: 'done-more' }, olderNote(doneShown.hidden)) : null)];
   const yoursSig = JSON.stringify([held.pending.map((c) => [c.number, c.title]), ...yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')])]);
   const holder = el('div', {}, ...fresh);

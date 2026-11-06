@@ -1158,6 +1158,43 @@ test('a refused self-close on a project tells the owner the request stays open',
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 8 && /reste ouverte/.test(c[2])));
 });
 
+test('the project workflow listens to reopened issues (GitHub reopen button)', async () => {
+  const { readFileSync } = await import('node:fs');
+  assert.match(readFileSync(new URL('../.github/workflows/factory.yml', import.meta.url), 'utf8'), /issues:\s*\n\s*types: \[[^\]]*\breopened\b/);
+});
+
+test('a PR closed during its checks comes back with the resumed run, which restarts its checks', async () => {
+  const state = {
+    issues: [{ number: 31, open: false, body: '<!-- factory-reopen {"labels":["factory:building"],"prs":[{"n":40,"labels":[]}]} -->', labels: [L.feature, L.obsolete] }, { number: 40, labels: [], pull_request: {} }],
+    prs: [{ number: 40, state: 'closed', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  };
+  const gh = withReopen(fakeGh(state), state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle(ownerSays(31, [L.feature, L.obsolete]));
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'r', issue: 31, pr: 40, stage: 'resume', factory: 'phoibe/factory' });
+});
+
+test('guard: a self-close left for the tick still lets a message written meanwhile win', async () => {
+  const state = { issues: [{ number: 31, body: '', labels: [L.feature, L.building, L.close, L.obsolete, L.pending] }], prs: [] };
+  state.comments = { 31: [{ id: 1, body: 'non attendez', user: { login: 'phoibe' }, created_at: '2026-11-06T10:00:00Z' }] };
+  const gh = withReopen(fakeGh(state), state);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick, { ownerLogin: 'phoibe' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 31));
+  assert.ok(!state.issues[0].labels.includes(L.close) && !state.issues[0].labels.includes(L.obsolete));
+});
+
+test('a self-close asked on the PR does not lose a message the owner wrote on the request', async () => {
+  const state = {
+    issues: [{ number: 31, body: '', labels: [L.feature, L.building, L.pending] }, { number: 40, labels: [L.close, L.obsolete], pull_request: {} }],
+    prs: [{ number: 40, state: 'open', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  };
+  state.comments = { 31: [{ id: 1, body: 'non attendez', user: { login: 'phoibe' }, created_at: '2026-11-06T10:00:00Z' }] };
+  const gh = withReopen(fakeGh(state), state);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ ...agentDone(40, [L.close, L.obsolete]), kind: 'pr' }, { ownerLogin: 'phoibe' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' || c[0] === 'closePr'));
+  assert.ok(!state.issues[1].labels.includes(L.close));
+});
+
 test('a message in a request closed the usual way still says it is finished', async () => {
   const state = { issues: [{ number: 9, open: false, body: '', labels: [L.feature] }], prs: [] };
   const gh = withReopen(fakeGh(state), state);

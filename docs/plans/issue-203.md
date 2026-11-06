@@ -23,7 +23,7 @@
 - A reason label put on the PR instead of the issue: the issue must still get the reason (copied to it) and be closed.
 - The owner writes twice quickly in the closed card: the second message must not reopen twice (after reopen the issue is open, so `reopen` is not decided again).
 - Reopening when the factory is full and the card was building: it must queue (`factory:queued` + `factory:resume-queued`), not overrun `maxParallel`.
-- An agent-closed issue whose body has no marker (closed by hand with the label): reopen still works, with `factory:blocked` only.
+- An agent-closed issue whose body has no marker (closed by hand with the label): reopen still works and it starts like a new request.
 - A merged-PR done item and an agent-closed issue both appear in « Terminé », newest first; PR entries in the closed issues list are ignored.
 
 ---

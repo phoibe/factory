@@ -389,7 +389,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The owner gave up on a card (PR or issue): close it with its PR or issue, and free its place. The agent's run is
   // refused closing anything, so it only asks for it with factory:close and the factory does it here.
-  async function dropCard(n) {
+  async function dropCard(n, owner) {
     const item = await gh.getIssue(n);
     if (!item || item.state !== 'open') return;
     const isPr = Boolean(item.pull_request);
@@ -406,6 +406,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         for (const k of new Set([n, issue].filter(Boolean))) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(k, l);
         log(`drop: #${n} refused, the agent only closes a feature or a bug by itself`);
         await gh.comment(issue || n, say("La factory ne ferme pas seule ce type de demande : elle reste ouverte. Dites « fermer » ici si vous voulez l'abandonner."));
+        return;
+      }
+      // The owner wrote during the run (on the request or its PR): his message wins, nothing is closed.
+      const cards = [...new Set([issue, ...prs])];
+      const waiting = [];
+      for (const k of cards) if ((await liveLabels(k)).includes(L.pending)) waiting.push(k);
+      if (waiting.length) {
+        for (const k of cards) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(k, l);
+        log(`drop: #${n} not closed, the owner wrote meanwhile`);
+        for (const k of waiting) await handle({ kind: 'replay', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: k, labels: [] }, { ownerLogin: owner });
         return;
       }
       if (!kinds.includes(reason)) await gh.addLabels(issue, [reason]);
@@ -436,8 +446,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // A card the agent marked factory:close but whose run ended without removing factory:running (or whose event was
   // lost): closed on the next tick all the same.
-  async function closeAsked() {
-    for (const item of (await gh.listIssues({ labels: L.close })) || []) await dropCard(item.number);
+  async function closeAsked(ownerLogin) {
+    for (const item of (await gh.listIssues({ labels: L.close })) || []) {
+      // An agent still at work closes its card itself when it ends: the tick only takes the ones left behind.
+      if (await lockFresh(item.number, names(item.labels))) continue;
+      await dropCard(item.number, ownerLogin);
+    }
   }
 
   // The owner wrote in a request the agent closed by itself: it opens again with its PRs, at the step it was at, and
@@ -454,15 +468,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const step = [...new Set(saved.labels.filter((l) => REOPEN_LABELS.includes(l)).map((l) => ([L.queued, L.resumeQueued].includes(l) ? L.building : l)))];
     // No saved step (never started, or closed by hand with the label): it starts like a new request.
     if (step.length) await gh.addLabels(n, [...step, L.blocked]);
+    let stepless = null;
     for (const p of saved.prs || []) {
       const { n: number, labels = [] } = typeof p === 'number' ? { n: p } : p;
       try {
         await gh.reopenPr(number);
         const back = labels.filter((l) => REOPEN_PR_LABELS.includes(l));
         if (back.length) await gh.addLabels(number, back);
+        else stepless = number;
       } catch (e) { log(`reopen PR #${number}: ${e.message}`); }
     }
     log(`reopen: #${n} (${step.join(', ') || 'no saved step'})`);
+    return { stepless };
   }
 
   // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
@@ -473,7 +490,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await relaunchIdle(closed, ownerLogin);
     await releaseStaleLocks(ownerLogin);
     await reportLost();
-    await closeAsked();
+    await closeAsked(ownerLogin);
     await syncIfBehind();
   }
 
@@ -691,7 +708,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
-      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed' }; // webhook labels can be stale
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
@@ -705,8 +722,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let action = decide(ev, config, ctx);
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
+    // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
+    // and its checks start again.
+    let reopenedPr = null;
     if (action.type === 'reopen') {
-      await reopenCard(n);
+      ({ stepless: reopenedPr } = await reopenCard(n));
       ev = { ...ev, closed: false, labels: await liveLabels(n) };
       action = decide(ev, config, { ...ctx, inFlight: await inFlight() });
       log(`after reopening: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
@@ -736,7 +756,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
         const issue = pr ? linkedIssue(pr.body) : n;
-        await fireAgent({ stage: action.stage, issue, pr: pr ? n : null });
+        await fireAgent({ stage: action.stage, issue, pr: pr ? n : reopenedPr });
         await applyLabels(); // only once the agent really started
         // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
         if (pr && issue && action.remove?.includes(L.blocked)) await gh.removeLabel(issue, L.blocked);
@@ -781,7 +801,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await mergePr(n);
         break;
       case 'drop':
-        await dropCard(n);
+        await dropCard(n, ownerLogin);
         break;
       case 'docs-merge':
         await mergeDocsPr(n);
