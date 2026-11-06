@@ -804,22 +804,34 @@ async function loadMachine(project) {
   renderRules();
 }
 
+const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => el('div', { class: 'row' },
+  el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, onchange: () => onpick(v) }),
+  el('label', { for: `${name}-${v}` }, t)));
+
+// This project's machine, with the dev server's state for it.
 function machineFieldset(update) {
   const c = current.config;
   const general = machine.general;
   const line = machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general, project: c.machine || 'default' });
-  const radios = (name, choices, value, onpick) => choices.map(([v, t]) => el('div', { class: 'row' },
-    el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, onchange: () => onpick(v) }),
-    el('label', { for: `${name}-${v}` }, t)));
   const generalName = MACHINE_CHOICES.find(([v]) => v === general)[1].toLowerCase();
   return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     el('p', { class: `machine-status ${line.tone}`, role: 'status' }, line.text),
-    el('div', { role: 'radiogroup', 'aria-labelledby': 'machine-general-title' },
-      el('p', { id: 'machine-general-title', class: 'machine-title' }, 'Pour tous les projets'),
-      ...radios('machine-general', MACHINE_CHOICES, general, (v) => { machine.general = v; renderRules(); })),
-    el('div', { role: 'radiogroup', 'aria-labelledby': 'machine-project-title' },
-      el('p', { id: 'machine-project-title', class: 'machine-title' }, 'Pour ce projet'),
-      ...radios('machine-project', [['default', `Comme le réglage général (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))));
+    el('div', { role: 'radiogroup', 'aria-label': 'Machine des tâches de ce projet' },
+      ...machineRadios('machine-project', [['default', `Comme le réglage de tous les projets (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))));
+}
+
+// The general machine, used by every project left on « Comme le réglage de tous les projets ».
+function generalMachineFieldset() {
+  return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches par défaut'),
+    ...machineRadios('machine-general', MACHINE_CHOICES, machine.general, (v) => { machine.general = v; renderRules(); }));
+}
+
+// A part of the settings: this project only, or every project.
+function rulesSection(id, title, intro, children) {
+  return el('section', { class: 'rules-section', 'aria-labelledby': id },
+    el('h2', { id, class: 'rules-section-title' }, title),
+    el('p', { class: 'rules-section-intro' }, intro),
+    ...children);
 }
 
 // Writes the general setting on the factory's branch (created if it does not exist yet).
@@ -902,7 +914,11 @@ function renderRules() {
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
-  form.replaceChildren(site, machineFieldset(update), engine, stages, checks, ...packs, bar);
+  const name = current.repo.name;
+  form.replaceChildren(
+    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, machineFieldset(update), engine, stages, checks, ...packs]),
+    rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
+    bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 

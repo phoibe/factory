@@ -8,15 +8,15 @@ const H = await repoKey(1);
 const open = async (page, url) => {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Paramètres' }).click();
-  await page.getByRole('group', { name: 'Machine des tâches' }).waitFor();
+  await page.getByRole('group', { name: 'Machine des tâches', exact: true }).waitFor();
 };
 const decode = (w) => JSON.parse(Buffer.from(w.body.content, 'base64').toString('utf8'));
 
 test('le panneau montre le réglage général et le réglage de chaque projet', async () => {
   await withPanel({}, async ({ page, url }) => {
     await open(page, url);
-    assert.equal(await page.getByRole('radio', { name: 'Serveur de dev', exact: true }).first().isChecked(), true);
-    assert.equal(await page.getByRole('radio', { name: /Comme le réglage général/ }).isChecked(), true);
+    assert.equal(await page.getByRole('region', { name: 'Tous les projets' }).getByRole('radio', { name: 'Serveur de dev', exact: true }).isChecked(), true);
+    assert.equal(await page.getByRole('radio', { name: /Comme le réglage de tous les projets/ }).isChecked(), true);
     await page.getByRole('radio', { name: 'Machines GitHub' }).first().waitFor();
   });
 });
@@ -72,5 +72,23 @@ test('je change le réglage général pour tous les projets', async () => {
     assert.equal(put.body.branch, 'factory-runners');
     assert.deepEqual(decode(put), { machine: 'github', labels: ['self-hosted'] });
     assert.ok(!writes.some((w) => w.path === '/repos/o/r/contents/factory.config.json'), 'the project rules did not change');
+  });
+});
+
+test('les réglages de ce projet et ceux de tous les projets sont dans deux parties séparées', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await open(page, url);
+    const project = page.getByRole('region', { name: 'Ce projet : r' });
+    const all = page.getByRole('region', { name: 'Tous les projets' });
+    await project.getByRole('group', { name: 'Site en ligne' }).waitFor();
+    await project.getByRole('group', { name: 'Étapes' }).waitFor();
+    await project.getByRole('group', { name: 'Moteur des agents' }).waitFor();
+    await project.getByRole('radio', { name: /Comme le réglage de tous les projets/ }).waitFor();
+    await page.getByRole('heading', { name: 'Tous les projets', level: 2 }).waitFor();
+    assert.equal(await all.getByRole('group', { name: 'Machine des tâches par défaut' }).getByRole('radio').count(), 2);
+    assert.equal(await all.getByRole('radio', { name: /Comme le réglage/ }).count(), 0);
+    assert.equal(await all.getByRole('group', { name: 'Étapes' }).count(), 0);
+    assert.equal(await project.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 0);
+    assert.equal(await page.locator('.rules-section .savebar').count(), 0, 'one save button, for both parts');
   });
 });

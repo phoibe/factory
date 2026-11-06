@@ -433,4 +433,8 @@ details summary { color: var(--text); }
 .machine-status.ok { color: var(--ok); }
 .machine-status.warn { color: var(--danger); }
 .machine-status.muted { color: var(--muted); font-weight: 400; }
-.machine-title { margin: 12px 0 0; font-size: .8125rem; font-weight: 600; color: var(--muted); }
+
+/* Settings split between this project and every project (PR #276). */
+.rules-section + .rules-section { margin-top: 48px; padding-top: 32px; border-top: 2px solid var(--text); }
+.rules-section-title { margin: 0; font-size: 1.375rem; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.rules-section-intro { margin: 4px 0 16px; color: var(--muted); }
