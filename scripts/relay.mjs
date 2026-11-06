@@ -17,7 +17,7 @@ import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
-import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD } from './lib/outage.mjs';
+import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -656,7 +656,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       log(`guard: report of #${item.number} lost, made again (${checks.conclusion})`);
       // Red checks on a commit already followed for an outage: the lost report most likely died of the same outage.
-      const transient = checks.conclusion === 'failure' && readOutage(pr.body)?.sha === pr.head.sha;
+      // Never past the 3 hours: a replayed report must not block the card by itself, the usual path takes it then.
+      const followed = readOutage(pr.body);
+      const transient = checks.conclusion === 'failure' && followed?.sha === pr.head.sha && now() - followed.since < OUTAGE_GIVE_UP_MS;
       await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient });
     }
   }
@@ -887,7 +889,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
     // Also when the factory is full (the checks need no place) and when he writes it on the PR itself.
     // The PR itself has no factory label left once blocked: the owner's message there is otherwise ignored.
-    const ownerOnPr = ev.kind === 'pr' && ev.fromOwner && !ev.fromAgent && !ctx.lockFresh && ['fire', 'ignore'].includes(action.type);
+    // Only a short message there (« réessaie », « relance stp »): a change request must not be dropped.
+    const ownerOnPr = ev.kind === 'pr' && String(said || '').trim().split(/\s+/).length <= 3 && ev.fromOwner && !ev.fromAgent && !ctx.lockFresh && ['fire', 'ignore'].includes(action.type);
     const resuming = ownerOnPr || (action.type === 'fire' && action.stage === 'resume') || (action.type === 'queue' && action.add?.includes(L.resumeQueued));
     if (resuming && isRetry(said)) {
       const blockedPr = await outageBlockedPr(ev);

@@ -1555,3 +1555,20 @@ test('outage: « réessaie » written on the PR itself relaunches the checks too
   assert.equal(action.type, 'outage-retry');
   assert.equal(sent.length, 0);
 });
+
+test('outage: a change request on the blocked PR that mentions « relancer » is not taken for a retry', async () => {
+  const { gh } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'Avant de relancer, change la couleur du bouton', fromOwner: true, fromAgent: false });
+  assert.notEqual(action.type, 'outage-retry');
+});
+
+test('outage: a lost report never blocks the card by itself, an outage past 3 hours goes back to the usual path', async () => {
+  const { gh, state } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, next: null });
+  state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
+  gh.checkRuns = async () => [
+    { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T13:05:00Z', completed_at: '2026-11-06T13:08:00Z' },
+    { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T13:09:00Z' },
+  ];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => T + 3.5 * 3_600_000, log: quiet }).handle(tick);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+});
