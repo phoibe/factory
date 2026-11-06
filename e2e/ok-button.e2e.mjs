@@ -42,6 +42,8 @@ test('sans annuler, le « ok » part et le message « Captures validées » appa
     await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Captures validées'));
     assert.equal(await page.locator('#toast').textContent(), '« ok » envoyé. Captures validées : la fusion se fera dès que les contrôles automatiques sont verts.');
     await page.locator('.ticket.pending[data-number="10"]').waitFor();
+    // The waiting card is not in the narrow « À vous » lane: its quiet button keeps its full label.
+    assert.equal(await page.locator('.ticket.pending[data-number="10"] a.button.secondary').textContent(), 'Voir les captures');
   });
 });
 
