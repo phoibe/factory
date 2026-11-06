@@ -86,7 +86,7 @@ export function missingSkills(runs, { stages = {}, ui = false, small = false } =
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
-  'skills-fix': 'Rattrapage des étapes', audit: 'Review générale',
+  'skills-fix': 'Rattrapage des étapes', audit: 'Review générale', stack: 'Fiche stack technique',
 };
 
 export function summarize(runs, { stages = {}, ui = false, small = false } = {}) {

@@ -8,6 +8,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig } from './lib/config.mjs';
 import { isNetworkFailure } from './lib/outage.mjs';
+import { isManifest, stackVerdict, STACK_FILE } from './lib/stack.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const CHECKS = [
@@ -35,7 +36,7 @@ export function planChecks(enabled, pkg) {
 export function summary(results) {
   const icon = { pass: '✅', fail: '❌', missing: '⚠️', skipped: '➖' };
   const note = { missing: (r) => `script npm « ${r.script} » absent`, skipped: () => 'pas encore de tests (ajoutés à la prochaine construction)' };
-  const rows = results.map((r) => `| ${r.label} | ${icon[r.status]} ${note[r.status]?.(r) || ''} |`);
+  const rows = results.map((r) => `| ${r.label} | ${icon[r.status]} ${r.note || note[r.status]?.(r) || ''} |`);
   return ['### Contrôles automatiques', '', '| Contrôle | Résultat |', '| --- | --- |', ...rows].join('\n');
 }
 
@@ -60,6 +61,32 @@ export function browserSetup(pkg) {
 const DOWNLOADS = ['install', 'browser', 'audit'];
 export const isOutage = (step, status, output) => status !== 0 && DOWNLOADS.includes(step) && isNetworkFailure(output);
 
+// The stack sheet check (issue #242): the PR's manifests and STACK.md against where it started (`baseRef`, its merge base, fetched
+// by relay.yml). Without that branch at hand the check is skipped, never red.
+export function stackFromGit(dir, baseRef) {
+  const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const side = (ref) => {
+    const list = git('ls-tree', '-r', '--name-only', ref);
+    if (list.status !== 0) return null;
+    const paths = list.stdout.split('\n').filter(Boolean);
+    const show = (p) => { const r = git('show', `${ref}:${p}`); return r.status === 0 ? r.stdout : null; };
+    const files = Object.fromEntries(paths.filter(isManifest).map((p) => [p, show(p)]));
+    return { files, sheet: paths.includes(STACK_FILE) ? show(STACK_FILE) : null };
+  };
+  const base = baseRef ? side(baseRef) : null;
+  const head = side('HEAD');
+  if (!base || !head) return { status: 'skip', added: [], removed: [] };
+  return stackVerdict({ base, head });
+}
+
+// One line for the owner when the sheet was forgotten (shown in the checks' log and summary).
+export function stackMessage(v) {
+  if (v.sheetLost) return `La fiche stack (${STACK_FILE}) a été supprimée : remettez-la.`;
+  const names = (l) => l.map((x) => x.replace(/^\w+:/, '')).join(', ');
+  const what = [v.added.length ? `ajoutées : ${names(v.added)}` : '', v.removed.length ? `retirées : ${names(v.removed)}` : ''].filter(Boolean).join(' ; ');
+  return `Fiche stack pas mise à jour (bibliothèques ${what}) : mettez à jour ${STACK_FILE} dans la même PR.`;
+}
+
 // The factory repository: no package.json, but its own scripts and test suite.
 export function isFactoryRepo(dir) {
   return ['scripts/relay.mjs', 'packs/catalog.json', 'test'].every((f) => existsSync(join(dir, f)));
@@ -68,7 +95,12 @@ export function isFactoryRepo(dir) {
 function main() {
   const args = process.argv.slice(2);
   const ci = args.indexOf('--config');
-  const projectDir = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--config') || '.');
+  const bi = args.indexOf('--base');
+  const projectDir = resolve(args.find((a, i) => !a.startsWith('--') && !['--config', '--base'].includes(args[i - 1])) || '.');
+  // Always on, whatever the rules: the sheet must follow the libraries (issue #242).
+  const stack = stackFromGit(projectDir, bi >= 0 ? args[bi + 1] : null);
+  const stackResult = { label: 'Fiche stack', status: stack.status === 'fail' ? 'fail' : stack.status === 'skip' ? 'skipped' : 'pass', note: stack.status === 'skip' ? 'pas de fiche à comparer' : '' };
+  if (stack.status === 'fail') console.log(`::error::${stackMessage(stack)}`);
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const cfgPath = ci >= 0 ? args[ci + 1] : join(projectDir, 'factory.config.json');
   let raw = {};
@@ -81,8 +113,8 @@ function main() {
     const status = spawnSync('node', ['--test'], { cwd: projectDir, stdio: 'inherit', env: { ...process.env, CI: 'true' } }).status;
     console.log('::endgroup::');
     if (status !== 0) console.log('::error::Tests : échec');
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary([{ label: 'Tests', status: status === 0 ? 'pass' : 'fail' }]) + '\n');
-    process.exit(status === 0 ? 0 : 1);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary([{ label: 'Tests', status: status === 0 ? 'pass' : 'fail' }, stackResult]) + '\n');
+    process.exit(status === 0 && stackResult.status !== 'fail' ? 0 : 1);
   }
   if (!existsSync(pkgPath)) {
     console.log("::error::Pas de package.json : il n'y a pas encore d'application à contrôler.");
@@ -117,7 +149,7 @@ function main() {
       run(browser.deps);
     }
   }
-  const results = [];
+  const results = [stackResult];
   for (const c of planChecks(config.checks, pkg)) {
     if (c.skipped) { results.push({ ...c, status: 'skipped' }); console.log(`::notice::Script npm « ${c.script} » absent : pas encore de ${c.label.toLowerCase()} à rejouer.`); continue; }
     if (c.missing) { results.push({ ...c, status: 'missing' }); console.log(`::error::Script npm « ${c.script} » absent.`); continue; }

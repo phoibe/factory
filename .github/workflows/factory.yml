@@ -31,7 +31,7 @@ jobs:
   factory:
     # Cheap filters, so that label changes and the agent's own messages cost no Actions minutes.
     if: >-
-      (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature' || github.event.label.name == 'factory:bug' || github.event.label.name == 'factory:project' || github.event.label.name == 'factory:question' || github.event.label.name == 'factory:audit') &&
+      (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature' || github.event.label.name == 'factory:bug' || github.event.label.name == 'factory:project' || github.event.label.name == 'factory:question' || github.event.label.name == 'factory:audit' || github.event.label.name == 'factory:stack') &&
       (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'factory:checks') &&
       ((github.event_name != 'issues' && github.event_name != 'pull_request') || github.event.action != 'unlabeled' || github.event.label.name == 'factory:running' || github.event.label.name == 'factory:building') &&
       (github.event_name != 'issue_comment' || !contains(github.event.comment.body, '<!-- factory-agent -->'))

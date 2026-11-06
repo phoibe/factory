@@ -138,6 +138,25 @@ dialog#phone::backdrop { background: rgb(0 0 0 / .45); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 @media (max-width: 600px) { #phone-open { display: none; } }
 
+/* ---- Stack sheet ---- */
+dialog#stack { max-width: 640px; width: calc(100% - 32px); max-height: calc(100dvh - 48px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 0; box-shadow: var(--shadow); }
+dialog#stack[open] { display: flex; flex-direction: column; }
+dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
+.stack-head { padding: 24px 24px 12px; border-bottom: 1px solid var(--line); }
+.stack-head h2 { margin: 0 0 2px; }
+.stack-body { padding: 8px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
+.stack-body h3 { font-size: 1.0625rem; font-weight: 700; margin: 24px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.stack-body h3:first-of-type { margin-top: 12px; }
+.stack-intro { color: var(--muted); }
+.stack-body h4 { font-size: .875rem; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+.stack-body ul { margin: 0; padding-left: 1.1em; }
+.stack-body li { margin: 4px 0; max-width: 65ch; }
+.stack-body p { margin: 8px 0; max-width: 65ch; }
+.stack-body .muted { margin: 8px 0; }
+.stack-empty { padding: 16px 0 8px; }
+#stack .dialog-actions { margin: 0; padding: 12px 24px 20px; border-top: 1px solid var(--line); }
+@media (max-width: 600px) { .stack-head { padding: 20px 16px 10px; } .stack-body { padding: 4px 16px 12px; } #stack .dialog-actions { padding: 12px 16px 16px; } }
+
 /* ---- Live site link ---- */
 .site-line { margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
 .site-line .sep { color: var(--muted); }

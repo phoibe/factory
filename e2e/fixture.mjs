@@ -13,7 +13,8 @@ const TYPES = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascri
 export const issue = (number, title, labels, extra = {}) => ({ number, title, state: 'open', labels: labels.map((name) => ({ name })), comments: 0, html_url: `https://github.com/o/r/issues/${number}`, created_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date().toISOString(), user: { login: 'o' }, author_association: 'OWNER', body: '', ...extra });
 
 // Runs `journey` with a page on the panel. `issues` is the open list GitHub returns; every write is recorded.
-export async function withPanel({ issues = [], token = true }, journey) {
+// `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -28,6 +29,7 @@ export async function withPanel({ issues = [], token = true }, journey) {
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
     await context.route('https://github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
     const page = await context.newPage();
+    if (viewport) await page.setViewportSize(viewport);
     await page.route('https://api.github.com/**', (route) => {
       const req = route.request();
       const path = new URL(req.url()).pathname;
@@ -36,6 +38,14 @@ export async function withPanel({ issues = [], token = true }, journey) {
       if (path === '/user/repos') return json([{ full_name: 'o/r', name: 'r', owner: { login: 'o' }, private: true, html_url: 'https://github.com/o/r', homepage: '' }]);
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from('{}').toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
+      if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
+      const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];
+      if (file && file in files) return json({ content: Buffer.from(files[file]).toString('base64'), encoding: 'base64', sha: 's' });
+      if (file && !path.endsWith('factory.config.json')) return json({ message: 'Not Found' }, 404);
+      if (path === '/repos/o/r/commits') {
+        const date = fileDates[new URL(req.url()).searchParams.get('path')];
+        return json(date ? [{ sha: 'c', commit: { committer: { date } } }] : []);
+      }
       if (path === '/repos/o/r/issues') return json(new URL(req.url()).searchParams.get('state') === 'closed' ? [] : issues);
       return json([]);
     });

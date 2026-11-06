@@ -358,3 +358,13 @@ test('the owner writing during the run comes before the agent closing by itself'
   const a = decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.close, L.obsolete, L.pending] }), config, ctx);
   assert.equal(a.type, 'replay');
 });
+
+test('a stack sheet card from the panel is built right away, or queued when the factory is full', async () => {
+  const { decide } = await import('../scripts/lib/decide.mjs');
+  const ev = { kind: 'issue', event: 'issues', action: 'opened', number: 9, labels: ['factory:stack'], fromOwner: true, text: '' };
+  const cfg = { maxParallel: 2, stages: { grilling: true } };
+  const go = decide(ev, cfg, { inFlight: 0 });
+  assert.equal(go.stage, 'stack');
+  assert.deepEqual(go.add, ['factory:building']);
+  assert.equal(decide(ev, cfg, { inFlight: 2 }).type, 'queue');
+});

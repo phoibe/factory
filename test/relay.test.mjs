@@ -2048,3 +2048,55 @@ test('any event brings a project whose agent instructions are behind the stable 
     assert.equal(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'), expected, fingerprint);
   }
 });
+
+// The stack sheet (issue #242): a framed project without STACK.md gets its « Établir la fiche » card once, as soon as
+// its synced agent instructions know the `stack` stage.
+function stackWorld({ files = ['PRODUCT.md', '.factory/stages/stack.md'], issues = [], closed = [] } = {}) {
+  const state = { issues: [...issues], prs: [] };
+  const gh = fakeGh(state);
+  gh.getContent = async (path) => (files.includes(path) ? { content: '' } : null);
+  const list = gh.listIssues;
+  gh.listIssues = async (q) => (q.state === 'all' ? [...await list(q), ...closed.filter((i) => i.labels.includes(q.labels))] : list(q));
+  gh.createIssue = async (title, body, labels) => { const n = 50; state.issues.push({ number: n, title, body, labels: [...labels] }); gh.calls.push(['create', title, body, labels]); return { number: n }; };
+  return { gh, state };
+}
+
+test('a framed project without a stack sheet gets its card, started at once', async () => {
+  const { gh } = stackWorld();
+  const sent = [];
+  await guardTick(gh, sent);
+  const created = gh.calls.find((c) => c[0] === 'create');
+  assert.ok(created, 'card created');
+  assert.ok(created[3].includes(L.stack) && created[3].includes(L.kept));
+  assert.equal(payloadOf(sent.at(-1).init.body).stage, 'stack');
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 50 && c[2] === L.building));
+});
+
+test('no stack card when the sheet exists, one was already opened, or the project is not ready', async () => {
+  const cases = {
+    'sheet exists': stackWorld({ files: ['PRODUCT.md', '.factory/stages/stack.md', 'STACK.md'] }),
+    'card closed before': stackWorld({ closed: [{ number: 3, open: false, labels: [L.stack] }] }),
+    'card open': stackWorld({ issues: [{ number: 3, labels: [L.stack, L.queued] }] }),
+    'not framed': stackWorld({ files: ['.factory/stages/stack.md'] }),
+    'framing under way': stackWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] }),
+    'instructions not synced yet': stackWorld({ files: ['PRODUCT.md'] }),
+  };
+  for (const [name, { gh }] of Object.entries(cases)) {
+    await guardTick(gh, []);
+    assert.ok(!gh.calls.some((c) => c[0] === 'create'), name);
+  }
+});
+
+test('a queued stack card starts the stack stage when a place frees', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.stack, L.queued] }], prs: [] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
+  assert.equal(payloadOf(sent[0].init.body).stage, 'stack');
+});
+
+test('a failed lookup of the stack sheet (not a 404) opens no card', async () => {
+  const { gh } = stackWorld();
+  gh.getContent = async (path) => { if (path === 'STACK.md') throw new Error('502 Bad Gateway'); return { content: '' }; };
+  await guardTick(gh, []);
+  assert.ok(!gh.calls.some((c) => c[0] === 'create'));
+});
