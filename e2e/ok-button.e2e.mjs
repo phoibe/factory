@@ -7,7 +7,7 @@ const pr = (number, title, labels) => issue(number, title, ['factory:feature', .
 const visual = pr(10, 'Partager une recette', ['factory:visual-review']);
 const acceptance = { ...pr(11, 'Imprimer la liste', ['factory:acceptance']), comments: 1 };
 const previewComment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
-const buttons = (page, n) => page.locator(`.you-item[data-number="${n}"]`).locator('a.button, button').allTextContents();
+const buttons = (page, n) => page.locator(`.ticket.yours[data-number="${n}"]`).locator('a.button, button').allTextContents();
 const sentOn = (writes, n) => () => writes.filter((w) => w.path.endsWith(`/issues/${n}/comments`)).map((w) => w.body.body);
 async function waitFor(check, page) { for (let i = 0; i < 100 && !check(); i++) await page.waitForTimeout(100); }
 
@@ -16,8 +16,8 @@ test('une carte « Captures à valider » montre « Ok » en bleu puis « Voir l
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').waitFor();
     assert.deepEqual((await buttons(page, 10)).map((t) => t.trim()), ['Ok', 'Voir les captures']);
-    assert.equal(await page.locator('.you-item[data-number="10"] a.button.secondary').textContent(), 'Voir les captures');
-    assert.equal(await page.locator('.you-item[data-number="10"] a.button.secondary').getAttribute('href'), 'https://github.com/o/r/pull/10');
+    assert.equal(await page.locator('.ticket.yours[data-number="10"] a.button.secondary').textContent(), 'Voir les captures');
+    assert.equal(await page.locator('.ticket.yours[data-number="10"] a.button.secondary').getAttribute('href'), 'https://github.com/o/r/pull/10');
   });
 });
 
@@ -48,7 +48,7 @@ test('sans annuler, le « ok » part et le message « Captures validées » appa
 test('une carte « Tester » montre « Ok », « Ouvrir l\'aperçu à tester » et « Voir la recette »', async () => {
   await withPanel({ issues: [acceptance], comments: { 11: previewComment } }, async ({ page, url }) => {
     await page.goto(url);
-    await page.locator('.you-item[data-number="11"] a[href="https://preview.example.com/"]').waitFor();
+    await page.locator('.ticket.yours[data-number="11"] a[href="https://preview.example.com/"]').waitFor();
     assert.deepEqual((await buttons(page, 11)).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Ouvrir l\'aperçu à tester', 'Voir la recette']);
   });
 });
@@ -85,13 +85,13 @@ test('changer de projet pendant le décompte annule l\'envoi', async () => {
 test('ouvrir l\'aperçu puis revenir laisse la carte « Tester » dans « À vous de jouer », prête pour « Ok »', async () => {
   await withPanel({ issues: [acceptance], comments: { 11: previewComment } }, async ({ page, url }) => {
     await page.goto(url);
-    const link = page.locator('.you-item[data-number="11"] a[href="https://preview.example.com/"]');
+    const link = page.locator('.ticket.yours[data-number="11"] a[href="https://preview.example.com/"]');
     await link.waitFor();
     await link.click({ modifiers: ['ControlOrMeta'] });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForTimeout(500);
     assert.equal(await page.locator('.ticket.pending[data-number="11"]').count(), 0);
-    assert.equal(await page.locator('.you-item[data-number="11"] button.go').textContent(), 'Ok');
+    assert.equal(await page.locator('.ticket.yours[data-number="11"] button.go').textContent(), 'Ok');
   });
 });
 

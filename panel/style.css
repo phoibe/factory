@@ -293,12 +293,6 @@ main { max-width: 1100px; padding: 24px 16px 96px; }
 .you-card { background: var(--you-bg); border: 1px solid var(--you-line); border-radius: 14px; padding: 24px; margin: 0 0 48px; display: flex; flex-direction: column; gap: 16px; }
 .you-card.calm { background: var(--surface); border-color: var(--line); }
 .you-card .headline { font-size: 1.75rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; color: var(--text); }
-.you-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.you-item { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--you-line); border-radius: 10px; }
-.you-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.you-title { display: inline-block; padding: 10px 0; margin: -10px 0; font-weight: 600; color: var(--text); text-underline-offset: 3px; } /* 44 px to the thumb, same layout */
-.you-item .alert { margin: 0; }
-.you-item .button, .you-item .go { align-self: stretch; text-align: center; }
 button.go { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 1.125rem; min-height: 48px; padding: 12px 24px; }
 button.go:hover { filter: brightness(1.08); border-color: var(--accent); }
 button.go:disabled { opacity: .6; cursor: default; }
@@ -312,14 +306,6 @@ button.go:disabled { opacity: .6; cursor: default; }
 .doing, .ticket .session, details summary { color: var(--text); }
 .tabs button, .actions .button { font-weight: 500; }
 .actions .button:first-child { font-weight: 600; }
-@media (min-width: 700px) {
-  .you-item { flex-direction: row; align-items: center; justify-content: space-between; }
-  .you-item .button { align-self: auto; min-width: 120px; }
-  /* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
-  .you-item .go { align-self: auto; min-width: 9.5em; }
-  /* The text takes the free space, so a plate's buttons sit together on the right instead of spreading out. */
-  .you-what { flex: 1 1 auto; min-width: 0; }
-}
 @media (max-width: 600px) { .you-card { padding: 16px; margin-bottom: 32px; } }
 @media (max-width: 600px) {
   .top { position: static; }
@@ -328,9 +314,6 @@ button.go:disabled { opacity: .6; cursor: default; }
 }
 .site-line a, .quiet-link { display: inline-block; padding: 12px 0; }
 .site-line { margin: 0; }
-.you-what .num { color: var(--muted); font-size: .8125rem; }
-.you-item.blocked { border-color: var(--danger); }
-.you-item .blocked-tag { font-weight: 600; color: var(--danger); }
 button.go:focus-visible { outline-color: var(--text); }
 /* ---- Mono Numbers Rule: every figure is set in Geist Mono (see numbers.mjs for the text figures) ---- */
 .num { font-size: .92em; letter-spacing: -.01em; }
@@ -342,8 +325,7 @@ button.go:focus-visible { outline-color: var(--text); }
 /* Blue is for what waits for an answer: links are ink and underlined, focus rings are ink. */
 a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 a.button { text-decoration: none; }
-.brand, .ticket .main, .you-title { text-decoration: none; }
-.you-title { text-decoration: underline; }
+.brand, .ticket .main { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
@@ -427,3 +409,18 @@ details summary { color: var(--text); }
 /* GitHub refused the sort: the card came back, this line says why until the next click on it. */
 .ticket.idea .idea-error { margin: 0; font-size: .8125rem; color: var(--danger); }
 ::placeholder { color: var(--muted); opacity: 1; }
+
+/* ---- Issue 269: « À vous de jouer » as cards, like the other lanes, tinted soft blue ---- */
+.you-card.lane-yours { display: block; background: none; border: 0; border-radius: 0; padding: 0; margin: 0 0 48px; }
+.lane-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin: 0 0 12px; }
+.lane-head h2 { margin: 0; }
+.ticket.yours { background: var(--you-bg); border-color: var(--you-line); }
+.ticket.yours.blocked { background: var(--danger-bg); border-color: var(--danger); }
+.ticket.yours .blocked-tag { align-self: flex-start; font-weight: 600; color: var(--danger); }
+.ticket.yours .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.ticket.yours .card-actions > * { flex: 1 1 auto; text-align: center; }
+/* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
+.ticket.yours .card-actions button.go { flex: 1 1 100%; min-width: 9.5em; }
+@media (max-width: 600px) { .you-card.lane-yours { margin-bottom: 32px; } }
+/* The preview link reads like the other quiet buttons of the card, not like the small link of the other lanes. */
+.ticket.yours .card-actions .preview.secondary { padding: 8px 14px; font-size: inherit; }

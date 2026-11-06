@@ -346,8 +346,8 @@ const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState(
 const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
 const replyLink = (c) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 const replyAction = (c) => (c.reply === 'go' ? goButton(c) : replyLink(c));
-// The buttons of a card waiting for the owner, in order. « Ok » comes first (blue), the preview and the page to read after it.
-const answerButtons = (c, previewLink) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)] : [previewLink, replyAction(c)]);
+// The buttons of a card waiting for the owner, in order. The blue « go » or « Ok » comes first, the preview and the page to read after it.
+const answerButtons = (c, previewLink) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)] : c.reply === 'go' ? [goButton(c), previewLink] : [previewLink, replyLink(c)]);
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -368,20 +368,21 @@ function card(c, lane, minutes, now, moved) {
           : null)
       : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub') : null;
   const waiting = lane === 'pending';
+  const asks = waiting || lane === 'yours'; // the card carries its answer buttons
   const preview = live.previews.get(c.number);
   // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
   const testIt = c.column === 'acceptance' && !running && !waiting;
-  const previewLink = preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
+  const previewLink = preview ? el('a', { class: `preview button${testIt && !asks ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
     testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
-    waiting && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
-    testIt && preview ? null : status,
-    // On a waiting card the buttons sit together on one compact row (within reach, without taking over the card).
-    waiting ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink)) : previewLink,
+    asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
+    testIt && preview && !asks ? null : status,
+    // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
+    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink)) : previewLink,
     stepTrack(c),
     el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
@@ -498,7 +499,7 @@ function pendingZone(held, minutes, now) {
 // Clicking a plate's link (preview, « Répondre », title) opens GitHub in another tab: remember it, and put the plate on hold when the owner is back.
 for (const type of ['click', 'auxclick']) {
   document.addEventListener(type, (e) => {
-    const li = e.target.closest?.('.you-item[data-number], .ticket.pending[data-number]'); // a new click on a waiting card restarts its wait
+    const li = e.target.closest?.('.ticket.yours[data-number], .ticket.pending[data-number]'); // a new click on a waiting card restarts its wait
     const link = e.target.closest?.('a');
     if (!li || !current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
@@ -518,20 +519,12 @@ function owedReturn() {
 window.addEventListener('focus', owedReturn);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) owedReturn(); });
 
-function youCard(yours, headline, sub) {
+function youCard(yours, headline, sub, minutes, now, movedSet) {
   const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
-  return el('section', { class: 'you-card', 'aria-label': 'À vous' },
-    el('p', { class: 'headline' }, headline),
-    el('ul', { class: 'you-list' }, yours.map((c) => el('li', { class: `you-item${c.column === 'blocked' ? ' blocked' : ''}`, 'data-number': String(c.number) },
-      el('div', { class: 'you-what' },
-        el('span', { class: 'num' }, `#${c.number}`),
-        el('a', { class: 'you-title', 'data-key': String(c.number), href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, c.title),
-        c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
-        el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
-      c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
-      answerButtons(c, live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null)))),
-    status);
+  return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
+    el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
+    el('div', { class: 'tickets' }, yours.map((c) => card(c, 'yours', minutes, now, movedSet.has(c.number)))));
 }
 
 // « Idées à trier »: what the agent proposed by itself. Calm on purpose (never in « À vous », no alert): the owner
@@ -642,8 +635,7 @@ function drawBoard() {
   const n = yours.length;
   document.title = tabTitle(n);
   const doneShown = doneView(live.done);
-  const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
-    : cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours';
+  const headline = cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours'; // shown only when nothing waits
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
@@ -655,7 +647,7 @@ function drawBoard() {
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
   const fresh = [
-    youCard(yours, headline, sub),
+    youCard(yours, headline, sub, minutes, now, movedSet),
     pendingZone(held.pending, minutes, now),
     ...LANES.filter(([id]) => id !== 'yours' && cards.length).map(([id, title, empty]) => el('section', { class: `lane lane-${id}`, 'aria-label': title },
       el('h2', {}, title, el('span', { class: 'count' }, String(byLane[id].length))),
