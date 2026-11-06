@@ -64,7 +64,7 @@ export function differs(a, b) {
 async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(launchOptions());
   const shoot = async (viewport, scheme, applyToggle) => {
     const context = await browser.newContext({ viewport, colorScheme: scheme });
     if (cookies.length) await context.addCookies(cookies);
@@ -105,6 +105,12 @@ async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
     : 'no dark theme detected: light screenshots only. If the app has a dark theme switched by a button/class, rerun with --dark-class or --dark-attr; if you cannot find how, say so in the PR.');
 }
 
+// The cloud sessions have a Chromium of their own whose version may not match the project's Playwright: use it.
+export function launchOptions(env = process.env, exists = existsSync) {
+  if (env.CHROMIUM_PATH) return { executablePath: env.CHROMIUM_PATH };
+  return exists('/opt/pw-browsers/chromium') ? { executablePath: '/opt/pw-browsers/chromium' } : {};
+}
+
 // Light screenshots first, then dark ones, each sorted by name.
 export function orderFiles(files) {
   const isDark = (f) => f.endsWith(`--${DARK_SUFFIX}.png`);
@@ -128,7 +134,7 @@ const dataUri = (file) => `data:image/png;base64,${readFileSync(file).toString('
 export async function compose({ before, after, out, only = null }) {
   const { chromium } = loadPlaywright();
   mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(launchOptions());
   try {
     const page = await browser.newPage();
     for (const f of readdirSync(after).filter((x) => x.endsWith('.png') && (!only || only.includes(x)))) {

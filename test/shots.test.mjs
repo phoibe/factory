@@ -95,3 +95,10 @@ test('the script runs from a folder whose path has a space', async () => {
   assert.equal(run.status, 2, run.stderr);
   assert.match(run.stderr, /usage/);
 });
+
+test('the cloud session Chromium is used when it is there', async () => {
+  const { launchOptions } = await import('../agent/scripts/shots.mjs');
+  assert.deepEqual(launchOptions({ CHROMIUM_PATH: '/x/chrome' }, () => false), { executablePath: '/x/chrome' });
+  assert.deepEqual(launchOptions({}, (p) => p === '/opt/pw-browsers/chromium'), { executablePath: '/opt/pw-browsers/chromium' });
+  assert.deepEqual(launchOptions({}, () => false), {});
+});
