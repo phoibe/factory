@@ -657,7 +657,7 @@ function renderRules() {
       el('div', {}, el('label', { for: 'maxQuestions' }, 'Features en questions en même temps'),
         el('p', {}, 'Features que la factory prend d\'elle-même et qui attendent vos réponses. Celles sur lesquelles vous écrivez vous-même démarrent toujours tout de suite.'),
         el('input', { type: 'number', id: 'maxQuestions', min: '1', max: '10', value: String(c.maxQuestions ?? 2),
-          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= 10) update(setPath(c, 'maxQuestions', v)); } }))));
+          onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= 10) update(setPath(c, 'maxQuestions', v)); else e.target.value = String(c.maxQuestions ?? 2); } }))));
   const stages = el('fieldset', {}, el('legend', {}, 'Étapes'),
     STAGES.map(([k, t, d]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
       el('div', {}, el('label', { for: `stage-${k}` }, t), el('p', {}, d)))));

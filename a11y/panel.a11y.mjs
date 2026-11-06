@@ -88,6 +88,11 @@ test('panel screens have no axe violations, in the light and the dark theme', as
             });
             if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'Features en questions en même temps' || !q.afterPick)
               found.push(`Règles (${scheme}): réglage maxQuestions absent ou mal placé : ${JSON.stringify(q)}`);
+            // A value out of range is not kept: the field goes back to the saved value.
+            await page.fill('#maxQuestions', '11');
+            await page.dispatchEvent('#maxQuestions', 'change');
+            const after = await page.inputValue('#maxQuestions');
+            if (after !== '2') found.push(`Règles (${scheme}): une valeur hors limites reste affichée (${after})`);
           }
         }
         await context.close();

@@ -672,6 +672,11 @@ test('maxQuestions lowered below the features already waiting: nothing is stoppe
   assert.ok(!gh.calls.some((c) => c[0] === 'remove' && [1, 2].includes(c[1])));
 });
 
+test('maxQuestions with room left still stops at the free slots', async () => {
+  const { started } = await runPick([fi(1, L.feature, L.autoPicked, L.grilling), fi(2, L.feature), fi(3, L.feature)], { ...pickConfig, maxParallel: 2, maxQuestions: 3 });
+  assert.deepEqual(started.map((p) => p.issue), [2]);
+});
+
 test('maxQuestions missing from the config: 2 by default', async () => {
   const { maxQuestions, ...cfg } = pickConfig;
   const { started } = await runPick([fi(1, L.feature), fi(2, L.feature), fi(3, L.feature)], { ...cfg, maxParallel: 5 });
