@@ -182,4 +182,28 @@ test('phone alerts can be skipped: no secret, nothing saved, the install goes on
   assert.ok(!existsSync(join(cfg, 'factory', 'ntfy')));
   assert.match(out, /C'est prêt/);
 });
+
+test('an adoption stopped halfway is listed again, and a saved routine can be typed again', async () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
+  const file = join(cfg, 'factory', 'routines', 'phoibe_vieux-site');
+  writeFileSync(file, 'FACTORY_ROUTINE_URL=https://typo.test/fire\nFACTORY_ROUTINE_TOKEN=mauvais\n');
+  const { out, log } = await run([], ['2', '2', '', 'n', 'o', 'https://bon.test/fire', 'bon-jeton', '', '', ''],
+    { XDG_CONFIG_HOME: cfg, FAKE_INSTALLED: 'phoibe/vieux-site/contents/factory.config.json' });
+  assert.match(out, / 2\) vieux-site {2}\(adoption à terminer\)/);
+  assert.doesNotMatch(out, /\) habitudes/);
+  assert.match(readFileSync(file, 'utf8'), /FACTORY_ROUTINE_TOKEN=bon-jeton/);
+  assert.match(log, /issue create -R phoibe\/vieux-site/);
+});
+
+test('resuming keeps the saved routine by default and never opens a second framing issue', async () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
+  writeFileSync(join(cfg, 'factory', 'routines', 'phoibe_mon-appli'), 'FACTORY_ROUTINE_URL=https://ok.test/fire\nFACTORY_ROUTINE_TOKEN=garde\n');
+  const { out, log } = await run(['adopter', 'mon-appli'], ['', '', '', ''], { XDG_CONFIG_HOME: cfg, FAKE_FRAMED: 'phoibe/mon-appli' });
+  assert.doesNotMatch(out, /Collez l'URL/);
+  assert.match(out, /Cadrage déjà ouvert : https:\/\/github\.com\/phoibe\/mon-appli\/issues\/5/);
+  assert.doesNotMatch(log, /issue create/);
+  assert.match(out, /C'est prêt/);
+});
 });
