@@ -13,6 +13,8 @@ test('screens open inside the site, even when it lives in a sub-folder (GitHub P
   assert.equal(routeUrl('/planning', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/planning');
   assert.equal(routeUrl('/connexion?x=1', 'https://app.example/'), 'https://app.example/connexion?x=1');
   assert.equal(routeUrl('/', 'https://app.example'), 'https://app.example/');
+  assert.equal(routeUrl('/user:42', 'https://x.io/app/'), 'https://x.io/app/user:42');
+  assert.equal(routeUrl('/p#h', 'https://x.io/a/b/?q=1#z'), 'https://x.io/a/b/p#h');
 });
 
 test('a version protected by its host is not a failure', () => {

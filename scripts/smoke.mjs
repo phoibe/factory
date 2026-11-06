@@ -25,7 +25,7 @@ export function routeUrl(route, base) {
   if (!u.pathname.endsWith('/')) u.pathname += '/';
   u.search = '';
   u.hash = '';
-  return new URL(String(route).replace(/^\/+/, ''), u).toString();
+  return new URL('./' + String(route).replace(/^\/+/, ''), u).toString();
 }
 
 // A deployment protected by its host's sign-in (Vercel Authentication…) cannot be opened by a robot: not a failure.
