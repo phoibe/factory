@@ -969,12 +969,13 @@ async function writeProjectRules() {
 }
 
 function selectTab(name) {
+  const fromChat = !$('chat').hidden;
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
     $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
-  if (name === 'chat') openChat(); else scheduleChat();
+  if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
 }
 
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
@@ -1253,12 +1254,12 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0 };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null });
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   if (!$('chat').hidden) openChat(); else scheduleChat(2000);
@@ -1274,6 +1275,9 @@ function markServerSeen(id, updated) {
   chat.seen[id] = updated;
   store.set(`${SEEN_KEY}.${chat.repo}`, JSON.stringify(chat.seen));
 }
+
+// The open conversation is on screen: the Agent tab is shown and, on a phone, the thread rather than the list.
+const threadShown = () => !$('chat').hidden && (!matchMedia('(max-width: 700px)').matches || $('chat').classList.contains('viewing'));
 
 const isUnread = (c) => (chat.server ? serverUnread(c, chat.seen) : unread(c, chat.seen));
 
@@ -1321,7 +1325,7 @@ async function refreshServerChat() {
     const conv = await branchJson(`chats/${id}.json`);
     if (chat.repo === repo && chat.open === id && !chat.live) chat.conv = conv;
     const entry = chat.list.find((c) => c.id === id);
-    if (chat.repo === repo && chat.open === id && conv && entry && !$('chat').hidden) markServerSeen(id, entry.updated);
+    if (chat.repo === repo && chat.open === id && conv && entry && threadShown()) markServerSeen(id, entry.updated);
   }
 }
 
@@ -1346,8 +1350,9 @@ async function refreshChat() {
       chat.comments = comments;
       // The pending message shows until GitHub lists it.
       if (chat.pending && chatMessages(issue, comments).some((m) => m.who === 'me' && m.text === chat.pending.text && (m.images?.length || 0) === chat.pending.previews.length)) chat.pending = null;
-      // Seen only when the answer is on screen: fetched in the background, it stays new.
-      if (!$('chat').hidden) markSeen(issue);
+      // Seen only when the answer is on screen: fetched in the background, it stays new. The owner's own
+      // message, listed after they left, is never news.
+      if (threadShown() || chatMessages(issue, comments).at(-1)?.who === 'me') markSeen(issue);
     }
     drawChat();
   } catch (err) {
@@ -1355,7 +1360,7 @@ async function refreshChat() {
     else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
   } finally {
     chat.busy = false;
-    scheduleChat();
+    scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
   }
 }
 
@@ -1463,7 +1468,7 @@ function drawChatList() {
   const row = (c) => {
     const key = chat.server ? c.id : c.number;
     const thinking = chat.server ? Boolean(chat.live) && chat.open === key : c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
-    const fresh = isUnread(c) && chat.open !== key;
+    const fresh = isUnread(c) && !(chat.open === key && threadShown());
     return el('li', {},
       el('button', { type: 'button', class: `conv${chat.open === key ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === key ? 'true' : false, onclick: () => selectConversation(key) },
         el('span', { class: 'conv-title' }, c.title),
@@ -1472,6 +1477,13 @@ function drawChatList() {
   };
   items.replaceChildren(...open.map(row), ...(done.length ? [el('li', { class: 'chat-sep' }, 'Terminées')] : []), ...done.map(row));
   const n = open.filter(isUnread).length;
+  // Away from the thread, a screen reader hears that an answer came in (the badge itself is silent).
+  if (chat.badge != null && n > chat.badge && !threadShown()) {
+    const say = $('chat-badge-announce');
+    say.textContent = '';
+    requestAnimationFrame(() => { say.textContent = 'Nouvelle réponse de l\'agent.'; });
+  }
+  chat.badge = n;
   $('chat-badge').hidden = !n;
   $('chat-badge').textContent = String(n);
   $('chat-badge-label').textContent = n ? `${n} ${n > 1 ? 'nouvelles réponses' : 'nouvelle réponse'}` : '';
@@ -1715,7 +1727,7 @@ async function sendToServer(text, files, withImages) {
             chat.open = c.id;
             chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
             // Watched as it was written: seen. Finished while the owner was on another tab: the badge lights up.
-            if (!$('chat').hidden) markServerSeen(c.id, c.updated);
+            if (threadShown()) markServerSeen(c.id, c.updated);
             else if (!serverUnread(c, chat.seen)) markServerSeen(c.id, new Date(0).toISOString());
           }
         }

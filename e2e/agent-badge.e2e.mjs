@@ -53,8 +53,7 @@ test('je reviens sur « Agent » avec la conversation affichée : la réponse es
     await badge(page).waitFor({ timeout: 10_000 });
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
     await page.locator('#chat-messages .msg.agent', { hasText: 'Deux demandes.' }).waitFor();
-    await badge(page).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-    assert.equal(await badge(page).count(), 0);
+    await badge(page).waitFor({ state: 'detached', timeout: 5000 });
   });
 });
 
@@ -76,8 +75,7 @@ test('je reviens avec une autre conversation ouverte : la pastille reste et la c
     assert.equal(await badge(page).count(), 1);
     await answered.click();
     await page.locator('#chat-messages .msg.agent', { hasText: 'Deux demandes.' }).waitFor();
-    await badge(page).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-    assert.equal(await badge(page).count(), 0);
+    await badge(page).waitFor({ state: 'detached', timeout: 5000 });
   });
 });
 
@@ -108,8 +106,7 @@ test('en mode instantané, je pars sur « Paramètres » pendant que la réponse
     assert.match(await page.locator('#tab-chat').innerText(), /^Agent\s*1$/);
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
     await page.locator('#chat-messages .msg.agent', { hasText: 'Deux demandes en cours.' }).waitFor();
-    await badge(page).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-    assert.equal(await badge(page).count(), 0);
+    await badge(page).waitFor({ state: 'detached', timeout: 5000 });
   });
 });
 
@@ -124,5 +121,65 @@ test('en mode instantané, si je reste sur « Agent » à regarder la réponse s
     await page.getByRole('tab', { name: 'Suivi' }).click();
     await page.waitForTimeout(2000);
     assert.equal(await badge(page).count(), 0);
+  });
+});
+
+test('j\'écris à l\'agent puis je pars aussitôt sur « Suivi » : mon propre message n\'allume pas la pastille', async () => {
+  const conv = issue(7, 'Question', ['factory:question'], { comments: 1, body: 'Bonjour' });
+  const comments = { 7: [answer('Salut')] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url }) => {
+    await page.addInitScript(seen);
+    // GitHub lists the new comment a moment after it was posted.
+    await page.route('https://api.github.com/repos/o/r/issues/7/comments', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      setTimeout(() => { conv.comments = 2; comments[7].push(mine('Et alors ?', 0)); }, 1500);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+    });
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Question' }).click();
+    await page.locator('.conv.current').waitFor();
+    await page.locator('#chat-input').fill('Et alors ?');
+    await page.locator('#chat-send').click();
+    await page.waitForTimeout(300);
+    await page.getByRole('tab', { name: 'Suivi' }).click();
+    await page.waitForTimeout(7000);
+    assert.equal(await badge(page).count(), 0);
+  });
+});
+
+test('sur téléphone, revenir sur « Agent » sans rouvrir la conversation laisse la pastille et « Nouvelle réponse »', async () => {
+  const { issues, comments, reply } = setup();
+  await withPanel({ issues, comments, viewport: { width: 390, height: 800 } }, async ({ page, url }) => {
+    await page.addInitScript(seen);
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Combien de demandes' }).click();
+    await page.locator('#chat-back').click();
+    await page.getByRole('tab', { name: 'Suivi' }).click();
+    reply();
+    await badge(page).waitFor({ timeout: 10_000 });
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    const answered = page.locator('.conv', { hasText: 'Combien de demandes' });
+    await answered.locator('text=Nouvelle réponse').waitFor();
+    await page.waitForTimeout(2500);
+    assert.equal(await badge(page).count(), 1);
+    await answered.click();
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Deux demandes.' }).waitFor();
+    await badge(page).waitFor({ state: 'detached', timeout: 5000 });
+  });
+});
+
+test('avec un lecteur d\'écran, sur « Suivi », j\'entends « Nouvelle réponse de l\'agent » quand la pastille s\'allume', async () => {
+  const { issues, comments, reply } = setup();
+  await withPanel({ issues, comments }, async ({ page, url }) => {
+    await page.addInitScript(seen);
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Combien de demandes' }).click();
+    await page.getByRole('tab', { name: 'Suivi' }).click();
+    reply();
+    await badge(page).waitFor({ timeout: 10_000 });
+    await page.locator('#chat-badge-announce', { hasText: 'Nouvelle réponse de l\'agent.' }).waitFor({ state: 'attached', timeout: 2000 });
   });
 });
