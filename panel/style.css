@@ -416,7 +416,6 @@ details summary { color: var(--text); }
 .ticket.yours.blocked { background: var(--danger-bg); border-color: var(--danger); }
 .ticket.yours .blocked-tag { align-self: flex-start; font-weight: 600; color: var(--danger); }
 .ticket.yours .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
-.ticket.yours .card-actions > * { flex: 1 1 auto; text-align: center; }
 /* Wide enough for « Annuler (5 s) »: the button keeps its width during the countdown. */
 .ticket.yours .card-actions button.go { flex: 1 1 100%; min-width: 9.5em; }
 @media (max-width: 600px) { .you-card.lane-yours { margin-bottom: 32px; } }
@@ -424,11 +423,12 @@ details summary { color: var(--text); }
 .ticket.yours .card-actions .preview.secondary { padding: 8px 14px; font-size: inherit; }
 /* Design pass (#269): quiet buttons share one row and wrap their text instead of stacking; short cards keep their height;
    a near miss around the buttons does not open GitHub; the action line has no arrow pointing at nothing. */
-.ticket.yours .card-actions > :not(.go) { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.ticket.yours .card-actions > :not(.go) { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .ticket.yours .card-actions .button.secondary { border-color: var(--you-line); }
 .ticket.yours .card-actions::before { content: ""; position: absolute; inset: -8px; z-index: -1; }
 .lane-yours .tickets { align-items: start; }
 .ticket.yours .cta .arrow { display: none; }
-.ticket.yours .card-actions > :not(.go) { display: inline-flex; align-items: center; justify-content: center; }
 /* Only the title and the buttons answer: a tap on the card's background does nothing (it used to be a list row, not a link). */
 .ticket.yours .main::after { content: none; }
+.ticket.yours:hover { transform: none; border-color: var(--you-line); }
+.ticket.yours.blocked:hover { border-color: var(--danger); }
