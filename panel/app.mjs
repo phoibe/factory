@@ -2,8 +2,9 @@ import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSki
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=14';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=7';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale } from './live.mjs?v=7';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
+import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
@@ -187,19 +188,28 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
   ['queued', 'En file d\'attente', 'La file est vide.'],
 ];
 
+// « Too many requests »: a short wait is spent here, then the same request goes again; a long one stops this
+// refresh quietly (no « connexion perdue »), and the next one comes after the wait GitHub asked for.
 async function cachedGet(path) {
   const hit = live.etags.get(path);
-  const res = await fetch(API + path, {
-    cache: 'no-store',
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
-  });
+  let res;
+  for (let pauses = 0; ; pauses++) {
+    res = await fetch(API + path, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
+    });
+    const wait = rateLimitDelay(res.status, res.headers);
+    if (wait === null) break;
+    if (wait > MAX_PAUSE_MS || pauses >= 1) throw Object.assign(new Error('rate limited'), { rateLimited: true, waitMs: wait });
+    await new Promise((ok) => setTimeout(ok, wait));
+  }
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw new Error(`${res.status}`);
@@ -221,7 +231,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), read: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
     // Every page: beyond 100 open items, the others would silently vanish from the board.
     const issues = { data: [], changed: false };
     for (let page = 1; page <= 10; page++) {
@@ -230,10 +240,10 @@ async function refresh() {
       issues.changed ||= res.changed;
       if (res.data.length < 100) break;
     }
-    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
+    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
     // Requests the agent closed by itself (already done, duplicate, obsolete): shown in « Terminé » with their reason.
-    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
-    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
+    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
+    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: [], changed: false }));
     if (first) {
       for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
         const batch = await api(`/repos/${repo}/issues/events?per_page=100&page=${page}`).catch(() => []);
@@ -248,14 +258,19 @@ async function refresh() {
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
     // and the message the card should open on, instead of the top of the issue.
+    // Only the cards that may have changed are read, a few at a time rather than one after the other.
     let previewsChanged = false;
-    for (const c of boardItems(live.issues)) {
+    let limited = null;
+    const quiet = (e) => { if (e?.rateLimited) limited = e; return null; };
+    const stale = boardItems(live.issues).filter((c) => commentsStale(c, live.read.get(c.number), { preview: live.previews.get(c.number) }));
+    await mapLimit(stale, 4, async (c) => {
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
-      const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(() => null) : { data: [] };
-      if (!res) continue;
+      const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(quiet) : { data: [] };
+      if (!res) return;
       // The agent's estimate may sit on the page before the last one on a long thread.
-      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(() => null) : { data: [] };
-      if (!before) continue;
+      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
+      if (!before) return;
+      live.read.set(c.number, cardSig(c));
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
       const session = sessionFrom([...before.data, ...res.data]);
@@ -273,12 +288,15 @@ async function refresh() {
         live.targets.set(c.number, target);
         previewsChanged = true;
       }
-    }
+    });
     if (live.repo !== repo) return;
+    if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
     live.last = Date.now();
     live.failures = 0;
     if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
+    // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
+    if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
@@ -291,7 +309,9 @@ async function refresh() {
 function schedule() {
   clearTimeout(live.timer);
   if (!current) return;
-  live.timer = setTimeout(refresh, pollDelay(live.failures, isIdle(live.activity, Date.now(), document.hidden)));
+  const delay = Math.max(pollDelay(live.failures, isIdle(live.activity, Date.now(), document.hidden)), live.pauseMs);
+  live.pauseMs = 0;
+  live.timer = setTimeout(refresh, delay);
 }
 
 function drawStatus() {

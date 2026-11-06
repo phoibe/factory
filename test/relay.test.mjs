@@ -18,6 +18,7 @@ function fakeGh(state) {
     listPulls: async () => state.prs.filter((p) => p.state !== 'closed'),
     listClosedPulls: async () => state.prs.filter((p) => p.state === 'closed'),
     listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
+    listOpenIssues: async () => [...state.issues, ...state.prs.map((p) => ({ ...p, pull_request: {} }))].filter((i) => i.open !== false && i.state !== 'closed').map((i) => ({ ...i, state: 'open', labels: (i.labels || []).map((name) => ({ name })) })),
     listComments: async (n) => state.comments?.[n] || [],
     listEvents: async (n) => state.events?.[n] || [],
     comment: async (n, body) => calls.push(['comment', n, body]),
@@ -873,6 +874,19 @@ test('guard: an issue left open after its PR merged is closed and frees its plac
   assert.equal(payloadOf(sent[0].init.body).issue, 8); // the queue moves on
 });
 
+test('guard: merged PRs of finished cards cost no read of their issue (#211)', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, open: false, labels: [L.feature] }, { number: 2, open: false, labels: [L.feature] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Closes #1', labels: [] }, { number: 21, state: 'closed', merged_at: minutesAgo(90), body: 'Closes #2', labels: [] }],
+  });
+  const read = [];
+  const getIssue = gh.getIssue;
+  gh.getIssue = async (n) => { read.push(n); return getIssue(n); };
+  gh.listEvents = async (n) => { read.push(`events ${n}`); return []; };
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.deepEqual(read.filter((x) => x === 1 || x === 2 || x === 'events 1' || x === 'events 2'), []);
+});
+
 test('guard: a PR that forgot « Closes #n » still closes the issue of its branch', async () => {
   const gh = fakeGh({
     issues: [{ number: 7, labels: [L.feature, L.building] }],
@@ -1371,6 +1385,76 @@ test('an undo is never undone: a live site still broken after it is only reporte
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 21, sha: 'm2', result: 'failed', detail: 'erreur 500', git: (a) => git.push(a) });
   assert.equal(git.length, 0);
   assert.match(gh.calls.find((c) => c[0] === 'comment')[2], /ne retire rien d'autre/);
+});
+
+// GitHub's « too many requests » (#211): a run stopped by it is marked by a failing step, re-run at the next tick.
+test('the tick re-runs a run stopped by GitHub\'s rate limit, so its event is not lost', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  const old = new Date(Date.now() - 26 * 3600_000).toISOString();
+  const runs = [
+    { id: 1, run_attempt: 1, created_at: recent }, // rate limited: re-run
+    { id: 2, run_attempt: 1, created_at: recent }, // a real error: reported as today, not re-run
+    { id: 3, run_attempt: 3, created_at: recent }, // already re-run twice: given up
+    { id: 4, run_attempt: 1, created_at: old }, // too old
+    { id: 5, run_attempt: 1, created_at: recent }, // a lost report: the reportLost guard makes it again, not a re-run
+  ];
+  const jobs = {
+    1: [{ steps: [{ name: 'relay', conclusion: 'success' }, { name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    2: [{ steps: [{ name: 'relay', conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    3: [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    4: [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    5: [{ name: 'relay / report', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+  };
+  Object.assign(gh, {
+    failedRuns: async () => runs,
+    runJobs: async (id) => jobs[id],
+    rerunFailed: async (id) => gh.calls.push(['rerun', id]),
+  });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 1]]);
+});
+
+test('only the relay commands whose workflow step marks the run exit quietly on the rate limit; the others still fail', async () => {
+  const { rateLimitHandled, RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(['decide', 'release', 'report', 'preview-report', 'prod-report', 'live-url'].map(rateLimitHandled), [true, true, true, false, false, false]);
+  const yml = readFileSync(new URL('../.github/workflows/relay.yml', import.meta.url), 'utf8');
+  for (const cmd of ['decide', 'release', 'report']) {
+    const call = 'node .factory-src/scripts/relay.mjs';
+    const at = yml.indexOf(`${call} ${cmd}`);
+    const step = yml.indexOf(RATE_LIMIT_STEP, at);
+    const next = yml.indexOf(call, at + call.length);
+    assert.ok(at > 0 && step > at && (next < 0 || next > step), cmd);
+  }
+});
+
+test('a failed run that did not move lately costs no read of its jobs at each tick', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  const reads = [];
+  Object.assign(gh, {
+    failedRuns: async () => [{ id: 9, run_attempt: 1, created_at: new Date(Date.now() - 5 * 3600_000).toISOString(), updated_at: new Date(Date.now() - 4 * 3600_000).toISOString() }],
+    runJobs: async (id) => { reads.push(id); return []; },
+    rerunFailed: async () => {},
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(reads, []);
+});
+
+test('a tick stopped by the rate limit is not re-run: the next tick does the same work', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  Object.assign(gh, {
+    failedRuns: async () => [{ id: 1, event: 'schedule', run_attempt: 1, created_at: recent, updated_at: recent }, { id: 2, event: 'issue_comment', run_attempt: 1, created_at: recent, updated_at: new Date(Date.now() - 1.5 * 3600_000).toISOString() }],
+    runJobs: async () => [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    rerunFailed: async (id) => gh.calls.push(['rerun', id]),
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  // The event run is still taken up 1 h 30 after it stopped: a primary limit can last an hour, and ticks run late.
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 2]]);
 });
 
 // ---- passing outages (issue #213) ----
