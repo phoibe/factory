@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
 import { createRelay, eventFromPayload, linkedIssue } from '../scripts/relay.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER } from '../scripts/lib/labels.mjs';
@@ -1332,7 +1333,8 @@ test('dispatched checks: the preview and live-site checks become job outputs, a 
   const gh = fakeGh({ issues: [], prs: [] });
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet });
   const { outputs } = await relay.handle(pv);
-  assert.deepEqual(JSON.parse(outputs.preview), { pr: 4, sha: 's', url: 'https://p' });
+  assert.deepEqual(JSON.parse(fromJobOutput(outputs.preview)), { pr: 4, sha: 's', url: 'https://p' });
+  assert.equal(outputs.previewSha, 's');
   assert.equal(gh.calls.length, 0);
 });
 

@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browserSetup } from './checks.mjs';
+import { fromJobOutput } from './lib/job-output.mjs';
 
 // The screens to open: « / » plus the ones the project lists in e2e/smoke-routes.txt (one path per line, # comments).
 export function smokeRoutes(text) {
@@ -138,7 +139,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let out;
   try {
     const retryMs = (Number(arg('retry-minutes')) || 0) * 60_000;
-    out = await smokeUntil({ retryMs, check: smokeAttempts({ url: arg('url'), dir: arg('dir') || '.' }) });
+    out = await smokeUntil({ retryMs, check: smokeAttempts({ url: fromJobOutput(arg('url')), dir: arg('dir') || '.' }) });
   } catch (e) {
     out = { result: 'skipped', detail: `vérification impossible (${String(e.message || e).slice(0, 120)})` };
   }

@@ -19,6 +19,7 @@ import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
+import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -67,8 +68,9 @@ export function redoOf(body) {
   const sha = /cherry-pick ([0-9a-f]{7,40})/.exec(text)?.[1] || null;
   return pr ? { pr, sha } : null;
 }
-// The deployments that are the live site (not a PR preview).
-export const isLiveEnv = (env) => /^(production|github-pages)$/i.test(String(env || ''));
+// The deployments that are the live site (not a PR preview). Vercel names it « Production », or « Production – <its
+// project> » when the repository is linked to more than one Vercel project (yoldmewhen2's is « …-skyk »).
+export const isLiveEnv = (env) => /^(production(\s+[–—-]\s+\S.*)?|github-pages)$/i.test(String(env || '').trim());
 // The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
 const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr?.head?.ref || '')?.[1]) || null;
 // The issue a PR delivers: its « Closes #n », else the one its branch was made for.
@@ -1067,7 +1069,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return { action: { type: 'agent' }, outputs };
     }
     if (ev.kind === 'preview-check' || ev.kind === 'prod-check') {
-      outputs[ev.kind === 'preview-check' ? 'preview' : 'production'] = JSON.stringify(ev.check);
+      const which = ev.kind === 'preview-check' ? 'preview' : 'production';
+      outputs[which] = toJobOutput(JSON.stringify(ev.check));
+      outputs[`${which}Sha`] = String(ev.check?.sha || '');
       return { action: { type: ev.kind }, outputs };
     }
     const ctx = { inFlight: 0, lockFresh: false };
@@ -1427,6 +1431,11 @@ function readResult(file) {
   return { result: 'skipped', detail: "la vérification n'a pas pu tourner" };
 }
 
+// The check a dispatch asked for (decide's preview or production output, see lib/job-output.mjs).
+function readCheck() {
+  try { return JSON.parse(fromJobOutput(process.env.CHECK) || '{}') || {}; } catch { return {}; }
+}
+
 function writeOutputs(outputs) {
   const file = process.env.GITHUB_OUTPUT;
   if (!file) return console.log(outputs);
@@ -1460,25 +1469,25 @@ async function main() {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
-    const check = JSON.parse(process.env.CHECK || '{}');
-    const url = arg('url') || check.url || null;
+    const check = readCheck();
+    const url = fromJobOutput(arg('url')) || check.url || null;
     const res = url ? readResult(arg('result-file')) : { result: 'skipped', detail: "la preview n'est pas apparue" };
     await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url, runId: process.env.GITHUB_RUN_ID } }));
     await withLock(gh.queueLock, () => relay.notifyWaiting());
   } else if (command === 'preview-url') {
     // The preview job waits for the preview here, without the queue lock: minutes that block no decision.
-    const url = await relay.previewWait(JSON.parse(process.env.CHECK || '{}'));
-    writeOutputs({ url: url || '' });
+    const url = await relay.previewWait(readCheck());
+    writeOutputs({ url: toJobOutput(url) });
     return;
   } else if (command === 'live-url') {
-    const check = JSON.parse(process.env.CHECK || '{}');
+    const check = readCheck();
     let url = await relay.liveUrl(check.sha, { since: Number(check.retriedAt) || 0 });
     // The re-run of a failed publication published nothing at all: as good as a second failure.
     if (url === null && check.deployRetried) url = { failed: true, detail: "la nouvelle tentative n'a rien publié en 10 minutes" };
-    writeOutputs({ url: typeof url === 'string' ? url : '', deployFailed: url?.failed ? 'true' : 'false', deployFailure: url?.failed ? JSON.stringify(url) : '' });
+    writeOutputs({ url: toJobOutput(typeof url === 'string' ? url : ''), deployFailed: url?.failed ? 'true' : 'false', deployFailure: url?.failed ? toJobOutput(JSON.stringify(url)) : '' });
     return;
   } else if (command === 'prod-report') {
-    const check = JSON.parse(process.env.CHECK || '{}');
+    const check = readCheck();
     // The re-check of a stuck card could not open the site: the card starts (never a re-run of an old version).
     if (check.redo && arg('deploy-failed') === 'true') {
       await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, result: 'skipped', detail: "la version en ligne n'a pas pu être ouverte", redo: check.redo }));
@@ -1486,20 +1495,20 @@ async function main() {
     }
     if (arg('deploy-failed') === 'true') {
       let failure = {};
-      try { failure = JSON.parse(process.env.DEPLOY_FAILURE || '{}') || {}; } catch { /* no details */ }
+      try { failure = JSON.parse(fromJobOutput(process.env.DEPLOY_FAILURE) || '{}') || {}; } catch { /* no details */ }
       await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried) }));
       return;
     }
     const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
-    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: arg('url') || '', ...res, runId: process.env.GITHUB_RUN_ID, git, redo: check.redo || null }));
+    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: fromJobOutput(arg('url')), ...res, runId: process.env.GITHUB_RUN_ID, git, redo: check.redo || null }));
   } else if (command === 'dequeue') {
     await withLock(gh.queueLock, () => relay.dequeue());
   } else {
     throw new Error(`unknown command ${command}`);
   }
-  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ...relay.outputs });
+  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', ...relay.outputs });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
