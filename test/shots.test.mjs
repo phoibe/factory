@@ -82,3 +82,16 @@ test('screens identical before and after are listed, not shown, and the table st
   assert.doesNotMatch(md, /\| accueil · mobile \|/);
   assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /Aucun écran n'a changé/);
 });
+
+test('the script runs from a folder whose path has a space', async () => {
+  const { mkdtempSync, copyFileSync, mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = join(mkdtempSync(join(tmpdir(), 'shots-')), 'a b');
+  mkdirSync(dir);
+  copyFileSync(new URL('../agent/scripts/shots.mjs', import.meta.url), join(dir, 'shots.mjs'));
+  const run = spawnSync(process.execPath, [join(dir, 'shots.mjs')], { encoding: 'utf8' });
+  assert.equal(run.status, 2, run.stderr);
+  assert.match(run.stderr, /usage/);
+});

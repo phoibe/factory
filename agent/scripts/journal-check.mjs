@@ -43,6 +43,19 @@ export function problems(files, readFile, stages, { stage = null, current = null
   return out;
 }
 
+// The run being checked from the command line: the journal whose latest « run » entry is the most recent. Its stage
+// is the one the lock applies, so both always agree on what is missing.
+export function runOptions(files, readFile) {
+  let best = null;
+  for (const f of files.filter((x) => JOURNAL.test(x))) {
+    const text = readFile(f);
+    const run = String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((e) => e?.kind === 'run').at(-1);
+    if (run && (!best || String(run.t) > String(best.run.t))) best = { run, text };
+  }
+  return best ? { stage: best.run.stage, current: best.text } : {};
+}
+
 export function report(files, readFile, stages, opts) {
   const list = problems(files, readFile, stages, opts);
   if (!list.length) return 'Journal : rien ne manque ✅';
@@ -68,7 +81,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     const files = branchFiles(git);
     if (!files.some((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
-    else console.log(report(files, read, stages));
+    else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {
     console.log(`Journal : contrôle impossible (${e.message}).`);
   }

@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
 export const ASSETS_BRANCH = 'claude/factory-assets';
@@ -174,21 +175,32 @@ async function publish({ pr, before, after }) {
     git(['checkout', '--orphan', ASSETS_BRANCH], wt);
     git(['rm', '-rf', '--quiet', '.'], wt);
   }
-  const from = before && existsSync(before) ? before : null;
-  const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-  const unchanged = sameScreens(from, after, all);
-  const files = all.filter((f) => !unchanged.includes(f));
-  if (files.length) {
-    await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
-    git(['add', '.'], wt);
-    git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
-    git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt);
+  // Always removed, even on a failure: a leftover worktree holds the branch and makes the next try fail.
+  try {
+    const from = before && existsSync(before) ? before : null;
+    const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
+    const unchanged = sameScreens(from, after, all);
+    const files = all.filter((f) => !unchanged.includes(f));
+    if (files.length) {
+      await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
+      git(['add', '.'], wt);
+      git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
+      // Another PR may have pushed its captures meanwhile: each PR writes its own folder, so a rebase never conflicts.
+      for (let attempt = 0; ; attempt++) {
+        try { git(['push', '--quiet', 'origin', `HEAD:${ASSETS_BRANCH}`], wt); break; } catch (e) {
+          if (!exists || attempt >= 2) throw e;
+          git(['pull', '--quiet', '--rebase', 'origin', ASSETS_BRANCH], wt);
+        }
+      }
+    }
+    return markdownTable({ repo, dir, files, unchanged });
+  } finally {
+    try { git(['worktree', 'remove', '--force', wt]); } catch { rmSync(wt, { recursive: true, force: true }); }
   }
-  git(['worktree', 'remove', '--force', wt]);
-  return markdownTable({ repo, dir, files, unchanged });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compared as paths: the URL form is percent-encoded (a space becomes %20) and never matched argv.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   if (cmd === 'capture') {

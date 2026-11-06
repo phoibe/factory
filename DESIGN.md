@@ -11,6 +11,7 @@ colors:
   signal-blue-soft: "#eaf0ff"
   ok-green: "#1a7f4b"
   danger-red: "#c62828"
+  scrim: "rgb(0 0 0 / .45)"
   paper-dark: "#101113"
   surface-dark: "#18191c"
   ink-dark: "#f2f2ef"
@@ -45,6 +46,7 @@ rounded:
   sm: "6px"
   md: "10px"
   lg: "14px"
+  full: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -106,6 +108,7 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 - **Filet** (`#e6e6e3`, nuit `#2a2c30`) : bordures d'un pixel.
 
 ### Status
+- **Voile** (`rgb(0 0 0 / .45)`) : derrière une fenêtre (code QR) et sur les vignettes d'images, pour détacher ce qui est devant.
 - **Vert** (`#1a7f4b`) : terminé. **Rouge** (`#c62828`) : échec. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
 
 **The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. S'il n'y a rien à répondre, il n'y a pas de bleu.
@@ -132,7 +135,7 @@ Plat : la profondeur vient des filets d'un pixel et du contraste papier / surfac
 
 ## 6. Shapes
 
-Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes). Pas de formes décoratives.
+Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes, bulles de discussion), et entièrement arrondis (999 px) pour les pastilles de compte et les barres de progression. Pas de formes décoratives.
 
 ## 7. Components
 
@@ -150,7 +153,10 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes)
 - Garder les transitions sous 200 ms, sans effet décoratif.
 - Vérifier le contraste AA en clair et en sombre.
 
+- Laisser chaque écran se passer d'explications : titres, libellés de boutons et de champs, messages d'erreur courts qui disent quoi faire, et une seule phrase courte sur un écran vide.
+
 ### Don't
+- Ne pas écrire de paragraphe d'introduction, de texte « Comment ça marche », de sous-titre qui décrit l'écran, d'aide sous un champ dont le libellé suffit, d'info-bulle explicative, de tutoriel ou de visite guidée (sauf demande expresse du propriétaire).
 - Ne pas faire un tableau de bord chargé façon outil d'entreprise.
 - Ne pas utiliser le bleu pour de la décoration ni plus d'un appel principal par écran.
 - Ne pas montrer de noms de fichiers, de branches ou de jargon technique au premier niveau.

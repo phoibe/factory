@@ -121,6 +121,17 @@ test('acceptance approval merges, frees the issue and starts the oldest queued o
   assert.equal(payloadOf(sent[0].init.body).stage, 'build');
 });
 
+test('a message on a PR closed by hand starts nothing and merges nothing', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  for (const text of ['ok', 'merci, mais le bouton est trop petit']) {
+    await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text, fromOwner: true });
+  }
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+  assert.equal(sent.length, 0);
+});
+
 test('visual approval asks the workflow to run checks', async () => {
   const gh = fakeGh({ issues: [], prs: [{ number: 7, labels: [L.visualReview] }] });
   const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
@@ -854,6 +865,25 @@ test('guard: an issue left open after its PR merged is closed and frees its plac
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.building));
   assert.equal(payloadOf(sent[0].init.body).issue, 8); // the queue moves on
+});
+
+test('guard: a PR that forgot « Closes #n » still closes the issue of its branch', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Adds the cart', head: { ref: 'claude/issue-7-cart' }, labels: [] }],
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
+});
+
+test('a card whose open PR forgot « Closes #n » gives its place up all the same', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.queued] }],
+    prs: [{ number: 20, state: 'open', body: 'Adds the cart', head: { ref: 'claude/issue-7-cart' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  assert.equal(payloadOf(sent[0]?.init.body || '{}').issue, 8);
 });
 
 test('guard: an issue the owner reopened after the merge is left alone', async () => {

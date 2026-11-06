@@ -46,7 +46,9 @@ const REVERT_REDO = '<!-- factory-revert-redo #';
 // The deployments that are the live site (not a PR preview).
 export const isLiveEnv = (env) => /^(production|github-pages)$/i.test(String(env || ''));
 // The issue a factory branch was made for (claude/issue-<n>-…), even when its PR forgot « Closes #n ».
-const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr.head?.ref || '')?.[1]) || null;
+const branchIssue = (pr) => Number(/^claude\/issue-(\d+)-/.exec(pr?.head?.ref || '')?.[1]) || null;
+// The issue a PR delivers: its « Closes #n », else the one its branch was made for.
+const prIssue = (pr) => linkedIssue(pr?.body) || branchIssue(pr);
 const FOOTER = '\n\n---\n_Message automatique de la software factory_';
 const say = (text) => `${AGENT_MARKER}\n${text}${FOOTER}`;
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -132,7 +134,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
   async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
-    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map((p) => linkedIssue(p.body)).filter(Boolean));
+    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
     return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && !names(i.labels).includes(L.blocked)).length;
   }
 
@@ -327,7 +329,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
-    const issue = linkedIssue(pr.body);
+    const issue = prIssue(pr);
     try {
       await gh.merge(prNumber, sha);
     } catch (e) {
@@ -423,7 +425,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     git(['checkout', '-B', branch, `origin/${def}`]);
     git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
     git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
-    const issueNumber = linkedIssue(pr.body) || branchIssue(pr);
+    const issueNumber = prIssue(pr);
     const redo = await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, [
       PROD_BUG_MARKER,
       `Après la mise en ligne de la PR #${prNumber}${issueNumber ? ` (demande #${issueNumber})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`,
@@ -461,7 +463,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       const updates = ((await gh.listComments(item.number)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
-      const issue = linkedIssue(pr.body);
+      const issue = prIssue(pr);
       if (updates >= MAX_BRANCH_UPDATES) {
         await gh.removeLabel(item.number, L.checks);
         if (issue) await gh.addLabels(issue, [L.blocked]);
@@ -482,7 +484,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (!item || item.state !== 'open') return;
     const isPr = Boolean(item.pull_request);
     const pr = isPr ? await gh.getPr(n) : null;
-    const issue = isPr ? linkedIssue(pr?.body) || branchIssue(pr) : n;
+    const issue = isPr ? prIssue(pr) : n;
     const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
     // The agent closing by itself (already done, duplicate, obsolete: issue #203). Only a feature or a bug; its own
     // message is the only one, and the card's state is saved so that a message from the owner brings it back.
@@ -640,7 +642,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
   async function closeMerged(closed) {
     for (const pr of closed.filter((p) => p.merged_at)) {
-      const n = linkedIssue(pr.body);
+      const n = prIssue(pr);
       const issue = n && (await gh.getIssue(n));
       if (!issue || issue.state !== 'open' || issue.pull_request) continue;
       const labels = names(issue.labels);
@@ -841,6 +843,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
       return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
+    // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
+    // an agent on it. Only « fermer » (drop) still tidies up.
+    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type)) {
+      log('closed PR: nothing is started');
+      return { action: { type: 'ignore', reason: 'PR fermée' }, outputs };
+    }
     const applyLabels = async () => {
       for (const l of action.remove || []) await gh.removeLabel(n, l);
       if (action.add?.length) await gh.addLabels(n, action.add);
@@ -848,7 +856,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     switch (action.type) {
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
-        const issue = pr ? linkedIssue(pr.body) : n;
+        const issue = pr ? prIssue(pr) : n;
         await fireAgent({ stage: action.stage, issue, pr: pr ? n : reopenedPr });
         await applyLabels(); // only once the agent really started
         // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
@@ -908,7 +916,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // A PR just opened: its card gives up its place, so the next queued card starts now rather than at the tick.
     if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.action === 'opened' && action.type !== 'dequeue') {
-      const built = linkedIssue((await gh.getPr(n))?.body);
+      const built = prIssue(await gh.getPr(n));
       if (built) await dequeue({ freed: built }).catch((e) => log(`dequeue after PR: ${e.message}`));
     }
     return { action, outputs };
@@ -949,7 +957,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let missing = [];
     let ui = false;
     try { ({ missing, ui } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
-    const issueNumber = linkedIssue(pr.body);
+    const issueNumber = prIssue(pr);
     // The factory's own undo of a broken delivery: no agent built it, there is no step to catch up.
     const reverting = String(pr.body || '').includes(REVERT_MARKER);
     // A skipped review or design pass is caught up once, by a dedicated run, before the owner is asked anything.
@@ -1086,7 +1094,8 @@ function writeOutputs(outputs) {
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  const arg = (name) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : undefined; };
+  // An empty value must never swallow the next option (« --sha --started 12 » would read « --started » as the sha).
+  const arg = (name) => { const i = rest.indexOf(`--${name}`); const v = i >= 0 ? rest[i + 1] : undefined; return v?.startsWith('--') ? undefined : v; };
   const repo = process.env.GITHUB_REPOSITORY;
   const ownerLogin = process.env.GITHUB_REPOSITORY_OWNER;
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
