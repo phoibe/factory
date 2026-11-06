@@ -7,8 +7,8 @@
 // the caller decides what a failure means.
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browserSetup } from './checks.mjs';
 import { fromJobOutput } from './lib/job-output.mjs';
@@ -144,6 +144,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     out = { result: 'skipped', detail: `vérification impossible (${String(e.message || e).slice(0, 120)})` };
   }
   console.log(JSON.stringify(out));
-  if (arg('out')) writeFileSync(arg('out'), JSON.stringify(out));
+  // The folder may not exist yet ($RUNNER_TEMP/smoke on a fresh runner): without it the result was lost.
+  if (arg('out')) { mkdirSync(dirname(resolve(arg('out'))), { recursive: true }); writeFileSync(arg('out'), JSON.stringify(out)); }
   process.exit(0);
 }
