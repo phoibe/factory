@@ -1,0 +1,11 @@
+{"t":"2026-11-06T20:37:09.501Z","kind":"run","stage":"build","issue":271,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-06T20:39:54.712Z","kind":"skill","name":"writing-plans","id":"toolu_016F83myZfq5dCxkLEEpravC"}
+{"t":"2026-11-06T20:40:16.489Z","kind":"skill","name":"executing-plans","id":"toolu_011ae8PVaJFDd4othfZ5a13c"}
+{"t":"2026-11-06T20:40:17.021Z","kind":"skill","name":"test-driven-development","id":"toolu_015jyXY7vNcPZYXAYaF5rSxC"}
+{"t":"2026-11-06T20:40:37.876Z","kind":"test","cmd":"node --test test/runners.test.mjs 2>&1 | tail -5","ok":false,"id":"toolu_01VwnsHzTf4KS9zgmzmo5LKE"}
+{"t":"2026-11-06T20:40:55.353Z","kind":"test","cmd":"node --test test/runners.test.mjs 2>&1 | grep -E \"^# (pass|fail)|not ok\" ","ok":true,"id":"toolu_01JW2ceCfqzfFnpZtUnfwHGy"}
+{"t":"2026-11-06T20:41:43.302Z","kind":"test","cmd":"node --test test/runners-check.test.mjs 2>&1 | grep -E \"^# (pass|fail)|not ok|Error\" | head","ok":false,"id":"toolu_01PCUCefnb11EuXMVKLZ7qcP"}
+{"t":"2026-11-06T20:42:20.520Z","kind":"test","cmd":"node --test test/runners-check.test.mjs 2>&1 | grep -E \"^# (pass|fail)|not ok|rror\" | head -20","ok":true,"id":"toolu_01Hbnm3wpX1tV6kpTqUAnPRH"}
+{"t":"2026-11-06T20:42:31.409Z","kind":"test","cmd":"sed -i '/^const enc = encodeURIComponent;$/d; /^export { enc };$/d' scripts/runners.mjs && sed -i 's/api(`GET`, /api('\"'\"'GET'\"'\"', /' scripts/runners.mjs && node --test test/runners-check.test.mjs 2>","ok":true,"id":"toolu_0198TxLhmjq7m1qM662SJBmQ"}
+{"t":"2026-11-06T20:42:37.162Z","kind":"test","cmd":"cat >> test/relay-workflow.test.mjs <<'EOF'\n\n// Issue #271: a private project's jobs run on its dev server when the factory set FACTORY_RUNS_ON, else on GitHub.\ntest('every job of the project workflow","ok":false,"id":"toolu_01Aow2iXWR7MMTf7kDn9RXVp"}
+{"t":"2026-11-06T20:42:43.553Z","kind":"test","cmd":"sed -i \"s/^\\(\\s*\\)runs-on: ubuntu-24.04$/\\1runs-on: \\${{ vars.FACTORY_RUNS_ON \\&\\& fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}/\" .github/workflows/relay.yml && sed -i \"s/^\\(\\s*\\)runs-on: ubunt","ok":true,"id":"toolu_01JGuk6at4R3Xn7wktrS5qzZ"}

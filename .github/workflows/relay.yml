@@ -21,7 +21,7 @@ jobs:
   decide:
     # No `concurrency` here: GitHub keeps one waiting run per group and cancels the others, which lost events.
     # Runs queue up on a repository-wide lock instead (scripts/lib/lock.mjs), one decision at a time.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 15
     permissions:
       contents: write
@@ -63,7 +63,7 @@ jobs:
   agent:
     needs: decide
     if: needs.decide.outputs.agent == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 120
     permissions:
       contents: write
@@ -91,7 +91,7 @@ jobs:
   release:
     needs: [decide, agent]
     if: always() && needs.decide.outputs.agent == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       issues: write
@@ -122,7 +122,7 @@ jobs:
     concurrency:
       group: factory-checks-${{ github.repository }}-${{ needs.decide.outputs.pr }}
       cancel-in-progress: true
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -186,7 +186,7 @@ jobs:
     concurrency:
       group: factory-report-${{ github.repository }}-${{ needs.decide.outputs.pr }}
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 15
     permissions:
       contents: write
@@ -227,7 +227,7 @@ jobs:
   preview-open:
     needs: decide
     if: needs.decide.outputs.preview != ''
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     # The wait for the preview (5 min), then its opening (12).
     timeout-minutes: 20
     permissions:
@@ -278,7 +278,7 @@ jobs:
   preview:
     needs: [decide, preview-open]
     if: always() && needs.decide.outputs.preview != ''
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     # The report and the alert, each waiting its turn on the queue lock (13 at worst, seconds in practice).
     timeout-minutes: 30
     permissions:
@@ -317,7 +317,7 @@ jobs:
   production-open:
     needs: decide
     if: needs.decide.outputs.production != ''
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 35
     permissions:
       contents: read
@@ -368,7 +368,7 @@ jobs:
   production:
     needs: [decide, production-open]
     if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true')
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 10
     permissions:
       contents: write

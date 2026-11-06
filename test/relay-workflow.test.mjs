@@ -30,3 +30,13 @@ test('the preview job waits for the preview outside the queue lock, before openi
   assert.match(preview, /preview-report[^\n]*--url "\$PREVIEW_URL"/);
   assert.match(preview, /PREVIEW_URL: \$\{\{ needs\.preview-open\.outputs\.url \}\}/);
 });
+
+// Issue #271: a private project's jobs run on its dev server when the factory set FACTORY_RUNS_ON, else on GitHub.
+test('every job of the project workflows runs on the machine the factory chose for the project', () => {
+  for (const [file, image] of [['relay.yml', 'ubuntu-24.04'], ['sync.yml', 'ubuntu-latest']]) {
+    const text = readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), 'utf8');
+    const lines = text.split('\n').filter((l) => /^\s+runs-on:/.test(l));
+    assert.ok(lines.length > 0, file);
+    for (const l of lines) assert.equal(l.trim(), `runs-on: \${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || '${image}' }}`, `${file}: ${l.trim()}`);
+  }
+});

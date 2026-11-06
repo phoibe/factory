@@ -9,7 +9,7 @@ on:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     # Every relay event may ask for a sync while one is running: they wait in line, the next one finds nothing to do.
     concurrency:
