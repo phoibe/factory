@@ -70,3 +70,11 @@ test('paginated reads pause on the rate limit too', async () => {
   const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1 }])]);
   assert.deepEqual(await gh.listComments(1), [{ id: 1 }]);
 });
+
+test('pauses stop once three minutes were spent waiting in one run: the event is then taken up later', async () => {
+  const many = Array.from({ length: 10 }, () => limited(429, { 'retry-after': '50' }));
+  const gh = client([...many, answer(200, { number: 1 })]);
+  await gh.getPr(1).catch(() => {});
+  await gh.getPr(1).catch(() => {});
+  await assert.rejects(gh.getPr(1), (e) => e.rateLimited === true);
+});

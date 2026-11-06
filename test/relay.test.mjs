@@ -1399,10 +1399,24 @@ test('a failed run that did not move lately costs no read of its jobs at each ti
   const gh = fakeGh({ issues: [], prs: [] });
   const reads = [];
   Object.assign(gh, {
-    failedRuns: async () => [{ id: 9, run_attempt: 1, created_at: new Date(Date.now() - 3 * 3600_000).toISOString(), updated_at: new Date(Date.now() - 2 * 3600_000).toISOString() }],
+    failedRuns: async () => [{ id: 9, run_attempt: 1, created_at: new Date(Date.now() - 5 * 3600_000).toISOString(), updated_at: new Date(Date.now() - 4 * 3600_000).toISOString() }],
     runJobs: async (id) => { reads.push(id); return []; },
     rerunFailed: async () => {},
   });
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   assert.deepEqual(reads, []);
+});
+
+test('a tick stopped by the rate limit is not re-run: the next tick does the same work', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  Object.assign(gh, {
+    failedRuns: async () => [{ id: 1, event: 'schedule', run_attempt: 1, created_at: recent, updated_at: recent }, { id: 2, event: 'issue_comment', run_attempt: 1, created_at: recent, updated_at: new Date(Date.now() - 2.5 * 3600_000).toISOString() }],
+    runJobs: async () => [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    rerunFailed: async (id) => gh.calls.push(['rerun', id]),
+  });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  // The event run is still taken up 2 h 30 after it stopped: a primary limit can last an hour, and ticks run late.
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 2]]);
 });

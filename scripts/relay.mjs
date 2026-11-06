@@ -594,10 +594,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function retryRateLimited() {
     if (!gh.failedRuns) return;
     const since = now() - 24 * 3600_000;
-    // A run stopped by the limit is seen at the tick right after it ends: one that has not moved for an hour was
-    // looked at already, and its jobs are not read again at every tick.
-    const moved = now() - 60 * 60_000;
+    // A primary limit can last an hour and ticks run late: a run is looked at for 3 h after it last moved, then its
+    // jobs are no longer read at every tick.
+    const moved = now() - 3 * 60 * 60_000;
     for (const run of await gh.failedRuns(PROJECT_WORKFLOW)) {
+      if (run.event === 'schedule') continue; // a stopped tick: the next one does the same work
       if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
       if (run.updated_at && Date.parse(run.updated_at) < moved) continue;
       const jobs = await gh.runJobs(run.id);

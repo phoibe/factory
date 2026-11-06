@@ -8,9 +8,13 @@ const HTML = 'application/vnd.github.full+json';
 const RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
 const transient = (method, status) => (method === 'POST' ? status === 503 : status >= 500);
 // « Too many requests »: GitHub applied nothing, so any call (POST included) is sent again after the wait it asks.
+// At most 3 pauses per call and 3 minutes of pauses per run: the job (15 min) must end on the rate-limit step, not on
+// its timeout, so that its event is taken up again.
 const MAX_RATE_PAUSES = 3;
+const MAX_PAUSED_MS = 3 * 60_000;
 
 export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried like a 503.
   async function send(method, url, init) {
     let pauses = 0;
@@ -23,8 +27,9 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       }
       const wait = rateLimitDelay(res.status, res.headers);
       if (wait !== null) {
-        if (wait > MAX_PAUSE_MS || pauses >= MAX_RATE_PAUSES) throw new RateLimited(wait);
+        if (wait > MAX_PAUSE_MS || pauses >= MAX_RATE_PAUSES || paused + wait > MAX_PAUSED_MS) throw new RateLimited(wait);
         pauses++;
+        paused += wait;
         attempt--; // a pause is not one of the 5xx retries
         await sleep(wait);
         continue;
@@ -142,7 +147,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
     // The project's factory runs that failed lately, their jobs, and a re-run of their failed jobs (same event again).
-    failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=30&created=${encodeURIComponent(`>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`)}`))?.workflow_runs || [],
+    failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=100&created=${encodeURIComponent(`>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`)}`))?.workflow_runs || [],
     runJobs: async (id) => (await request('GET', `/repos/{repo}/actions/runs/${id}/jobs?per_page=50`))?.jobs || [],
     rerunFailed: (id) => request('POST', `/repos/{repo}/actions/runs/${id}/rerun-failed-jobs`, {}),
     deploymentStatuses: (id) => request('GET', `/repos/{repo}/deployments/${id}/statuses?per_page=20`),

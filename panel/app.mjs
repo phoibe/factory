@@ -238,10 +238,10 @@ async function refresh() {
       issues.changed ||= res.changed;
       if (res.data.length < 100) break;
     }
-    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
+    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
     // Requests the agent closed by itself (already done, duplicate, obsolete): shown in « Terminé » with their reason.
-    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch(() => ({ data: null, changed: false }));
-    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(() => ({ data: [], changed: false }));
+    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
+    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: [], changed: false }));
     if (first) {
       for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
         const batch = await api(`/repos/${repo}/issues/events?per_page=100&page=${page}`).catch(() => []);
@@ -288,12 +288,13 @@ async function refresh() {
       }
     });
     if (live.repo !== repo) return;
-    if (limited) live.pauseMs = limited.waitMs;
+    if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
     live.last = Date.now();
     live.failures = 0;
     if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
-    if (err?.rateLimited) { live.pauseMs = err.waitMs; return; } // a pause, not a lost connection
+    // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
+    if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
