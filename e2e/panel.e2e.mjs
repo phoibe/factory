@@ -16,10 +16,10 @@ test('une spec à valider est en tête, et « go » part après 5 secondes', asy
     await page.goto(url);
     await page.locator('button.go[data-go="1"]').click();
     assert.match(await page.locator('button.go[data-go="1"]').textContent(), /Annuler/);
-    await page.waitForFunction(() => document.querySelector('button.go[data-go="1"]')?.textContent !== 'go' && !/Annuler/.test(document.querySelector('button.go[data-go="1"]')?.textContent || ''), null, { timeout: 10000 });
-    // « Envoi… » shows before the request reaches the fake server: wait for it instead of racing it.
-    for (let i = 0; i < 50 && !writes.some((w) => w.path.endsWith('/issues/1/comments')); i++) await page.waitForTimeout(100);
-    assert.deepEqual(writes.filter((w) => w.path.endsWith('/issues/1/comments')).map((w) => w.body.body), ['go']);
+    // The button reads « Envoi… » a moment before the comment leaves: wait for the comment itself.
+    const sent = () => writes.filter((w) => w.path.endsWith('/issues/1/comments')).map((w) => w.body.body);
+    for (let i = 0; i < 100 && !sent().length; i++) await page.waitForTimeout(100);
+    assert.deepEqual(sent(), ['go']);
   });
 });
 
