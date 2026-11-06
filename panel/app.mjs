@@ -1070,7 +1070,7 @@ async function startGeneralReview() {
     btn.disabled = false;
   }
 }
-// ---- Discussion -------------------------------------------------------------------------------
+// ---- Agent (chat) -------------------------------------------------------------------------------
 // A chat with the agent. Two ways to reach it:
 // - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within
 //   seconds; conversations are JSON files on the project's `factory-chat` branch;
@@ -1612,7 +1612,6 @@ for (const t of ['dragover', 'drop']) {
   });
 }
 $('chat-close').addEventListener('click', () => closeConversation());
-$('new-question').addEventListener('click', () => { selectTab('chat'); selectConversation('new'); });
 
 setupTabs(document.querySelector('.tabs'));
 watchNumbers($('app'));

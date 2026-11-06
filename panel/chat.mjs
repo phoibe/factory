@@ -1,4 +1,4 @@
-// Pure helpers for the « Discussion » tab (tested in test/panel-chat.test.mjs).
+// Pure helpers for the « Agent » tab (tested in test/panel-chat.test.mjs).
 // A conversation is a `factory:question` issue: its description is the first message, each comment the next.
 // The owner never sees GitHub: the panel shows it as a chat.
 

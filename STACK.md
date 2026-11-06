@@ -13,7 +13,7 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 - **Claude Code 2.1** — l'agent qui pose les questions, rédige les fiches et construit ; il est lancé par les routines Claude Code dans le cloud, ou par GitHub Actions en secours
 
 ## Autres services
-- **Discussion en direct** — l'onglet « Discussion » du panneau
+- **Discussion en direct** — l'onglet « Agent » du panneau
 - **Python 3.12** — langage du petit serveur de discussion
 - **FastAPI 0.115** — framework qui reçoit vos messages et renvoie la réponse au fil de l'eau
 - **Hébergement : Modal** — fait tourner ce serveur seulement quand vous discutez ; il s'endort après 10 minutes sans message

@@ -2,7 +2,7 @@
 
 Secrets (Modal secret `factory-chat`, written by the workflow from the factory repository's secrets):
 CLAUDE_CODE_OAUTH_TOKEN (the owner's Claude subscription, from `claude setup-token`) and OWNER (GitHub login).
-The server runs only while the panel's « Discussion » tab is in use: it sleeps after 10 minutes without a message.
+The server runs only while the panel's « Agent » tab is in use: it sleeps after 10 minutes without a message.
 """
 import os
 

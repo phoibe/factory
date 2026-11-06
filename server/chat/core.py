@@ -1,6 +1,6 @@
 """Pure logic of the chat server (no network, no Modal): tested by test_core.py.
 
-The panel's « Discussion » tab talks to this server. Each message runs Claude Code (the owner's subscription)
+The panel's « Agent » tab talks to this server. Each message runs Claude Code (the owner's subscription)
 in an up-to-date copy of the project, read-only and confined to it, and streams the answer back. Conversations are stored as JSON
 files on the project's `factory-chat` branch.
 """
