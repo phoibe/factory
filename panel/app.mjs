@@ -344,11 +344,15 @@ const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : i
 // An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
 const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
 const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
-const replyLink = (c) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
+// In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
+// so that « Ok » and its two quiet buttons fit on one row.
+const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
+const replyLink = (c, short = false) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener',
+  'aria-label': short && SHORT_LABELS[c.column] ? replyLabel(c.column) : null }, short && SHORT_LABELS[c.column] || replyLabel(c.column));
 // The buttons of a card waiting for the owner, in order. In « À vous de jouer » the blue « go » or « Ok » comes first, then the
 // preview and the page to read; a card waiting for GitHub keeps its former order (« go » after the preview).
-const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)]
-  : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c)]);
+const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c, !waiting)]
+  : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c, !waiting)]);
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -373,8 +377,10 @@ function card(c, lane, minutes, now, moved) {
   const preview = live.previews.get(c.number);
   // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
   const testIt = c.column === 'acceptance' && !running && !waiting;
-  const previewLink = preview ? el('a', { class: `preview button${testIt && !asks ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
-    testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
+  const previewName = testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu';
+  const short = lane === 'yours'; // one word on a narrow « À vous » card, see SHORT_LABELS
+  const previewLink = preview ? el('a', { class: `preview button${testIt && !asks ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener', 'aria-label': short ? previewName : null },
+    short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),

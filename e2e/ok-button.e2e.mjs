@@ -11,12 +11,12 @@ const buttons = (page, n) => page.locator(`.ticket.yours[data-number="${n}"]`).l
 const sentOn = (writes, n) => () => writes.filter((w) => w.path.endsWith(`/issues/${n}/comments`)).map((w) => w.body.body);
 async function waitFor(check, page) { for (let i = 0; i < 100 && !check(); i++) await page.waitForTimeout(100); }
 
-test('une carte « Captures à valider » montre « Ok » en bleu puis « Voir les captures »', async () => {
+test('une carte « Captures à valider » montre « Ok » en bleu puis « Captures » (nommé « Voir les captures »)', async () => {
   await withPanel({ issues: [visual] }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').waitFor();
-    assert.deepEqual((await buttons(page, 10)).map((t) => t.trim()), ['Ok', 'Voir les captures']);
-    assert.equal(await page.locator('.ticket.yours[data-number="10"] a.button.secondary').textContent(), 'Voir les captures');
+    assert.deepEqual((await buttons(page, 10)).map((t) => t.trim()), ['Ok', 'Captures']);
+    assert.equal(await page.locator('.ticket.yours[data-number="10"] a.button.secondary').getAttribute('aria-label'), 'Voir les captures');
     assert.equal(await page.locator('.ticket.yours[data-number="10"] a.button.secondary').getAttribute('href'), 'https://github.com/o/r/pull/10');
   });
 });
@@ -45,19 +45,21 @@ test('sans annuler, le « ok » part et le message « Captures validées » appa
   });
 });
 
-test('une carte « Tester » montre « Ok », « Ouvrir l\'aperçu à tester » et « Voir la recette »', async () => {
+test('une carte « Tester » montre « Ok », « Aperçu » et « Recette » (nommés « Ouvrir l\'aperçu à tester » et « Voir la recette »)', async () => {
   await withPanel({ issues: [acceptance], comments: { 11: previewComment } }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('.ticket.yours[data-number="11"] a[href="https://preview.example.com/"]').waitFor();
-    assert.deepEqual((await buttons(page, 11)).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Ouvrir l\'aperçu à tester', 'Voir la recette']);
+    assert.deepEqual((await buttons(page, 11)).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Aperçu', 'Recette']);
+    const names = await page.locator('.ticket.yours[data-number="11"] a.button').evaluateAll((n) => n.map((x) => x.getAttribute('aria-label')));
+    assert.deepEqual(names, ['Ouvrir l\'aperçu à tester', 'Voir la recette']);
   });
 });
 
-test('sans aperçu, une carte « Tester » montre seulement « Ok » et « Voir la recette »', async () => {
+test('sans aperçu, une carte « Tester » montre seulement « Ok » et « Recette »', async () => {
   await withPanel({ issues: [{ ...acceptance, comments: 0 }] }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="11"]').waitFor();
-    assert.deepEqual((await buttons(page, 11)).map((t) => t.trim()), ['Ok', 'Voir la recette']);
+    assert.deepEqual((await buttons(page, 11)).map((t) => t.trim()), ['Ok', 'Recette']);
   });
 });
 

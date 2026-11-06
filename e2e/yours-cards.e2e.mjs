@@ -48,7 +48,7 @@ test('le bouton bleu vient en premier, avant les boutons discrets', async () => 
     await page.goto(url);
     const actions = page.locator('.ticket.yours[data-number="2"] .card-actions');
     await actions.locator('a[href="https://preview.example.com/"]').waitFor();
-    assert.deepEqual((await actions.locator('a.button, button').allTextContents()).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Voir l\'aperçu', 'Voir les captures']);
+    assert.deepEqual((await actions.locator('a.button, button').allTextContents()).map((t) => t.replace(' ↗', '').trim()), ['Ok', 'Aperçu', 'Captures']);
     assert.equal(await actions.locator('> *').first().evaluate((n) => n.matches('button.go')), true);
     assert.equal(await page.locator('.ticket.yours[data-number="1"] .card-actions > *').first().evaluate((n) => n.matches('button.go')), true, '« go » first on a spec card');
   });
@@ -130,17 +130,21 @@ test('quand rien ne m\'attend, le message « Rien ne vous attend » s\'affiche c
   });
 });
 
-test('les boutons discrets d\'une carte tiennent côte à côte sous le bouton bleu', async () => {
+test('le bouton bleu et les deux boutons discrets d\'une carte tiennent sur une seule ligne, même pendant le compte à rebours', async () => {
   const acceptance = { ...issue(3, 'Trier par saison', ['factory:feature', 'factory:acceptance'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/3' }), comments: 1 };
   const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
-  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 900, height: 800 }, { width: 390, height: 844 }]) {
     await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport }, async ({ page, url }) => {
       await page.goto(url);
       const actions = page.locator('.ticket.yours[data-number="3"] .card-actions');
       await actions.locator('a[href="https://preview.example.com/"]').waitFor();
-      const tops = await actions.locator('a.button').evaluateAll((n) => n.map((x) => Math.round(x.getBoundingClientRect().top)));
-      assert.equal(tops.length, 2);
-      assert.equal(tops[0], tops[1], `${viewport.width}px: « Ouvrir l'aperçu à tester » and « Voir la recette » share one row`);
+      const rows = () => actions.locator('> *').evaluateAll((n) => new Set(n.map((x) => Math.round(x.getBoundingClientRect().top))).size);
+      assert.equal(await actions.locator('> *').count(), 3);
+      assert.equal(await rows(), 1, `${viewport.width}px: « Ok », « Aperçu » and « Recette » share one row`);
+      await actions.locator('button.go').click();
+      assert.match(await actions.locator('button.go').textContent(), /Annuler \(\d s\)/);
+      assert.equal(await rows(), 1, `${viewport.width}px: still one row during the countdown`);
+      await actions.locator('button.go').click(); // cancel
     });
   }
 });

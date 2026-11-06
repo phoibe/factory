@@ -1,0 +1,4 @@
+{"t":"2026-11-06T20:58:36.762Z","kind":"run","stage":"visual-fix","issue":269,"pr":272,"repo":"phoibe/factory"}
+{"t":"2026-11-06T21:04:36.812Z","kind":"test","cmd":"sed -i 's/style.css?v=33/style.css?v=34/; s/app.mjs?v=42/app.mjs?v=43/' panel/index.html && grep -rn \"v=33\\|v=42\\|style.css?v\\|app.mjs?v\" test/*.mjs | head -3; export CHROMIUM_PATH=/opt/pw-browsers/ch","ok":true,"id":"toolu_01SrDkH3H8N3vJBYicgwDcpK"}
+{"t":"2026-11-06T21:06:07.833Z","kind":"test","cmd":"ls node_modules/.bin | grep -i playwright; timeout 300 node --test e2e/yours-cards.e2e.mjs e2e/ok-button.e2e.mjs e2e/panel.e2e.mjs 2>&1 | tail -25","ok":true,"id":"toolu_019kNqe4GfWgpamFMnggoKEH"}
+{"t":"2026-11-06T21:07:22.467Z","kind":"test","cmd":"export CHROMIUM_PATH=/opt/pw-browsers/chromium; npm test 2>&1 | grep -E \"^# (pass|fail)\"; timeout 300 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|not ok\"","ok":true,"id":"toolu_01DfHSRN3QaaUKNfS3wreJfW"}
