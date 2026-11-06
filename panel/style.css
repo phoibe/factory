@@ -315,6 +315,8 @@ button.go:disabled { opacity: .6; cursor: default; }
 @media (min-width: 700px) {
   .you-item { flex-direction: row; align-items: center; justify-content: space-between; }
   .you-item .button, .you-item .go { align-self: auto; min-width: 120px; }
+  /* The text takes the free space, so a plate's buttons sit together on the right instead of spreading out. */
+  .you-what { flex: 1 1 auto; min-width: 0; }
 }
 @media (max-width: 600px) { .you-card { padding: 16px; margin-bottom: 32px; } }
 @media (max-width: 600px) {
