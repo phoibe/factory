@@ -9,6 +9,8 @@
 # Il peut être relancé autant de fois que voulu : il n'ajoute que ce qui manque, sans doublon.
 # Les runners vont chercher leur travail chez GitHub : rien à ouvrir sur le serveur (il reste derrière Tailscale).
 set -euo pipefail
+# A failure inside « $(…) » stops the script too (bash leaves it running by default).
+shopt -s inherit_errexit
 
 # The label every factory workflow targets on the dev server (see docs/adr/0001-serveur-de-dev-avec-secours-github.md).
 LABEL=factory-dev
@@ -27,7 +29,10 @@ ask()  { local a; printf '%s ' "$1" >&2; read -r a || die "Pas de réponse : rie
 # Commands that need the administrator: directly as root, otherwise through sudo.
 root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
 # Commands run as the dedicated user that owns the runners (runuser as root: a root-only server may have no sudo).
-as_runner() { if [ "$(id -u)" = 0 ]; then runuser -u "$RUNNER_USER" -- "$@"; else sudo -u "$RUNNER_USER" "$@"; fi; }
+as_runner() {
+  if [ "$(id -u)" = 0 ]; then runuser -u "$RUNNER_USER" -- env HOME="$(getent passwd "$RUNNER_USER" | cut -d: -f6)" "$@"
+  else sudo -u "$RUNNER_USER" "$@"; fi
+}
 # The dedicated user's home is closed to the owner (0750 on Ubuntu): every look inside it goes through root.
 exists() { root test -e "$1"; }
 # Runs « $2… » inside folder $1, as root (in_dir) or as the dedicated user (in_dir_as_runner).
@@ -91,11 +96,15 @@ choose_project() {
 }
 
 check_project() {
-  local info
-  info=$(gh api "repos/$REPO" --jq '"\(.private) \(.permissions.admin)"' 2>/dev/null) || die "Je ne trouve pas le projet $REPO. Vérifiez son nom (ou lancez la commande sans nom pour choisir dans la liste)."
-  [ "${info% *}" = true ] || die "$REPO est un projet public : ses tâches tournent sur les machines GitHub, gratuites pour lui. Pour votre sécurité, un projet public n'a jamais de runner sur le serveur."
+  local info private admin
+  info=$(gh api "repos/$REPO" --jq '"\(.private) \(.permissions.admin) \(.full_name)"' 2>/dev/null) || die "Je ne trouve pas le projet $REPO. Vérifiez son nom (ou lancez la commande sans nom pour choisir dans la liste)."
+  read -r private admin REPO <<EOF
+$info
+EOF
+  # From here on REPO has GitHub's own spelling: folders and runner names stay the same whatever was typed.
+  [ "$private" = true ] || die "$REPO est un projet public : ses tâches tournent sur les machines GitHub, gratuites pour lui. Pour votre sécurité, un projet public n'a jamais de runner sur le serveur."
   gh api "repos/$REPO/contents/factory.config.json" >/dev/null 2>&1 || die "$REPO n'est pas dans la factory : faites-le d'abord entrer avec l'outil Mac « Adopter un projet »."
-  [ "${info#* }" = true ] || die "Le compte GitHub connecté sur ce serveur n'est pas administrateur de $REPO : il ne peut pas y ajouter de runner. Connectez-vous avec le compte propriétaire du projet (gh auth login), puis relancez."
+  [ "$admin" = true ] || die "Le compte GitHub connecté sur ce serveur n'est pas administrateur de $REPO : il ne peut pas y ajouter de runner. Connectez-vous avec le compte propriétaire du projet (gh auth login), puis relancez."
 }
 
 # ---- Logiciels (une fois par serveur) -----------------------------------------------------------
@@ -140,7 +149,7 @@ local_dir() {
     d=${f%/.runner}
     if [ "$(runner_name "$d")" = "$1" ] && of_this_project "$d"; then printf '%s' "$d"; return; fi
   done <<EOF
-$(root find "$RUNNER_HOME" $SCAN_DIRS -maxdepth 4 -name .runner 2>/dev/null || true)
+$(root find "$RUNNER_HOME" $SCAN_DIRS -maxdepth 6 -name .runner 2>/dev/null || true)
 EOF
 }
 
@@ -177,7 +186,10 @@ runner_archive() {
   file="$RUNNER_HOME/.cache/actions-runner-linux-$ARCH-$version.tar.gz"
   if ! root test -s "$file"; then
     as_runner mkdir -p "$RUNNER_HOME/.cache"
-    as_runner curl -fsSL -o "$file" "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-$ARCH-$version.tar.gz"
+    # Downloaded beside, then renamed: a cut-off download never looks like a complete archive.
+    as_runner curl -fsSL -o "$file.part" "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-$ARCH-$version.tar.gz" \
+      && as_runner mv "$file.part" "$file" \
+      || die "Le téléchargement du runner a été coupé. Vérifiez la connexion à Internet du serveur, puis relancez la commande."
   fi
   printf '%s' "$file"
 }
@@ -199,7 +211,11 @@ start_on_boot() {
   local dir=$1 owner
   if ! exists "$dir/.service"; then
     owner=$(root stat -c %U "$dir")
-    [ -n "$owner" ] && [ "$owner" != root ] || owner=$RUNNER_USER
+    if [ "$owner" = root ]; then
+      warn "Runner $(runner_name "$dir") installé par l'administrateur : je n'y touche pas, il garde son propre démarrage"
+      return 0
+    fi
+    [ -n "$owner" ] || owner=$RUNNER_USER
     in_dir "$dir" ./svc.sh install "$owner" >/dev/null
     ok "Runner $(runner_name "$dir") : démarrage automatique avec le serveur activé"
     CHANGED=1

@@ -160,6 +160,23 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.equal(factoryDev(again.runners).length, 2);
   });
 
+  test('a download cut off midway does not block the next run', async () => {
+    const fake = mkdtempSync(join(tmpdir(), 'dev-server-'));
+    writeFileSync(join(fake, 'curl-fails'), '');
+    const failed = await run(['phoibe/prive'], { fake });
+    assert.notEqual(failed.code, 0);
+    const again = await run(['phoibe/prive'], { fake });
+    assert.equal(again.code, 0, again.out);
+    assert.equal(factoryDev(again.runners).length, 2);
+  });
+
+  test('the project name typed in another case finds the same runners', async () => {
+    const first = await run(['phoibe/prive']);
+    const again = await run(['Prive'], { fake: first.fake });
+    assert.equal(again.code, 0, again.out);
+    assert.doesNotMatch(again.log, /^config\.sh /m);
+  });
+
   test('a runner offline and not on this server is kept on GitHub but not counted', async () => {
     const r = await run(['phoibe/prive'], { runners: '88 vieux-pc self-hosted,Linux,X64 offline\n' });
     assert.equal(r.code, 0, r.out);

@@ -17,6 +17,8 @@ case "$*" in
   *"actions/runners"*) cat "$FAKE/runners.txt" ;;
   "api repos/phoibe/inconnu"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   "api repos/"*"--jq "*".private"*)
-    if [ -n "${FAKE_PUBLIC:-}" ]; then echo "false true"; elif [ -n "${FAKE_NOT_ADMIN:-}" ]; then echo "true false"; else echo "true true"; fi ;;
+    # GitHub ignores case and answers with the real spelling (all lower case here).
+    full=$(printf '%s' "$2" | sed 's#^repos/##' | tr 'A-Z' 'a-z')
+    if [ -n "${FAKE_PUBLIC:-}" ]; then echo "false true $full"; elif [ -n "${FAKE_NOT_ADMIN:-}" ]; then echo "true false $full"; else echo "true true $full"; fi ;;
   *) exit 0 ;;
 esac

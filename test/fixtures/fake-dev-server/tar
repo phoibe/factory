@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Stand-in for tar: « extracts » a runner whose config.sh registers it in the fake GitHub and whose svc.sh logs.
+# A cut-off archive (one that contains « partial ») is refused like a real damaged archive.
 echo "tar $*" >> "$FAKE/log"
-dir=.; while [ $# -gt 0 ]; do [ "$1" = -C ] && dir=$2; shift; done
+dir=.; archive=""; while [ $# -gt 0 ]; do case "$1" in -C) dir=$2 ;; -xzf) archive=$2 ;; esac; shift; done
+grep -q partial "$archive" 2>/dev/null && { echo "gzip: unexpected end of file" >&2; exit 2; }
 mkdir -p "$dir/bin"
 cat > "$dir/config.sh" <<'EOS'
 #!/usr/bin/env bash
