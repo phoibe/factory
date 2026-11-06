@@ -1376,6 +1376,43 @@ test('after a merge, the live site is checked once the host deploys it (only for
   assert.ok(!none.calls.some((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')));
 });
 
+test('a host that reports no deployment (Vercel on yoldmewhen2) is checked on the site address once it builds the PRs', async () => {
+  const mk = ({ homepage = 'https://app.example', siteUrl, vercel = true, deployments = [] } = {}) => {
+    const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments, comments: { 10: vercel ? [{ user: { login: 'vercel[bot]' }, body: 'Ready' }] : [] } });
+    gh.getRepo = async () => ({ default_branch: 'main', homepage });
+    return { gh, relay: createRelay({ gh, repo: "r", config: siteUrl ? { ...config, siteUrl } : config, env, log: quiet, sleep: async () => {} }) };
+  };
+  const prodChecks = (gh) => gh.calls.filter((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')).map((c) => JSON.parse(c[3].payload).prodCheck);
+  const ok = { kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [L.acceptance], text: 'ok', fromOwner: true };
+  const deliver = async (w) => { await w.relay.report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'u' } }); await w.relay.handle(ok); };
+  let w = mk();
+  await deliver(w);
+  assert.deepEqual(prodChecks(w.gh), [{ pr: 10, sha: 'm1', url: 'https://app.example' }]);
+  w = mk({ homepage: '', siteUrl: 'https://site.example' });
+  await deliver(w);
+  assert.deepEqual(prodChecks(w.gh), [{ pr: 10, sha: 'm1', url: 'https://site.example' }]);
+  w = mk({ homepage: '' }); // no address known: nothing to open
+  await deliver(w);
+  assert.deepEqual(prodChecks(w.gh), []);
+  w = mk({ vercel: false }); // no host builds it (a library with a website): nothing to open
+  await deliver(w);
+  assert.deepEqual(prodChecks(w.gh), []);
+});
+
+test('with no deployment reported, the site address is opened after a short wait; a reported one is followed instead', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [];
+  let naps = 0;
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { naps++; } });
+  assert.equal(await relay.liveUrl('s', { attempts: 30, url: 'https://app.example' }), 'https://app.example');
+  assert.equal(naps, 6);
+  assert.equal(await relay.liveUrl('s', { attempts: 3 }), null);
+  const seen = fakeGh({ issues: [], prs: [] });
+  seen.deployments = async () => [{ id: 1, environment: 'Production' }];
+  seen.deploymentStatuses = async () => [];
+  assert.equal(await createRelay({ gh: seen, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 10, url: 'https://app.example' }), null);
+});
+
 // GitHub Pages cancels a deploy when a newer push starts its own, and marks the cancelled one "error" (PR #223).
 function liveWorld(statusesById) {
   const gh = fakeGh({ issues: [], prs: [], deployments: [
