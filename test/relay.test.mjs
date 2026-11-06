@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
 import { createRelay, eventFromPayload, linkedIssue } from '../scripts/relay.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER } from '../scripts/lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER } from '../scripts/lib/labels.mjs';
+import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
 
@@ -2099,4 +2100,25 @@ test('a failed lookup of the stack sheet (not a 404) opens no card', async () =>
   gh.getContent = async (path) => { if (path === 'STACK.md') throw new Error('502 Bad Gateway'); return { content: '' }; };
   await guardTick(gh, []);
   assert.ok(!gh.calls.some((c) => c[0] === 'create'));
+});
+
+test('the panel « ok » written on the issue is applied to the PR that delivers it', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] }], prs: [{ number: 7, body: 'Closes #1', head: { sha: 's' }, labels: [L.visualReview] }] });
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+  const { outputs } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 1, labels: [L.feature], text: answerForPr(7, 'ok'), fromOwner: true });
+  assert.deepEqual([outputs.checks, outputs.pr], ['true', '7']);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes(VISUAL_OK_MARKER)));
+});
+
+test('a panel answer naming a PR that does not deliver the issue moves nothing', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] }, { number: 2, labels: [L.feature] }], prs: [{ number: 7, body: 'Closes #2', head: { sha: 's' }, labels: [L.visualReview] }] });
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+  const { action } = await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 1, labels: [L.feature], text: answerForPr(7, 'ok'), fromOwner: true });
+  assert.equal(action.type, 'ignore');
+  assert.ok(!gh.calls.some((c) => c[1] === 7));
+});
+
+test('forwardedAnswer reads back what answerForPr writes', () => {
+  assert.deepEqual(forwardedAnswer(answerForPr(12, 'ok')), { pr: 12, text: 'ok' });
+  assert.equal(forwardedAnswer('ok'), null);
 });
