@@ -29,9 +29,9 @@ const STAGES = [
   ['plan', 'Plan de construction'],
   ['tdd', 'Tests avant le code'],
   ['review', 'Revue de code par un second agent'],
-  ['designPass', 'Passe design'],
+  ['designPass', 'Revue de l\'apparence'],
   ['screenshots', 'Captures avant/après à valider'],
-  ['checks', 'Contrôles automatiques'],
+  ['checks', 'Contrôles avant fusion'],
   ['acceptance', 'Recette avant la mise en ligne'],
 ];
 const CHECKS = [
@@ -708,7 +708,7 @@ function renderRules() {
       el('div', {}, el('label', { for: 'autoPick' }, 'Prendre une demande ouverte quand une place se libère'),
         // Only acts on picked features: nested under the switch, and off while picking is off.
         el('div', { class: 'sub-setting', 'aria-disabled': c.autoPick === true ? 'false' : 'true' },
-          el('label', { for: 'maxQuestions' }, 'Demandes prises ainsi qui attendent vos réponses, au plus'),
+          el('label', { for: 'maxQuestions' }, 'En attente de vos réponses, au plus'),
           el('input', { type: 'number', id: 'maxQuestions', min: '1', max: '10', inputmode: 'numeric', disabled: c.autoPick !== true, value: String(c.maxQuestions ?? 2),
             onchange: (e) => {
               const v = Number(e.target.value);
@@ -725,9 +725,9 @@ function renderRules() {
   const packs = catalog.packs.map((p) => {
     const pc = c.skills[p.id];
     const on = p.skills.filter((s) => pc.skills[s.id]).length;
-    return el('fieldset', {}, el('legend', {}, `Skills : ${p.name}`),
+    return el('fieldset', {}, el('legend', {}, `Savoir-faire : ${p.name}`),
       el('div', { class: 'row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
-        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Pack activé'), el('p', {}, `${on} sur ${p.skills.length}`))),
+        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Activé'), el('p', {}, `${on} sur ${p.skills.length}`))),
       el('details', { open: p.skills.length <= 3 }, el('summary', {}, 'Choisir les skills'),
         el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
           p.skills.map((s) => el('div', { class: 'row' },
@@ -868,7 +868,7 @@ async function refreshStable() {
   const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
   stableChanges = (cmp?.commits || []).map((c) => c.commit.message.split('\n')[0]).filter((s) => !s.startsWith('chore(factory)'));
   const btn = $('stable');
-  btn.hidden = !cmp || cmp.ahead_by === 0;
+  btn.hidden = !(cmp?.ahead_by > 0);
   btn.textContent = `Déclarer stable (${cmp?.ahead_by || 0})`;
 }
 
@@ -1173,7 +1173,7 @@ function drawChat() {
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
   if (chat.server) return drawServerChat(isNew);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '…';
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
@@ -1214,7 +1214,7 @@ function drawServerChat(isNew) {
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   const entry = chat.list?.find((c) => c.id === chat.open);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '…');
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '');
   $('chat-tools').hidden = isNew || !chat.conv;
   $('chat-close').hidden = entry?.state === 'closed';
   if (isNew) {
