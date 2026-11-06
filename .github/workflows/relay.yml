@@ -127,6 +127,8 @@ jobs:
     outputs:
       sha: ${{ steps.head.outputs.sha }}
       started: ${{ steps.head.outputs.started }}
+      # « true » when the checks failed on a passing outage (network, GitHub), not on the code: see lib/outage.mjs.
+      transient: ${{ steps.run.outputs.transient || steps.outage.outputs.transient }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -154,7 +156,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/checks.mjs . --config "$RUNNER_TEMP/factory.config.json"
+      - id: run
+        run: node .factory-src/scripts/checks.mjs . --config "$RUNNER_TEMP/factory.config.json"
+      # A failure before the checks could even start (checkout, rules, Node download) is never the code's fault.
+      - id: outage
+        if: failure() && steps.run.outcome != 'failure'
+        run: echo "transient=true" >> "$GITHUB_OUTPUT"
 
   report:
     needs: [decide, checks]
@@ -181,12 +188,13 @@ jobs:
         with:
           node-version: 22
       - id: report
-        run: node .factory-src/scripts/relay.mjs report --result "$RESULT" --pr "$PR" --sha "$SHA" --started "$STARTED"
+        run: node .factory-src/scripts/relay.mjs report --result "$RESULT" --pr "$PR" --sha "$SHA" --started "$STARTED" --transient "$TRANSIENT"
         env:
           RESULT: ${{ needs.checks.result }}
           PR: ${{ needs.decide.outputs.pr }}
           SHA: ${{ needs.checks.outputs.sha }}
           STARTED: ${{ needs.checks.outputs.started }}
+          TRANSIENT: ${{ needs.checks.outputs.transient }}
           GITHUB_TOKEN: ${{ github.token }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}

@@ -18,6 +18,7 @@ import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
+import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -38,6 +39,9 @@ export const RATE_LIMIT_STEP = 'Rate limited: retried at the next tick';
 export const MAX_RATE_LIMIT_ATTEMPTS = 3;
 // The commands whose step in relay.yml is followed by RATE_LIMIT_STEP: only they may end quietly on the limit.
 export const rateLimitHandled = (command) => ['decide', 'release', 'report'].includes(command);
+// A retry of checks that hit an outage, started but never reported (the run was lost): the tick starts it again then.
+// Longer than the checks job's 30-minute limit.
+const OUTAGE_LOST_MS = 45 * 60_000;
 // Saved at the end of a request's description when the agent closes it by itself: the step to resume and its PRs.
 const REOPEN_MARKER = '<!-- factory-reopen';
 const REOPEN_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.resumeQueued, L.autoGo];
@@ -588,6 +592,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await releaseStaleLocks(ownerLogin);
     await reportLost();
     await closeAsked(ownerLogin);
+    await retryOutages();
     await syncIfBehind();
   }
 
@@ -612,6 +617,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // Checks that failed on an outage (issue #213): the retries due now start here, one per PR, never while an agent
+  // works on it or once the card is blocked. A retry not reported after OUTAGE_LOST_MS is started again.
+  async function retryOutages() {
+    for (const p of (await gh.listPulls?.().catch(() => null)) || []) {
+      const st = readOutage(p.body);
+      if (!st || st.blocked || !st.next || now() < st.next) continue;
+      const labels = await liveLabels(p.number);
+      if (!labels.includes(L.checks) || labels.includes(L.running)) continue;
+      const pr = await gh.getPr(p.number);
+      if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) continue; // new code: its own checks run anyway
+      await gh.updateIssue(p.number, { body: writeOutage(pr.body, { ...st, tries: st.tries + 1, next: now() + OUTAGE_LOST_MS }) });
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ checksFor: p.number }) });
+      log(`guard: checks of #${p.number} retried after an outage (try ${st.tries + 1})`);
+    }
+  }
+
   // The project's agent instructions come from its last sync, which only ran on a config change or weekly: a fix to
   // the agent's rules (« never close, add factory:close ») reached the relay at once but the agent a week later.
   // When the project's synced fingerprint differs from this factory version's, the sync is started now.
@@ -622,10 +644,28 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const file = await gh.getContent('.factory/synced.json').catch(() => null);
     let theirs = null;
     try { theirs = file?.content ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')).fingerprint : null; } catch { /* resync */ }
-    if (theirs === mine) return;
+    // A sync that cannot be pushed used to be started again every 5 minutes forever: the retries are spaced out and
+    // the owner gets one alert after a day for the same version (issue #213). The state lives in a ref, see github.mjs.
+    const state = gh.getState ? await gh.getState('sync').catch(() => null) : null;
+    const step = syncStep(state, { mine, theirs, now: now() });
+    if (step.changed && gh.setState) await gh.setState('sync', step.state).catch((e) => log(`sync state: ${e.message}`));
+    if (step.alert) {
+      const project = repo.split('/')[1] || repo;
+      const sent = await sendAlert({ topic: (env.NTFY_TOPIC || '').trim(), message: `La mise à jour du projet ${project} ne passe pas depuis hier. Je continue à réessayer une fois par jour.`, click: `https://github.com/${repo}/actions/workflows/factory-sync.yml`, fetchImpl });
+      log(`sync failing for a day: alert ${sent ? 'sent' : 'not sent'}`);
+    }
+    if (!step.dispatch) return;
     const ref = (await gh.getRepo())?.default_branch || 'main';
     try { await gh.dispatch('factory-sync.yml', ref, {}); log(`sync started: project at ${theirs || 'unknown'}, factory at ${mine}`); }
     catch (e) { log(`sync not started (${String(e.message || e).slice(0, 80)})`); }
+  }
+
+  // The open PR of a card that a long outage blocked (its marker says so), or null.
+  async function outageBlockedPr(ev) {
+    const prs = ev.kind === 'pr'
+      ? [await gh.getPr(ev.number)]
+      : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === ev.number || branchIssue(p) === ev.number);
+    return prs.find((p) => p && p.state !== 'closed' && readOutage(p.body)?.blocked)?.number || null;
   }
 
   // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which
@@ -645,7 +685,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (Date.parse(last.started_at || 0) < Date.parse(checks.completed_at || 0)) continue; // an older report
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       log(`guard: report of #${item.number} lost, made again (${checks.conclusion})`);
-      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha });
+      // Red checks on a commit already followed for an outage: the lost report most likely died of the same outage.
+      // Never past the 3 hours: a replayed report must not block the card by itself, the usual path takes it then.
+      const followed = readOutage(pr.body);
+      const transient = checks.conclusion === 'failure' && followed?.sha === pr.head.sha && now() - followed.since < OUTAGE_GIVE_UP_MS;
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient });
     }
   }
 
@@ -866,6 +910,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let action = decide(ev, config, ctx);
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
+    let said = ev.text;
     // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
     // and its checks start again.
     let reopenedPr = null;
@@ -883,7 +928,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!text) return { action, outputs };
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
+      said = text;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
+    // Also when the factory is full (the checks need no place) and when he writes it on the PR itself.
+    // The PR itself has no factory label left once blocked: the owner's message there is otherwise ignored.
+    // Only a short message there (« réessaie », « relance stp »): a change request must not be dropped.
+    const ownerOnPr = ev.kind === 'pr' && String(said || '').trim().split(/\s+/).length <= 3 && ev.fromOwner && !ev.fromAgent && !ctx.lockFresh && ['fire', 'ignore'].includes(action.type);
+    const resuming = ownerOnPr || (action.type === 'fire' && action.stage === 'resume') || (action.type === 'queue' && action.add?.includes(L.resumeQueued));
+    if (resuming && isRetry(said)) {
+      const blockedPr = await outageBlockedPr(ev);
+      if (blockedPr) action = { type: 'outage-retry', pr: blockedPr, reason: 'panne passée : on relance les contrôles' };
     }
     // A finished card (merged, closed) never starts over: a message written during its last run, or afterwards,
     // would otherwise send a closed issue back to grilling.
@@ -957,6 +1013,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'docs-merge':
         await mergeDocsPr(n);
         break;
+      case 'outage-retry': {
+        const pr = await gh.getPr(action.pr);
+        const issue = linkedIssue(pr.body) || branchIssue(pr);
+        for (const k of new Set([n, action.pr, issue].filter(Boolean))) await gh.removeLabel(k, L.blocked);
+        await gh.updateIssue(action.pr, { body: writeOutage(pr.body, null) }); // a fresh schedule if it fails again
+        await gh.addLabels(action.pr, [L.checks]);
+        await gh.comment(n, say("C'est noté : je relance les contrôles automatiques."));
+        outputs.checks = 'true';
+        outputs.pr = String(action.pr);
+        break;
+      }
       case 'dequeue':
         if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
         await dequeue({ freed: ev.kind === 'issue' ? n : null });
@@ -991,8 +1058,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // `preview`: the result of the preview check ({ result: passed|failed|skipped, url }) when this report follows it.
-  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null }) {
-    const pr = await gh.getPr(prNumber);
+  // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213).
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
+    let pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
@@ -1004,6 +1072,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
+    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs);
+    // Any other result ends the outage: a later one starts a new schedule.
+    if (readOutage(pr.body)) {
+      pr = { ...pr, body: writeOutage(pr.body, null) };
+      await gh.updateIssue(prNumber, { body: pr.body });
+    }
     let missing = [];
     let ui = false;
     try { ({ missing, ui } = await fabrication(prNumber, pr)); } catch (e) { log(`fabrication: ${e.message}`); }
@@ -1105,6 +1179,28 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return blockOnRed(prNumber, issueNumber);
   }
 
+  // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
+  // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
+  // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
+  async function onOutage(pr, nowMs) {
+    const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
+    let st = step.state;
+    if (step.retryInMs) {
+      st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };
+      outputs.retryInMs = step.retryInMs;
+    }
+    await gh.updateIssue(pr.number, { body: writeOutage(pr.body, st) });
+    log(`checks failed on an outage -> ${step.action} (retries so far: ${st.tries})`);
+    if (step.action === 'block') {
+      const issueNumber = linkedIssue(pr.body) || branchIssue(pr);
+      for (const l of [L.checks, L.fixing]) await gh.removeLabel(pr.number, l);
+      await gh.addLabels(issueNumber || pr.number, [L.blocked]);
+      await gh.comment(issueNumber || pr.number, say(`Les contrôles automatiques de la PR #${pr.number} ne passent pas depuis 3 heures à cause d'une panne de GitHub ou du réseau. Ça ne ressemble pas à un problème de code, donc je n'ai pas envoyé l'agent corriger.\n\nRépondez « réessaie » ici quand vous voulez que je relance les contrôles.`));
+    } else if (step.tell) {
+      await gh.comment(pr.number, say(OUTAGE_TOLD));
+    }
+  }
+
   // Still red after the last try: pause. The next failure count starts again from zero once the owner unblocks it.
   async function blockOnRed(prNumber, issueNumber) {
     for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
@@ -1127,7 +1223,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
+  // The first retry after an outage, about 2 minutes later: run by the report job once the lock is released, so that
+  // the other decisions go on meanwhile. Never throws: GitHub may still be down, and the tick starts it again later.
+  async function retrySoon(prNumber) {
+    const ms = outputs.retryInMs;
+    if (!ms) return;
+    delete outputs.retryInMs;
+    try {
+      await sleep(ms);
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ checksFor: prNumber }) });
+      log(`checks of #${prNumber} retried after an outage`);
+    } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
+  }
+
+  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1162,7 +1272,8 @@ async function main() {
     await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
-    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null }));
+    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'true' }));
+    await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));

@@ -117,8 +117,28 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     release: () => dropIf(mine), // never the lock of the run that took over from us
     takeOver: () => dropIf(seen),
   };
+  // Small factory states kept out of sight in the project: a ref per name, whose commit message is the JSON.
+  const stateRef = (name) => `factory/state-${name}`;
+  const getState = async (name) => {
+    const ref = await request('GET', `/repos/{repo}/git/ref/${stateRef(name)}`);
+    if (!ref) return null;
+    const commit = await request('GET', `/repos/{repo}/git/commits/${ref.object.sha}`);
+    try { return JSON.parse(commit?.message || 'null'); } catch { return null; }
+  };
+  const setState = async (name, value) => {
+    if (!value) {
+      try { await request('DELETE', `/repos/{repo}/git/refs/${stateRef(name)}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+      return;
+    }
+    const tree = await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'state', mode: '100644', type: 'blob', content: name }] });
+    const commit = await request('POST', '/repos/{repo}/git/commits', { message: JSON.stringify(value), tree: tree.sha, parents: [] });
+    try { await request('PATCH', `/repos/{repo}/git/refs/${stateRef(name)}`, { sha: commit.sha, force: true }); }
+    catch (e) { if (!/404|422/.test(String(e))) throw e; await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${stateRef(name)}`, sha: commit.sha }); }
+  };
   return {
     queueLock,
+    getState,
+    setState,
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
