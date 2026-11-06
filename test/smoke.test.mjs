@@ -66,3 +66,15 @@ test('a skipped check is not retried', async () => {
   assert.equal(out.result, 'skipped');
   assert.equal(calls, 1);
 });
+
+test('a later attempt installs the tools when the first one stopped before installing them', async () => {
+  const { smokeAttempts } = await import('../scripts/smoke.mjs');
+  const seen = [];
+  const attempt = smokeAttempts({ url: 'u', dir: '.', run: async (opts) => { seen.push(opts.install); opts.onInstalled(); return { result: 'failed', detail: 'x' }; } });
+  await attempt(0); await attempt(1);
+  assert.deepEqual(seen, [true, false]);
+  const again = smokeAttempts({ url: 'u', dir: '.', run: async (opts) => { seen.push(opts.install); return { result: 'failed', detail: "l'adresse ne répond pas" }; } });
+  seen.length = 0;
+  await again(0); await again(1);
+  assert.deepEqual(seen, [true, true]);
+});

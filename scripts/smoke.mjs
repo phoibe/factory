@@ -70,8 +70,15 @@ export async function smokeUntil({ check, retryMs, intervalMs = 60_000, sleep = 
   return out;
 }
 
-// `install: false` reuses the tools a previous attempt installed (smokeUntil's later attempts).
-export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.error, install = true } = {}) {
+// The attempts of smokeUntil: the project's tools are installed once, by the first attempt that gets that far (an
+// attempt that stops earlier, on an address that does not answer yet, installs nothing).
+export function smokeAttempts({ url, dir = '.', run = smoke }) {
+  let installed = false;
+  return () => run({ url, dir, install: !installed, onInstalled: () => { installed = true; } });
+}
+
+// `install: false` reuses the tools a previous attempt installed (see smokeAttempts).
+export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.error, install = true, onInstalled = () => {} } = {}) {
   const first = await probe(url, fetchImpl);
   if (first.status === 0) return { result: 'failed', detail: `l'adresse ne répond pas (${first.error})` };
   if (isProtected(first.status, first.location)) return { result: 'skipped', detail: "la version est protégée par l'hébergeur : pas d'ouverture automatique possible" };
@@ -87,6 +94,7 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
     }
     run(setup.install);
     if (run(setup.probe) !== 0) run(setup.deps);
+    onInstalled();
   }
   const pw = loadPlaywright(resolve(dir));
   if (!pw) return { result: 'skipped', detail: 'navigateur introuvable : vérification sautée' };
@@ -130,7 +138,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let out;
   try {
     const retryMs = (Number(arg('retry-minutes')) || 0) * 60_000;
-    out = await smokeUntil({ retryMs, check: (attempt) => smoke({ url: arg('url'), dir: arg('dir') || '.', install: attempt === 0 }) });
+    out = await smokeUntil({ retryMs, check: smokeAttempts({ url: arg('url'), dir: arg('dir') || '.' }) });
   } catch (e) {
     out = { result: 'skipped', detail: `vérification impossible (${String(e.message || e).slice(0, 120)})` };
   }
