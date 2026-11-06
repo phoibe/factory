@@ -175,8 +175,10 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
     if (outputs.preview) {
       const check = JSON.parse(outputs.preview);
       previewChecks.push(check);
-      const res = typeof previewResult === 'function' ? previewResult(check) : previewResult;
-      await relayFor().report({ result: 'success', pr: check.pr, sha: check.sha, now, preview: { ...res, url: check.url } });
+      // It first waits for the preview (outside the queue lock), then opens it.
+      const url = await relayFor().previewWait(check);
+      const res = url ? (typeof previewResult === 'function' ? previewResult(check) : previewResult) : { result: 'skipped' };
+      await relayFor().report({ result: 'success', pr: check.pr, sha: check.sha, now, preview: { ...res, url } });
     }
     if (outputs.production) liveChecks.push(JSON.parse(outputs.production));
   }

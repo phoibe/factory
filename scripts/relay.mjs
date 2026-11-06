@@ -730,6 +730,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return null;
   }
 
+  // The preview job's wait for the preview (outside the queue lock): the URL the report found, or the one that appears.
+  async function previewWait(check) {
+    if (!check?.sha) return check?.url || null;
+    return check.url || previewUrl(check.sha, check.pr);
+  }
+
   // Owner messages (comments and PR reviews) written since the lock was taken, joined into one, or null.
   async function deferredMessage(number, ownerLogin, isPr) {
     const since = await lockStart(number);
@@ -996,15 +1002,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // Before the owner is given a preview, the factory opens it and replays the user journeys on it, in a separate
     // run (a browser and the project's tests are needed): a broken or empty preview goes back to the agent instead.
+    // The preview can take minutes to appear: it is looked for once here, then waited for by the preview job, outside
+    // the queue lock, so that no decision waits behind it (issue #212). Its report comes back with what it found.
     const previews = next === 'acceptance' && (preview ? true : await hasPreviews(prNumber));
     if (previews && !preview) {
-      const url = await previewUrl(pr.head.sha, prNumber);
-      if (url) {
-        const ref = (await gh.getRepo())?.default_branch || 'main';
-        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, url } }) });
-        log(`preview check started on ${url}`);
-        return;
-      }
+      const url = await previewUrl(pr.head.sha, prNumber, { attempts: 1 });
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, ...(url ? { url } : {}) } }) });
+      log(url ? `preview check started on ${url}` : 'preview check started: it waits for the preview');
+      return;
     }
     if (preview?.result === 'failed') {
       if (failures >= config.review.maxLoops) return blockOnRed(prNumber, issueNumber);
@@ -1018,7 +1024,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const knownUrl = preview?.url || null;
     if (inVisual) {
       // The checks ran while the owner looks at the captures: give him the preview, his « ok » will put it live.
-      const url = knownUrl || ((await hasPreviews(prNumber)) ? await previewUrl(pr.head.sha, prNumber) : null);
+      const url = knownUrl;
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       const where = url ? `\n\nVous pouvez aussi tester la nouvelle version ici : ${url}` : '';
       await gh.comment(prNumber, say(`Les contrôles automatiques sont tous verts ✅${where}\n\nRépondez « ok » pour mettre en ligne directement, ou dites-moi ce qu'il faut retoucher.`));
@@ -1034,8 +1040,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.comment(prNumber, say("Les contrôles automatiques sont tous verts ✅\n\nCe projet n'a pas de preview à tester et vous avez déjà validé la spec (et les captures s'il y en avait) : je mets en ligne directement."));
         return mergePr(prNumber, pr.head.sha);
       }
-      // The preview can take minutes to appear: the card moves to « Testez la preview » only with the message.
-      const url = knownUrl || await previewUrl(pr.head.sha, prNumber);
+      // The card moves to « Testez la preview » only with the message.
+      const url = knownUrl;
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
       await gh.addLabels(prNumber, [L.acceptance]);
       const where = url
@@ -1078,7 +1084,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, outputs };
+  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1120,9 +1126,15 @@ async function main() {
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
     const check = JSON.parse(process.env.CHECK || '{}');
-    const res = readResult(arg('result-file'));
-    await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url: check.url, runId: process.env.GITHUB_RUN_ID } }));
+    const url = arg('url') || check.url || null;
+    const res = url ? readResult(arg('result-file')) : { result: 'skipped', detail: "la preview n'est pas apparue" };
+    await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url, runId: process.env.GITHUB_RUN_ID } }));
     await withLock(gh.queueLock, () => relay.notifyWaiting());
+  } else if (command === 'preview-url') {
+    // The preview job waits for the preview here, without the queue lock: minutes that block no decision.
+    const url = await relay.previewWait(JSON.parse(process.env.CHECK || '{}'));
+    writeOutputs({ url: url || '' });
+    return;
   } else if (command === 'live-url') {
     const check = JSON.parse(process.env.CHECK || '{}');
     const url = await relay.liveUrl(check.sha);
