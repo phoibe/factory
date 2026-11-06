@@ -45,3 +45,7 @@ test('the hash is the one the factory writes', async () => {
   const { repoKey: fromScripts } = await import('../scripts/lib/runners.mjs');
   assert.equal(await repoKey(123), await fromScripts('123'));
 });
+
+test('no key while the project was left on the server: the backup is off', () => {
+  assert.match(machineLine({ ...base, status: status({ h: { machine: 'dev-server', reason: 'online', stale: true } }, 'missing') }).text, /Plus de secours automatique/);
+});

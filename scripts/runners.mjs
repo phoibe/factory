@@ -17,7 +17,7 @@ const STOP_POLLS = 6; // 6 × 10 s for a cancelled run to stop, then force-cance
 
 // The factory is public: its logs are too. A project is named in them by its hash only, never by its name, and
 // GitHub's error texts (which carry the repository's path) are never printed, only their HTTP status.
-const status = (e) => /-> (\d{3})/.exec(String(e?.message || e))?.[1] || 'network';
+const status = (e) => (e?.rateLimited || /rate limit/i.test(String(e?.message)) ? 'rate-limit' : /-> (\d{3})/.exec(String(e?.message || e))?.[1] || 'network');
 
 // Cancels the runs of a project whose jobs wait for (or are held by) one of its self-hosted runners. Returns their ids.
 async function cancelStuck(api, repo, labels, tag, log) {
@@ -43,12 +43,15 @@ async function rerunStopped(api, repo, pending, { sleep, now, log, budget, tag }
   const left = [];
   for (const p of pending) {
     let run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
+    let waited = false;
     for (let i = 0; run && run.status !== 'completed' && i < STOP_POLLS && budget.polls > 0; i++) {
       budget.polls--;
+      waited = true;
       await sleep(10_000);
       run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
     }
-    if (run && run.status !== 'completed') {
+    // Force-cancelled only after a wait: a fresh cancel with no budget left waits for the next check instead.
+    if (run && run.status !== 'completed' && (waited || (p.since && now() - p.since >= 60_000))) {
       await api('POST', `/repos/${repo}/actions/runs/${p.id}/force-cancel`).catch(() => {});
       run = await api('GET', `/repos/${repo}/actions/runs/${p.id}`);
     }
@@ -61,7 +64,7 @@ async function rerunStopped(api, repo, pending, { sleep, now, log, budget, tag }
     if (p.event === 'schedule') continue;
     try {
       await api('POST', `/repos/${repo}/actions/runs/${p.id}/rerun-failed-jobs`, {});
-      log(`${tag}: run ${p.id} re-run on GitHub's machines`);
+      log(`${tag}: run ${p.id} re-run`);
     } catch (e) { log(`${tag}: re-run of ${p.id} refused (${status(e)})`); }
   }
   return left;
@@ -134,6 +137,11 @@ export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, no
       next.projects[k] = entry;
     }
   }
+  // Without a working key nothing can be moved: each project stays where the last check left it, and the panel says
+  // the automatic backup is off for those left on the server.
+  if (next.key !== 'ok') {
+    for (const [k, p] of Object.entries(prev?.projects || {})) if (p.machine === 'dev-server' || p.stale) next.projects[k] = { ...p, stale: true };
+  }
   const named = { ...next, projects: Object.fromEntries(Object.entries(next.projects).map(([k, p]) => [k, { ...p, name: names[k] || 'un projet' }])) };
   const alerts = alertsFor(prev, named, now());
   const expiryAlert = alerts.some((a) => a.startsWith(EXPIRY_ALERT));
@@ -159,7 +167,7 @@ function keyClient(token, fetchImpl = fetch) {
         headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
       });
       // A 403 of the rate limit is not a refused key.
-      if (!res.ok) return { ok: false, status: res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0' ? 429 : res.status, repos: [] };
+      if (!res.ok) return { ok: false, status: res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.get('retry-after')) ? 429 : res.status, repos: [] };
       const exp = res.headers.get('github-authentication-token-expiration');
       if (exp) { const t = Date.parse(exp.replace(' UTC', 'Z').replace(' ', 'T')); if (!Number.isNaN(t)) expires = new Date(t).toISOString(); }
       const batch = await res.json();

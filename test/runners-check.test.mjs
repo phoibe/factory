@@ -213,3 +213,19 @@ test('GitHub having a hiccup is not a refused key: nothing is written, no alert'
   assert.equal(res.status, null);
   assert.deepEqual(s.writes, []);
 });
+
+test('without a working key, the last known machine of each project is kept, so the panel says the backup is off', async () => {
+  const key = await repoKey('101');
+  const prev = { key: 'ok', projects: { [key]: { machine: 'dev-server', reason: 'online', online: 1 } } };
+  const missing = await run({ keyApi: null, store: store({ 'status.json': prev }) });
+  assert.equal(missing.status.projects[key].machine, 'dev-server');
+  assert.equal(missing.status.projects[key].stale, true);
+  const refused = await run({ keyApi: { repos: async () => ({ ok: false, status: 401, repos: [] }), request: async () => assert.fail() }, store: store({ 'status.json': prev }), fetchImpl: async () => ({ ok: true }) });
+  assert.equal(refused.status.projects[key].machine, 'dev-server');
+});
+
+test('a 403 asking to wait is GitHub limiting, not a refused key', async () => {
+  const s = store({ 'status.json': { key: 'ok', projects: {} } });
+  const res = await run({ keyApi: { repos: async () => ({ ok: false, status: 429, repos: [] }), request: async () => assert.fail() }, store: s, fetchImpl: async () => assert.fail('no alert') });
+  assert.equal(res.status, null);
+});
