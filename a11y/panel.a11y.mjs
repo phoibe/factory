@@ -86,7 +86,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
               return input && { value: input.value, min: input.min, max: input.max, label: document.querySelector('label[for=maxQuestions]')?.textContent,
                 afterPick: pickRow?.contains(input) === true && Boolean(pickRow.querySelector('label[for=autoPick]').compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING) };
             });
-            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'Features en questions en même temps' || !q.afterPick)
+            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'En attente de vos réponses, au plus' || !q.afterPick)
               found.push(`Règles (${scheme}): réglage maxQuestions absent ou mal placé : ${JSON.stringify(q)}`);
             // Nested under the auto-pick switch: off while picking is off, aligned with the switch's label.
             const nest = await page.evaluate(() => ({ disabled: document.getElementById('maxQuestions').disabled,

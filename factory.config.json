@@ -1,8 +1,9 @@
 {
   "version": 1,
   "runner": "claude-cloud",
-  "maxParallel": 3,
+  "maxParallel": 5,
   "autoPick": true,
+  "maxQuestions": 2,
   "stack": "JavaScript sans dépendance (modules Node.js et navigateur), tests intégrés node --test, GitHub Actions et GitHub Pages pour le panneau",
   "stages": {
     "grilling": true,
@@ -24,8 +25,8 @@
     "test": true,
     "build": true,
     "a11y": true,
-    "audit": true,
-    "e2e": true
+    "e2e": true,
+    "audit": true
   },
   "skills": {
     "superpowers": {
@@ -84,6 +85,12 @@
       "enabled": true,
       "skills": {
         "impeccable": true
+      }
+    },
+    "anthropic": {
+      "enabled": true,
+      "skills": {
+        "webapp-testing": true
       }
     }
   }

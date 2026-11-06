@@ -216,3 +216,9 @@ test('ideas to sort: what the agent proposed, not kept, not started; the owner\'
   ];
   assert.deepEqual(ideaItems(items).map((i) => i.number), [1, 5]);
 });
+
+test('an idea written by a stranger on a public project is not an idea to sort', async () => {
+  const { ideaItems } = await import('../panel/lib.mjs');
+  const idea = (number, author_association) => ({ number, body: '<!-- factory-agent -->\nIdée', labels: ['factory:feature'], author_association, user: { login: 'x' } });
+  assert.deepEqual(ideaItems([idea(1, 'NONE'), idea(2, 'OWNER')]).map((i) => i.number), [2]);
+});

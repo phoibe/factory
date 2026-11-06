@@ -23,3 +23,13 @@ test('branchFiles joins the diff with main and the new untracked files', () => {
   const git = (args) => ({ 'merge-base': 'base\n', diff: 'app/a.tsx\n.factory/journal/old.jsonl\n', 'ls-files': '.factory/journal/new.jsonl\n' })[args[0]];
   assert.deepEqual(branchFiles(git), ['app/a.tsx', '.factory/journal/old.jsonl', '.factory/journal/new.jsonl']);
 });
+
+test('the command line checks the latest run with its own stage', async () => {
+  const { runOptions } = await import('../agent/scripts/journal-check.mjs');
+  const old = j({ t: '2026-11-01T10:00:00Z', kind: 'run', stage: 'build' });
+  const now = j({ t: '2026-11-02T10:00:00Z', kind: 'run', stage: 'skills-fix' });
+  const files = ['.factory/journal/a.jsonl', '.factory/journal/b.jsonl', 'x.js'];
+  const read = (f) => (f.endsWith('a.jsonl') ? old : f.endsWith('b.jsonl') ? now : null);
+  assert.deepEqual(runOptions(files, read), { stage: 'skills-fix', current: now });
+  assert.deepEqual(runOptions(['x.js'], read), {});
+});

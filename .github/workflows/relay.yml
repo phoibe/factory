@@ -178,8 +178,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .factory-src/scripts/relay.mjs report --result ${{ needs.checks.result }} --pr ${{ needs.decide.outputs.pr }} --sha "${{ needs.checks.outputs.sha }}" --started "${{ needs.checks.outputs.started }}" --transient "${{ needs.checks.outputs.transient }}"
+      - run: node .factory-src/scripts/relay.mjs report --result "$RESULT" --pr "$PR" --sha "$SHA" --started "$STARTED" --transient "$TRANSIENT"
         env:
+          RESULT: ${{ needs.checks.result }}
+          PR: ${{ needs.decide.outputs.pr }}
+          SHA: ${{ needs.checks.outputs.sha }}
+          STARTED: ${{ needs.checks.outputs.started }}
+          TRANSIENT: ${{ needs.checks.outputs.transient }}
           GITHUB_TOKEN: ${{ github.token }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
@@ -187,29 +192,33 @@ jobs:
 
   # Before the owner is given a preview to test, the factory opens it like a visitor (read-only page loads, see
   # scripts/smoke.mjs). A broken or empty preview goes back to the agent; then the report goes on as usual.
-  preview:
+  # Opening it runs the project's own dependencies (Playwright from its node_modules): that job may only read, with
+  # no credentials left behind; the result travels as an artifact to the job that writes.
+  preview-open:
     needs: decide
     if: needs.decide.outputs.preview != ''
     runs-on: ubuntu-24.04
-    # The wait for the preview (5 min), its opening (12), then the report and the alert, each waiting its turn on the
-    # queue lock (13 at worst, seconds in practice now that no decision waits under it).
-    timeout-minutes: 45
+    # The wait for the preview (5 min), then its opening (12).
+    timeout-minutes: 20
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
       deployments: read
-      actions: write
+      issues: read
+      pull-requests: read
+    outputs:
+      url: ${{ steps.wait.outputs.url }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ fromJSON(needs.decide.outputs.preview).sha }}
           path: project
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: phoibe/factory
           ref: ${{ inputs.factory_ref }}
           path: .factory-src
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -224,26 +233,23 @@ jobs:
         if: steps.wait.outputs.url != ''
         continue-on-error: true
         timeout-minutes: 12
-        run: node .factory-src/scripts/smoke.mjs --url "$PREVIEW_URL" --dir project --out "$RUNNER_TEMP/smoke.json"
         env:
           PREVIEW_URL: ${{ steps.wait.outputs.url }}
-      - name: Report
+        run: node .factory-src/scripts/smoke.mjs --url "$PREVIEW_URL" --dir project --out "$RUNNER_TEMP/smoke/smoke.json"
+      - uses: actions/upload-artifact@v4
         if: always()
-        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke.json" --url "$PREVIEW_URL"
-        env:
-          PREVIEW_URL: ${{ steps.wait.outputs.url }}
-          GITHUB_TOKEN: ${{ github.token }}
-          CHECK: ${{ needs.decide.outputs.preview }}
-          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
-          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        with:
+          name: smoke-preview
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+          retention-days: 1
+          overwrite: true
 
-  # After a merge: once the host has deployed it, the live site is opened the same way. If it does not work, the
-  # delivery is undone at once and an urgent bug redoes it properly (relay.mjs prodReport).
-  production:
-    needs: decide
-    if: needs.decide.outputs.production != ''
+  preview:
+    needs: [decide, preview-open]
+    if: always() && needs.decide.outputs.preview != ''
     runs-on: ubuntu-24.04
+    # The report and the alert, each waiting its turn on the queue lock (13 at worst, seconds in practice).
     timeout-minutes: 30
     permissions:
       contents: write
@@ -260,6 +266,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: smoke-preview
+          path: ${{ runner.temp }}/smoke
+      - name: Report
+        run: node .factory-src/scripts/relay.mjs preview-report --result-file "$RUNNER_TEMP/smoke/smoke.json" --url "$PREVIEW_URL"
+        env:
+          PREVIEW_URL: ${{ needs.preview-open.outputs.url }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.preview }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+  # After a merge: once the host has deployed it, the live site is opened the same way (read-only job, as for the
+  # preview). If it does not work, the delivery is undone at once and an urgent bug redoes it properly
+  # (relay.mjs prodReport).
+  production-open:
+    needs: decide
+    if: needs.decide.outputs.production != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      deployments: read
+    outputs:
+      url: ${{ steps.live.outputs.url }}
+      deployFailed: ${{ steps.live.outputs.deployFailed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - id: live
         name: Wait for the new version
         run: node .factory-src/scripts/relay.mjs live-url
@@ -267,20 +312,63 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.production }}
       - uses: actions/checkout@v4
-        if: steps.live.outputs.url != '' || steps.live.outputs.deployFailed == 'true'
+        if: steps.live.outputs.url != ''
         with:
           ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
           path: project
-          fetch-depth: 0
+          persist-credentials: false
       - name: Open the live site
         if: steps.live.outputs.url != ''
         continue-on-error: true
         timeout-minutes: 12
-        run: node .factory-src/scripts/smoke.mjs --url "${{ steps.live.outputs.url }}" --dir project --out "$RUNNER_TEMP/smoke.json"
-      - name: Report
-        if: always() && (steps.live.outputs.url != '' || steps.live.outputs.deployFailed == 'true')
-        run: node .factory-src/scripts/relay.mjs prod-report --result-file "$RUNNER_TEMP/smoke.json" --url "${{ steps.live.outputs.url }}" --deploy-failed "${{ steps.live.outputs.deployFailed }}" --dir project
         env:
+          URL: ${{ steps.live.outputs.url }}
+        run: node .factory-src/scripts/smoke.mjs --url "$URL" --dir project --out "$RUNNER_TEMP/smoke/smoke.json"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.live.outputs.url != ''
+        with:
+          name: smoke-production
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+          retention-days: 1
+          overwrite: true
+
+  production:
+    needs: [decide, production-open]
+    if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      deployments: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The project is checked out here only for git (an undo commit), never to run its code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
+          path: project
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: smoke-production
+          path: ${{ runner.temp }}/smoke
+      - name: Report
+        run: node .factory-src/scripts/relay.mjs prod-report --result-file "$RUNNER_TEMP/smoke/smoke.json" --url "$URL" --deploy-failed "$DEPLOY_FAILED" --dir project
+        env:
+          URL: ${{ needs.production-open.outputs.url }}
+          DEPLOY_FAILED: ${{ needs.production-open.outputs.deployFailed }}
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.production }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}

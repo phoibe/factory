@@ -18,7 +18,8 @@ export function handsOver(tool, input = {}) {
   if (/create_pull_request$/.test(tool || '')) return true;
   if (/(add|update)_(issue_)?labels?$|issue_write$/.test(tool || '')) return /factory:(checks|visual-review)/.test(JSON.stringify(input));
   if (tool !== 'Bash') return false;
-  const cmd = String(input.command || '').replace(HEREDOC, '');
+  // A command continued with a backslash is one line for the shell: join it before matching.
+  const cmd = String(input.command || '').replace(HEREDOC, '').replace(/\\\r?\n/g, ' ');
   if (/\bgh\s+pr\s+create\b/.test(cmd)) return true;
   if (/\bgh\s+pr\s+edit\b[^\n]*--add-label[^\n]*factory:(checks|visual-review)/.test(cmd)) return true;
   if (/(gh\s+api|curl)\b[^\n]*\blabels\b[^\n]*factory:(checks|visual-review)/.test(cmd)) return true;
