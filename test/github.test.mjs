@@ -78,3 +78,11 @@ test('pauses stop once three minutes were spent waiting in one run: the event is
   await gh.getPr(1).catch(() => {});
   await assert.rejects(gh.getPr(1), (e) => e.rateLimited === true);
 });
+
+test('no pause runs past the job\'s time: after 12 minutes of run, the limit is passed on so the event is taken up later', async () => {
+  let t = 0;
+  const gh = github({ token: 't', repo: 'o/r', now: () => t, sleep: async () => {}, fetchImpl: async () => answers.shift() });
+  const answers = [limited(429, { 'retry-after': '30' }), answer(200, { number: 1 })];
+  t = 11.8 * 60_000;
+  await assert.rejects(gh.getPr(1), (e) => e.rateLimited === true);
+});

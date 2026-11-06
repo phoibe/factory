@@ -1412,11 +1412,11 @@ test('a tick stopped by the rate limit is not re-run: the next tick does the sam
   const gh = fakeGh({ issues: [], prs: [] });
   const recent = new Date().toISOString();
   Object.assign(gh, {
-    failedRuns: async () => [{ id: 1, event: 'schedule', run_attempt: 1, created_at: recent, updated_at: recent }, { id: 2, event: 'issue_comment', run_attempt: 1, created_at: recent, updated_at: new Date(Date.now() - 2.5 * 3600_000).toISOString() }],
+    failedRuns: async () => [{ id: 1, event: 'schedule', run_attempt: 1, created_at: recent, updated_at: recent }, { id: 2, event: 'issue_comment', run_attempt: 1, created_at: recent, updated_at: new Date(Date.now() - 1.5 * 3600_000).toISOString() }],
     runJobs: async () => [{ steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
     rerunFailed: async (id) => gh.calls.push(['rerun', id]),
   });
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
-  // The event run is still taken up 2 h 30 after it stopped: a primary limit can last an hour, and ticks run late.
+  // The event run is still taken up 1 h 30 after it stopped: a primary limit can last an hour, and ticks run late.
   assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 2]]);
 });

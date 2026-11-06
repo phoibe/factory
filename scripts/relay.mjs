@@ -594,9 +594,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function retryRateLimited() {
     if (!gh.failedRuns) return;
     const since = now() - 24 * 3600_000;
-    // A primary limit can last an hour and ticks run late: a run is looked at for 3 h after it last moved, then its
-    // jobs are no longer read at every tick.
-    const moved = now() - 3 * 60 * 60_000;
+    // A primary limit lasts at most an hour and ticks run late: a run is looked at for 2 h after it last moved, then
+    // its jobs are no longer read at every tick.
+    const moved = now() - 2 * 60 * 60_000;
     for (const run of await gh.failedRuns(PROJECT_WORKFLOW)) {
       if (run.event === 'schedule') continue; // a stopped tick: the next one does the same work
       if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
@@ -787,7 +787,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const project = repo.split('/')[1] || repo;
       const cards = waitingCards(items);
       // The latest label events of the whole repository in one read; a card whose wait began earlier reads its own.
-      const recent = cards.length && gh.listRepoEvents ? ((await gh.listRepoEvents().catch(() => null)) || []) : [];
+      const recent = cards.length && gh.listRepoEvents ? ((await gh.listRepoEvents().catch((e) => { if (isRateLimited(e)) throw e; return null; })) || []) : [];
       const isWait = (card) => (e) => e.event === 'labeled' && e.label?.name === card.label;
       for (const card of cards) {
         try {

@@ -12,8 +12,10 @@ const transient = (method, status) => (method === 'POST' ? status === 503 : stat
 // its timeout, so that its event is taken up again.
 const MAX_RATE_PAUSES = 3;
 const MAX_PAUSED_MS = 3 * 60_000;
+const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the queue lock first: no pause past this
 
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
+  const started = now();
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried like a 503.
   async function send(method, url, init) {
@@ -27,7 +29,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       }
       const wait = rateLimitDelay(res.status, res.headers);
       if (wait !== null) {
-        if (wait > MAX_PAUSE_MS || pauses >= MAX_RATE_PAUSES || paused + wait > MAX_PAUSED_MS) throw new RateLimited(wait);
+        if (wait > MAX_PAUSE_MS || pauses >= MAX_RATE_PAUSES || paused + wait > MAX_PAUSED_MS || now() - started + wait > RUN_BUDGET_MS) throw new RateLimited(wait);
         pauses++;
         paused += wait;
         attempt--; // a pause is not one of the 5xx retries
