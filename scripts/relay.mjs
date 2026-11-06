@@ -401,15 +401,27 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // After a merge, the live site is opened as soon as its new version is deployed (production job of relay.yml).
   // Only for a project its host deploys (Vercel, Netlify, GitHub Pages…): elsewhere there is nothing to open.
+  // A host that tells GitHub nothing (Vercel without deployments, as on yoldmewhen2) is still checked when the site's
+  // address is known (siteUrl, or the repository's website) and the host builds the project (it comments the PRs).
   async function checkLive(prNumber) {
     const envs = ((await gh.recentDeployments?.().catch(() => null)) || []).map((d) => d.environment);
-    if (!envs.some(isLiveEnv)) return;
+    let url = null;
+    if (!envs.some(isLiveEnv)) {
+      const repoInfo = await gh.getRepo().catch(() => null);
+      const site = config.siteUrl || (/^https:\/\/\S+$/.test(repoInfo?.homepage || '') ? repoInfo.homepage : null);
+      const hosted = envs.some((e) => e && e !== 'github-pages') || ((await gh.listComments(prNumber).catch(() => [])) || []).some((c) => c.user?.login === 'vercel[bot]');
+      if (!site || !hosted) {
+        log(`live check: no live deployment${envs.length ? ` (seen: ${[...new Set(envs)].join(', ')})` : ''}${site ? '' : ', no site address'}`);
+        return;
+      }
+      url = site;
+    }
     const merged = await gh.getPr(prNumber);
     const sha = merged?.merge_commit_sha;
     if (!sha) return;
     const ref = (await gh.getRepo())?.default_branch || 'main';
-    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha } }) });
-    log(`live check started for #${prNumber} (${sha.slice(0, 7)})`);
+    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}) } }) });
+    log(`live check started for #${prNumber} (${sha.slice(0, 7)})${url ? ` on ${url}` : ''}`);
   }
 
   // The factory undid a broken delivery (prodReport): once the undo is live, the issue that redoes it can start.
@@ -431,7 +443,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // newer deploy is created a moment after the cancel, so a lone failure is only believed after a few polls.
   // A failure gives the host's message and, when the host is GitHub Actions, the run to re-run (issue #227). After
   // that re-run, `since` ignores the deploys made before it: the old failure must not answer for the new attempt.
-  async function liveUrl(sha, { attempts = 30, delayMs = 20_000, lonePolls = 3, since = 0 } = {}) {
+  // `url`: the site's address when the host reports no deployment (checkLive). Its new version is given
+  // `blindPolls` polls to go live (Vercel publishes in about a minute); smoke.mjs then retries a failure for 5 minutes.
+  async function liveUrl(sha, { attempts = 30, delayMs = 20_000, lonePolls = 3, since = 0, url = null, blindPolls = 6 } = {}) {
     const outcome = async (d) => {
       const statuses = (await gh.deploymentStatuses(d.id)) || [];
       const ok = statuses.find((s) => s.state === 'success');
@@ -444,10 +458,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     };
     const fresh = (d) => !since || Date.parse(d.created_at || 0) >= since;
     let lone = 0;
+    let seen = false; // a deployment of this commit was reported: the host is followed, never the blind wait
     let failure = { failed: true };
     for (let i = 0; i < attempts; i++) {
       let failedAlone = false; // a failure with no newer deploy that went live or is still deploying
-      for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment) && fresh(x))) {
+      const live = ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment) && fresh(x));
+      if (live.length) seen = true;
+      for (const d of live) {
         const result = await outcome(d);
         if (result === undefined) continue;
         if (!result?.failed) return result;
@@ -460,6 +477,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         if (next?.failed) { failedAlone = true; failure = next; continue; }
         if (next !== undefined) return next;
       }
+      if (url && !seen && i >= blindPolls) return url;
       lone = failedAlone ? lone + 1 : 0;
       if (failedAlone && (lone >= lonePolls || i === attempts - 1)) return failure;
       if (i < attempts - 1) await sleep(delayMs);
@@ -1545,7 +1563,7 @@ async function main() {
     return;
   } else if (command === 'live-url') {
     const check = readCheck();
-    let url = await relay.liveUrl(check.sha, { since: Number(check.retriedAt) || 0 });
+    let url = await relay.liveUrl(check.sha, { since: Number(check.retriedAt) || 0, url: check.url || null });
     // The re-run of a failed publication published nothing at all: as good as a second failure.
     if (url === null && check.deployRetried) url = { failed: true, detail: "la nouvelle tentative n'a rien publié en 10 minutes" };
     writeOutputs({ url: toJobOutput(typeof url === 'string' ? url : ''), deployFailed: url?.failed ? 'true' : 'false', deployFailure: url?.failed ? toJobOutput(JSON.stringify(url)) : '' });
