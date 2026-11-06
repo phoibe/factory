@@ -120,7 +120,7 @@ export function tokenFromHash(hash) {
 export const phoneLink = (pageUrl, token) => `${pageUrl.split('#')[0]}#jeton=${token}`;
 
 // Preview link of a PR, from its comments (oldest first): the Vercel bot's latest "[Preview](…)"
-// or "[Visit Preview](…)" link, else the factory's « Tu peux tester … ici : https://… » message.
+// or "[Visit Preview](…)" link, else the factory's « … tester la nouvelle version ici : https://… » message.
 // Only trusted authors count: on a public project anyone can comment, and a link planted that way must never
 // show up as the project's preview. Trusted = the Vercel bot, the factory's own bot, or someone with write access.
 const OWNER_ROLES = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -201,6 +201,7 @@ const IDEA_KINDS = ['factory:feature', 'factory:bug'];
 export function ideaItems(items) {
   return (items || [])
     .filter((i) => !i.pull_request && String(i.body || '').includes('<!-- factory-agent -->'))
+    .filter((i) => !i.author_association || OWNER_ROLES.has(i.author_association) || /\[bot\]$/.test(i.user?.login || ''))
     .filter((i) => i.labels.some((l) => IDEA_KINDS.includes(l)) && !i.labels.includes('factory:kept'))
     .filter((i) => !columnFor(i.labels) && !i.labels.some((l) => ['factory:running', 'factory:pending', 'factory:close'].includes(l)))
     .sort((a, b) => a.number - b.number);

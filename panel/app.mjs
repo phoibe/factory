@@ -1,9 +1,9 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems } from './lib.mjs?v=19';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=13';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems } from './lib.mjs?v=20';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=14';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=6';
-import { resolveConfig } from './config-core.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes } from './live.mjs?v=7';
+import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
@@ -24,15 +24,15 @@ const store = {
 };
 
 const STAGES = [
-  ['grilling', 'Questions préalables', "L'agent vous pose des questions pour clarifier la demande avant d'écrire la spec."],
-  ['specReview', 'Valider chaque spec', "Coché : vous validez chaque spec par « go ». Décoché : l'agent lance la construction seul et ne vous demande votre accord que pour une spec sensible (données perdues, argent, sécurité, changement de vision ou de design)."],
-  ['plan', 'Plan', "L'agent écrit un plan de construction avant de coder."],
-  ['tdd', 'Tests avant le code', "Les tests sont écrits avant le code."],
-  ['review', 'Revue de code', "Un second agent, qui n'a pas écrit le code, le relit."],
-  ['designPass', 'Passe design', "Le skill impeccable critique chaque écran créé ou modifié et corrige tout ce qu'il trouve."],
-  ['screenshots', 'Captures avant/après', "Vous validez l'apparence avant les contrôles."],
-  ['checks', 'Contrôles automatiques', 'Types, lint, tests, build, accessibilité, parcours, failles.'],
-  ['acceptance', 'Recette', 'Vous testez la preview (ou relisez le résumé) avant la mise en ligne.'],
+  ['grilling', 'Questions préalables'],
+  ['specReview', 'Valider chaque spec par « go »'],
+  ['plan', 'Plan de construction'],
+  ['tdd', 'Tests avant le code'],
+  ['review', 'Revue de code par un second agent'],
+  ['designPass', 'Revue de l\'apparence'],
+  ['screenshots', 'Captures avant/après à valider'],
+  ['checks', 'Contrôles avant fusion'],
+  ['acceptance', 'Recette avant la mise en ligne'],
 ];
 const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['e2e', 'Parcours rejoués à chaque livraison'], ['audit', 'Failles connues des dépendances'],
@@ -93,6 +93,7 @@ async function api(path, init = {}) {
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
   $('nav').hidden = id === 'login';
+  $('project').hidden = id !== 'project-view'; // no project to choose from on the empty screen
   if (typeof placeMenu === 'function') placeMenu();
 }
 
@@ -152,16 +153,20 @@ function renderProjectSelect() {
 }
 
 async function openProject(fullName) {
-  current = projects.find((p) => p.repo.full_name === fullName) || projects[0];
+  const next = projects.find((p) => p.repo.full_name === fullName) || projects[0];
+  // A broken settings file opens with the default settings: it must never lock the panel on that project.
+  const { raw, warning } = parseRawConfig(next.file?.content ? fromBase64(next.file.content) : null);
+  if (warning) toast('Les réglages de ce projet sont illisibles : les réglages par défaut sont affichés.');
+  if (current && current.repo.full_name !== next.repo.full_name) cancelPendingGos();
+  current = next;
   store.set(PROJECT_KEY, current.repo.full_name);
   renderProjectSelect();
-  const raw = JSON.parse(fromBase64(current.file.content));
   const { config, warnings } = resolveConfig(raw, catalog, defaults);
   current.config = config;
   current.saved = JSON.stringify(config);
   for (const w of warnings) console.warn(w);
   $('project-name').textContent = current.repo.name;
-  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · moteur : ${config.runner === 'claude-cloud' ? 'cloud Claude' : 'GitHub Actions'} · ${config.maxParallel} en parallèle`;
+  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${config.maxParallel} en parallèle`;
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -170,9 +175,6 @@ async function openProject(fullName) {
   const r = current.repo.full_name;
   const framed = (await Promise.all(['PRODUCT.md', 'docs/PRODUCT.md'].map((f) => api(`/repos/${r}/contents/${f}`).catch(() => null)))).some(Boolean);
   $('new-project').textContent = framed ? 'Revoir le cadrage' : 'Cadrer le projet';
-  $('new-project').title = framed
-    ? "Change la vision, le périmètre, le design ou la stack : l'agent met la fiche produit à jour et crée les nouvelles features, sans refaire les fondations."
-    : "À faire une fois, avant la première feature : vision, design et stack.";
   $('issues-link').href = issuesUrl(base);
   $('issues-link').textContent = issuesLinkText(null);
   show('project-view');
@@ -183,7 +185,7 @@ async function openProject(fullName) {
 }
 
 // ---- Live board -------------------------------------------------------------------------------
-// The board polls GitHub every 15 s while visible. Requests carry the last ETag, so an unchanged
+// The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
 const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
@@ -314,16 +316,16 @@ const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Valider les captures', 
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 // The card's answer: a « go » button (5 s to cancel) or the link to the message to answer.
 // The « go » button's spoken name follows what a press does: send, cancel, or nothing while it is sent.
-const goName = (c) => `${pendingGo.has(c.number) ? 'Annuler le go' : sentGo.has(c.number) ? 'Envoi du go' : 'go'} pour #${c.number} ${c.title}`;
+const goName = (c) => `${pendingGo.has(goKey(c)) ? 'Annuler le go' : sentGo.has(goKey(c)) ? 'Envoi du go' : 'go'} pour #${c.number} ${c.title}`;
 const replyAction = (c) => c.reply === 'go'
-  ? el('button', { type: 'button', disabled: sentGo.has(c.number), class: pendingGo.has(c.number) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(c.number) ? `Annuler (${pendingGo.get(c.number).left} s)` : sentGo.has(c.number) ? 'Envoi…' : 'go')
+  ? el('button', { type: 'button', disabled: sentGo.has(goKey(c)), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : sentGo.has(goKey(c)) ? 'Envoi…' : 'go')
   : el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Feature';
+  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running;
@@ -342,7 +344,7 @@ function card(c, lane, minutes, now, moved) {
   // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
   const testIt = c.column === 'acceptance' && !running && !waiting;
   const previewLink = preview ? el('a', { class: `preview button${testIt ? '' : ' secondary'}`, href: preview, target: '_blank', rel: 'noopener' },
-    testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
+    testIt || (waiting && c.column === 'acceptance') ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
@@ -386,14 +388,22 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 // A « go » waits 5 seconds and can be cancelled; nothing is stored, so leaving the page cancels it.
 const pendingGo = new Map();
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
-async function sendGo(c, btn) {
+// Both are keyed by project and number: #12 of one project is not #12 of another.
+const goKey = (c) => `${current.repo.full_name}#${c.number}`;
+function cancelPendingGos() {
+  if (!pendingGo.size) return;
+  for (const h of pendingGo.values()) h.cancel();
+  pendingGo.clear();
+  toast('« go » annulé : vous avez changé de projet.');
+}
+async function sendGo(c, btn, repo, key) {
   try {
-    await api(`/repos/${current.repo.full_name}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
+    await api(`/repos/${repo}/issues/${c.number}/comments`, { method: 'POST', body: JSON.stringify({ body: 'go' }) });
     toast('« go » envoyé. La construction démarre.');
     await refresh();
   } catch (e) {
     toast(`Envoi impossible : ${e.message}`);
-    sentGo.delete(c.number);
+    sentGo.delete(key);
     btn.disabled = false;
     btn.textContent = 'go';
     btn.classList.remove('undo');
@@ -402,8 +412,9 @@ async function sendGo(c, btn) {
 }
 const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
 function answerGo(c, btn) {
-  const running = pendingGo.get(c.number);
-  if (running) { running.cancel(); pendingGo.delete(c.number); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
+  const repo = current.repo.full_name, key = goKey(c);
+  const running = pendingGo.get(key);
+  if (running) { running.cancel(); pendingGo.delete(key); toast('« go » annulé.'); btn.textContent = 'go'; btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
   toast('« go » part dans 5 s. Touchez le bouton pour annuler.');
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
@@ -411,11 +422,11 @@ function answerGo(c, btn) {
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
   const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const h = pendingGo.get(c.number); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
-    done: () => { pendingGo.delete(c.number); const b = goBtn(c, null); if (!b) return; sentGo.add(c.number); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b); },
+    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le go pour #${c.number} ${c.title}`); },
+    done: () => { pendingGo.delete(key); const b = goBtn(c, null); if (!b) return; sentGo.add(key); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b, repo, key); },
   });
   handle.left = 5;
-  pendingGo.set(c.number, handle);
+  pendingGo.set(key, handle);
 }
 
 function skeleton() {
@@ -467,7 +478,7 @@ function youCard(yours, headline, sub) {
         c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
         el('span', { class: 'muted' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column))),
       c.labels.includes('factory:skills-alert') ? el('p', { class: 'alert' }, 'Une étape attendue manque (voir « Fabrication » dans la PR).') : null,
-      live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir la preview à tester' : 'Voir la preview', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
+      live.previews.get(c.number) ? el('a', { class: 'button secondary', href: live.previews.get(c.number), target: '_blank', rel: 'noopener' }, c.column === 'acceptance' ? 'Ouvrir l\'aperçu à tester' : 'Voir l\'aperçu', el('span', { 'aria-hidden': 'true' }, ' ↗')) : null,
       replyAction(c)))),
     status);
 }
@@ -496,7 +507,7 @@ async function sortIdea(i, keep, pick) {
     if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
     else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
     toast(keep
-      ? (pick ? 'Idée gardée : la factory la prendra dès qu\'une place se libère.' : 'Idée gardée. Écrivez dedans pour la lancer.')
+      ? (pick ? 'Idée gardée.' : 'Idée gardée. Écrivez dedans pour la lancer.')
       : 'Idée jetée : elle ne vous sera plus proposée.');
     // At once on the board, without waiting for GitHub's next answer.
     live.issues = keep ? live.issues.map((x) => (x.number === i.number ? { ...x, labels: [...x.labels, 'factory:kept'] } : x)) : live.issues.filter((x) => x.number !== i.number);
@@ -537,7 +548,7 @@ function drawBoard() {
   document.title = tabTitle(n);
   const doneShown = doneView(live.done);
   const headline = n ? (n === 1 ? '1 chose vous attend' : `${n} choses vous attendent`)
-    : cards.length ? 'Rien ne vous attend' : 'Aucune feature en cours';
+    : cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours';
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
     : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
@@ -675,7 +686,6 @@ function renderRules() {
   const form = $('rules');
   const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
     el('label', { for: 'site-url' }, 'Adresse du site'),
-    el('p', { class: 'muted' }, 'Le lien affiché sous le nom du projet. Sur Vercel : le domaine de production, par exemple https://habitudes.vercel.app.'),
     el('input', { type: 'url', id: 'site-url', placeholder: 'https://…', value: c.siteUrl || '', inputmode: 'url',
       onchange: (e) => {
         const v = e.target.value.trim();
@@ -685,23 +695,20 @@ function renderRules() {
         update(next);
       } }));
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
-    ...[['claude-cloud', 'Cloud Claude', 'Routine Claude Code, incluse dans votre abonnement (limite de lancements par jour).'],
-      ['github-actions', 'GitHub Actions', 'Machines GitHub, illimitées sur un dépôt public, 2 000 minutes/mois en privé.']]
-      .map(([v, t, d]) => el('div', { class: 'row' },
+    ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
+      ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
+      .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
-        el('div', {}, el('label', { for: `runner-${v}` }, t), el('p', {}, d)))),
+        el('label', { for: `runner-${v}` }, t))),
     el('div', { class: 'row' },
-      el('div', {}, el('label', { for: 'maxParallel' }, 'Features en parallèle'),
-        el('p', {}, 'Comptées pendant que l\'agent construit : une feature libère sa place dès que sa PR est ouverte. Les suivantes attendent en file.'),
+      el('div', {}, el('label', { for: 'maxParallel' }, 'Fonctionnalités construites en même temps'),
         el('input', { type: 'number', id: 'maxParallel', min: '1', max: '10', value: String(c.maxParallel),
           onchange: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1) update(setPath(c, 'maxParallel', v)); } }))),
     el('div', { class: 'row' }, checkbox('autoPick', c.autoPick === true, (on) => update(setPath(c, 'autoPick', on))),
-      el('div', {}, el('label', { for: 'autoPick' }, 'Piocher dans les fiches existantes'),
-        el('p', {}, 'Quand une place est libre et la file vide, la factory prend une fiche ouverte. Étiquettes : factory:urgent, factory:no-pick.'),
+      el('div', {}, el('label', { for: 'autoPick' }, 'Prendre une demande ouverte quand une place se libère'),
         // Only acts on picked features: nested under the switch, and off while picking is off.
         el('div', { class: 'sub-setting', 'aria-disabled': c.autoPick === true ? 'false' : 'true' },
-          el('label', { for: 'maxQuestions' }, 'Features en questions en même temps'),
-          el('p', {}, 'Features que la factory prend d\'elle-même et qui attendent vos réponses. Celles sur lesquelles vous écrivez vous-même démarrent toujours tout de suite.'),
+          el('label', { for: 'maxQuestions' }, 'En attente de vos réponses, au plus'),
           el('input', { type: 'number', id: 'maxQuestions', min: '1', max: '10', inputmode: 'numeric', disabled: c.autoPick !== true, value: String(c.maxQuestions ?? 2),
             onchange: (e) => {
               const v = Number(e.target.value);
@@ -710,22 +717,22 @@ function renderRules() {
               toast('Entre 1 et 10.');
             } })))));
   const stages = el('fieldset', {}, el('legend', {}, 'Étapes'),
-    STAGES.map(([k, t, d]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
-      el('div', {}, el('label', { for: `stage-${k}` }, t), el('p', {}, d)))));
+    STAGES.map(([k, t]) => el('div', { class: 'row' }, checkbox(`stage-${k}`, c.stages[k], (on) => update(setPath(c, `stages.${k}`, on))),
+      el('label', { for: `stage-${k}` }, t))));
   const checks = el('fieldset', {}, el('legend', {}, 'Contrôles automatiques'),
     CHECKS.map(([k, t]) => el('div', { class: 'row' }, checkbox(`check-${k}`, c.checks[k], (on) => update(setPath(c, `checks.${k}`, on))),
       el('label', { for: `check-${k}` }, t))));
   const packs = catalog.packs.map((p) => {
     const pc = c.skills[p.id];
     const on = p.skills.filter((s) => pc.skills[s.id]).length;
-    return el('fieldset', {}, el('legend', {}, `Skills : ${p.name}`),
+    return el('fieldset', {}, el('legend', {}, `Savoir-faire : ${p.name}`),
       el('div', { class: 'row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
-        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Pack activé'), el('p', {}, `${on} skill(s) sur ${p.skills.length} · ${p.repo} · ${p.license}`))),
+        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Activé'), el('p', {}, `${on} sur ${p.skills.length}`))),
       el('details', { open: p.skills.length <= 3 }, el('summary', {}, 'Choisir les skills'),
         el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
           p.skills.map((s) => el('div', { class: 'row' },
             checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
-            el('div', {}, el('label', { for: `skill-${s.id}` }, s.id), el('p', {}, s.description.length > 220 ? s.description.slice(0, 217) + '…' : s.description)))))));
+            el('label', { for: `skill-${s.id}` }, s.id))))));
   });
   const dirty = JSON.stringify(c) !== current.saved;
   const bar = el('div', { class: 'savebar' },
@@ -736,13 +743,20 @@ function renderRules() {
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 
+let savingRules = false;
 async function saveRules(e) {
   e.preventDefault();
+  if (savingRules) return; // a second tap would send the same version twice, and GitHub refuses the second one
+  savingRules = true;
+  try { await writeRules(); } finally { savingRules = false; }
+}
+async function writeRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
+  if (!fresh) throw new Error('les réglages de ce projet ont disparu de GitHub. Rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
-    const theirs = resolveConfig(JSON.parse(fromBase64(fresh.content)), catalog, defaults).config;
+    const theirs = resolveConfig(parseRawConfig(fromBase64(fresh.content)).raw, catalog, defaults).config;
     current.config = mergeConfig(JSON.parse(current.saved), current.config, theirs);
   }
   const body = JSON.stringify(current.config, null, 2) + '\n';
@@ -779,29 +793,39 @@ async function checkVersion() {
   if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
-  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim());
+  // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
+  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
+    || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
   if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
   location.reload();
 }
+let watching = false, retryTimer = null;
 function watchVersion() {
+  if (watching) return; // start() runs again after each failed attempt and each login: one watcher is enough
+  watching = true;
   setInterval(checkVersion, 60_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
 }
 
+const fetchJson = (url) => fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); });
+
 async function start() {
   watchVersion();
-  let server;
-  [catalog, defaults, server] = await Promise.all([fetch('catalog.json').then((r) => r.json()), fetch('factory.config.json').then((r) => r.json()),
-    fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
-  chat.server = chatServerUrl(server?.url);
-  if (!token) return show('login');
   try {
+    if (!catalog) {
+      let server;
+      [catalog, defaults, server] = await Promise.all([fetchJson('catalog.json'), fetchJson('factory.config.json'),
+        fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+      chat.server = chatServerUrl(server?.url);
+    }
+    if (!token) return show('login');
     projects = await loadProjects();
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
-      toast('GitHub ne répond pas. Nouvel essai dans 15 s.');
-      setTimeout(() => start().catch(() => {}), 15_000);
+      toast('Connexion impossible pour l\'instant. Nouvel essai dans 15 s.');
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => start().catch(() => {}), 15_000);
       return;
     }
     store.del(TOKEN_KEY);
@@ -845,13 +869,13 @@ async function refreshStable() {
   const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
   stableChanges = (cmp?.commits || []).map((c) => c.commit.message.split('\n')[0]).filter((s) => !s.startsWith('chore(factory)'));
   const btn = $('stable');
-  btn.hidden = !cmp || cmp.ahead_by === 0;
+  btn.hidden = !(cmp?.ahead_by > 0);
   btn.textContent = `Déclarer stable (${cmp?.ahead_by || 0})`;
 }
 
 $('stable').addEventListener('click', async () => {
   const list = stableChanges.slice(-8).map((s) => `• ${s}`).join('\n');
-  if (!confirm(`Déclarer stable la version en cours de la factory ?\n\n${list}\n\nSes tests sont relancés d'abord : s'ils sont rouges, rien ne change. Sinon tous les projets prennent cette version à leur prochain run.`)) return;
+  if (!confirm(`Déclarer stable la version en cours de la factory ?\n\n${list}`)) return;
   const btn = $('stable');
   btn.disabled = true;
   try {
@@ -910,7 +934,7 @@ $('general-review').addEventListener('click', () => startGeneralReview());
 // Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
 async function startGeneralReview() {
   if (!current) return;
-  if (!confirm("Lancer une review générale ?\n\nL'agent critique et corrige tous les écrans (impeccable), puis relit et corrige tout le code. Il ouvre une PR que vous validerez comme une feature.")) return;
+  if (!confirm('Lancer une review générale de l\'appli ?')) return;
   const btn = $('general-review');
   btn.disabled = true;
   try {
@@ -1100,7 +1124,7 @@ function bubble(m) {
     pics.length ? el('div', { class: 'shots' }, pics) : null,
     text.length ? el('div', { class: 'bubble' }, text) : null,
     ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
-      el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Feature créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
+      el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Fonctionnalité créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
     el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
 }
 
@@ -1110,7 +1134,7 @@ function liveBubble() {
   return el('li', { class: 'msg agent', id: 'live-bubble' },
     live.text
       ? el('div', { class: 'bubble' }, richText(live.text))
-      : el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+      : el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
     el('span', { class: 'meta' }, live.status || 'Réfléchit…'));
 }
 
@@ -1150,31 +1174,45 @@ function drawChat() {
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
   if (chat.server) return drawServerChat(isNew);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '…';
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
   if (isNew) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
       el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
-      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème. L\'agent lit le code pour vous répondre, en général en une à trois minutes. Il peut ensuite en faire une feature ou un bug.'),
       examples()));
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
-      ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+      ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
         el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    announceAnswers(chat.issue.number, messages);
     $('chat-close').hidden = status === 'closed';
   } else {
     list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
   }
   if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+}
+
+// The list is redrawn on every poll: only a new answer of the agent is read out, not the whole conversation again.
+let announced = { id: null, count: 0 };
+function announceAnswers(id, messages) {
+  const count = messages.filter((m) => m.who === 'agent').length;
+  // A new conversation gets its number with its first answer: still the same conversation.
+  const same = announced.id === id || announced.id == null || announced.id === 'new';
+  if (same && count > announced.count) {
+    const live = $('chat-announce');
+    live.textContent = ''; // the same words again must still be read out
+    requestAnimationFrame(() => { live.textContent = 'Nouvelle réponse de l\'agent.'; });
+  }
+  announced = { id, count };
 }
 
 const examples = () => el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)));
@@ -1183,13 +1221,12 @@ function drawServerChat(isNew) {
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   const entry = chat.list?.find((c) => c.id === chat.open);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '…');
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '');
   $('chat-tools').hidden = isNew || !chat.conv;
   $('chat-close').hidden = entry?.state === 'closed';
   if (isNew) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
       el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
-      el('p', { class: 'muted' }, 'Posez une question sur son fonctionnement, proposez une idée ou décrivez un problème, avec une capture si vous le souhaitez. L\'agent lit le code et vous répond en quelques secondes. Il peut ensuite en faire une feature ou un bug.'),
       examples()));
   } else if (chat.conv || chat.live) {
     const messages = serverMessages(chat.conv);
@@ -1197,6 +1234,7 @@ function drawServerChat(isNew) {
     const tail = chat.live ? liveBubble()
       : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    announceAnswers(chat.open, messages);
   } else {
     list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
   }
@@ -1377,6 +1415,8 @@ async function sendToServer(text, files, withImages) {
     if (!answer) throw new Error('la réponse a été coupée');
   } catch (e) {
     if (!$('chat-input').value) $('chat-input').value = text;
+    // The images go back too: without them the message the owner resends would not be the same.
+    if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
     toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
   } finally {
@@ -1495,7 +1535,9 @@ const phoneMq = matchMedia('(max-width: 600px)');
 function placeMenu() {
   const menu = $('more-menu');
   // The menu lives in the project view: with no project shown, the items stay in the header.
-  if (phoneMq.matches && !$('project-view').hidden) menuItems.forEach(({ node }) => menu.append(node));
+  // Project actions first, then what concerns the whole factory, « Se déconnecter » last.
+  const ofProject = (i) => $('project-view').contains(i.home);
+  if (phoneMq.matches && !$('project-view').hidden) [...menuItems.filter(ofProject), ...menuItems.filter((i) => !ofProject(i))].forEach(({ node }) => menu.append(node));
   else menuItems.slice().reverse().forEach(({ node, home, next }) => home.insertBefore(node, next && next.parentNode === home ? next : null));
   $('more').open = !(phoneMq.matches && !$('project-view').hidden);
 }

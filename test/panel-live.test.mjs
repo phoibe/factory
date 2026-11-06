@@ -27,7 +27,7 @@ test('laneFor sorts cards into what waits for the owner, what agents do, and the
 
 test('actionFor names what the owner has to do', () => {
   assert.equal(actionFor('grilling'), 'Répondez aux questions');
-  assert.equal(actionFor('acceptance'), 'Testez la preview');
+  assert.equal(actionFor('acceptance'), 'Testez l\'aperçu');
   assert.equal(actionFor('building'), null);
 });
 
