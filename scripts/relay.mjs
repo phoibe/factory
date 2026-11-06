@@ -422,18 +422,42 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // The new version of the live site, once its host reports it deployed (polls up to `attempts` × `delayMs`).
-  // Only the newest live deployment counts (a re-run adds one for the same commit), and its newest decisive status
-  // (a superseded deployment ends « inactive » after its success). A failure gives the host's message and, when the
-  // host is GitHub Actions, the run to re-run (issue #227).
-  async function liveUrl(sha, { attempts = 30, delayMs = 20_000 } = {}) {
+  // A deploy the host cancelled because a newer push started its own (GitHub Pages marks it "error") is not a
+  // broken delivery: the newer deploy of the same environment, which contains this commit, decides instead. That
+  // newer deploy is created a moment after the cancel, so a lone failure is only believed after a few polls.
+  // A failure gives the host's message and, when the host is GitHub Actions, the run to re-run (issue #227). After
+  // that re-run, `since` ignores the deploys made before it: the old failure must not answer for the new attempt.
+  async function liveUrl(sha, { attempts = 30, delayMs = 20_000, lonePolls = 3, since = 0 } = {}) {
+    const outcome = async (d) => {
+      const statuses = (await gh.deploymentStatuses(d.id)) || [];
+      const ok = statuses.find((s) => s.state === 'success');
+      if (ok) return ok.environment_url || ok.target_url || config.siteUrl || null;
+      const bad = statuses.find((s) => ['failure', 'error'].includes(s.state));
+      if (!bad) return undefined;
+      const detail = String(bad.description || '').slice(0, 300);
+      const runId = Number(/\/actions\/runs\/(\d+)/.exec(`${bad.log_url || ''} ${bad.target_url || ''}`)?.[1]) || null;
+      return { failed: true, ...(detail ? { detail } : {}), ...(runId ? { runId } : {}) };
+    };
+    const fresh = (d) => !since || Date.parse(d.created_at || 0) >= since;
+    let lone = 0;
+    let failure = { failed: true };
     for (let i = 0; i < attempts; i++) {
-      const d = ((await gh.deployments(sha).catch(() => [])) || []).find((x) => isLiveEnv(x.environment));
-      const last = d && ((await gh.deploymentStatuses(d.id)) || []).find((s) => ['success', 'failure', 'error'].includes(s.state));
-      if (last?.state === 'success') return last.environment_url || last.target_url || config.siteUrl || null;
-      if (last) {
-        const runId = Number(/\/actions\/runs\/(\d+)/.exec(`${last.log_url || ''} ${last.target_url || ''}`)?.[1]) || null;
-        return { failed: true, detail: String(last.description || '').slice(0, 300), runId };
+      let failedAlone = false; // a failure with no newer deploy that went live or is still deploying
+      for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment) && fresh(x))) {
+        const result = await outcome(d);
+        if (result === undefined) continue;
+        if (!result?.failed) return result;
+        // Deployment ids only grow: the highest one of the same environment is the newest.
+        const newest = ((await gh.recentDeployments?.().catch(() => null)) || [])
+          .filter((x) => x.environment === d.environment && Number(x.id) > Number(d.id))
+          .sort((a, b) => Number(b.id) - Number(a.id))[0];
+        if (!newest) { failedAlone = true; failure = result; continue; }
+        const next = await outcome(newest);
+        if (next?.failed) { failedAlone = true; failure = next; continue; }
+        if (next !== undefined) return next;
       }
+      lone = failedAlone ? lone + 1 : 0;
+      if (failedAlone && (lone >= lonePolls || i === attempts - 1)) return failure;
       if (i < attempts - 1) await sleep(delayMs);
     }
     return null;

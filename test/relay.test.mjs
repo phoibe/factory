@@ -1348,6 +1348,61 @@ test('after a merge, the live site is checked once the host deploys it (only for
   assert.ok(!none.calls.some((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')));
 });
 
+// GitHub Pages cancels a deploy when a newer push starts its own, and marks the cancelled one "error" (PR #223).
+function liveWorld(statusesById) {
+  const gh = fakeGh({ issues: [], prs: [], deployments: [
+    { id: 2, environment: 'github-pages', created_at: '2026-11-06T12:54:11Z' },
+    { id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' },
+  ] });
+  gh.deployments = async () => [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }];
+  gh.deploymentStatuses = async (id) => statusesById[id] || [];
+  return createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+}
+
+test('a live deploy cancelled by a newer one that went live is not a broken delivery', async () => {
+  const relay = liveWorld({ 1: [{ state: 'error' }], 2: [{ state: 'success', environment_url: 'https://site.example/' }] });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 2, delayMs: 0 }), 'https://site.example/');
+});
+
+test('a live deploy replaced by a newer one still deploying waits for it', async () => {
+  let calls = 0;
+  const relay = liveWorld({ 1: [{ state: 'error' }], get 2() { calls++; return calls < 2 ? [{ state: 'in_progress' }] : [{ state: 'success', environment_url: 'https://site.example/' }]; } });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 3, delayMs: 0 }), 'https://site.example/');
+});
+
+test('a live deploy cancelled just before the newer one is created waits for it to appear', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  let polls = 0;
+  const first = { id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' };
+  gh.deployments = async () => [first];
+  gh.recentDeployments = async () => (++polls < 2 ? [first] : [{ id: 2, environment: 'github-pages', created_at: '2026-11-06T12:54:11Z' }, { id: 3, environment: 'Preview', created_at: '2026-11-06T12:55:00Z' }, first]);
+  gh.deploymentStatuses = async (id) => ({ 1: [{ state: 'error' }], 2: [{ state: 'success', environment_url: 'https://site.example/' }], 3: [{ state: 'failure' }] })[id];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 5, delayMs: 0 }), 'https://site.example/');
+});
+
+test('a chain of quick pushes: a newer deploy cancelled in turn waits for the newest one', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  let polls = 0;
+  const a = { id: 1, environment: 'github-pages' }, b = { id: 2, environment: 'github-pages' }, c = { id: 3, environment: 'github-pages' };
+  gh.deployments = async () => [a];
+  gh.recentDeployments = async () => (++polls < 2 ? [b, a] : [c, b, a]);
+  gh.deploymentStatuses = async (id) => ({ 1: [{ state: 'error' }], 2: [{ state: 'error' }], 3: [{ state: 'success', environment_url: 'https://site.example/' }] })[id];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 5, delayMs: 0 }), 'https://site.example/');
+});
+
+test('a live deploy that failed with no newer one, or whose newer one failed too, is a broken delivery', async () => {
+  const alone = fakeGh({ issues: [], prs: [], deployments: [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }] });
+  alone.deployments = async () => [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }];
+  alone.deploymentStatuses = async () => [{ state: 'failure' }];
+  let naps = 0;
+  assert.deepEqual(await createRelay({ gh: alone, repo: 'r', config, env, log: quiet, sleep: async () => { naps++; } }).liveUrl('x', { attempts: 30, delayMs: 0 }), { failed: true });
+  assert.equal(naps, 2, 'a lone failure is believed after three polls, not after the whole wait');
+  const both = liveWorld({ 1: [{ state: 'error' }], 2: [{ state: 'failure' }] });
+  assert.deepEqual(await both.liveUrl('x', { attempts: 2, delayMs: 0 }), { failed: true });
+});
+
 test('a broken live site: the delivery is undone at once, and an urgent bug redoes it once the undo is live', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] , open: false }], prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
   const created = [];
