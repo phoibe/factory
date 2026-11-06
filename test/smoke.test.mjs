@@ -1,10 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { smokeRoutes, isProtected, pageProblem, smoke } from '../scripts/smoke.mjs';
+import { smokeRoutes, routeUrl, isProtected, pageProblem, smoke } from '../scripts/smoke.mjs';
 
 test('the screens opened are « / » plus the listed ones', () => {
   assert.deepEqual(smokeRoutes('# écrans\n/connexion\n\n/planning # le planning\nnot-a-path\n/'), ['/', '/connexion', '/planning']);
   assert.deepEqual(smokeRoutes(''), ['/']);
+});
+
+test('screens open inside the site, even when it lives in a sub-folder (GitHub Pages)', () => {
+  assert.equal(routeUrl('/', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/');
+  assert.equal(routeUrl('/', 'https://phoibe.github.io/factory'), 'https://phoibe.github.io/factory/');
+  assert.equal(routeUrl('/planning', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/planning');
+  assert.equal(routeUrl('/connexion?x=1', 'https://app.example/'), 'https://app.example/connexion?x=1');
+  assert.equal(routeUrl('/', 'https://app.example'), 'https://app.example/');
+  assert.equal(routeUrl('/user:42', 'https://x.io/app/'), 'https://x.io/app/user:42');
+  assert.equal(routeUrl('/p#h', 'https://x.io/a/b/?q=1#z'), 'https://x.io/a/b/p#h');
 });
 
 test('a version protected by its host is not a failure', () => {
