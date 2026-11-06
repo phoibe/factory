@@ -12,12 +12,16 @@ test('un clic sur « Garder » fait disparaître la carte en douceur, et les sui
   await withPanel({ issues: IDEAS(), writeDelay: SLOW, config: { autoPick: true } }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.waitForSelector('.lane-ideas .ticket.idea');
-    const before = await page.locator('[data-idea="6"]').boundingBox();
+    const place = await page.locator('[data-idea="5"]').boundingBox();
     await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
     await page.waitForFunction(() => !document.querySelector('[data-idea="5"]'), null, { timeout: 1500 });
     assert.deepEqual(await shown(page), ['Exporter en PDF', 'Mode sombre']);
-    await page.waitForTimeout(500); // the slide is over
-    assert.ok((await page.locator('[data-idea="6"]').boundingBox()).y <= before.y, 'the next card took its place');
+    // Mid-slide the next card is still on its way; once the slide is over it sits where the sorted card was.
+    const mid = await page.locator('[data-idea="6"]').boundingBox();
+    await page.waitForTimeout(600);
+    const end = await page.locator('[data-idea="6"]').boundingBox();
+    assert.deepEqual([Math.round(end.x), Math.round(end.y)], [Math.round(place.x), Math.round(place.y)], 'the next card took its place');
+    assert.notDeepEqual([Math.round(mid.x), Math.round(mid.y)], [Math.round(end.x), Math.round(end.y)], 'it slid there, it did not jump');
     assert.deepEqual(writes.find((w) => w.path.endsWith('/issues/5/labels'))?.body, { labels: ['factory:kept'] });
   });
 });
