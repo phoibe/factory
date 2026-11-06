@@ -2,18 +2,24 @@
 # Stand-in for tar: « extracts » a runner whose config.sh registers it in the fake GitHub and whose svc.sh logs.
 echo "tar $*" >> "$FAKE/log"
 dir=.; while [ $# -gt 0 ]; do [ "$1" = -C ] && dir=$2; shift; done
+mkdir -p "$dir/bin"
 cat > "$dir/config.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "config.sh $*" >> "$FAKE/log"
+[ -n "${FAKE_CONFIG_FAILS:-}" ] && { echo "config failed" >&2; exit 1; }
 name=""; labels=""
 while [ $# -gt 0 ]; do case "$1" in --name) name=$2 ;; --labels) labels=$2 ;; esac; shift; done
-echo "$((RANDOM + 1000)) $name self-hosted,Linux,X64,$labels" >> "$FAKE/runners.txt"
-echo '{}' > .runner
+echo "$((RANDOM + 1000)) $name self-hosted,Linux,X64,$labels online" >> "$FAKE/runners.txt"
+printf '{\n  "agentId": 1,\n  "agentName": "%s"\n}\n' "$name" > .runner
 EOS
 cat > "$dir/svc.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"
-[ "$1" = install ] && touch .service
+case "$1" in install) touch .service ;; uninstall) rm -f .service ;; esac
 exit 0
 EOS
-chmod +x "$dir/config.sh" "$dir/svc.sh"
+cat > "$dir/bin/installdependencies.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "installdependencies.sh" >> "$FAKE/log"
+EOS
+chmod +x "$dir/config.sh" "$dir/svc.sh" "$dir/bin/installdependencies.sh"

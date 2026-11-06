@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stand-in for « stat -c %U <dir> »: folders made by the script belong to the dedicated user, others to the owner.
+case "$3" in "$DEV_SERVER_ROOT"/*) echo factory-runner ;; *) echo pierre ;; esac

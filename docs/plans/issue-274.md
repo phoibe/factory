@@ -22,7 +22,7 @@
 
 ## Review Focus
 
-- Running as root: the runner refuses root → the script creates and uses a dedicated `factory-runner` user.
+- Running as root (possibly without sudo): the runner refuses root → the script always uses a dedicated `factory-runner` user.
 - A runner already registered but offline/without label → label added, not recreated.
 - `gh` missing or not logged in on the server → installed / login guided, in French.
 - Project name given without owner (`mon-appli`) → expanded with the gh login.
@@ -32,12 +32,13 @@
 
 ### Task 1: `scripts/dev-server.sh`
 
-**Files:** Create `scripts/dev-server.sh`, `test/fixtures/fake-dev-server-bin/*` (stubs), `test/dev-server.test.mjs`.
+**Files:** Create `scripts/dev-server.sh`, `test/fixtures/fake-dev-server/*` (stubs), `test/dev-server.test.mjs`.
 
 - Usage: `dev-server.sh [owner/]repo` ; without argument it lists the owner's private factory projects and asks a number.
-- Steps: `need_gh` → `install_software` (apt: curl git jq tar ca-certificates; Node.js 22 via NodeSource when `node` < 22; `npx -y playwright@<version from factory package.json> install-deps chromium`; skipped when the marker `$STATE_DIR/software-<version>` exists) → `check_private` → `ensure_runners`.
+- Steps: `need_gh` → `install_software` (apt: curl git jq tar ca-certificates; Node.js 22 via NodeSource when `node` < 22; `npx -y playwright@<version from factory package.json> install-deps chromium`; skipped when the marker `$RUNNER_HOME/.factory-software-<n>` exists) → `check_private` → `ensure_runners`.
 - `ensure_runners`: `gh api repos/R/actions/runners` → for each runner missing `factory-dev`, `POST …/runners/<id>/labels`; then create `2 - count` runners named `<host>-<repo>-<n>` (first free n) in `$RUNNER_HOME/<owner>-<repo>-<n>` with `config.sh --unattended --url --token --name --labels factory-dev --replace`, then `sudo ./svc.sh install <user>` and `sudo ./svc.sh start`.
-- Test env overrides: `DEV_SERVER_ROOT` (runner home), `DEV_SERVER_STATE`, PATH stubs for `gh`, `sudo`, `apt-get`, `curl`, `tar`, `npx`, `node`, `systemctl`, `hostname`, `id`.
+- Runners always run as the dedicated `factory-runner` user (`runuser` as root, `sudo -u` otherwise); leftover folders (runner gone on GitHub, or config failed) are cleaned and their number reused; offline runners not on this server are not counted; hand-installed local runners get a boot service; no admin right or non-factory repo → French error before installing.
+- Test env overrides: `DEV_SERVER_ROOT` (runner home), `DEV_SERVER_SCAN` (where hand-installed runners are searched), PATH stubs for `gh`, `sudo`, `apt-get`, `curl`, `tar`, `npx`, `node`, `systemctl`, `hostname`, `id`.
 - Tests (names): fresh private project → 2 runners configured with `factory-dev` and services installed; project with 1 existing runner → label added to it, exactly 1 new runner; project with 2 → nothing created; second run → nothing created, software not reinstalled; public project → refused, nothing installed.
 
 ### Task 2: reminder in `scripts/factory.sh`

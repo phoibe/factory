@@ -262,7 +262,7 @@ $extra"
 
 # ---- Serveur de dev (projets privés seulement) ----------------------------------------------------
 # A private project runs its automatic tasks on the dev server: remind the owner to add its runners there.
-DEV_SERVER_GUIDE="https://github.com/phoibe/factory/blob/main/docs/serveur-de-dev.md"
+DEV_SERVER_GUIDE="https://github.com/phoibe/factory/blob/stable/docs/serveur-de-dev.md"
 dev_server_reminder() {
   [ "$(gh api "repos/$REPO" --jq .private 2>/dev/null || true)" = true ] || return 0
   local cmd="bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/stable/scripts/dev-server.sh) $REPO"
@@ -272,7 +272,7 @@ dev_server_reminder() {
   printf '\n     %s\n\n' "$cmd"
   if copy "$cmd"; then echo "  Je viens de la copier pour vous : il suffit de la coller (Cmd+V) dans le terminal du serveur."; fi
   echo "  Le guide pas à pas : $DEV_SERVER_GUIDE"
-  echo "  Tant que ce n'est pas fait, les tâches tournent sur les machines GitHub : rien ne reste bloqué."
+  echo "  Tant que ce n'est pas fait, le projet n'a pas de runner sur le serveur."
 }
 
 # Questions posées quand le script est lancé sans arguments.

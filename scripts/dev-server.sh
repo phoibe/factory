@@ -20,13 +20,14 @@ DEDICATED_USER=factory-runner
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  ✅ %s\n' "$*"; }
+warn() { printf '  ⚠️  %s\n' "$*"; }
 die()  { printf '\n❌ %s\n' "$*" >&2; exit 1; }
-ask()  { local a; printf '%s ' "$1" >&2; read -r a; printf '%s' "$a"; }
+ask()  { local a; printf '%s ' "$1" >&2; read -r a || die "Pas de réponse : rien n'a été fait. Relancez la commande dans un terminal."; printf '%s' "$a"; }
 
 # Commands that need the administrator: directly as root, otherwise through sudo.
 root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
-# Commands run as the user that owns the runners.
-as_runner() { if [ "$(id -un)" = "$RUNNER_USER" ]; then "$@"; else sudo -u "$RUNNER_USER" "$@"; fi; }
+# Commands run as the dedicated user that owns the runners (runuser as root: a root-only server may have no sudo).
+as_runner() { if [ "$(id -u)" = 0 ]; then runuser -u "$RUNNER_USER" -- "$@"; else sudo -u "$RUNNER_USER" "$@"; fi; }
 
 check_machine() {
   [ "$(uname -s)" = Linux ] || die "Cette commande se lance sur le serveur de dev (Linux), pas sur ce Mac. Ouvrez un terminal du serveur, puis collez-la de nouveau."
@@ -37,12 +38,11 @@ check_machine() {
     aarch64|arm64) ARCH=arm64 ;;
     *) die "Le processeur de ce serveur ($(uname -m)) n'est pas pris en charge par les runners GitHub." ;;
   esac
-  # The runner refuses to run as root: an administrator session gets a dedicated user.
-  if [ "$(id -u)" = 0 ]; then RUNNER_USER=$DEDICATED_USER; else RUNNER_USER=$(id -un); fi
-  RUNNER_HOME=${DEV_SERVER_ROOT:-}
-  if [ -z "$RUNNER_HOME" ]; then
-    if [ "$RUNNER_USER" = "$DEDICATED_USER" ]; then RUNNER_HOME=/home/$DEDICATED_USER/actions-runners; else RUNNER_HOME=$HOME/actions-runners; fi
-  fi
+  # Jobs run project code: never as root nor as the owner (whose home holds his GitHub login), always as this user.
+  RUNNER_USER=$DEDICATED_USER
+  RUNNER_HOME=${DEV_SERVER_ROOT:-/home/$DEDICATED_USER/actions-runners}
+  # Where runners installed by hand before the factory may live.
+  SCAN_DIRS=${DEV_SERVER_SCAN:-/home /root /opt}
 }
 
 # ---- GitHub CLI ---------------------------------------------------------------------------------
@@ -58,8 +58,8 @@ need_gh() {
   fi
   if ! gh auth status >/dev/null 2>&1; then
     say "Connexion à GitHub (une seule fois sur ce serveur)"
-    echo "  Choisissez « GitHub.com », puis « HTTPS », puis « Login with a web browser » : ouvrez le lien sur votre Mac"
-    echo "  ou votre téléphone et tapez le code affiché."
+    echo "  Notez le code affiché, appuyez sur Entrée, puis ouvrez https://github.com/login/device sur votre Mac"
+    echo "  ou votre téléphone et tapez-y ce code."
     gh auth login --web --git-protocol https
   fi
   OWNER_LOGIN=$(gh api user --jq .login)
@@ -83,24 +83,28 @@ choose_project() {
   done
 }
 
-check_private() {
-  local private
-  private=$(gh api "repos/$REPO" --jq .private 2>/dev/null) || die "Je ne trouve pas le projet $REPO. Vérifiez son nom (ou lancez la commande sans nom pour choisir dans la liste)."
-  [ "$private" = true ] || die "$REPO est un projet public : ses tâches tournent sur les machines GitHub, gratuites pour lui. Pour votre sécurité, un projet public n'a jamais de runner sur le serveur."
+check_project() {
+  local info
+  info=$(gh api "repos/$REPO" --jq '"\(.private) \(.permissions.admin)"' 2>/dev/null) || die "Je ne trouve pas le projet $REPO. Vérifiez son nom (ou lancez la commande sans nom pour choisir dans la liste)."
+  [ "${info% *}" = true ] || die "$REPO est un projet public : ses tâches tournent sur les machines GitHub, gratuites pour lui. Pour votre sécurité, un projet public n'a jamais de runner sur le serveur."
+  gh api "repos/$REPO/contents/factory.config.json" >/dev/null 2>&1 || die "$REPO n'est pas dans la factory : faites-le d'abord entrer avec l'outil Mac « Adopter un projet »."
+  [ "${info#* }" = true ] || die "Le compte GitHub connecté sur ce serveur n'est pas administrateur de $REPO : il ne peut pas y ajouter de runner. Connectez-vous avec le compte propriétaire du projet (gh auth login), puis relancez."
 }
 
 # ---- Logiciels (une fois par serveur) -----------------------------------------------------------
+ensure_user() {
+  id "$RUNNER_USER" >/dev/null 2>&1 || root useradd --create-home --shell /bin/bash "$RUNNER_USER"
+  as_runner mkdir -p "$RUNNER_HOME"
+}
+
 install_software() {
-  local marker="$RUNNER_HOME/.factory-software-$SOFTWARE_VERSION"
+  local marker="$RUNNER_HOME/.factory-software-$SOFTWARE_VERSION" major
   if [ -f "$marker" ]; then ok "Logiciels du serveur déjà installés"; return; fi
   say "Installation des logiciels du serveur (une seule fois, quelques minutes)"
-  if [ "$RUNNER_USER" = "$DEDICATED_USER" ] && ! id "$DEDICATED_USER" >/dev/null 2>&1; then
-    root useradd --create-home --shell /bin/bash "$DEDICATED_USER"
-  fi
   root apt-get update -qq
   root apt-get install -y -qq curl git jq tar unzip ca-certificates >/dev/null
-  local major
-  major=$( (node --version 2>/dev/null || echo v0) | sed -E 's/^v([0-9]+).*/\1/')
+  # The system Node.js (the one the administrator sees), not one installed for a single user.
+  major=$( (root node --version 2>/dev/null || echo v0) | sed -E 's/^v([0-9]+).*/\1/')
   if [ "$major" -lt "$NODE_MAJOR" ]; then
     curl -fsSL "https://deb.nodesource.com/setup_$NODE_MAJOR.x" -o /tmp/nodesource-setup.sh
     root bash /tmp/nodesource-setup.sh >/dev/null
@@ -108,14 +112,44 @@ install_software() {
   fi
   # System libraries Chromium needs for the browser checks (accessibility and journey tests).
   root npx -y "playwright@$PLAYWRIGHT_VERSION" install-deps chromium
-  as_runner mkdir -p "$RUNNER_HOME"
   as_runner touch "$marker"
   ok "Logiciels installés (Node.js $NODE_MAJOR, Git, bibliothèques du navigateur des contrôles)"
 }
 
 # ---- Runners ------------------------------------------------------------------------------------
-# One « id name label,label » line per runner GitHub knows for this project.
-list_runners() { gh api "repos/$REPO/actions/runners" --paginate --jq '.runners[] | "\(.id) \(.name) \([.labels[].name] | join(","))"'; }
+# One « id name label,label status » line per runner GitHub knows for this project.
+list_runners() { gh api "repos/$REPO/actions/runners" --paginate --jq '.runners[] | "\(.id) \(.name) \([.labels[].name] | join(",")) \(.status)"'; }
+
+# Name of the runner configured in folder $1 (empty when its configuration never finished).
+runner_name() { root sed -n 's/.*"agentName": *"\([^"]*\)".*/\1/p' "$1/.runner" 2>/dev/null | head -1 || true; }
+
+# The folder of this server that holds the runner called $1, empty when it is not on this server.
+local_dir() {
+  local f
+  # shellcheck disable=SC2086
+  for f in "$RUNNER_HOME"/*/.runner $(root find $SCAN_DIRS -maxdepth 4 -name .runner 2>/dev/null || true); do
+    [ -f "$f" ] || continue
+    if [ "$(runner_name "${f%/.runner}")" = "$1" ]; then printf '%s' "${f%/.runner}"; return; fi
+  done
+}
+
+on_github() { printf '%s\n' "$LINES" | awk -v n="$1" '$2==n { found=1 } END { exit !found }'; }
+
+# Folders this script made for the project that match no runner on GitHub (failed halfway, or deleted on
+# GitHub): their service is removed and the folder deleted, so the number can be used again.
+clean_leftovers() {
+  local dir name
+  for dir in "$RUNNER_HOME/$SLUG"-*; do
+    [ -d "$dir" ] || continue
+    name=$(runner_name "$dir")
+    if [ -n "$name" ] && on_github "$name"; then continue; fi
+    if [ -f "$dir/.service" ]; then
+      (cd "$dir" && { root ./svc.sh stop >/dev/null 2>&1 || true; root ./svc.sh uninstall >/dev/null 2>&1 || true; })
+    fi
+    root rm -rf "$dir"
+    warn "Ancien dossier $(basename "$dir") nettoyé (son runner n'existait plus chez GitHub)"
+  done
+}
 
 runner_archive() {
   local version file
@@ -135,51 +169,58 @@ add_runner() {
   token=$(gh api -X POST "repos/$REPO/actions/runners/registration-token" --jq .token)
   as_runner mkdir -p "$dir"
   as_runner tar -xzf "$archive" -C "$dir"
+  # The runner's own system libraries (ICU…), missing on a minimal Debian.
+  (cd "$dir" && root ./bin/installdependencies.sh >/dev/null)
   (cd "$dir" && as_runner ./config.sh --unattended --url "https://github.com/$REPO" --token "$token" --name "$name" --labels "$LABEL" --replace >/dev/null)
   ok "Runner $name ajouté"
 }
 
-# Every runner this script created for the project starts with the server (a systemd service).
+# The runner in folder $1 starts with the server (a systemd service), and is started now in case it was not.
 start_on_boot() {
-  local dir started=0
-  for dir in "$RUNNER_HOME/$SLUG"-*; do
-    [ -f "$dir/.runner" ] || continue
-    [ -f "$dir/.service" ] && continue
-    (cd "$dir" && root ./svc.sh install "$RUNNER_USER" >/dev/null && root ./svc.sh start >/dev/null)
-    started=$((started + 1))
-  done
-  [ "$started" -eq 0 ] || ok "Démarrage automatique avec le serveur activé ($started runner(s))"
+  local dir=$1
+  if [ ! -f "$dir/.service" ]; then
+    (cd "$dir" && root ./svc.sh install "$(stat -c %U "$dir")" >/dev/null)
+    ok "Runner $(runner_name "$dir") : démarrage automatique avec le serveur activé"
+    CHANGED=1
+  fi
+  (cd "$dir" && root ./svc.sh start >/dev/null 2>&1) || true
 }
 
 ensure_runners() {
   say "Runners de $REPO sur le serveur"
-  local host repo_name lines count=0 added=0 id name labels n
+  local host repo_name count=0 id name labels status dir n
   host=$(hostname | tr -c 'A-Za-z0-9-\n' '-')
   repo_name=${REPO#*/}
   SLUG=$(printf '%s' "$REPO" | tr '/' '-')
-  lines=$(list_runners)
-  while read -r id name labels; do
+  CHANGED=0
+  LINES=$(list_runners)
+  clean_leftovers
+  while read -r id name labels status; do
     [ -n "$id" ] || continue
+    dir=$(local_dir "$name")
+    if [ -z "$dir" ] && [ "$status" != online ]; then
+      warn "Runner $name hors ligne et absent de ce serveur : je le laisse chez GitHub, sans le compter"
+      continue
+    fi
     count=$((count + 1))
     case ",$labels," in
       *",$LABEL,"*) ok "Runner $name déjà là, je le garde" ;;
       *) gh api -X POST "repos/$REPO/actions/runners/$id/labels" -f "labels[]=$LABEL" >/dev/null
-         ok "Runner $name déjà là, je le garde (étiquette de la factory ajoutée)"; added=$((added + 1)) ;;
+         ok "Runner $name déjà là, je le garde (étiquette de la factory ajoutée)"; CHANGED=1 ;;
     esac
+    if [ -n "$dir" ]; then start_on_boot "$dir"; fi
   done <<EOF
-$lines
+$LINES
 EOF
   n=1
   while [ "$count" -lt "$WANTED" ]; do
     name="$host-$repo_name-$n"
-    if printf '%s\n' "$lines" | awk -v n="$name" '$2==n { found=1 } END { exit !found }' || [ -e "$RUNNER_HOME/$SLUG-$n" ]; then
-      n=$((n + 1)); continue
-    fi
+    if on_github "$name" || [ -e "$RUNNER_HOME/$SLUG-$n" ]; then n=$((n + 1)); continue; fi
     add_runner "$name" "$RUNNER_HOME/$SLUG-$n"
-    count=$((count + 1)); added=$((added + 1)); n=$((n + 1))
+    start_on_boot "$RUNNER_HOME/$SLUG-$n"
+    count=$((count + 1)); CHANGED=1; n=$((n + 1))
   done
-  start_on_boot
-  if [ "$added" -eq 0 ]; then ok "Rien à ajouter : le projet a déjà ses $WANTED runners"; fi
+  if [ "$CHANGED" -eq 0 ]; then ok "Rien à ajouter : le projet a déjà ses $WANTED runners"; fi
 }
 
 main() {
@@ -187,7 +228,8 @@ main() {
   need_gh
   REPO=${1:-}
   if [ -z "$REPO" ]; then choose_project; else case "$REPO" in */*) ;; *) REPO="$OWNER_LOGIN/$REPO" ;; esac; fi
-  check_private
+  check_project
+  ensure_user
   install_software
   ensure_runners
   say "C'est prêt 🎉 $WANTED runners prêts pour ${REPO#*/}"

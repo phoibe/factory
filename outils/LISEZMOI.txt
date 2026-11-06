@@ -14,4 +14,4 @@ Les fichiers lancent toujours la dernière version du script : pas besoin de les
 
 Projet privé : à la fin, l'outil vous donne une commande à coller sur votre serveur de dev, pour que les tâches
 automatiques du projet y tournent au lieu des machines GitHub. Le guide pas à pas :
-https://github.com/phoibe/factory/blob/main/docs/serveur-de-dev.md
+https://github.com/phoibe/factory/blob/stable/docs/serveur-de-dev.md

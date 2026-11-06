@@ -1,1 +1,3 @@
-logonly
+#!/usr/bin/env bash
+echo "useradd $*" >> "$FAKE/log"
+touch "$FAKE/user-created"
