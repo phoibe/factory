@@ -122,16 +122,18 @@ test('a screen that did not change gives the very same picture, even with an ani
   const { join } = await import('node:path');
   const { capture } = await import('../agent/scripts/shots.mjs');
   const { server, url } = await serveMovingPage();
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
   try {
-    const before = mkdtempSync(join(tmpdir(), 'b-'));
-    const after = mkdtempSync(join(tmpdir(), 'a-'));
     await capture({ baseUrl: url, routes: ['/'], out: before, toggle: null });
     await new Promise((ok) => setTimeout(ok, 700));
     await capture({ baseUrl: url, routes: ['/'], out: after, toggle: null });
     const files = readdirSync(after).sort();
     assert.deepEqual(sameScreens(before, after, files), files);
+  } finally {
+    server.close();
     for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
-  } finally { server.close(); }
+  }
 });
 
 test('a real small change is still shown', async () => {
@@ -141,15 +143,17 @@ test('a real small change is still shown', async () => {
   const { capture } = await import('../agent/scripts/shots.mjs');
   const a = await serveMovingPage();
   const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
   try {
-    const before = mkdtempSync(join(tmpdir(), 'b-'));
-    const after = mkdtempSync(join(tmpdir(), 'a-'));
     await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
     await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
     const files = readdirSync(after).sort();
     assert.deepEqual(sameScreens(before, after, files), []);
+  } finally {
+    a.server.close(); b.server.close();
     for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
-  } finally { a.server.close(); b.server.close(); }
+  }
 });
 
 test('each shot hides the text caret and stops animations', async () => {
