@@ -1,0 +1,21 @@
+# Software factory
+
+La factory fabrique et suit les projets du propriétaire, de la demande jusqu'à la mise en ligne.
+
+## Machines des tâches automatiques
+
+**Serveur de dev** :
+La machine que possède le propriétaire, derrière Tailscale, sur laquelle tournent les tâches automatiques de ses projets privés.
+_À éviter_ : serveur perso, runner local
+
+**Machines GitHub** :
+Les machines prêtées par GitHub pour les tâches automatiques ; gratuites pour les projets publics, comptées dans le quota pour les projets privés.
+_À éviter_ : cloud, runners hébergés
+
+**Secours GitHub** :
+L'état d'un projet privé dont les tâches passent sur les machines GitHub parce que le serveur de dev est éteint ou déconnecté.
+_À éviter_ : fallback, repli
+
+**Clé d'accès des runners** :
+La clé personnelle, limitée aux projets du propriétaire, qui permet à la factory de voir si le serveur de dev est connecté et de basculer les projets.
+_À éviter_ : token, jeton
