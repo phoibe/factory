@@ -655,7 +655,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (Date.parse(last.started_at || 0) < Date.parse(checks.completed_at || 0)) continue; // an older report
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
       log(`guard: report of #${item.number} lost, made again (${checks.conclusion})`);
-      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha });
+      // Red checks on a commit already followed for an outage: the lost report most likely died of the same outage.
+      const transient = checks.conclusion === 'failure' && readOutage(pr.body)?.sha === pr.head.sha;
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient });
     }
   }
 
@@ -883,7 +885,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
     }
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
-    if (action.type === 'fire' && action.stage === 'resume' && isRetry(said)) {
+    // Also when the factory is full (the checks need no place) and when he writes it on the PR itself.
+    // The PR itself has no factory label left once blocked: the owner's message there is otherwise ignored.
+    const ownerOnPr = ev.kind === 'pr' && ev.fromOwner && !ev.fromAgent && !ctx.lockFresh && ['fire', 'ignore'].includes(action.type);
+    const resuming = ownerOnPr || (action.type === 'fire' && action.stage === 'resume') || (action.type === 'queue' && action.add?.includes(L.resumeQueued));
+    if (resuming && isRetry(said)) {
       const blockedPr = await outageBlockedPr(ev);
       if (blockedPr) action = { type: 'outage-retry', pr: blockedPr, reason: 'panne passée : on relance les contrôles' };
     }
@@ -1134,7 +1140,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const issueNumber = linkedIssue(pr.body) || branchIssue(pr);
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(pr.number, l);
       await gh.addLabels(issueNumber || pr.number, [L.blocked]);
-      await gh.comment(issueNumber || pr.number, say(`Les contrôles automatiques de la PR #${pr.number} ne passent pas depuis 3 heures à cause d'une panne de GitHub ou du réseau. Le code n'y est pour rien, donc l'agent n'a rien corrigé.\n\nRépondez « réessaie » ici quand vous voulez que je relance les contrôles.`));
+      await gh.comment(issueNumber || pr.number, say(`Les contrôles automatiques de la PR #${pr.number} ne passent pas depuis 3 heures à cause d'une panne de GitHub ou du réseau. Ça ne ressemble pas à un problème de code, donc je n'ai pas envoyé l'agent corriger.\n\nRépondez « réessaie » ici quand vous voulez que je relance les contrôles.`));
     } else if (step.tell) {
       await gh.comment(pr.number, say(OUTAGE_TOLD));
     }
@@ -1162,7 +1168,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  return { handle, report, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
+  // The first retry after an outage, about 2 minutes later: run by the report job once the lock is released, so that
+  // the other decisions go on meanwhile. Never throws: GitHub may still be down, and the tick starts it again later.
+  async function retrySoon(prNumber) {
+    const ms = outputs.retryInMs;
+    if (!ms) return;
+    delete outputs.retryInMs;
+    try {
+      await sleep(ms);
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ checksFor: prNumber }) });
+      log(`checks of #${prNumber} retried after an outage`);
+    } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
+  }
+
+  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1197,13 +1217,7 @@ async function main() {
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
     await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'true' }));
-    // First retry after an outage: waited for outside the lock, so that the other decisions go on meanwhile.
-    if (relay.outputs.retryInMs) {
-      await new Promise((r) => setTimeout(r, relay.outputs.retryInMs));
-      const ref = (await gh.getRepo())?.default_branch || 'main';
-      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ checksFor: Number(arg('pr')) }) });
-      delete relay.outputs.retryInMs;
-    }
+    await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));

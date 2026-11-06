@@ -1509,3 +1509,49 @@ test('the preview job waits for a late preview, outside the lock, then the recet
   assert.equal(waited, 0);
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[2].includes('https://late.example')));
 });
+
+test('outage: the first retry, started after the lock, never fails the report job when GitHub is still down', async () => {
+  const { gh } = outageWorld(null);
+  gh.dispatch = async () => { throw new Error('POST dispatches -> 503'); };
+  const waited = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async (ms) => waited.push(ms) });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  await relay.retrySoon(10); // must not throw: the tick starts it again later
+  assert.deepEqual(waited, [120_000]);
+  const ok = outageWorld(null);
+  const r2 = createRelay({ gh: ok.gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
+  await r2.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  await r2.retrySoon(10);
+  assert.ok(ok.gh.calls.some((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10));
+});
+
+test('outage: a lost report of checks that failed on an outage is made again as an outage, not as a code failure', async () => {
+  const { gh, pr, state } = outageWorld({ sha: 'abc', since: T, tries: 1, next: null });
+  state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
+  gh.checkRuns = async () => [
+    { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
+    { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
+  ];
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => T + 15 * 60_000, log: quiet }).handle(tick);
+  assert.equal(sent.length, 0, 'no agent sent');
+  assert.ok(readOutage(pr.body), 'the outage is still followed');
+});
+
+test('outage: « réessaie » relaunches the checks even when the factory is full', async () => {
+  const { gh, state } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  state.issues.push({ number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  const { action } = await relay.handle(ownerSays(1, [L.feature, L.building, L.blocked], 'réessaie'));
+  assert.equal(action.type, 'outage-retry');
+  assert.equal(relay.outputs.pr, '10');
+});
+
+test('outage: « réessaie » written on the PR itself relaunches the checks too', async () => {
+  const { gh } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'réessaie', fromOwner: true, fromAgent: false });
+  assert.equal(action.type, 'outage-retry');
+  assert.equal(sent.length, 0);
+});
