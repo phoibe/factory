@@ -1387,6 +1387,17 @@ test('an undo GitHub refuses to open is never announced as done: the owner is to
   assert.match(said, /pas pu la retirer/);
   assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
   assert.match(said, /https:\/\/github\.com\/o\/r\/compare\/main\.\.\.claude\/revert-pr-10\?expand=1/);
+  assert.match(said, /rouvrez la demande #1/);
+});
+
+test('an undo refused for another reason gives the owner GitHub\'s short reason, not the raw request', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: '', head: { sha: 'abc' } }] });
+  gh.createPr = async () => { throw new Error('POST /repos/o/r/pulls -> 422 {"message":"Validation Failed","errors":[]}'); };
+  await createRelay({ gh, repo: 'o/r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', result: 'failed', detail: 'erreur 500', git: () => {} });
+  const said = gh.calls.filter((c) => c[0] === 'comment').map((c) => c[2]).join('\n');
+  assert.match(said, /pas pu la retirer/);
+  assert.match(said, /« Validation Failed »/);
+  assert.doesNotMatch(said, /POST|422|Allow GitHub Actions/);
 });
 
 test('an undo goes live on green checks without recette, then the redo bug starts', async () => {

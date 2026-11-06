@@ -445,12 +445,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) {
       const msg = String(e?.message || e);
       const blockedBySetting = /not permitted to create or approve pull requests/i.test(msg);
+      const reason = /"message"\s*:\s*"([^"]{1,160})/.exec(msg)?.[1] || '';
+      const asked = prIssue(pr);
       await gh.comment(prNumber, say([
         `Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.`,
         '',
-        `**Je n'ai pas pu la retirer** : GitHub a refusé que la factory ouvre le retour en arrière${blockedBySetting ? '' : ` (${msg.slice(0, 160)})`}. La version cassée est donc toujours en ligne.`,
+        `**Je n'ai pas pu la retirer** : GitHub a refusé que la factory ouvre le retour en arrière${blockedBySetting || !reason ? '' : ` (« ${reason} »)`}. La version cassée est donc toujours en ligne.`,
         '',
-        `Pour la retirer maintenant : ouvrez [ce retour en arrière déjà préparé](https://github.com/${repo}/compare/${def}...${branch}?expand=1), cliquez « Create pull request », puis fusionnez-le.`,
+        `Pour la retirer maintenant : ouvrez [ce retour en arrière déjà préparé](https://github.com/${repo}/compare/${def}...${branch}?expand=1), cliquez « Create pull request », puis fusionnez-le.${asked ? ` Ensuite, rouvrez la demande #${asked} pour que la factory la refasse sans casser l'appli.` : ''}`,
         ...(blockedBySetting ? ['', `Pour que la factory puisse le faire seule la prochaine fois : dans [Settings → Actions → General](https://github.com/${repo}/settings/actions), cochez « Allow GitHub Actions to create and approve pull requests » puis « Save ».`] : []),
       ].join('\n')));
       log(`live site broken after #${prNumber}: undo PR refused (${msg.slice(0, 120)})`);
