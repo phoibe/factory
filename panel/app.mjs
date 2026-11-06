@@ -345,9 +345,10 @@ const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : i
 const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
 const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
 const replyLink = (c) => el('a', { class: 'button secondary', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener' }, replyLabel(c.column));
-const replyAction = (c) => (c.reply === 'go' ? goButton(c) : replyLink(c));
-// The buttons of a card waiting for the owner, in order. The blue « go » or « Ok » comes first, the preview and the page to read after it.
-const answerButtons = (c, previewLink) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)] : c.reply === 'go' ? [goButton(c), previewLink] : [previewLink, replyLink(c)]);
+// The buttons of a card waiting for the owner, in order. In « À vous de jouer » the blue « go » or « Ok » comes first, then the
+// preview and the page to read; a card waiting for GitHub keeps its former order (« go » after the preview).
+const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c)]
+  : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c)]);
 
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
@@ -382,7 +383,7 @@ function card(c, lane, minutes, now, moved) {
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview && !asks ? null : status,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink)) : previewLink,
+    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     stepTrack(c),
     el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
@@ -413,7 +414,6 @@ function flip(before) {
 }
 const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
-// The « À vous » card: everything that waits for an answer, oldest first. Only its « go » buttons are blue.
 // A « go » waits 5 seconds and can be cancelled; nothing is stored, so leaving the page cancels it.
 const pendingGo = new Map();
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
@@ -519,6 +519,8 @@ function owedReturn() {
 window.addEventListener('focus', owedReturn);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) owedReturn(); });
 
+// « À vous de jouer »: everything that waits for an answer, oldest first, as cards like the other lanes; only their
+// « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
   const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);

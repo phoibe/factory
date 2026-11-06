@@ -120,3 +120,35 @@ test('les boutons discrets d\'une carte tiennent côte à côte sous le bouton b
     });
   }
 });
+
+test('toucher le fond d\'une carte bloquée ne l\'envoie pas en « Prise en compte en cours… »', async () => {
+  const blocked = issue(4, 'Importer un fichier', ['factory:feature', 'factory:building', 'factory:blocked']);
+  await withPanel({ issues: [blocked] }, async ({ page, url }) => {
+    await page.goto(url);
+    const c = page.locator('.ticket.yours[data-number="4"]');
+    await c.waitFor();
+    let popups = 0;
+    page.context().on('page', () => { popups++; });
+    await c.locator('.track').click({ force: true }); // the empty space around the step bar, away from the title and the button
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(300);
+    assert.equal(popups, 0, 'no GitHub tab opened');
+    assert.equal(await page.locator('.pending-zone').count(), 0);
+    assert.equal(await c.count(), 1);
+  });
+});
+
+test('le compte à rebours de « go » continue quand le tableau se redessine', async () => {
+  await withPanel({ issues: [spec(1, 'Partager une recette', 30)] }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('.ticket.yours button.go[data-go="1"]').click();
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // redraws the board
+    assert.match(await page.locator('.ticket.yours button.go[data-go="1"]').textContent(), /Annuler \(\d s\)/);
+    const sent = () => writes.filter((w) => w.path.endsWith('/issues/1/comments')).map((w) => w.body.body);
+    for (let i = 0; i < 100 && !sent().length; i++) await page.waitForTimeout(100);
+    await page.waitForTimeout(500);
+    assert.deepEqual(sent(), ['go'], 'sent once');
+  });
+});
