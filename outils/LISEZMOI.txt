@@ -11,3 +11,7 @@ ouvrez Réglages Système > Confidentialité et sécurité, descendez jusqu'au m
 « Ouvrir quand même ». Ensuite il s'ouvre normalement.
 
 Les fichiers lancent toujours la dernière version du script : pas besoin de les retélécharger.
+
+Projet privé : à la fin, l'outil vous donne une commande à coller sur votre serveur de dev, pour que les tâches
+automatiques du projet y tournent au lieu des machines GitHub. Le guide pas à pas :
+https://github.com/phoibe/factory/blob/stable/docs/serveur-de-dev.md

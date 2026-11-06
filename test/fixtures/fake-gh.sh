@@ -26,6 +26,8 @@ case "$1 $2" in
       *phoibe/habitudes/contents/factory.config.json*) echo '{}' ;;
       *phoibe/factory-template/contents/factory.config.json*) echo '{}' ;;
       *contents/factory.config.json*) case " ${FAKE_INSTALLED:-} " in *" ${2#repos/} "*) echo '{}'; exit 0 ;; esac; [ -f "$FAKE_GH_LOG.created" ] && echo '{}' || exit 1 ;;
+      # Private unless the repository is listed in FAKE_PUBLIC.
+      *"--jq .private"*) case " ${FAKE_PUBLIC:-} " in *" ${2#repos/} "*) echo false ;; *) echo true ;; esac ;;
       *contents/CLAUDE.md*) printf '# Instructions for Claude\n\nRead .factory/AGENT.md first.\n' ;;
       *contents/*) echo "content of ${*##*contents/}" ;;
     esac ;;
