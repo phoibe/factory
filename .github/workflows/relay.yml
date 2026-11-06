@@ -220,6 +220,7 @@ jobs:
           path: ${{ runner.temp }}/smoke/
           if-no-files-found: ignore
           retention-days: 1
+          overwrite: true
 
   preview:
     needs: [decide, preview-open]
@@ -305,6 +306,7 @@ jobs:
           path: ${{ runner.temp }}/smoke/
           if-no-files-found: ignore
           retention-days: 1
+          overwrite: true
 
   production:
     needs: [decide, production-open]

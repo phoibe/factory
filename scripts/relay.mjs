@@ -847,6 +847,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // an agent on it. Only « fermer » (drop) still tidies up.
     if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type)) {
       log('closed PR: nothing is started');
+      if (ev.fromOwner && ev.text) await gh.comment(n, say("Cette PR est fermée, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau."));
       return { action: { type: 'ignore', reason: 'PR fermée' }, outputs };
     }
     const applyLabels = async () => {

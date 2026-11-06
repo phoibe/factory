@@ -51,7 +51,7 @@ export function runOptions(files, readFile) {
     const text = readFile(f);
     const run = String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
       .filter((e) => e?.kind === 'run').at(-1);
-    if (run && (!best || String(run.t) > String(best.run.t))) best = { run, text };
+    if (run && (!best || Date.parse(run.t) > Date.parse(best.run.t))) best = { run, text };
   }
   return best ? { stage: best.run.stage, current: best.text } : {};
 }

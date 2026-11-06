@@ -130,6 +130,7 @@ test('a message on a PR closed by hand starts nothing and merges nothing', async
   }
   assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
   assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fermée/.test(c[2])), 'the owner is told why nothing happens');
 });
 
 test('visual approval asks the workflow to run checks', async () => {

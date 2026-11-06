@@ -799,7 +799,7 @@ async function checkVersion() {
   if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
   location.reload();
 }
-let watching = false;
+let watching = false, retryTimer = null;
 function watchVersion() {
   if (watching) return; // start() runs again after each failed attempt and each login: one watcher is enough
   watching = true;
@@ -823,8 +823,9 @@ async function start() {
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
-      toast('GitHub ne répond pas. Nouvel essai dans 15 s.');
-      setTimeout(() => start().catch(() => {}), 15_000);
+      toast('Connexion impossible pour l\'instant. Nouvel essai dans 15 s.');
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => start().catch(() => {}), 15_000);
       return;
     }
     store.del(TOKEN_KEY);
@@ -1204,7 +1205,13 @@ function drawChat() {
 let announced = { id: null, count: 0 };
 function announceAnswers(id, messages) {
   const count = messages.filter((m) => m.who === 'agent').length;
-  if (announced.id === id && count > announced.count) $('chat-announce').textContent = 'Nouvelle réponse de l\'agent.';
+  // A new conversation gets its number with its first answer: still the same conversation.
+  const same = announced.id === id || announced.id == null || announced.id === 'new';
+  if (same && count > announced.count) {
+    const live = $('chat-announce');
+    live.textContent = ''; // the same words again must still be read out
+    requestAnimationFrame(() => { live.textContent = 'Nouvelle réponse de l\'agent.'; });
+  }
   announced = { id, count };
 }
 
