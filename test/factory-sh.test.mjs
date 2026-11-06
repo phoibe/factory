@@ -183,6 +183,44 @@ test('phone alerts can be skipped: no secret, nothing saved, the install goes on
   assert.match(out, /C'est prêt/);
 });
 
+test('choice 4 archives the project picked, forgets its routine token and says what is left to do', async () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
+  const file = join(cfg, 'factory', 'routines', 'phoibe_habitudes');
+  writeFileSync(file, 'FACTORY_ROUTINE_URL=https://habitudes.test/fire\nFACTORY_ROUTINE_TOKEN=habitudes-token\n');
+  const { out, log } = await run([], ['4', '1', 'habitudes', ''], { XDG_CONFIG_HOME: cfg });
+  assert.match(out, /4\) Retirer un projet de la factory/);
+  assert.match(out, / 1\) habitudes/);
+  assert.doesNotMatch(out, /\) factory\b/); // the factory itself is never offered
+  assert.match(log, /repo archive phoibe\/habitudes --yes/);
+  assert.ok(!existsSync(file), 'the saved routine token is forgotten');
+  assert.match(out, /Supprimez la routine « Factory - habitudes »/);
+  assert.match(out, /vercel\.com/);
+  assert.match(out, /Unarchive this repository/);
+  assert.doesNotMatch(log, /repo delete/);
+});
+
+test('removing needs the project name typed back: a wrong name changes nothing', async () => {
+  const { out, log } = await run(['retirer', 'habitudes'], ['habitude']);
+  assert.match(out, /rien n'a été fait/);
+  assert.doesNotMatch(log, /repo archive/);
+});
+
+test('the factory repository itself can never be removed', async () => {
+  await assert.rejects(run(['retirer', 'factory'], ['factory']),
+    (e) => /ne se retire pas/.test(`${e.stdout}${e.stderr}`));
+});
+
+test('when GitHub refuses the archive, it says so and keeps the routine token', async () => {
+  const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
+  mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });
+  const file = join(cfg, 'factory', 'routines', 'phoibe_habitudes');
+  writeFileSync(file, 'FACTORY_ROUTINE_TOKEN=t\n');
+  await assert.rejects(run(['retirer', 'habitudes'], ['habitudes'], { XDG_CONFIG_HOME: cfg, FAKE_ARCHIVE_FAILS: '1' }),
+    (e) => /a refusé d'archiver/.test(`${e.stdout}${e.stderr}`));
+  assert.ok(existsSync(file));
+});
+
 test('an adoption stopped halfway is listed again, and a saved routine can be typed again', async () => {
   const cfg = mkdtempSync(join(tmpdir(), 'factory-cfg-'));
   mkdirSync(join(cfg, 'factory', 'routines'), { recursive: true });

@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 
 const tracked = (path) => execFileSync('git', ['ls-files', '-s', path], { encoding: 'utf8' });
 
-for (const [file, mode] of [['outils/Nouveau projet.command', 'nouveau'], ['outils/Adopter un projet.command', 'adopter']]) {
+for (const [file, mode] of [['outils/Nouveau projet.command', 'nouveau'], ['outils/Adopter un projet.command', 'adopter'], ['outils/Retirer un projet.command', 'retirer']]) {
   test(`${file} is executable and runs the setup script in « ${mode} » mode`, () => {
     assert.match(tracked(file), /^100755 /, 'a double-click needs the executable bit');
     const text = readFileSync(file, 'utf8');
@@ -20,7 +20,7 @@ for (const [file, mode] of [['outils/Nouveau projet.command', 'nouveau'], ['outi
 }
 
 // The Mac tools download the factory script each time: a failed download must say so, never « C'est fini ».
-for (const tool of ['Nouveau projet.command', 'Adopter un projet.command']) {
+for (const tool of ['Nouveau projet.command', 'Adopter un projet.command', 'Retirer un projet.command']) {
   test(`${tool}: a failed download says so in French`, () => {
     const bin = mkdtempSync(join(tmpdir(), 'outils-'));
     writeFileSync(join(bin, 'curl'), '#!/bin/sh\necho "curl: (6) Could not resolve host" >&2\nexit 6\n');

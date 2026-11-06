@@ -11,6 +11,7 @@ case "$1 $2" in
   "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE" ;;
   "api user/installations") echo "${FAKE_INSTALLATIONS:-42 all}" ;;
   "secret set") cat > /dev/null ;;
+  "repo archive") [ -n "${FAKE_ARCHIVE_FAILS:-}" ] && exit 1; exit 0 ;;
   "workflow run") touch "$FAKE_GH_LOG.dispatched" ;;
   # An old run (6) exists until a workflow is dispatched; then the new one (7) appears, one listing later.
   # GitHub is slow to list a freshly dispatched run: the first listing after it still shows the old one.

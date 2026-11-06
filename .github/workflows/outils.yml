@@ -25,5 +25,5 @@ jobs:
             gh release upload outils factory-outils.zip --clobber
           else
             gh release create outils factory-outils.zip --latest=false --title "Outils de la factory (Mac)" \
-              --notes "Téléchargez factory-outils.zip, décompressez-le, puis double-cliquez « Nouveau projet » ou « Adopter un projet »."
+              --notes "Téléchargez factory-outils.zip, décompressez-le, puis double-cliquez « Nouveau projet », « Adopter un projet » ou « Retirer un projet »."
           fi
