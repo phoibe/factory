@@ -78,3 +78,14 @@ test('a later attempt installs the tools when the first one stopped before insta
   await again(0); await again(1);
   assert.deepEqual(seen, [true, true]);
 });
+
+test('the result is written even when its folder does not exist yet (fresh runner)', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const out = join(mkdtempSync(join(tmpdir(), 'smoke-')), 'smoke', 'smoke.json');
+  const run = spawnSync(process.execPath, [new URL('../scripts/smoke.mjs', import.meta.url).pathname, '--url', 'http://127.0.0.1:1/', '--out', out], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).result, 'failed');
+});
