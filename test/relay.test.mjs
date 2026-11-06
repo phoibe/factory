@@ -1009,6 +1009,112 @@ test('the agent asks with factory:close: at the end of its run the factory close
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 31 && /fermée/.test(c[2])));
 });
 
+// Issue #203: the agent closes a request it finds already done, a duplicate or obsolete, with no confirmation.
+const withReopen = (gh, state) => {
+  gh.closePr = async (n) => { gh.calls.push(['closePr', n]); const p = state.prs.find((x) => x.number === n); if (p) p.state = 'closed'; };
+  gh.closeIssue = async (n, reason) => { gh.calls.push(['close', n, reason]); const i = state.issues.find((x) => x.number === n); if (i) i.open = false; };
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); Object.assign(state.issues.find((x) => x.number === n), fields); };
+  gh.reopenIssue = async (n) => { gh.calls.push(['reopen', n]); state.issues.find((x) => x.number === n).open = true; };
+  gh.reopenPr = async (n) => { gh.calls.push(['reopenPr', n]); state.prs.find((x) => x.number === n).state = 'open'; };
+  return gh;
+};
+const agentDone = (n, labels) => ({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: n, labels, fromOwner: true });
+const ownerSays = (n, labels, text = "non, ce n'est pas réglé") => ({ kind: 'issue', event: 'issue_comment', action: 'created', number: n, labels, text, fromOwner: true, fromAgent: false });
+
+test('agent close with a reason: issue and PR closed, no factory message, reason kept, state saved', async () => {
+  const state = {
+    issues: [{ number: 31, body: 'Idée', labels: [L.feature, L.building, L.close, L.alreadyDone] }],
+    prs: [{ number: 40, state: 'open', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  };
+  const gh = withReopen(fakeGh(state), state);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle(agentDone(31, state.issues[0].labels));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 31 && c[2] === 'completed'));
+  assert.ok(gh.calls.some((c) => c[0] === 'closePr' && c[1] === 40));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 31), 'the agent\'s message is the only one');
+  assert.ok(state.issues[0].labels.includes(L.alreadyDone));
+  assert.ok(!state.issues[0].labels.includes(L.close) && !state.issues[0].labels.includes(L.building));
+  assert.match(state.issues[0].body, /^Idée\n\n<!-- factory-reopen \{"labels":\["factory:building"\],"prs":\[40\]\} -->$/);
+});
+
+test('agent close: duplicate and obsolete get their GitHub close reason', async () => {
+  for (const [reason, why] of [[L.duplicate, 'duplicate'], [L.obsolete, 'not_planned']]) {
+    const state = { issues: [{ number: 5, body: '', labels: [L.bug, L.grilling, L.close, reason] }], prs: [] };
+    const gh = withReopen(fakeGh(state), state);
+    await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle(agentDone(5, state.issues[0].labels));
+    assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 5 && c[2] === why), reason);
+  }
+});
+
+test('agent close: a reason put on the PR is copied to the request', async () => {
+  const state = {
+    issues: [{ number: 31, body: '', labels: [L.feature, L.building] }, { number: 40, labels: [L.close, L.obsolete], pull_request: {} }],
+    prs: [{ number: 40, state: 'open', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  };
+  const gh = withReopen(fakeGh(state), state);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ ...agentDone(40, [L.close, L.obsolete]), kind: 'pr' });
+  assert.ok(state.issues[0].labels.includes(L.obsolete));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 31 && c[2] === 'not_planned'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
+test('agent close: never on a project framing or a general review', async () => {
+  for (const kind of [L.project, L.audit]) {
+    const state = { issues: [{ number: 8, body: '', labels: [kind, L.building, L.close, L.obsolete] }], prs: [] };
+    const gh = withReopen(fakeGh(state), state);
+    await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle(agentDone(8, state.issues[0].labels));
+    assert.ok(!gh.calls.some((c) => c[0] === 'close'), kind);
+    assert.ok(!state.issues[0].labels.includes(L.close) && !state.issues[0].labels.includes(L.obsolete), kind);
+  }
+});
+
+test('an owner message in an agent-closed request reopens it with its PR and resumes it', async () => {
+  const state = {
+    issues: [{ number: 31, open: false, body: 'Idée\n\n<!-- factory-reopen {"labels":["factory:building"],"prs":[40]} -->', labels: [L.feature, L.alreadyDone] }],
+    prs: [{ number: 40, state: 'closed', body: 'Closes #31', head: { sha: 'a', ref: 'claude/issue-31-x' }, labels: [] }],
+  };
+  const gh = withReopen(fakeGh(state), state);
+  const sent = [];
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle(ownerSays(31, [L.feature, L.alreadyDone]));
+  assert.equal(action.stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'reopen' && c[1] === 31));
+  assert.ok(gh.calls.some((c) => c[0] === 'reopenPr' && c[1] === 40));
+  assert.equal(state.issues[0].body, 'Idée');
+  assert.ok(!state.issues[0].labels.includes(L.alreadyDone));
+  assert.ok(state.issues[0].labels.includes(L.building) && !state.issues[0].labels.includes(L.blocked));
+  assert.equal(payloadOf(sent[0].init.body).stage, 'resume');
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /déjà terminée/.test(c[2])));
+});
+
+test('a reopened building request waits in the queue when the factory is full', async () => {
+  const state = {
+    issues: [{ number: 31, open: false, body: '<!-- factory-reopen {"labels":["factory:building"],"prs":[]} -->', labels: [L.feature, L.obsolete] },
+      { number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }],
+    prs: [],
+  };
+  const gh = withReopen(fakeGh(state), state);
+  const sent = [];
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle(ownerSays(31, [L.feature, L.obsolete]));
+  assert.equal(action.type, 'queue');
+  assert.ok(state.issues[0].labels.includes(L.queued) && state.issues[0].labels.includes(L.resumeQueued));
+  assert.ok(!sent.some((s) => payloadOf(s.init.body).issue === 31));
+});
+
+test('an agent-closed request without a saved state still reopens and resumes', async () => {
+  const state = { issues: [{ number: 9, open: false, body: null, labels: [L.bug, L.duplicate] }], prs: [] };
+  const gh = withReopen(fakeGh(state), state);
+  const { action } = await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle(ownerSays(9, [L.bug, L.duplicate]));
+  assert.equal(action.stage, 'resume');
+  assert.ok(gh.calls.some((c) => c[0] === 'reopen' && c[1] === 9));
+});
+
+test('a message in a request closed the usual way still says it is finished', async () => {
+  const state = { issues: [{ number: 9, open: false, body: '', labels: [L.feature] }], prs: [] };
+  const gh = withReopen(fakeGh(state), state);
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle(ownerSays(9, [L.feature], 'encore une chose'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'reopen'));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /déjà terminée/.test(c[2])));
+});
+
 test('guard: a card left with factory:close is closed on the next tick', async () => {
   const gh = fakeGh({ issues: [{ number: 31, labels: [L.feature, L.close] }], prs: [] });
   gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
