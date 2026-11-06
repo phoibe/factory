@@ -18,6 +18,7 @@ function fakeGh(state) {
     listPulls: async () => state.prs.filter((p) => p.state !== 'closed'),
     listClosedPulls: async () => state.prs.filter((p) => p.state === 'closed'),
     listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })),
+    listOpenIssues: async () => [...state.issues, ...state.prs.map((p) => ({ ...p, pull_request: {} }))].filter((i) => i.open !== false && i.state !== 'closed').map((i) => ({ ...i, state: 'open', labels: (i.labels || []).map((name) => ({ name })) })),
     listComments: async (n) => state.comments?.[n] || [],
     listEvents: async (n) => state.events?.[n] || [],
     comment: async (n, body) => calls.push(['comment', n, body]),
@@ -854,6 +855,19 @@ test('guard: an issue left open after its PR merged is closed and frees its plac
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.building));
   assert.equal(payloadOf(sent[0].init.body).issue, 8); // the queue moves on
+});
+
+test('guard: merged PRs of finished cards cost no read of their issue (#211)', async () => {
+  const gh = fakeGh({
+    issues: [{ number: 1, open: false, labels: [L.feature] }, { number: 2, open: false, labels: [L.feature] }],
+    prs: [{ number: 20, state: 'closed', merged_at: minutesAgo(60), body: 'Closes #1', labels: [] }, { number: 21, state: 'closed', merged_at: minutesAgo(90), body: 'Closes #2', labels: [] }],
+  });
+  const read = [];
+  const getIssue = gh.getIssue;
+  gh.getIssue = async (n) => { read.push(n); return getIssue(n); };
+  gh.listEvents = async (n) => { read.push(`events ${n}`); return []; };
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet }).handle(tick);
+  assert.deepEqual(read.filter((x) => x === 1 || x === 2 || x === 'events 1' || x === 'events 2'), []);
 });
 
 test('guard: an issue the owner reopened after the merge is left alone', async () => {

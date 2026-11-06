@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { waitingCards, alertText, sendAlert } from '../scripts/lib/notify.mjs';
+import { waitingCards, alertText, sendAlert, notifiedComment } from '../scripts/lib/notify.mjs';
 import { createRelay } from '../scripts/relay.mjs';
 import { L } from '../scripts/lib/labels.mjs';
 
@@ -100,4 +100,25 @@ test('a tick runs the alerts', async () => {
   const s = setup({ items: [card(1, [L.acceptance], { pull_request: {} })], events: { 1: labeledAt(L.acceptance) } });
   await s.relay.notifyWaiting();
   assert.match(s.posted[0].message, /Recette prête/);
+});
+
+test('an alert already sent costs no read of the whole thread nor of the card\'s events (#211)', async () => {
+  const label = L.specReview;
+  const at = '2026-01-01T00:00:00Z';
+  const marker = { id: 5, updated_at: '2026-01-01T00:01:00Z', body: notifiedComment([`${label}@7`]) };
+  const old = { id: 1, updated_at: '2025-12-01T00:00:00Z', body: 'une vieille discussion' };
+  const reads = [];
+  const gh = {
+    listIssues: async ({ labels }) => (labels === label ? [card(1, [label])] : []),
+    listRepoEvents: async () => [{ id: 7, event: 'labeled', label: { name: label }, created_at: at, issue: { number: 1 } }],
+    listCommentsSince: async (n, since) => [old, marker].filter((c) => c.updated_at >= since),
+    listEvents: async () => { reads.push('events'); return []; },
+    listComments: async () => { reads.push('comments'); return [old, marker]; },
+    comment: async () => assert.fail('nothing to write'),
+    updateComment: async () => assert.fail('nothing to write'),
+  };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'o/p', config: { runner: 'claude-cloud', maxParallel: 2, stages: {}, review: { maxLoops: 3 } }, env: { NTFY_TOPIC: 't' }, fetchImpl: async () => { sent.push(1); return { ok: true }; }, log: () => {} });
+  await relay.notifyWaiting();
+  assert.deepEqual([sent.length, reads], [0, []]);
 });

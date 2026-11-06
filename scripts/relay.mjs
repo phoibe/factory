@@ -659,10 +659,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   };
 
   // A merge GitHub did not follow with « Closes #n » (bot merge, lost event): the issue stays open and holds a place.
+  // One read of the open issues instead of one per recently closed PR: a finished card costs nothing.
   async function closeMerged(closed) {
-    for (const pr of closed.filter((p) => p.merged_at)) {
+    const merged = closed.filter((p) => p.merged_at);
+    if (!merged.length) return;
+    const open = gh.listOpenIssues ? new Map(((await gh.listOpenIssues()) || []).map((i) => [i.number, i])) : null;
+    for (const pr of merged) {
       const n = linkedIssue(pr.body);
-      const issue = n && (await gh.getIssue(n));
+      if (!n || (open && !open.has(n))) continue;
+      const issue = open ? open.get(n) : await gh.getIssue(n);
       if (!issue || issue.state !== 'open' || issue.pull_request) continue;
       const labels = names(issue.labels);
       if (!labels.some((l) => l.startsWith('factory:'))) continue;
@@ -773,11 +778,20 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const items = [];
       for (const label of WAIT_LABELS) items.push(...((await gh.listIssues({ labels: label })) || []));
       const project = repo.split('/')[1] || repo;
-      for (const card of waitingCards(items)) {
+      const cards = waitingCards(items);
+      // The latest label events of the whole repository in one read; a card whose wait began earlier reads its own.
+      const recent = cards.length && gh.listRepoEvents ? ((await gh.listRepoEvents().catch(() => null)) || []) : [];
+      const isWait = (card) => (e) => e.event === 'labeled' && e.label?.name === card.label;
+      for (const card of cards) {
         try {
-          const events = ((await gh.listEvents(card.number)) || []).filter((e) => e.event === 'labeled' && e.label?.name === card.label);
-          const key = `${card.label}@${events.pop()?.id ?? 'x'}`;
-          let mine = ((await gh.listComments(card.number)) || []).find((c) => (c.body || '').includes(NOTIFIED_MARKER));
+          const wait = recent.find((e) => e.issue?.number === card.number && isWait(card)(e))
+            || ((await gh.listEvents(card.number)) || []).filter(isWait(card)).pop();
+          const key = `${card.label}@${wait?.id ?? 'x'}`;
+          // The key of this wait was written after it began: only comments updated since then can hold it.
+          const fresh = wait?.created_at && gh.listCommentsSince ? (await gh.listCommentsSince(card.number, wait.created_at)) || [] : null;
+          const marked = (list) => list.find((c) => (c.body || '').includes(NOTIFIED_MARKER));
+          if (fresh && notifiedKeys(marked(fresh)?.body).includes(key)) continue;
+          let mine = (fresh && marked(fresh)) || marked((await gh.listComments(card.number)) || []);
           const keys = notifiedKeys(mine?.body);
           if (keys.includes(key)) continue;
           // Write the key first: a crash or a failed write after the send would otherwise repeat the alert forever.
