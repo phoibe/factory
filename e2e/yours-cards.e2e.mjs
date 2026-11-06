@@ -105,3 +105,18 @@ test('quand rien ne m\'attend, le message « Rien ne vous attend » s\'affiche c
     assert.equal(await page.locator('section.lane-yours').count(), 0, 'no empty lane');
   });
 });
+
+test('les boutons discrets d\'une carte tiennent côte à côte sous le bouton bleu', async () => {
+  const acceptance = { ...issue(3, 'Trier par saison', ['factory:feature', 'factory:acceptance'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/3' }), comments: 1 };
+  const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport }, async ({ page, url }) => {
+      await page.goto(url);
+      const actions = page.locator('.ticket.yours[data-number="3"] .card-actions');
+      await actions.locator('a[href="https://preview.example.com/"]').waitFor();
+      const tops = await actions.locator('a.button').evaluateAll((n) => n.map((x) => Math.round(x.getBoundingClientRect().top)));
+      assert.equal(tops.length, 2);
+      assert.equal(tops[0], tops[1], `${viewport.width}px: « Ouvrir l'aperçu à tester » and « Voir la recette » share one row`);
+    });
+  }
+});

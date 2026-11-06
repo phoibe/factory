@@ -424,3 +424,10 @@ details summary { color: var(--text); }
 @media (max-width: 600px) { .you-card.lane-yours { margin-bottom: 32px; } }
 /* The preview link reads like the other quiet buttons of the card, not like the small link of the other lanes. */
 .ticket.yours .card-actions .preview.secondary { padding: 8px 14px; font-size: inherit; }
+/* Design pass (#269): quiet buttons share one row and wrap their text instead of stacking; short cards keep their height;
+   a near miss around the buttons does not open GitHub; the action line has no arrow pointing at nothing. */
+.ticket.yours .card-actions > :not(.go) { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.ticket.yours .card-actions .button.secondary { border-color: var(--you-line); }
+.ticket.yours .card-actions::before { content: ""; position: absolute; inset: -8px; z-index: -1; }
+.lane-yours .tickets { align-items: start; }
+.ticket.yours .cta .arrow { display: none; }
