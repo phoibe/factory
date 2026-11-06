@@ -1,24 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { smokeRoutes, isProtected, pageProblem, smoke, screenUrl } from '../scripts/smoke.mjs';
+import { smokeRoutes, routeUrl, isProtected, pageProblem, smoke } from '../scripts/smoke.mjs';
 
 test('the screens opened are « / » plus the listed ones', () => {
   assert.deepEqual(smokeRoutes('# écrans\n/connexion\n\n/planning # le planning\nnot-a-path\n/'), ['/', '/connexion', '/planning']);
   assert.deepEqual(smokeRoutes(''), ['/']);
 });
 
-test('a screen is opened under the site address, even when the site lives in a sub-folder (issue #218)', () => {
-  // GitHub Pages serves a project site at https://<owner>.github.io/<repo>/: « / » is that folder, not the domain.
-  assert.equal(screenUrl('/', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/');
-  assert.equal(screenUrl('/settings', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/settings');
-  assert.equal(screenUrl('/settings', 'https://phoibe.github.io/factory'), 'https://phoibe.github.io/factory/settings');
-  assert.equal(screenUrl('/', 'https://phoibe.github.io/factory'), 'https://phoibe.github.io/factory/');
-  // A site at the root of its domain (Vercel, Netlify…) is unchanged.
-  assert.equal(screenUrl('/', 'https://app.vercel.app'), 'https://app.vercel.app/');
-  assert.equal(screenUrl('/a/b?x=1', 'https://app.vercel.app/'), 'https://app.vercel.app/a/b?x=1');
-  // A query or anchor on the site address is not carried to the screens, « / » included.
-  assert.equal(screenUrl('/', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/');
-  assert.equal(screenUrl('/s', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/s');
+test('screens open inside the site, even when it lives in a sub-folder (GitHub Pages)', () => {
+  assert.equal(routeUrl('/', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/');
+  assert.equal(routeUrl('/', 'https://phoibe.github.io/factory'), 'https://phoibe.github.io/factory/');
+  assert.equal(routeUrl('/planning', 'https://phoibe.github.io/factory/'), 'https://phoibe.github.io/factory/planning');
+  assert.equal(routeUrl('/connexion?x=1', 'https://app.example/'), 'https://app.example/connexion?x=1');
+  assert.equal(routeUrl('/', 'https://app.example'), 'https://app.example/');
+  assert.equal(routeUrl('/user:42', 'https://x.io/app/'), 'https://x.io/app/user:42');
+  assert.equal(routeUrl('/p#h', 'https://x.io/a/b/?q=1#z'), 'https://x.io/a/b/p#h');
+});
+
+test('a screen is opened under the site address, query and anchor of the site dropped (issue #218)', () => {
+  assert.equal(routeUrl('/settings', 'https://phoibe.github.io/factory'), 'https://phoibe.github.io/factory/settings');
+  assert.equal(routeUrl('/a/b?x=1', 'https://app.vercel.app/'), 'https://app.vercel.app/a/b?x=1');
+  assert.equal(routeUrl('/', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/');
+  assert.equal(routeUrl('/s', 'https://a.github.io/r/?x=1#h'), 'https://a.github.io/r/s');
 });
 
 test('a version protected by its host is not a failure', () => {

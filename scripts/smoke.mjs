@@ -18,14 +18,14 @@ export function smokeRoutes(text) {
   return [...new Set(['/', ...listed])];
 }
 
-// The address of one screen. A route is under the site's own address, not its domain: a GitHub Pages project site
-// lives at https://<owner>.github.io/<repo>/, where « / » is that folder (issue #218: the domain root answers 404).
-export function screenUrl(route, base) {
+// The address of one screen. Routes are relative to the site, not to the domain: a site hosted in a sub-folder
+// (GitHub Pages: https://owner.github.io/project/) must open « / » as its own home, never the domain's root.
+export function routeUrl(route, base) {
   const u = new URL(base);
+  if (!u.pathname.endsWith('/')) u.pathname += '/';
   u.search = '';
   u.hash = '';
-  if (!u.pathname.endsWith('/')) u.pathname += '/';
-  return new URL(String(route).replace(/^\/+/, ''), u).toString();
+  return new URL('./' + String(route).replace(/^\/+/, ''), u).toString();
 }
 
 // A deployment protected by its host's sign-in (Vercel Authentication…) cannot be opened by a robot: not a failure.
@@ -86,7 +86,7 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
       const serverErrors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('response', (r) => { if (r.status() >= 500 && r.url().startsWith(origin)) serverErrors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
-      const target = screenUrl(route, url);
+      const target = routeUrl(route, url);
       let status = 0;
       try {
         const res = await page.goto(target, { waitUntil: 'networkidle', timeout: 45_000 });

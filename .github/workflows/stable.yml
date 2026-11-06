@@ -18,8 +18,9 @@ concurrency:
 jobs:
   promote:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Same image and same checks as test.yml: a release is refused only when the normal tests would be red too.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +36,8 @@ jobs:
         run: node scripts/stable.mjs ready
       - id: tests
         if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
-        run: node --test
+        # Installs the dependencies and Chromium, then runs the tests and the a11y checks (as test.yml does).
+        run: node scripts/checks.mjs .
       - name: Promote
         id: promote
         if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
