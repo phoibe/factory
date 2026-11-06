@@ -52,6 +52,8 @@ legend { font-weight: 700; padding: 0 6px; }
 .row label { margin: 0; padding: 10px 0; font-weight: 600; }
 .row p { margin: -6px 0 0; color: var(--muted); font-size: .9rem; }
 .pack-skills { margin: 8px 0 0 28px; }
+.sub-setting { margin-top: 12px; }
+.sub-setting[aria-disabled=true] { opacity: .5; }
 .pack-skills[aria-disabled=true] { opacity: .5; }
 details summary { cursor: pointer; color: var(--accent); margin-top: 6px; padding: 10px 0; }
 .savebar { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 12px 0; display: flex; gap: 12px; align-items: center; }

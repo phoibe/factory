@@ -68,6 +68,17 @@ test('autoPick is off by default and only a boolean turns it on', () => {
   assert.equal(warnings.length, 1);
 });
 
+test('maxQuestions defaults to 2 and only an integer from 1 to 10 is kept', () => {
+  assert.equal(resolveConfig(undefined, catalog).config.maxQuestions, 2);
+  assert.equal(resolveConfig({ maxQuestions: 3 }, catalog).config.maxQuestions, 3);
+  assert.equal(resolveConfig({ maxQuestions: 10 }, catalog).config.maxQuestions, 10);
+  for (const bad of [0, 11, '2', 1.5]) {
+    const { config, warnings } = resolveConfig({ maxQuestions: bad }, catalog);
+    assert.equal(config.maxQuestions, 2);
+    assert.equal(warnings.length, 1);
+  }
+});
+
 test('a broken config file never throws: defaults plus a warning', () => {
   assert.deepEqual(parseRawConfig('{ not json'), { raw: {}, warning: 'factory.config.json est illisible : les réglages par défaut sont utilisés.' });
   assert.equal(parseRawConfig('[1]').raw && Object.keys(parseRawConfig('[1]').raw).length, 0);

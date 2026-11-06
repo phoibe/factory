@@ -18,6 +18,7 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     runner: DEFAULTS.runner,
     maxParallel: DEFAULTS.maxParallel,
     autoPick: DEFAULTS.autoPick === true,
+    maxQuestions: DEFAULTS.maxQuestions,
     stack: typeof input.stack === 'string' && input.stack.trim() ? input.stack : DEFAULTS.stack,
     stages: boolMap(DEFAULTS.stages, input.stages),
     review: { maxLoops: DEFAULTS.review.maxLoops },
@@ -40,6 +41,10 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   if (input.autoPick !== undefined) {
     if (typeof input.autoPick === 'boolean') config.autoPick = input.autoPick;
     else warnings.push(`autoPick invalide (${JSON.stringify(input.autoPick)}), désactivé`);
+  }
+  if (input.maxQuestions !== undefined) {
+    if (isPosInt(input.maxQuestions) && input.maxQuestions <= 10) config.maxQuestions = input.maxQuestions;
+    else warnings.push(`maxQuestions invalide (${JSON.stringify(input.maxQuestions)}), ${DEFAULTS.maxQuestions} utilisé`);
   }
   const loops = input.review?.maxLoops;
   if (loops !== undefined) {

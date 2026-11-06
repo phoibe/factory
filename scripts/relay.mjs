@@ -239,9 +239,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const SKIP = [L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
-    // A picked feature still waiting for the owner's answers: no more features until it moves on.
+    // Picked features still waiting for the owner's answers (questions or spec): at most `maxQuestions` of them.
     const waitingList = (await open(L.autoPicked)).filter((i) => i.number !== freed && [L.grilling, L.specReview].some((l) => names(i.labels).includes(l)));
-    const waiting = waitingList.length > 0;
     // A picked card that waits for the owner still holds its place.
     free -= waitingList.length;
     if (free <= 0) return;
@@ -256,13 +255,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       .filter((i) => i.number !== freed && !withPr.has(i.number));
     const rank = (i) => (names(i.labels).includes(L.urgent) ? 0 : 2) + (names(i.labels).includes(L.bug) ? 0 : 1);
     candidates.sort((a, b) => rank(a) - rank(b) || Date.parse(a.created_at) - Date.parse(b.created_at) || a.number - b.number);
-    let stopFeatures = waiting;
+    let featureRoom = (config.maxQuestions ?? 2) - waitingList.length;
     for (const issue of candidates) {
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (labels.some((l) => SKIP.includes(l))) continue; // another run took it
       const isBug = labels.includes(L.bug);
-      if (!isBug && stopFeatures) continue;
+      if (!isBug && featureRoom <= 0) continue;
       const grilling = !isBug && config.stages.grilling;
       const stage = isBug ? 'bugfix' : grilling ? 'grilling' : 'spec';
       // Claim first (the labels also keep a second run from picking it again), release if the agent does not start.
@@ -277,7 +276,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       }
       await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."));
       free -= 1;
-      if (!isBug) stopFeatures = true;
+      if (!isBug) featureRoom -= 1;
     }
   }
 

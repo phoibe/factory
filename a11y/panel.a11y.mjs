@@ -78,6 +78,31 @@ test('panel screens have no axe violations, in the light and the dark theme', as
           await page.evaluate(axeSource);
           const result = await page.evaluate(() => axe.run());
           for (const v of result.violations) found.push(`${name} (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+          if (name === 'Règles') {
+            // The "Features en questions en même temps" setting sits under the auto-pick switch, in its row, set to 2 by default.
+            const q = await page.evaluate(() => {
+              const input = document.getElementById('maxQuestions');
+              const pickRow = document.getElementById('autoPick')?.closest('.row');
+              return input && { value: input.value, min: input.min, max: input.max, label: document.querySelector('label[for=maxQuestions]')?.textContent,
+                afterPick: pickRow?.contains(input) === true && Boolean(pickRow.querySelector('label[for=autoPick]').compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING) };
+            });
+            if (!q || q.value !== '2' || q.min !== '1' || q.max !== '10' || q.label !== 'Features en questions en même temps' || !q.afterPick)
+              found.push(`Règles (${scheme}): réglage maxQuestions absent ou mal placé : ${JSON.stringify(q)}`);
+            // Nested under the auto-pick switch: off while picking is off, aligned with the switch's label.
+            const nest = await page.evaluate(() => ({ disabled: document.getElementById('maxQuestions').disabled,
+              inputmode: document.getElementById('maxQuestions').inputMode,
+              x: document.querySelector('label[for=maxQuestions]').getBoundingClientRect().x,
+              pickX: document.querySelector('label[for=autoPick]').getBoundingClientRect().x }));
+            if (!nest.disabled || nest.inputmode !== 'numeric' || Math.abs(nest.x - nest.pickX) > 1)
+              found.push(`Règles (${scheme}): réglage maxQuestions pas rattaché à la pioche : ${JSON.stringify(nest)}`);
+            // With picking on, a value out of range is not kept: the field goes back and a short message says why.
+            await page.check('#autoPick');
+            await page.fill('#maxQuestions', '11');
+            await page.dispatchEvent('#maxQuestions', 'change');
+            const after = await page.inputValue('#maxQuestions');
+            const toastText = await page.textContent('#toast');
+            if (after !== '2' || toastText !== 'Entre 1 et 10.') found.push(`Règles (${scheme}): valeur hors limites : champ ${after}, message ${JSON.stringify(toastText)}`);
+          }
         }
         await context.close();
       }
