@@ -103,7 +103,7 @@ test('the cloud session Chromium is used when it is there', async () => {
   assert.deepEqual(launchOptions({}, () => false), {});
 });
 
-// A page that changes on every load if nothing is frozen: the time, a running animation, a blinking caret.
+// A page that changes on every load if nothing is frozen: the time, a running animation, a focused field.
 async function serveMovingPage(extra = '') {
   const { createServer } = await import('node:http');
   const html = `<!doctype html><meta charset="utf-8"><style>
@@ -116,8 +116,8 @@ async function serveMovingPage(extra = '') {
   return { server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
-test('a screen that did not change gives the very same picture, even with an animation, a caret and the time on it', async () => {
-  const { mkdtempSync, readdirSync } = await import('node:fs');
+test('a screen that did not change gives the very same picture, even with an animation and the time on it', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { capture } = await import('../agent/scripts/shots.mjs');
@@ -130,11 +130,12 @@ test('a screen that did not change gives the very same picture, even with an ani
     await capture({ baseUrl: url, routes: ['/'], out: after, toggle: null });
     const files = readdirSync(after).sort();
     assert.deepEqual(sameScreens(before, after, files), files);
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
   } finally { server.close(); }
 });
 
 test('a real small change is still shown', async () => {
-  const { mkdtempSync, readdirSync } = await import('node:fs');
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { capture } = await import('../agent/scripts/shots.mjs');
@@ -147,5 +148,12 @@ test('a real small change is still shown', async () => {
     await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
     const files = readdirSync(after).sort();
     assert.deepEqual(sameScreens(before, after, files), []);
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
   } finally { a.server.close(); b.server.close(); }
+});
+
+test('each shot hides the text caret and stops animations', async () => {
+  const { FROZEN_SHOT } = await import('../agent/scripts/shots.mjs');
+  assert.equal(FROZEN_SHOT.caret, 'hide');
+  assert.equal(FROZEN_SHOT.animations, 'disabled');
 });

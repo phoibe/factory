@@ -62,10 +62,12 @@ export function differs(a, b) {
 }
 
 // Everything that moves is frozen before each shot, so that a screen that did not change gives the very same
-// picture before and after: one fixed date and time (only in the captures, never in the app itself), animations
-// and transitions stopped in their final state, the text caret hidden. No tolerance on top: one pixel apart is a change.
+// picture before and after: one fixed date and time (only in the captures, never in the app itself), CSS animations
+// and transitions stopped (finite ones at their end, endless ones at their start), the text caret hidden, and
+// reduced motion asked for (JS motion libraries then jump to their final state). No tolerance on top: one pixel
+// apart is a change.
 export const FROZEN_TIME = '2026-01-15T10:30:00.000Z';
-export const FROZEN_CONTEXT = { reducedMotion: 'reduce', timezoneId: 'Europe/Paris', locale: 'fr-FR' };
+export const FROZEN_CONTEXT = { reducedMotion: 'reduce' };
 export const FROZEN_SHOT = { fullPage: true, animations: 'disabled', caret: 'hide' };
 
 export async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
@@ -74,7 +76,9 @@ export async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const browser = await chromium.launch(launchOptions());
   const shoot = async (viewport, scheme, applyToggle) => {
     const context = await browser.newContext({ ...FROZEN_CONTEXT, viewport, colorScheme: scheme });
-    await context.clock.setFixedTime(new Date(FROZEN_TIME));
+    // The clock API came with Playwright 1.45: an older project still gets its captures, only the time is not frozen.
+    if (context.clock) await context.clock.setFixedTime(new Date(FROZEN_TIME));
+    else console.error('playwright < 1.45: time not frozen, screens showing the time may differ before and after');
     if (cookies.length) await context.addCookies(cookies);
     if (applyToggle && toggle) {
       await context.addInitScript(({ toggle }) => {
