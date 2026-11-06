@@ -348,3 +348,13 @@ test('closeReason names the reason label of an agent-closed request', () => {
   assert.equal(closeReason([L.feature, L.duplicate]), L.duplicate);
   assert.equal(closeReason([L.feature, L.close]), null);
 });
+
+test('an agent-closed request reopened with the GitHub button is a reopen', () => {
+  const a = decide(ev({ event: 'issues', action: 'reopened', labels: [L.feature, L.obsolete] }), config, ctx);
+  assert.equal(a.type, 'reopen');
+});
+
+test('the owner writing during the run comes before the agent closing by itself', () => {
+  const a = decide(ev({ event: 'issues', action: 'unlabeled', removedLabel: L.running, labels: [L.feature, L.close, L.obsolete, L.pending] }), config, ctx);
+  assert.equal(a.type, 'replay');
+});

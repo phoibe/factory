@@ -61,6 +61,8 @@ function startIssue(ev, config, ctx) {
 function onIssue(ev, config, ctx) {
   if (ev.event === 'issues') {
     if (ev.action === 'closed') return { type: 'dequeue', reason: 'issue fermée' };
+    // Reopened with GitHub's button: cleaned up and put back at its step, like a message would (issue #203).
+    if (ev.action === 'reopened' && closeReason(ev.labels)) return { type: 'reopen', reason: "demande fermée par l'agent, rouverte" };
     // A card that gets blocked gives up its place: the queue can move on.
     if (ev.action === 'labeled' && ev.addedLabel === L.blocked && has(ev.labels, L.building)) return { type: 'dequeue', reason: 'carte bloquée : sa place est libre' };
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit].includes(ev.addedLabel));
@@ -143,6 +145,8 @@ export function decide(ev, config, ctx) {
   if ((ev.event === 'issues' || ev.event === 'pull_request') && ev.action === 'unlabeled') {
     if (ev.removedLabel !== L.running) return ignore('label retiré');
     // The agent cannot close anything (its run is refused it): it asks the factory with factory:close.
+    // The owner wrote during the run: the agent does not close by itself, his message is answered first (issue #203).
+    if (has(ev.labels, L.close) && closeReason(ev.labels) && has(ev.labels, L.pending)) return { type: 'replay', reason: "message reçu pendant le run : l'agent ne ferme pas seul" };
     if (has(ev.labels, L.close)) return { type: 'drop', reason: "l'agent demande de fermer la fiche" };
     if (has(ev.labels, L.pending)) return { type: 'replay', reason: "l'agent a fini : on traite le message reçu pendant son run" };
     // An agent run that leaves an open PR at no step: the owner would wait for nothing. Checks put it back on track

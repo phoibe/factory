@@ -34,6 +34,9 @@ const HEAL_MARKER = '<!-- factory-heal -->';
 // Saved at the end of a request's description when the agent closes it by itself: the step to resume and its PRs.
 const REOPEN_MARKER = '<!-- factory-reopen';
 const REOPEN_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.resumeQueued, L.autoGo];
+// A PR comes back only at the steps where it waits for the owner; at any other step the end of the agent's run
+// restarts its checks.
+const REOPEN_PR_LABELS = [L.visualReview, L.acceptance];
 const stripReopen = (body) => String(body || '').replace(/\n*<!-- factory-reopen \{.*?\} -->\s*$/s, '');
 // GitHub's own close reason for each of the agent's reasons.
 const CLOSE_STATE = { [L.alreadyDone]: 'completed', [L.duplicate]: 'duplicate', [L.obsolete]: 'not_planned' };
@@ -242,7 +245,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // then bugs, then the rest, oldest first. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
   async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
-    const SKIP = [L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
+    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     // Picked features still waiting for the owner's answers (questions or spec): at most `maxQuestions` of them.
@@ -402,14 +405,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!it0 || it0.state !== 'open' || ![L.feature, L.bug].some((l) => kinds.includes(l))) {
         for (const k of new Set([n, issue].filter(Boolean))) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(k, l);
         log(`drop: #${n} refused, the agent only closes a feature or a bug by itself`);
+        await gh.comment(issue || n, say("La factory ne ferme pas seule ce type de demande : elle reste ouverte. Dites « fermer » ici si vous voulez l'abandonner."));
         return;
       }
       if (!kinds.includes(reason)) await gh.addLabels(issue, [reason]);
-      const saved = { labels: kinds.filter((l) => REOPEN_LABELS.includes(l)), prs };
+      const prSteps = [];
+      for (const p of prs) prSteps.push({ n: p, labels: (await liveLabels(p)).filter((l) => REOPEN_PR_LABELS.includes(l)) });
+      const saved = { labels: kinds.filter((l) => REOPEN_LABELS.includes(l)), prs: prSteps };
       await gh.updateIssue(issue, { body: `${stripReopen(it0.body)}\n\n${REOPEN_MARKER} ${JSON.stringify(saved)} -->`.replace(/^\n\n/, '') });
     }
     const dropLabels = async (k) => { for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l); };
-    for (const p of prs) { await gh.closePr(p); await dropLabels(p); }
+    for (const p of prs) {
+      await gh.closePr(p);
+      await dropLabels(p);
+      // The reason lives on the request only: a closed PR keeping it would start the agent on a message.
+      for (const l of CLOSE_REASONS) if ((await liveLabels(p)).includes(l)) await gh.removeLabel(p, l);
+    }
     if (issue) {
       const it = issue === n ? item : await gh.getIssue(issue);
       await dropLabels(issue);
@@ -436,12 +447,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const m = new RegExp(`${REOPEN_MARKER} (\\{.*?\\}) -->`).exec(item?.body || '');
     let saved = { labels: [], prs: [] };
     try { if (m) saved = { ...saved, ...JSON.parse(m[1]) }; } catch { /* a damaged marker: reopen with no state */ }
-    await gh.reopenIssue(n);
+    if (item?.state === 'closed') await gh.reopenIssue(n);
     if (m) await gh.updateIssue(n, { body: stripReopen(item.body) });
     for (const l of CLOSE_REASONS) if (names(item?.labels).includes(l)) await gh.removeLabel(n, l);
-    await gh.addLabels(n, [...saved.labels.filter((l) => REOPEN_LABELS.includes(l)), L.blocked]);
-    for (const p of saved.prs || []) await gh.reopenPr(p).catch((e) => log(`reopen PR #${p}: ${e.message}`));
-    log(`reopen: #${n} (${saved.labels.join(', ') || 'no saved step'})`);
+    // A card closed in the queue comes back as building: blocked, the answered path starts it or queues it again.
+    const step = [...new Set(saved.labels.filter((l) => REOPEN_LABELS.includes(l)).map((l) => ([L.queued, L.resumeQueued].includes(l) ? L.building : l)))];
+    // No saved step (never started, or closed by hand with the label): it starts like a new request.
+    if (step.length) await gh.addLabels(n, [...step, L.blocked]);
+    for (const p of saved.prs || []) {
+      const { n: number, labels = [] } = typeof p === 'number' ? { n: p } : p;
+      try {
+        await gh.reopenPr(number);
+        const back = labels.filter((l) => REOPEN_PR_LABELS.includes(l));
+        if (back.length) await gh.addLabels(number, back);
+      } catch (e) { log(`reopen PR #${number}: ${e.message}`); }
+    }
+    log(`reopen: #${n} (${step.join(', ') || 'no saved step'})`);
   }
 
   // The guard, run on every tick: repairs the states no event will ever move, so a place is never held for nothing.
@@ -692,6 +713,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     if (action.type === 'replay') {
       await gh.removeLabel(n, L.pending);
+      // The agent wanted to close by itself, but the owner wrote meanwhile: his message wins, the card stays open.
+      if (closeReason(await liveLabels(n))) for (const l of [L.close, ...CLOSE_REASONS]) await gh.removeLabel(n, l);
       const text = await deferredMessage(n, ownerLogin, ev.kind === 'pr');
       if (!text) return { action, outputs };
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
