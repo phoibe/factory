@@ -796,7 +796,7 @@ async function writeRules() {
   }
   renderRules();
   drawSite();
-  toast('Règles enregistrées. Elles s\'appliquent dans une minute environ.');
+  toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 
 function selectTab(name) {
