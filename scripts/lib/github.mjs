@@ -149,6 +149,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     listRepoEvents: () => request('GET', '/repos/{repo}/issues/events?per_page=100'),
     // Comments updated at or after `since` (ISO time): only what moved, not the whole thread.
     listCommentsSince: (n, since) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100&since=${encodeURIComponent(since)}`),
+    // Every PR (open, closed, merged) of one branch of this repository.
+    pullsByHead: (branch) => request('GET', `/repos/{repo}/pulls?state=all&per_page=30&head=${enc(`${repo.split('/')[0]}:${branch}`)}`),
     listClosedPulls: () => request('GET', '/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=30'),
     paginate,
     getRepo: () => request('GET', '/repos/{repo}'),

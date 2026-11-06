@@ -1428,27 +1428,28 @@ test('a broken live site: the delivery is undone at once, and an urgent bug redo
 });
 
 // Issue #231: GitHub may refuse the workflow's token to open a PR. Nothing is undone then, so nothing may say it was.
-test('an undo GitHub refuses to open is never announced as done: the owner is told how to unblock it', async () => {
+test('an undo GitHub refuses to open is never announced as done: the owner is told, and the repair starts at once', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature], open: false }], prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
   gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 20 }; };
   gh.createPr = async () => { throw new Error('403 GitHub Actions is not permitted to create or approve pull requests.'); };
-  const relay = createRelay({ gh, repo: 'o/r', config, env, log: quiet });
+  const relay = createRelay({ gh, repo: 'o/r', config, env, fetchImpl: fetchOk([]), log: quiet });
   await relay.prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', runId: 5, git: () => {} });
-  assert.ok(!gh.calls.some((c) => c[0] === 'createIssue'), 'no redo issue claiming the delivery was removed');
-  assert.ok(!gh.calls.some((c) => c[0] === 'dispatch'));
+  const [, , body, labels] = gh.calls.find((c) => c[0] === 'createIssue');
+  assert.doesNotMatch(body, /retire cette livraison|a retiré/, 'no card claiming the delivery was removed');
+  assert.ok(!labels.includes(L.noPick), 'the card does not wait for an undo that will never come (#227)');
   const said = gh.calls.filter((c) => c[0] === 'comment').map((c) => c[2]).join('\n');
   assert.doesNotMatch(said, /Je la retire|a retiré/);
   assert.match(said, /la page est vide/);
   assert.match(said, /pas pu la retirer/);
+  assert.match(said, /#20 démarre donc tout de suite/);
   assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
-  assert.match(said, /https:\/\/github\.com\/o\/r\/compare\/main\.\.\.claude\/revert-pr-10\?expand=1/);
-  assert.match(said, /rouvrez la demande #1/);
 });
 
 test('an undo refused for another reason gives the owner GitHub\'s short reason, not the raw request', async () => {
   const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: '', head: { sha: 'abc' } }] });
   gh.createPr = async () => { throw new Error('POST /repos/o/r/pulls -> 422 {"message":"Validation Failed","errors":[]}'); };
-  await createRelay({ gh, repo: 'o/r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', result: 'failed', detail: 'erreur 500', git: () => {} });
+  gh.createIssue = async () => ({ number: 20 });
+  await createRelay({ gh, repo: 'o/r', config, env, fetchImpl: fetchOk([]), log: quiet }).prodReport({ pr: 10, sha: 'm1', result: 'failed', detail: 'erreur 500', git: () => {} });
   const said = gh.calls.filter((c) => c[0] === 'comment').map((c) => c[2]).join('\n');
   assert.match(said, /pas pu la retirer/);
   assert.match(said, /« Validation Failed »/);
@@ -1772,4 +1773,236 @@ test('outage: a lost report never blocks the card by itself, an outage past 3 ho
   ];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => T + 3.5 * 3_600_000, log: quiet }).handle(tick);
   assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+});
+
+// Issue #227: a host that failed to publish is not a broken live site.
+test('the live check reads the newest deployment: a re-run still publishing is waited for, not the older failure', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 2, environment: 'github-pages' }, { id: 1, environment: 'github-pages' }];
+  let done = false;
+  gh.deploymentStatuses = async (id) => (id === 2 ? (done ? [{ state: 'success', environment_url: 'https://new.example' }] : [{ state: 'in_progress' }]) : [{ state: 'failure', description: 'boom' }]);
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { done = true; } });
+  assert.equal(await relay.liveUrl('s', { attempts: 2 }), 'https://new.example');
+});
+
+test('the live check of an older version still finds its address once it is superseded (inactive)', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 1, environment: 'Production' }];
+  gh.deploymentStatuses = async () => [{ state: 'inactive' }, { state: 'success', environment_url: 'https://app.example' }];
+  assert.equal(await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 1 }), 'https://app.example');
+});
+
+test('a failed publication gives the host message and the run to re-run', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 1, environment: 'github-pages' }];
+  gh.deploymentStatuses = async () => [{ state: 'failure', description: 'Deployment failed', log_url: 'https://github.com/o/r/actions/runs/777/job/9' }];
+  assert.deepEqual(await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 1 }), { failed: true, detail: 'Deployment failed', runId: 777 });
+});
+
+test('a failed publication is re-run once and checked again, nothing undone and no message', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: 'Closes #1' }] });
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet, now: () => 42 }).deployFailed({ pr: 10, sha: 'm1', detail: 'Deployment failed', runId: 777, git: (a) => git.push(a) });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 777]]);
+  assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 42 - 60_000 } });
+  assert.equal(git.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
+test('a publication that fails again is only reported, with the host message, never undone', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: 'Closes #1' }] });
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+  gh.createIssue = async () => { throw new Error('no card expected'); };
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', detail: 'Deployment failed', runId: 778, retried: true, git: (a) => git.push(a) });
+  assert.equal(git.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch'));
+  const [, n, body] = gh.calls.find((c) => c[0] === 'comment');
+  assert.equal(n, 10);
+  assert.match(body, /hébergeur refuse de la publier/);
+  assert.match(body, /Deployment failed/);
+});
+
+// Issue #227: a « Remettre en ligne » card never waits in no-pick for an undo that was never opened.
+function undoSetup({ issues = [], createPr } = {}) {
+  issues.push({ number: 1, labels: [L.feature], open: false });
+  const gh = fakeGh({ issues, prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
+  gh.createIssue = async (title, body, labels) => { const i = { number: 20, title, body, labels: [...labels] }; issues.push(i); gh.calls.push(['createIssue', title, body, labels]); return i; };
+  gh.createPr = createPr || (async (title, head, base, body) => { gh.calls.push(['createPr', title, head, base, body]); return { number: 21 }; });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); const i = issues.find((x) => x.number === n); if (i) Object.assign(i, fields); };
+  gh.listOpenIssues = async () => issues.filter((i) => i.open !== false).map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) }));
+  return gh;
+}
+
+test('an undo GitHub refuses to open: the redo card starts at once as a normal urgent fix, and the setting is named', async () => {
+  const issues = [];
+  const gh = undoSetup({ issues, createPr: async () => { throw new Error('GitHub Actions is not permitted to create or approve pull requests'); } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', git: () => '' });
+  const card = issues.find((i) => i.number === 20);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.ok(!/a retiré cette livraison/.test(card.body));
+  const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
+  assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
+  assert.ok(!/Je la retire tout de suite/.test(said));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+});
+
+test('a relaunch finds the undo prepared but never opened: it opens it for the existing card, no second card', async () => {
+  const stuck = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
+  const issues = [stuck];
+  const gh = undoSetup({ issues });
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur', git: () => '' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'createIssue'));
+  assert.ok(gh.calls.some((c) => c[0] === 'createPr'));
+  assert.match(gh.calls.find((c) => c[0] === 'update' && c[1] === 21)[2].body, /<!-- factory-revert-redo #20 -->/);
+  assert.ok(stuck.labels.includes(L.noPick));
+});
+
+// Issue #227: the tick's safety net for a « Remettre en ligne » card left in no-pick without an undo under way.
+function stuckSetup({ age = 2 * 3600_000, stamp = null, undoOpen = false, live = true } = {}) {
+  const body = `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->\nAprès la mise en ligne de la PR #10, la version en ligne ne marchait plus : x.${stamp ? `\n\n<!-- factory-redo-recheck ${stamp} -->` : ''}`;
+  const card = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body, created_at: new Date(Date.now() - age).toISOString() };
+  const prs = undoOpen ? [{ number: 21, body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->`, head: { sha: 'r1', ref: 'claude/revert-pr-10' } }] : [];
+  const gh = fakeGh({ issues: [card], prs, deployments: [{ id: 1, environment: live ? 'Production' : 'Preview' }] });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); if (n === 20) Object.assign(card, fields); };
+  gh.pullsByHead = async (branch) => prs.filter((p) => p.head?.ref === branch).map((p) => ({ state: 'open', ...p }));
+  return { gh, card };
+}
+const guardTick = (gh, sent = []) => createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+const prodChecks = (gh) => gh.calls.filter((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')).map((c) => JSON.parse(c[3].payload).prodCheck);
+
+test('a card stuck in no-pick for over an hour without an undo: the live site is checked again', async () => {
+  const { gh, card } = stuckSetup();
+  await guardTick(gh);
+  assert.deepEqual(prodChecks(gh), [{ pr: 10, sha: 'abc1234', redo: 20 }]);
+  assert.match(card.body, /<!-- factory-redo-recheck \d+ -->/);
+  assert.ok(card.labels.includes(L.noPick));
+});
+
+test('a card whose re-check never came back within an hour starts as a normal urgent fix', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() - 2 * 3600_000 });
+  const sent = [];
+  await guardTick(gh, sent);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+  assert.deepEqual(prodChecks(gh), []);
+});
+
+test('the safety net leaves alone a card whose undo is open, or that is less than an hour old', async () => {
+  for (const opts of [{ undoOpen: true }, { age: 30 * 60_000 }, { undoOpen: true, stamp: Date.now() - 5 * 3600_000 }]) {
+    const { gh, card } = stuckSetup(opts);
+    await guardTick(gh);
+    assert.deepEqual(prodChecks(gh), [], JSON.stringify(opts));
+    assert.ok(card.labels.includes(L.noPick), JSON.stringify(opts));
+  }
+});
+
+test('a stuck card of a project without a live site to open starts at once', async () => {
+  const { gh, card } = stuckSetup({ live: false });
+  await guardTick(gh, []);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(prodChecks(gh), []);
+});
+
+test('the re-check of a stuck card: a live site that works closes it as obsolete', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() });
+  gh.closeIssue = async (n, reason) => { gh.calls.push(['close', n, reason]); if (n === 20) card.open = false; };
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'https://app.example', result: 'passed', detail: 'ok', redo: 20, git: () => { throw new Error('no undo'); } });
+  const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 20).map((c) => c[2]).join('\n');
+  assert.match(said, /Obsolète : la version en ligne marche/);
+  assert.ok(card.labels.includes(L.obsolete));
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'close'), ['close', 20, 'not_planned']);
+});
+
+test('the re-check of a stuck card: a live site still broken starts the card as a normal urgent fix', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'https://app.example', result: 'failed', detail: 'erreur 500', redo: 20, git: () => { throw new Error('no undo'); } });
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.deepEqual(sent.map((s) => [payloadOf(s.init.body).issue, payloadOf(s.init.body).stage]), [[20, 'bugfix']]);
+});
+
+// Review of #227.
+test('after a re-run, the old failed deploy no longer answers: the check waits for the new one', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  const t0 = Date.parse('2026-11-06T12:00:00Z');
+  gh.deployments = async () => [{ id: 1, environment: 'github-pages', created_at: new Date(t0 - 60_000).toISOString() }];
+  gh.deploymentStatuses = async () => [{ state: 'failure', description: 'boom', log_url: 'https://github.com/o/r/actions/runs/5/job/1' }];
+  assert.equal(await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 2, since: t0 }), null);
+});
+
+test('a re-run is asked with its time, and never for an older version or a re-check', async () => {
+  const mk = (head) => {
+    const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: 'Closes #1' }] });
+    gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+    gh.getBranch = async () => ({ object: { sha: head } });
+    return gh;
+  };
+  const head = mk('m1');
+  await createRelay({ gh: head, repo: 'r', config, env, log: quiet, now: () => 1234 }).deployFailed({ pr: 10, sha: 'm1', runId: 7 });
+  assert.deepEqual(JSON.parse(head.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true, retriedAt: 1234 - 60_000 } });
+  const older = mk('newer');
+  await createRelay({ gh: older, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', runId: 7 });
+  assert.ok(!older.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch'));
+  assert.match(older.calls.find((c) => c[0] === 'comment')[2], /hébergeur refuse de la publier/); // never silent
+  assert.match(older.calls.find((c) => c[0] === 'comment')[2], /livraison plus récente/);
+});
+
+test('the safety net starts at once a card whose undo was merged by hand, without a re-check', async () => {
+  const { gh, card } = stuckSetup();
+  gh.pullsByHead = async (branch) => (branch === 'claude/revert-pr-10' ? [{ number: 21, state: 'closed', merged_at: '2026-11-06T10:00:00Z', body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->` }] : []);
+  const sent = [];
+  await guardTick(gh, sent);
+  assert.deepEqual(prodChecks(gh), []);
+  assert.ok(!card.labels.includes(L.noPick));
+  assert.ok(!/toujours en ligne/.test(card.body));
+});
+
+test('a stuck card started without its undo says the delivery is still live (no cherry-pick)', async () => {
+  const { gh, card } = stuckSetup({ stamp: Date.now() - 2 * 3600_000 });
+  await guardTick(gh, []);
+  assert.match(card.body, /toujours en ligne/);
+});
+
+test('a relaunch after a refused undo leaves alone the card already started: no undo, no second message', async () => {
+  const started = { number: 20, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
+  const issues = [started];
+  const gh = undoSetup({ issues });
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'u', result: 'failed', detail: 'x', git: (a) => git.push(a) });
+  assert.equal(git.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'createPr' || c[0] === 'comment' || c[0] === 'createIssue'));
+});
+
+test('the safety net does nothing for a card when the undo PRs cannot be read', async () => {
+  const { gh, card } = stuckSetup();
+  gh.pullsByHead = async () => { throw new Error('GitHub 502'); };
+  await guardTick(gh, []);
+  assert.deepEqual(prodChecks(gh), []);
+  assert.ok(card.labels.includes(L.noPick));
+  assert.ok(!/factory-redo-recheck/.test(card.body));
+});
+
+test('a relaunch finishes an undo left half done (PR opened, card never created): card, checks and message follow', async () => {
+  const issues = [];
+  const gh = undoSetup({ issues });
+  gh.listPulls = async () => [{ number: 21, body: `${REVERT_MARKER}\nRetour à la version d'avant la PR #10`, head: { ref: 'claude/revert-pr-10' } }];
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'abc1234', url: 'u', result: 'failed', detail: 'x', git: (a) => git.push(a) });
+  assert.equal(git.length, 0, 'no second undo branch');
+  assert.ok(!gh.calls.some((c) => c[0] === 'createPr'));
+  assert.ok(gh.calls.some((c) => c[0] === 'createIssue'));
+  assert.match(gh.calls.find((c) => c[0] === 'update' && c[1] === 21)[2].body, /<!-- factory-revert-redo #20 -->/);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 21 && c[2] === L.checks));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10));
+});
+
+test('the safety net counts any open undo of the delivery as under way, even one without its card marker', async () => {
+  const { gh, card } = stuckSetup();
+  gh.pullsByHead = async () => [{ number: 21, state: 'open', body: REVERT_MARKER }];
+  await guardTick(gh, []);
+  assert.deepEqual(prodChecks(gh), []);
+  assert.ok(card.labels.includes(L.noPick));
 });
