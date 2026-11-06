@@ -11,6 +11,7 @@ import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, STACK_FILE } from './stack.mjs';
+import { machineLine, repoKey } from './machine.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -183,6 +184,7 @@ async function openProject(fullName) {
   show('project-view');
   resetChat();
   renderRules();
+  loadMachine(current).catch(() => {});
   await renderBoard();
   if (!live.tick) startLive();
 }
@@ -780,6 +782,79 @@ function checkbox(id, checked, onchange) {
   return el('input', { type: 'checkbox', id, checked, onchange: (e) => onchange(e.target.checked) });
 }
 
+// ---- Machine of the factory jobs (issue #271) -------------------------------------------------------------------------
+// The general setting and the dev server check live on a branch of the factory (written by scripts/runners.mjs).
+const RUNNERS_BRANCH = 'factory-runners';
+const MACHINE_CHOICES = [['dev-server', 'Serveur de dev'], ['github', 'Machines GitHub']];
+const machine = { settings: null, sha: null, general: 'dev-server', savedGeneral: 'dev-server', status: null, hash: null, repo: null };
+
+async function runnersFile(path) {
+  const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`).catch(() => null);
+  if (!f?.content) return { json: null, sha: null };
+  try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha }; } catch { return { json: null, sha: f.sha }; }
+}
+
+async function loadMachine(project) {
+  // Never the previous project's state while this one loads (or if it cannot be read).
+  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
+  const [settings, status, hash] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json'), repoKey(String(project.repo.id))]);
+  if (current !== project) return;
+  const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
+  Object.assign(machine, { settings: settings.json, sha: settings.sha, general, savedGeneral: general, status: status.json, hash, repo: project.repo.full_name });
+  renderRules();
+}
+
+const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => el('div', { class: 'row' },
+  el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, onchange: () => onpick(v) }),
+  el('label', { for: `${name}-${v}` }, t)));
+
+// This project's machine, with the dev server's state for it.
+function machineFieldset(update) {
+  const c = current.config;
+  const general = machine.general;
+  const line = machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general, project: c.machine || 'default' });
+  const generalName = MACHINE_CHOICES.find(([v]) => v === general)[1].toLowerCase();
+  return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
+    el('p', { class: `machine-status ${line.tone}`, role: 'status' }, line.text),
+    el('div', { role: 'radiogroup', 'aria-label': 'Machine des tâches de ce projet' },
+      ...machineRadios('machine-project', [['default', `Comme le réglage de tous les projets (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))));
+}
+
+// The general machine, used by every project left on « Comme le réglage de tous les projets ».
+function generalMachineFieldset() {
+  return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches par défaut'),
+    ...machineRadios('machine-general', MACHINE_CHOICES, machine.general, (v) => { machine.general = v; renderRules(); }));
+}
+
+// A part of the settings: this project only, or every project.
+function rulesSection(id, title, intro, children) {
+  return el('section', { class: 'rules-section', 'aria-labelledby': id },
+    el('h2', { id, class: 'rules-section-title' }, title),
+    el('p', { class: 'rules-section-intro' }, intro),
+    ...children);
+}
+
+// Writes the general setting on the factory's branch (created if it does not exist yet).
+async function writeGeneral() {
+  if (!(await api(`/repos/${FACTORY_REPO}/branches/${RUNNERS_BRANCH}`).catch(() => null))) {
+    const tree = await api(`/repos/${FACTORY_REPO}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
+      { path: 'README.md', mode: '100644', type: 'blob', content: 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' },
+    ] }) });
+    const commit = await api(`/repos/${FACTORY_REPO}/git/commits`, { method: 'POST', body: JSON.stringify({ message: 'chore(factory): dev server branch', tree: tree.sha, parents: [] }) });
+    await api(`/repos/${FACTORY_REPO}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${RUNNERS_BRANCH}`, sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
+  }
+  const fresh = await runnersFile('settings.json');
+  // Keeps what changed there since the page loaded (runner labels): only the machine is written from here.
+  const body = JSON.stringify({ ...(fresh.json || machine.settings || {}), machine: machine.general }, null, 2) + '\n';
+  const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ message: 'chore(factory): machine setting from the panel', content: toBase64(body), branch: RUNNERS_BRANCH, ...(fresh.sha ? { sha: fresh.sha } : {}) }),
+  });
+  machine.settings = JSON.parse(body);
+  machine.sha = res?.content?.sha || null;
+  machine.savedGeneral = machine.general;
+}
+
 function renderRules() {
   const c = current.config;
   const update = (next) => { current.config = next; renderRules(); };
@@ -834,12 +909,16 @@ function renderRules() {
             checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
             el('label', { for: `skill-${s.id}` }, s.id))))));
   });
-  const dirty = JSON.stringify(c) !== current.saved;
+  const dirty = JSON.stringify(c) !== current.saved || machine.general !== machine.savedGeneral;
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
-  form.replaceChildren(site, engine, stages, checks, ...packs, bar);
+  const name = current.repo.name;
+  form.replaceChildren(
+    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, machineFieldset(update), engine, stages, checks, ...packs]),
+    rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
+    bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 
@@ -851,6 +930,20 @@ async function saveRules(e) {
   try { await writeRules(); } finally { savingRules = false; }
 }
 async function writeRules() {
+  const projectDirty = JSON.stringify(current.config) !== current.saved;
+  const generalDirty = machine.general !== machine.savedGeneral;
+  const machineChanged = generalDirty || current.config.machine !== JSON.parse(current.saved || '{}').machine;
+  if (generalDirty) await writeGeneral();
+  if (projectDirty) await writeProjectRules();
+  // The dev server check applies the change now instead of at its next run (15 minutes at most).
+  if (machineChanged) {
+    api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
+  }
+  renderRules();
+  drawSite();
+  toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
+}
+async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
   if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
@@ -873,9 +966,6 @@ async function writeRules() {
       method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
     }).catch(() => {});
   }
-  renderRules();
-  drawSite();
-  toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 
 function selectTab(name) {

@@ -16,7 +16,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `config`: the project's factory.config.json. `writeDelay`: how long GitHub takes to answer a write (ms).
 // `events`: the issue events GitHub returns (labels put on or taken off), first page only.
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, events = [] }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [] }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -42,7 +42,10 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403);
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json(repos.map((full) => ({ full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: true, html_url: `https://github.com/${full}`, homepage: '' })));
+      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: '' })));
+      // The factory's own branch files (dev server status and general setting, issue #271).
+      const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
+      if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
       if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);

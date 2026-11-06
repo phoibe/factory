@@ -1,5 +1,7 @@
 // Pure config resolution, shared by Node scripts and the browser panel.
 export const RUNNERS = ['claude-cloud', 'github-actions'];
+// The machine of the project's factory jobs (issue #271): `default` follows the general setting of the factory.
+export const PROJECT_MACHINES = ['default', 'dev-server', 'github'];
 
 const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
@@ -16,6 +18,7 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   const config = {
     version: 1,
     runner: DEFAULTS.runner,
+    machine: 'default',
     maxParallel: DEFAULTS.maxParallel,
     autoPick: DEFAULTS.autoPick === true,
     maxQuestions: DEFAULTS.maxQuestions,
@@ -33,6 +36,10 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   if (input.runner !== undefined) {
     if (RUNNERS.includes(input.runner)) config.runner = input.runner;
     else warnings.push(`runner "${input.runner}" inconnu, "${DEFAULTS.runner}" utilisé`);
+  }
+  if (input.machine !== undefined) {
+    if (PROJECT_MACHINES.includes(input.machine)) config.machine = input.machine;
+    else warnings.push(`machine "${input.machine}" inconnue, réglage général utilisé`);
   }
   if (input.maxParallel !== undefined) {
     if (isPosInt(input.maxParallel)) config.maxParallel = input.maxParallel;

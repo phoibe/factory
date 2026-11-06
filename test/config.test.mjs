@@ -85,3 +85,12 @@ test('a broken config file never throws: defaults plus a warning', () => {
   assert.deepEqual(parseRawConfig(null), { raw: {}, warning: null });
   assert.deepEqual(parseRawConfig('{"a":1}'), { raw: { a: 1 }, warning: null });
 });
+
+test('machine follows the general setting by default; only dev-server or github override it', () => {
+  assert.equal(resolveConfig({}, catalog).config.machine, 'default');
+  assert.equal(resolveConfig({ machine: 'github' }, catalog).config.machine, 'github');
+  assert.equal(resolveConfig({ machine: 'dev-server' }, catalog).config.machine, 'dev-server');
+  const { config, warnings } = resolveConfig({ machine: 'moon' }, catalog);
+  assert.equal(config.machine, 'default');
+  assert.ok(warnings.some((w) => w.includes('machine')));
+});

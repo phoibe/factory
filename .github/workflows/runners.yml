@@ -1,0 +1,32 @@
+# The dev server check (scripts/runners.mjs): every 15 minutes, private projects go to the dev server when its
+# runners are connected to GitHub, and back to GitHub's machines when they are not. Runs here, in the factory: a public
+# project, so these minutes are free. Without the FACTORY_RUNNERS_TOKEN secret, every project stays on GitHub.
+name: Dev server
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  # Started by the panel right after a change of the machine setting.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: factory-runners
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    # Up to a minute per stuck run to stop before its re-run; never past the next check.
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/runners.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FACTORY_RUNNERS_TOKEN: ${{ secrets.FACTORY_RUNNERS_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
