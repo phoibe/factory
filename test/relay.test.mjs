@@ -686,6 +686,32 @@ test('a tick checks the queue once, not twice', async () => {
   assert.deepEqual(sent.map((s) => payloadOf(s.init.body).issue), [8]);
 });
 
+test('a factory label typed wrong by an agent is put back, so the card can be picked', async () => {
+  // yoldmewhen2 #55, 2026-11-06: « une semaine à la fois:factory:feature » hid the feature from the factory.
+  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], created_at: '2026-01-01T00:00:00Z' }], prs: [] };
+  const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromAgent: true });
+  assert.ok(state.issues[0].labels.includes(L.feature));
+  assert.ok(!state.issues[0].labels.includes('une semaine à la fois:factory:feature'));
+  assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 55));
+});
+
+test('a PR merged by hand closes its issue at once, which frees its place', async () => {
+  // yoldmewhen2 #56, 2026-11-06: PR 59 merged by hand, #56 kept factory:building and held a place.
+  const gh = fakeGh({
+    issues: [{ number: 56, labels: [L.feature, L.building] }, { number: 59, labels: [L.checks], pull_request: {} }, { number: 60, labels: [L.feature, L.queued] }],
+    prs: [{ number: 59, state: 'closed', merged_at: '2026-11-06T14:51:42Z', body: 'Closes #56', head: { sha: 'a' }, labels: [L.checks] }],
+  });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'pull_request', action: 'closed', number: 59, labels: [L.checks], fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 56));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 59 && c[2] === L.checks));
+  assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 60));
+});
+
 // ---- auto-pick ----
 const pickConfig = { ...config, autoPick: true, maxQuestions: 1, stages: { grilling: true, acceptance: true } };
 async function runPick(issues, cfg = pickConfig) {
