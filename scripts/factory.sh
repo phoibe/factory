@@ -51,6 +51,9 @@ need_gh() {
   gh auth setup-git >/dev/null 2>&1 || true
 }
 
+# Number of the project's framing issue, empty when the install stopped before it (adoption to resume).
+framing_number() { gh issue list -R "$1" --label factory:project --state all --limit 1 --json number --jq '.[0].number // empty' 2>/dev/null || true; }
+
 full_name() { case "$1" in */*) printf '%s' "$1" ;; *) printf '%s/%s' "$OWNER_LOGIN" "$1" ;; esac; }
 
 # ---- Dépôt ----------------------------------------------------------------------------------------
@@ -163,9 +166,14 @@ routine() {
   local url token file
   file=$(routine_file)
   if [ -f "$file" ] && [ "${ROUTINE_REPLACE:-}" != 1 ]; then
-    # shellcheck disable=SC1090
-    . "$file"
-    url=${FACTORY_ROUTINE_URL:-}; token=${FACTORY_ROUTINE_TOKEN:-}
+    # A typo saved during an interrupted install must not stick: offer to type them again.
+    case "$(ask "  L'URL et le jeton de la routine sont déjà enregistrés sur cet ordinateur. Les garder ? (O/n)")" in
+      n|N|non) ;;
+      *)
+        # shellcheck disable=SC1090
+        . "$file"
+        url=${FACTORY_ROUTINE_URL:-}; token=${FACTORY_ROUTINE_TOKEN:-} ;;
+    esac
   fi
   if [ -z "${url:-}" ] || [ -z "${token:-}" ]; then
     case "$(ask "  Avez-vous déjà créé la routine « Factory - ${REPO#*/} » sur claude.ai ? (o/N)")" in
@@ -234,7 +242,10 @@ framing_issue() {
   say "6. Cadrage"
   # An adopted project often has its host already: framing checks that itself.
   if [ "$MODE" = nouveau ]; then echo "  L'hébergeur sera choisi avec la stack, au cadrage : je vous dirai alors quoi cliquer."; fi
-  local body url
+  local body url n
+  # Resuming an interrupted install: the framing issue may already be there.
+  n=$(framing_number "$REPO")
+  if [ -n "$n" ]; then ok "Cadrage déjà ouvert : https://github.com/$REPO/issues/$n"; return; fi
   if [ "$MODE" = nouveau ]; then
     body=$(ask "  Décrivez votre idée d'appli en une ou deux phrases :")
     [ -n "$body" ] || body="(Idée à préciser avec l'agent.)"
@@ -281,8 +292,13 @@ choose_existing() {
   say "Quel projet faire entrer dans la factory ?"
   for line in $list; do
     case "${line#*/}" in factory-template) continue ;; esac  # the factory itself can be adopted
-    gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 && continue
-    i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
+    # A project whose install stopped before framing is listed again, to finish it.
+    local note=""
+    if gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1; then
+      [ -n "$(framing_number "$line")" ] && continue
+      note="  (adoption à terminer)"
+    fi
+    i=$((i + 1)); printf '  %2d) %s%s\n' "$i" "${line#*/}" "$note"
     eval "CHOICE_$i=\$line"
   done
   [ "$i" -gt 0 ] || die "Tous vos dépôts sont déjà dans la factory. Pour un nouveau projet, relancez et choisissez 1."

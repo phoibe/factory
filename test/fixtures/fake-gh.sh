@@ -17,13 +17,15 @@ case "$1 $2" in
   # GitHub is slow to list a freshly dispatched run: the first listing after it still shows the old one.
   "run list") if [ -f "$FAKE_GH_LOG.dispatched" ] && [ -f "$FAKE_GH_LOG.listed" ]; then echo 7; else [ -f "$FAKE_GH_LOG.dispatched" ] && touch "$FAKE_GH_LOG.listed"; echo 6; fi ;;
   "run watch") [ "$3" = "${FAKE_RUN_WATCH_FAILS:-}" ] && exit 1; exit 0 ;;
+  # habitudes is framed; FAKE_FRAMED lists other framed repos (an issue factory:project exists).
+  "issue list") case " phoibe/habitudes ${FAKE_FRAMED:-} " in *" $4 "*) echo 5 ;; esac ;;
   "issue create") echo "https://github.com/phoibe/x/issues/1" ;;
   "repo list") printf 'phoibe/factory\nphoibe/habitudes\nphoibe/vieux-site\n' ;;
   *)
     case "$*" in
       *phoibe/habitudes/contents/factory.config.json*) echo '{}' ;;
       *phoibe/factory-template/contents/factory.config.json*) echo '{}' ;;
-      *contents/factory.config.json*) [ -f "$FAKE_GH_LOG.created" ] && echo '{}' || exit 1 ;;
+      *contents/factory.config.json*) case " ${FAKE_INSTALLED:-} " in *" ${2#repos/} "*) echo '{}'; exit 0 ;; esac; [ -f "$FAKE_GH_LOG.created" ] && echo '{}' || exit 1 ;;
       *contents/CLAUDE.md*) printf '# Instructions for Claude\n\nRead .factory/AGENT.md first.\n' ;;
       *contents/*) echo "content of ${*##*contents/}" ;;
     esac ;;
