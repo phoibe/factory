@@ -5,7 +5,7 @@ captures avant/après, des contrôles automatiques, une preview, puis une mise e
 n'intervient qu'en français, à trois portes : la spec, les captures, la recette.
 
 - **Panneau** : https://phoibe.github.io/factory/ (règles de chaque projet et suivi)
-- **Nouveau projet ou projet existant** : [télécharger les outils Mac](https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip) (deux fichiers à double-cliquer, voir `outils/`) ; le README de https://github.com/phoibe/factory-template explique la mise en route
+- **Nouveau projet ou projet existant** : [télécharger les outils Mac](https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip) (trois fichiers à double-cliquer, dont « Retirer un projet », voir `outils/`) ; le README de https://github.com/phoibe/factory-template explique la mise en route
 - **Version stable** : les projets suivent la branche `stable`, pas `main`. Le bouton « Déclarer stable » du panneau relance les tests puis y ajoute les derniers changements, avec une version numérotée (onglet Releases).
 - **Conception** : [docs/design.md](docs/design.md)
 

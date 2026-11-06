@@ -4,7 +4,7 @@
 #   bash <(curl -fsSL https://raw.githubusercontent.com/phoibe/factory/main/scripts/factory.sh)
 #
 # Le script pose ses questions (nouveau projet ou projet existant, nom…) puis fait tout.
-# Raccourcis possibles : « … factory.sh) nouveau mon-appli » ou « … factory.sh) adopter mon-appli ».
+# Raccourcis possibles : « … factory.sh) nouveau mon-appli », « … adopter mon-appli » ou « … retirer mon-appli ».
 #
 # Il faut seulement l'outil GitHub `gh` (connecté). Aucun hébergeur n'est branché ici : il est choisi avec la
 # stack, au cadrage, et la fiche projet dit alors quoi cliquer.
@@ -29,6 +29,7 @@ Utilisation :
   factory.sh                   pose ses questions puis fait tout (le plus simple)
   factory.sh nouveau <nom>     crée un nouveau projet depuis le modèle de la factory
   factory.sh adopter <nom>     fait entrer dans la factory un projet déjà commencé
+  factory.sh retirer [nom]     retire un projet de la factory (son dépôt est archivé, rien n'est effacé)
 <nom> peut être « mon-appli » (sur votre compte) ou « compte/mon-appli ».
 EOF
   exit 1
@@ -254,11 +255,12 @@ choose_mode() {
   echo "  1) Créer un nouveau projet"
   echo "  2) Faire entrer dans la factory un projet déjà commencé (déjà sur GitHub)"
   echo "  3) Changer l'URL ou le jeton de la routine d'un projet"
+  echo "  4) Retirer un projet de la factory"
   local c
   while :; do
-    c=$(ask "  Votre choix (1, 2 ou 3) :")
-    case "$c" in 1) MODE=nouveau; return ;; 2) MODE=adopter; return ;; 3) MODE=jeton; return ;; esac
-    echo "  Répondez 1, 2 ou 3."
+    c=$(ask "  Votre choix (1, 2, 3 ou 4) :")
+    case "$c" in 1) MODE=nouveau; return ;; 2) MODE=adopter; return ;; 3) MODE=jeton; return ;; 4) MODE=retirer; return ;; esac
+    echo "  Répondez 1, 2, 3 ou 4."
   done
 }
 
@@ -291,33 +293,75 @@ choose_existing() {
   done
 }
 
-# Range une nouvelle URL ou un nouveau jeton de routine dans un projet de la factory, choisi par numéro.
-update_token() {
+# Fait choisir par numéro un projet de la factory (dépôt non archivé qui a factory.config.json) et le range dans REPO.
+# « sans-factory » retire de la liste le dépôt de la factory elle-même.
+choose_project() {
   local list i=0 c line
   list=$(gh repo list "$OWNER_LOGIN" --limit 100 --no-archived --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
-  say "Quel projet ?"
+  say "${2:-Quel projet ?}"
   for line in $list; do
-    case "${line#*/}" in factory-template) continue ;; esac
+    case "${line#*/}" in factory-template) continue ;; factory) [ "${1:-}" = sans-factory ] && continue ;; esac
     gh api "repos/$line/contents/factory.config.json" >/dev/null 2>&1 || continue
     i=$((i + 1)); printf '  %2d) %s\n' "$i" "${line#*/}"
     eval "CHOICE_$i=\$line"
   done
-  [ "$i" -gt 0 ] || die "Aucun de vos dépôts n'est encore dans la factory."
+  [ "$i" -gt 0 ] || die "Aucun de vos dépôts n'est dans la factory."
   while :; do
     c=$(ask "  Numéro du projet (1 à $i) :")
-    case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "REPO=\$CHOICE_$c"; break; fi ;; esac
+    case "$c" in ''|*[!0-9]*) ;; *) if [ "$c" -ge 1 ] && [ "$c" -le "$i" ]; then eval "REPO=\$CHOICE_$c"; return; fi ;; esac
     echo "  Répondez par un numéro de la liste."
   done
+}
+
+# Range une nouvelle URL ou un nouveau jeton de routine dans un projet de la factory, choisi par numéro.
+update_token() {
+  choose_project
   ROUTINE_REPLACE=1 routine
   say "C'est fait : $REPO utilise maintenant cette routine."
 }
 
+# Retire un projet de la factory. Le tableau montre chaque dépôt non archivé qui a factory.config.json : archiver le
+# dépôt suffit à le faire disparaître, arrête ses workflows (donc ses agents) et se défait dans les réglages du dépôt.
+# Rien n'est effacé sur GitHub. Ce que le script ne peut pas faire (routine, hébergeur), il l'ouvre et le dit.
+remove_project() {
+  if [ -n "${1:-}" ]; then
+    REPO=$(full_name "$1")
+    gh repo view "$REPO" >/dev/null 2>&1 || die "Je ne trouve pas le dépôt $REPO. Vérifiez son nom."
+  else
+    choose_project sans-factory "Quel projet retirer de la factory ?"
+  fi
+  local name=${REPO#*/} site c
+  [ "$name" = factory ] && die "Le dépôt de la factory elle-même ne se retire pas : sans lui, plus aucun projet ne marche."
+  say "Retirer $name de la factory"
+  echo "  Je vais archiver le dépôt $REPO : il disparaît du tableau et plus aucun agent n'y travaille."
+  echo "  Rien n'est effacé : le code, les issues et l'historique restent lisibles, et vous pourrez le désarchiver."
+  c=$(ask "  Pour confirmer, tapez le nom du projet ($name) :")
+  [ "$c" = "$name" ] || { echo "  Ce n'est pas le même nom : rien n'a été fait."; exit 0; }
+  site=$(gh api "repos/$REPO/contents/factory.config.json" -H "Accept: application/vnd.github.raw" --jq '.siteUrl // empty' 2>/dev/null || true)
+  gh repo archive "$REPO" --yes >/dev/null || die "GitHub a refusé d'archiver $REPO. Réessayez dans une minute."
+  ok "Dépôt archivé : il n'apparaît plus dans le tableau"
+  rm -f "$(routine_file)"
+  ok "Jeton de sa routine oublié sur cet ordinateur"
+  say "Deux petites choses à finir vous-même (le script ne peut pas les faire)"
+  echo "  1) Supprimez la routine « Factory - $name » : ouvrez-la (crayon), puis « Delete »."
+  open_url "https://claude.ai/code/routines"
+  ask "     (Entrée pour continuer)" >/dev/null
+  echo "  2) Le site en ligne du projet, s'il en a un${site:+ ($site)}, reste en ligne tant que vous ne le supprimez pas chez"
+  echo "     son hébergeur (sur Vercel : le projet, puis Settings, tout en bas « Delete Project »). Pareil pour une base"
+  echo "     de données (Neon…) si le projet en a une."
+  open_url "https://vercel.com/dashboard"
+  say "C'est fait : $name ne fait plus partie de la factory."
+  echo "  Pour le faire revenir : https://github.com/$REPO/settings, tout en bas « Unarchive this repository »."
+  echo "  Pour l'effacer pour de bon (définitif) : même page, « Delete this repository »."
+}
+
 main() {
   MODE=${1:-}; NAME=${2:-}
-  case "$MODE" in nouveau|adopter|jeton|'') ;; *) usage ;; esac
+  case "$MODE" in nouveau|adopter|jeton|retirer|'') ;; *) usage ;; esac
   need_gh
   [ -n "$MODE" ] || choose_mode
   if [ "$MODE" = jeton ]; then update_token; exit 0; fi
+  if [ "$MODE" = retirer ]; then remove_project "$NAME"; exit 0; fi
   if [ -z "$NAME" ]; then
     if [ "$MODE" = nouveau ]; then choose_name; else choose_existing; fi
   fi

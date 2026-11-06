@@ -2,6 +2,7 @@ Les outils de la factory, pour Mac
 
 - « Nouveau projet.command » : crée un nouveau projet dans la factory.
 - « Adopter un projet.command » : met dans la factory un projet que vous avez déjà commencé.
+- « Retirer un projet.command » : retire un projet de la factory (son dépôt est archivé, rien n'est effacé).
 
 Double-cliquez le fichier : une fenêtre Terminal s'ouvre et vous pose les questions. Vous n'avez rien à modifier.
 

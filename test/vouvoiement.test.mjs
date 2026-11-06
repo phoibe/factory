@@ -10,7 +10,7 @@ const TU = /\b(tu|toi|ton|ta|tes|Tu|Ton)\b|\bt'[a-zéèêàâ]|\b(Réponds|Écri
 
 test('files read by the owner never use « tu »', () => {
   const files = ['scripts/factory.sh', 'scripts/lib/labels.mjs', 'scripts/lib/run-title.mjs', 'outils/LISEZMOI.txt',
-    'outils/Nouveau projet.command', 'outils/Adopter un projet.command', '.github/workflows/update-skills.yml', '.github/workflows/outils.yml',
+    'outils/Nouveau projet.command', 'outils/Adopter un projet.command', 'outils/Retirer un projet.command', '.github/workflows/update-skills.yml', '.github/workflows/outils.yml',
     ...readdirSync(new URL('../.github/ISSUE_TEMPLATE', import.meta.url)).map((f) => `.github/ISSUE_TEMPLATE/${f}`)];
   for (const f of files) {
     const bad = read(f).split('\n').filter((l) => TU.test(l) && !/Tu es l'agent|ROUTINE_PROMPT/.test(l));
