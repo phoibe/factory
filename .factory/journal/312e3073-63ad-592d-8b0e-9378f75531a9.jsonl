@@ -11,3 +11,8 @@
 {"t":"2026-11-06T12:33:34.761Z","kind":"test","cmd":"cd /home/user/factory/server/chat && python3 - <<'EOF'\ns=open('app.py').read()\nold='\"npm install -g @anthropic-ai/claude-code\",'\nassert old in s\ns=s.replace(old,'# Pinned: the chat relies on --restric","ok":true,"id":"toolu_01DeQhDMsaRftdUqcH4gT5QG"}
 {"t":"2026-11-06T12:33:40.575Z","kind":"test","cmd":"python3 -m unittest 2>&1 | grep -A15 FAIL: | head -20","ok":false,"id":"toolu_017881wjLguxAFi611eMZ3bD"}
 {"t":"2026-11-06T12:33:57.389Z","kind":"test","cmd":"python3 - <<'EOF'\nt=open('test_service.py').read()\nt=t.replace('''            def pop(self, key, default=None):\n                return (lambda: True) if key == name else default''','''            def ","ok":true,"id":"toolu_01YLQjMftfMWTARxa3e1b65w"}
+{"t":"2026-11-06T12:35:32.085Z","kind":"test","cmd":"git status --short | head; git rev-parse HEAD; cd server/chat && python3 -m unittest 2>&1 | tail -5","ok":true,"id":"toolu_01JQxU2j42QbzSanuLaYt8hD"}
+{"t":"2026-11-06T12:36:16.817Z","kind":"skill","name":"verification-before-completion","id":"toolu_01Q7up6qJF4csgWJmcnCFjJp"}
+{"t":"2026-11-06T12:36:23.308Z","kind":"skill","name":"writing-plans","id":"toolu_017ntWu6ywHwJKEvq6WTVS8J"}
+{"t":"2026-11-06T12:36:47.798Z","kind":"test","cmd":"cd /home/user/factory/server/chat && python3 - <<'EOF'\nt=open('test_service.py').read()\nold='''        self.gh.on_put = Always()\n'''\nnew='''        self.gh.on_put = Always()\n        pause, service.SAV","ok":true,"id":"toolu_01MWyBAiUC83UxQGVS76vBxZ"}
+{"t":"2026-11-06T12:36:59.507Z","kind":"skill","name":"security-review","id":"toolu_01Xnn7SRb3g7FHopUVPYeutf"}

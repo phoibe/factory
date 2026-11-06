@@ -10,6 +10,7 @@ import unittest
 try:
     import httpx
     from fastapi.testclient import TestClient
+    import service
     from service import create_app
 except ImportError:  # pragma: no cover
     httpx = None
@@ -219,6 +220,8 @@ class ServiceTest(unittest.TestCase):
             def __bool__(self):
                 return True
         self.gh.on_put = Always()
+        pause, service.SAVE_PAUSE = service.SAVE_PAUSE, 0  # the pauses between tries are not what is tested here
+        self.addCleanup(setattr, service, "SAVE_PAUSE", pause)
         r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Encore"})
         self.assertNotIn("error", [e["type"] for e in events], events)
         self.assertIs(events[-1]["saved"], False)
