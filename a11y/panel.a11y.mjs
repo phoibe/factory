@@ -1,4 +1,4 @@
-// Accessibility check of the panel: the login screen, then Suivi, Paramètres and Discussion of a signed-in
+// Accessibility check of the panel: the login screen, then Suivi, Paramètres and Agent of a signed-in
 // (fake) account, each in the light and the dark theme. A violation fails the test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -66,7 +66,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
         await page.route('https://api.github.com/**', fakeGithub);
         await page.addInitScript((on) => { if (on) localStorage.setItem('factory.token', 'fake-token-for-tests'); }, signedIn);
         await page.goto(`http://localhost:${server.address().port}/`);
-        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Discussion', 'tab-chat', '.conv']] : [['Connexion', null, '#login:not([hidden])']];
+        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Agent', 'tab-chat', '.conv']] : [['Connexion', null, '#login:not([hidden])']];
         for (const [name, tab, ready] of screens) {
           if (tab) {
             await page.waitForSelector('#project-view:not([hidden])');

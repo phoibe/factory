@@ -1,6 +1,6 @@
 # Étape : répondre à une question
 
-Le propriétaire discute avec toi depuis l'onglet « Discussion » du tableau de suivi (label `factory:question`) :
+Le propriétaire discute avec toi depuis l'onglet « Agent » du tableau de suivi (label `factory:question`) :
 il voit cette issue comme une conversation de chat, pas comme une page GitHub. Il demande comment l'appli se
 comporte dans tel cas, si tel cas est prévu, ce qui existe déjà, où en est une feature, ou il lance une idée. **Tu ne modifies rien** : ni code,
 ni branche, ni PR, ni label. La seule chose que tu peux créer, c'est une nouvelle issue quand il le demande
@@ -56,4 +56,4 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
 6. Dernière action : retire `factory:running` (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404).
    Si tu viens de créer une fiche feature ou bug (point 4), ferme aussi la conversation, puisque la suite se passe
    dans la fiche : `gh api -X PATCH repos/<repo>/issues/<n> -f state=closed -f state_reason=completed`. Elle reste
-   lisible dans l'onglet « Discussion », et un nouveau message de sa part la rouvre.
+   lisible dans l'onglet « Agent », et un nouveau message de sa part la rouvre.
