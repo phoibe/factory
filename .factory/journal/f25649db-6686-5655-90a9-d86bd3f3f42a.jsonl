@@ -1,0 +1,2 @@
+{"t":"2026-11-06T16:53:59.242Z","kind":"run","stage":"fix-checks","issue":250,"pr":252,"repo":"phoibe/factory"}
+{"t":"2026-11-06T16:58:11.270Z","kind":"test","cmd":"git merge -q --no-edit origin/main 2>&1 | tail -3; npm test 2>&1 | grep -E \"^# (pass|fail)\"; npm run -s lint 2>&1 | tail -2; npm run -s typecheck 2>&1 | tail -2; CHROMIUM_PATH=/opt/pw-browsers/chromiu","ok":true,"id":"toolu_01GG2bhohL9rd3ASiTYVJHb1"}
