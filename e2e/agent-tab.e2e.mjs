@@ -11,7 +11,8 @@ test('en ouvrant le menu « Plus » du tableau de suivi, je ne vois plus « Disc
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
     await page.locator('#more summary').click();
     await page.getByRole('button', { name: 'Review générale' }).waitFor();
-    assert.doesNotMatch(await page.locator('#more-menu').innerText(), /Discuter avec l'agent/);
+    const items = (await page.locator('#more-menu > a, #more-menu > button:not([hidden])').allTextContents()).map((t) => t.trim());
+    assert.deepEqual(items.slice(0, 4), ['Signaler un bug', 'Cadrer le projet', 'Review générale', 'Stack technique']);
     assert.equal(await page.getByText('Discuter avec l\'agent').count(), 0);
   });
 });
@@ -29,9 +30,13 @@ test('en cliquant sur « Agent », je retrouve mes conversations, et « Nouvelle
   await withPanel({ issues: [question] }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-    await page.locator('.conv', { hasText: 'Combien de demandes en cours ?' }).waitFor();
+    await page.locator('.conv', { hasText: 'Combien de demandes en cours ?' }).click();
+    await page.locator('.conv.current').waitFor();
     await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
+    await page.locator('#chat-title', { hasText: 'Nouvelle conversation' }).waitFor();
     assert.equal(await page.locator('.conv.current').count(), 0);
+    assert.equal(await page.locator('#chat-messages > li.msg').count(), 0);
+    await page.locator('#chat-messages .chat-intro').waitFor();
   });
 });
 
