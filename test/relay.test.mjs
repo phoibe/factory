@@ -1381,6 +1381,17 @@ test('a live deploy cancelled just before the newer one is created waits for it 
   assert.equal(await relay.liveUrl('e243ee1', { attempts: 5, delayMs: 0 }), 'https://site.example/');
 });
 
+test('a chain of quick pushes: a newer deploy cancelled in turn waits for the newest one', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  let polls = 0;
+  const a = { id: 1, environment: 'github-pages' }, b = { id: 2, environment: 'github-pages' }, c = { id: 3, environment: 'github-pages' };
+  gh.deployments = async () => [a];
+  gh.recentDeployments = async () => (++polls < 2 ? [b, a] : [c, b, a]);
+  gh.deploymentStatuses = async (id) => ({ 1: [{ state: 'error' }], 2: [{ state: 'error' }], 3: [{ state: 'success', environment_url: 'https://site.example/' }] })[id];
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
+  assert.equal(await relay.liveUrl('e243ee1', { attempts: 5, delayMs: 0 }), 'https://site.example/');
+});
+
 test('a live deploy that failed with no newer one, or whose newer one failed too, is a broken delivery', async () => {
   const alone = fakeGh({ issues: [], prs: [], deployments: [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }] });
   alone.deployments = async () => [{ id: 1, environment: 'github-pages', created_at: '2026-11-06T12:53:16Z' }];

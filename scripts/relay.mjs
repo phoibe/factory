@@ -417,7 +417,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     };
     let lone = 0;
     for (let i = 0; i < attempts; i++) {
-      let failedAlone = false;
+      let failedAlone = false; // a failure with no newer deploy that went live or is still deploying
       for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment))) {
         const result = await outcome(d);
         if (result === undefined) continue;
@@ -428,6 +428,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           .sort((a, b) => Number(b.id) - Number(a.id))[0];
         if (!newest) { failedAlone = true; continue; }
         const next = await outcome(newest);
+        if (next?.failed) { failedAlone = true; continue; }
         if (next !== undefined) return next;
       }
       lone = failedAlone ? lone + 1 : 0;
