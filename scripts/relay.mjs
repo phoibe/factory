@@ -435,18 +435,39 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     git(['checkout', '-B', branch, `origin/${def}`]);
     git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
     git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
+    // The undo PR is opened first: when GitHub refuses it (the repository does not let workflows open PRs, #231),
+    // nothing was undone, so no redo issue may say it was. The owner is told plainly how to unblock it instead.
+    const title = `Retirer « ${pr.title} » : la version en ligne ne marchait plus`;
+    const why = `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}.`;
+    let revert;
+    try {
+      revert = await gh.createPr(title, branch, def, [REVERT_MARKER, why].join('\n'));
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const blockedBySetting = /not permitted to create or approve pull requests/i.test(msg);
+      await gh.comment(prNumber, say([
+        `Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.`,
+        '',
+        `**Je n'ai pas pu la retirer** : GitHub a refusé que la factory ouvre le retour en arrière${blockedBySetting ? '' : ` (${msg.slice(0, 160)})`}. La version cassée est donc toujours en ligne.`,
+        '',
+        `Pour la retirer maintenant : ouvrez [ce retour en arrière déjà préparé](https://github.com/${repo}/compare/${def}...${branch}?expand=1), cliquez « Create pull request », puis fusionnez-le.`,
+        ...(blockedBySetting ? ['', `Pour que la factory puisse le faire seule la prochaine fois : dans [Settings → Actions → General](https://github.com/${repo}/settings/actions), cochez « Allow GitHub Actions to create and approve pull requests » puis « Save ».`] : []),
+      ].join('\n')));
+      log(`live site broken after #${prNumber}: undo PR refused (${msg.slice(0, 120)})`);
+      return;
+    }
     const issueNumber = prIssue(pr);
     const redo = await gh.createIssue(`Remettre en ligne « ${pr.title} » sans casser l'appli`, [
       PROD_BUG_MARKER,
       `Après la mise en ligne de la PR #${prNumber}${issueNumber ? ` (demande #${issueNumber})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`,
       '',
-      `La factory a retiré cette livraison (retour à la version d'avant). Il faut la refaire : reprends les changements de la PR #${prNumber} (\`git cherry-pick ${sha}\`), trouve pourquoi ils cassaient la version en ligne (\`${url}\`), corrige, et vérifie la version déployée de ta PR avant de la rendre.`,
+      `La factory retire cette livraison (retour à la version d'avant, PR #${revert.number}). Il faut la refaire : reprends les changements de la PR #${prNumber} (\`git cherry-pick ${sha}\`), trouve pourquoi ils cassaient la version en ligne (\`${url}\`), corrige, et vérifie la version déployée de ta PR avant de la rendre.`,
     ].join('\n'), [L.bug, L.urgent, L.kept, L.noPick]);
-    const revert = await gh.createPr(`Retirer « ${pr.title} » : la version en ligne ne marchait plus`, branch, def, [
+    await gh.updateIssue(revert.number, { body: [
       REVERT_MARKER,
       `${REVERT_REDO}${redo.number} -->`,
-      `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}. Mis en ligne dès que les contrôles sont verts ; la demande #${redo.number} refait ensuite la livraison proprement.`,
-    ].join('\n'));
+      `${why} Mis en ligne dès que les contrôles sont verts ; la demande #${redo.number} refait ensuite la livraison proprement.`,
+    ].join('\n') });
     await gh.addLabels(revert.number, [L.checks]);
     await gh.dispatch(PROJECT_WORKFLOW, def, { payload: JSON.stringify({ checksFor: revert.number }) });
     await gh.comment(prNumber, say(`Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.\n\nJe la retire tout de suite (PR #${revert.number}), puis la factory la refait en corrigeant le problème (#${redo.number}). Rien à faire de votre côté.`));

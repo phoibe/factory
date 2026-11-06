@@ -1353,6 +1353,7 @@ test('a broken live site: the delivery is undone at once, and an urgent bug redo
   const created = [];
   gh.createIssue = async (title, body, labels) => { const i = { number: 20, title, body, labels: [...labels] }; gh.calls.push(['createIssue', title, body, labels]); created.push(i); return i; };
   gh.createPr = async (title, head, base, body) => { gh.calls.push(['createPr', title, head, base, body]); return { number: 21 }; };
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); };
   const git = [];
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet });
   await relay.prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', runId: 5, git: (a) => git.push(a.join(' ')) });
@@ -1361,12 +1362,31 @@ test('a broken live site: the delivery is undone at once, and an urgent bug redo
   const [, , bugBody, bugLabels] = gh.calls.find((c) => c[0] === 'createIssue');
   assert.ok(bugBody.includes(PROD_BUG_MARKER) && !bugBody.includes(AGENT_MARKER));
   assert.deepEqual(bugLabels, [L.bug, L.urgent, L.kept, L.noPick]);
-  const prBody = gh.calls.find((c) => c[0] === 'createPr')[4];
+  assert.ok(gh.calls.find((c) => c[0] === 'createPr')[4].includes(REVERT_MARKER));
+  const prBody = gh.calls.find((c) => c[0] === 'update' && c[1] === 21)[2].body;
   assert.ok(prBody.includes(REVERT_MARKER) && prBody.includes('<!-- factory-revert-redo #20 -->'));
+  assert.ok(gh.calls.findIndex((c) => c[0] === 'createPr') < gh.calls.findIndex((c) => c[0] === 'createIssue'), 'the undo is opened before anything says it was');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 21 && c[2] === L.checks));
   assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { checksFor: 21 });
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /la page est vide/.test(c[2])));
   assert.equal(created.length, 1);
+});
+
+// Issue #231: GitHub may refuse the workflow's token to open a PR. Nothing is undone then, so nothing may say it was.
+test('an undo GitHub refuses to open is never announced as done: the owner is told how to unblock it', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature], open: false }], prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
+  gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 20 }; };
+  gh.createPr = async () => { throw new Error('403 GitHub Actions is not permitted to create or approve pull requests.'); };
+  const relay = createRelay({ gh, repo: 'o/r', config, env, log: quiet });
+  await relay.prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', runId: 5, git: () => {} });
+  assert.ok(!gh.calls.some((c) => c[0] === 'createIssue'), 'no redo issue claiming the delivery was removed');
+  assert.ok(!gh.calls.some((c) => c[0] === 'dispatch'));
+  const said = gh.calls.filter((c) => c[0] === 'comment').map((c) => c[2]).join('\n');
+  assert.doesNotMatch(said, /Je la retire|a retiré/);
+  assert.match(said, /la page est vide/);
+  assert.match(said, /pas pu la retirer/);
+  assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
+  assert.match(said, /https:\/\/github\.com\/o\/r\/compare\/main\.\.\.claude\/revert-pr-10\?expand=1/);
 });
 
 test('an undo goes live on green checks without recette, then the redo bug starts', async () => {
