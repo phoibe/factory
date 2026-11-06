@@ -18,11 +18,15 @@ test('new check results never cut a merge in progress: they wait for it, then ar
 });
 
 test('the preview job waits for the preview outside the queue lock, before opening it', () => {
+  // Waiting and opening run in the read-only job; the report runs in the job that writes.
+  const open = job('preview-open');
+  const wait = open.indexOf('relay.mjs preview-url');
+  const smoke = open.indexOf('smoke.mjs');
+  assert.ok(wait > 0 && wait < smoke, 'waits first, then opens');
+  assert.match(open.slice(smoke - 300, smoke), /if: steps\.wait\.outputs\.url != ''/);
+  assert.match(open, /url: \$\{\{ steps\.wait\.outputs\.url \}\}/);
+  assert.doesNotMatch(open, /: write/);
   const preview = job('preview');
-  const wait = preview.indexOf('relay.mjs preview-url');
-  const open = preview.indexOf('smoke.mjs');
-  assert.ok(wait > 0 && wait < open, 'waits first, then opens');
   assert.match(preview, /preview-report[^\n]*--url "\$PREVIEW_URL"/);
-  assert.match(preview, /PREVIEW_URL: \$\{\{ steps\.wait\.outputs\.url \}\}/);
-  assert.match(preview.slice(open - 300, open), /if: steps\.wait\.outputs\.url != ''/);
+  assert.match(preview, /PREVIEW_URL: \$\{\{ needs\.preview-open\.outputs\.url \}\}/);
 });

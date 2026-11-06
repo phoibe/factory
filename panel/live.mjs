@@ -14,7 +14,7 @@ const ACTIONS = {
   grilling: 'Répondez aux questions',
   spec: 'Validez la spec',
   visual: 'Validez les captures',
-  acceptance: 'Testez la preview',
+  acceptance: 'Testez l\'aperçu',
   blocked: "Débloquez l'agent",
 };
 

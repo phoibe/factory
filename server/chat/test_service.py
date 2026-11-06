@@ -37,6 +37,7 @@ class FakeGitHub:
         self.issues = []
         self.branches = set()
         self.fail_saves = False
+        self.fail_issues = 0
 
     def __call__(self, request):
         path, method = request.url.path, request.method
@@ -49,6 +50,9 @@ class FakeGitHub:
         if path.endswith("/git/refs"):
             self.branches.add(json.loads(request.content)["ref"].rsplit("/", 1)[1])
             return httpx.Response(201, json={})
+        if path.endswith("/issues") and method == "POST" and self.fail_issues:
+            self.fail_issues -= 1
+            return httpx.Response(502, json={})
         if path.endswith("/issues") and method == "POST":
             self.issues.append(json.loads(request.content))
             return httpx.Response(201, json={"html_url": "https://github.com/phoibe/habitudes/issues/7", "number": 7})
@@ -109,8 +113,9 @@ class ServiceTest(unittest.TestCase):
         answer = next(e for e in events if e["type"] == "answer")
         self.assertEqual(answer["text"], "Non, pas encore.")
         self.assertEqual(answer["issues"], [{"title": "Exporter mes données", "url": "https://github.com/phoibe/habitudes/issues/7", "kind": "feature"}])
-        self.assertEqual(self.gh.issues[0]["labels"], ["factory:feature"])
-        # A feature only joins the list: the agent marker keeps the factory from starting it at once.
+        # The owner asked for it: kept (never an « idée à trier »), and the agent marker keeps the factory from
+        # starting it at once, the queue picks it.
+        self.assertEqual(self.gh.issues[0]["labels"], ["factory:feature", "factory:kept"])
         self.assertTrue(self.gh.issues[0]["body"].startswith("<!-- factory-agent -->"), self.gh.issues[0]["body"])
         prompt = open(self.claude + ".prompt").read()
         self.assertIn("Je peux exporter ?", prompt)
@@ -151,6 +156,18 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(len(self.gh.issues), 1)
         self.assertEqual(kinds[-1], "done")
         self.assertIs(events[-1]["saved"], False)
+
+    def test_a_request_github_refuses_is_reported_and_the_exchange_is_still_saved(self):
+        # Answering « error » would make the panel offer to resend, and the requests already made would be made twice.
+        self.gh.fail_issues = 1
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+        kinds = [e["type"] for e in events]
+        self.assertNotIn("error", kinds, events)
+        self.assertEqual(kinds[-1], "done")
+        answer = next(e for e in events if e["type"] == "answer")
+        self.assertEqual(answer["issues"], [])
+        self.assertIn("pas pu être créée", answer["text"])
+        self.assertTrue(any(k.startswith("chats/") for k in self.gh.files))
 
 
 if __name__ == "__main__":

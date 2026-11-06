@@ -213,17 +213,26 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 err = (await proc.stderr.read()).decode(errors="replace")[-300:]
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
-            created = []
+            created, refused = [], 0
             for issue in wanted:
-                label = "factory:bug" if issue["kind"] == "bug" else "factory:feature"
+                labels = ["factory:bug"] if issue["kind"] == "bug" else ["factory:feature", "factory:kept"]
                 body = f"{issue['body']}\n\n_Demandé depuis le chat du tableau de suivi._"
                 if issue["kind"] != "bug":
                     # The agent marker makes the factory leave a new feature in the list instead of starting it
-                    # at once: it is picked later by the queue rules. A bug still starts right away.
+                    # at once: it is picked later by the queue rules. A bug still starts right away. The owner
+                    # asked for it, so it is kept: never an « idée à trier ».
                     body = f"<!-- factory-agent -->\n{body}"
-                made = await gh.send("POST", "/repos/{repo}/issues", {
-                    "title": issue["title"], "labels": [label], "body": body})
+                try:
+                    made = await gh.send("POST", "/repos/{repo}/issues", {
+                        "title": issue["title"], "labels": labels, "body": body})
+                except Exception:
+                    # Going on: failing here would make the panel offer to resend, and create the others twice.
+                    refused += 1
+                    continue
                 created.append({**issue, "url": made["html_url"], "number": made["number"]})
+            if refused:
+                lost = "Une demande n'a pas pu être créée" if refused == 1 else f"{refused} demandes n'ont pas pu être créées"
+                text += f"\n\n_{lost} sur GitHub : redemandez dans un moment._"
             add_exchange(conv, {"text": message, "images": images}, text, now_iso(), created)
             # The answer is given and the issues exist: a failed save must not make the panel offer to send the
             # message again (that would create the issues twice). It is reported as « not saved » instead.
