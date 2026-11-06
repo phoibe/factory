@@ -405,17 +405,37 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // The new version of the live site, once its host reports it deployed (polls up to `attempts` × `delayMs`).
+  // Only the newest live deployment counts (a re-run adds one for the same commit), and its newest decisive status
+  // (a superseded deployment ends « inactive » after its success). A failure gives the host's message and, when the
+  // host is GitHub Actions, the run to re-run (issue #227).
   async function liveUrl(sha, { attempts = 30, delayMs = 20_000 } = {}) {
     for (let i = 0; i < attempts; i++) {
-      for (const d of ((await gh.deployments(sha).catch(() => [])) || []).filter((x) => isLiveEnv(x.environment))) {
-        const statuses = (await gh.deploymentStatuses(d.id)) || [];
-        const ok = statuses.find((s) => s.state === 'success');
-        if (ok) return ok.environment_url || ok.target_url || config.siteUrl || null;
-        if (statuses.some((s) => ['failure', 'error'].includes(s.state))) return { failed: true };
+      const d = ((await gh.deployments(sha).catch(() => [])) || []).find((x) => isLiveEnv(x.environment));
+      const last = d && ((await gh.deploymentStatuses(d.id)) || []).find((s) => ['success', 'failure', 'error'].includes(s.state));
+      if (last?.state === 'success') return last.environment_url || last.target_url || config.siteUrl || null;
+      if (last) {
+        const runId = Number(/\/actions\/runs\/(\d+)/.exec(`${last.log_url || ''} ${last.target_url || ''}`)?.[1]) || null;
+        return { failed: true, detail: String(last.description || '').slice(0, 300), runId };
       }
       if (i < attempts - 1) await sleep(delayMs);
     }
     return null;
+  }
+
+  // The host did not publish the new version: the old one still runs, nothing is broken. The publication is run
+  // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
+  async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false }) {
+    if (!retried && runId && gh.rerunFailed) {
+      try {
+        await gh.rerunFailed(runId);
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true } }) });
+        return log(`live deploy of #${prNumber} failed: run ${runId} re-run`);
+      } catch (e) { log(`live deploy re-run failed: ${String(e.message || e).slice(0, 80)}`); }
+    }
+    const said = detail ? ` Son message : « ${detail} ».` : '';
+    await gh.comment(prNumber, say(`Cette version n'a pas été mise en ligne : l'hébergeur refuse de la publier${retried ? ', même après une nouvelle tentative' : ''}.${said} L'ancienne version reste en ligne et marche : je ne retire rien.`));
+    log(`live deploy of #${prNumber} failed, reported`);
   }
 
   // The live site does not work after a merge: undo the delivery at once (a PR that goes live on green checks), and
@@ -1237,7 +1257,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
   }
 
-  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, liveUrl, previewWait, outputs };
+  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, deployFailed, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1292,11 +1312,17 @@ async function main() {
   } else if (command === 'live-url') {
     const check = JSON.parse(process.env.CHECK || '{}');
     const url = await relay.liveUrl(check.sha);
-    writeOutputs({ url: typeof url === 'string' ? url : '', deployFailed: url?.failed ? 'true' : 'false' });
+    writeOutputs({ url: typeof url === 'string' ? url : '', deployFailed: url?.failed ? 'true' : 'false', deployFailure: url?.failed ? JSON.stringify(url) : '' });
     return;
   } else if (command === 'prod-report') {
     const check = JSON.parse(process.env.CHECK || '{}');
-    const res = arg('deploy-failed') === 'true' ? { result: 'failed', detail: "l'hébergeur n'a pas réussi à la déployer" } : readResult(arg('result-file'));
+    if (arg('deploy-failed') === 'true') {
+      let failure = {};
+      try { failure = JSON.parse(process.env.DEPLOY_FAILURE || '{}') || {}; } catch { /* no details */ }
+      await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried) }));
+      return;
+    }
+    const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
     await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: arg('url') || '', ...res, runId: process.env.GITHUB_RUN_ID, git }));

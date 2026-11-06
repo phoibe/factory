@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { smokeRoutes, isProtected, pageProblem, smoke } from '../scripts/smoke.mjs';
+import { smokeRoutes, isProtected, pageProblem, smoke, smokeUntil } from '../scripts/smoke.mjs';
 
 test('the screens opened are « / » plus the listed ones', () => {
   assert.deepEqual(smokeRoutes('# écrans\n/connexion\n\n/planning # le planning\nnot-a-path\n/'), ['/', '/connexion', '/planning']);
@@ -28,4 +28,31 @@ test('an address that does not answer fails; a protected one is skipped, before 
   assert.equal(prot.result, 'skipped');
   const noApp = await smoke({ url: 'https://x.example', dir: '/nonexistent', fetchImpl: async () => ({ status: 200, headers: new Map() }), log: () => {} });
   assert.equal(noApp.result, 'passed');
+});
+
+// Issue #227: a live site that does not answer well right after a delivery is often still being published.
+test('the live site is checked again for about 5 minutes before a failure counts', async () => {
+  let clock = 0;
+  const seen = [];
+  const results = [{ result: 'failed', detail: '/ : la page répond 404' }, { result: 'failed', detail: '/ : la page répond 404' }, { result: 'passed', detail: 'ok' }];
+  const out = await smokeUntil({ check: async (attempt) => { seen.push(attempt); return results[attempt]; }, retryMs: 5 * 60_000, intervalMs: 60_000, sleep: async (ms) => { clock += ms; }, now: () => clock });
+  assert.equal(out.result, 'passed');
+  assert.deepEqual(seen, [0, 1, 2]);
+});
+
+test('a live site still broken after 5 minutes is a failure, said as such', async () => {
+  let clock = 0;
+  let calls = 0;
+  const out = await smokeUntil({ check: async () => { calls++; clock += 20_000; return { result: 'failed', detail: '/ : la page répond 500' }; }, retryMs: 5 * 60_000, intervalMs: 60_000, sleep: async (ms) => { clock += ms; }, now: () => clock });
+  assert.equal(out.result, 'failed');
+  assert.match(out.detail, /la page répond 500 \(toujours après 5 min\)/);
+  assert.ok(calls >= 4 && calls <= 6, `${calls} checks`);
+  assert.ok(clock <= 5 * 60_000 + 80_000);
+});
+
+test('a skipped check is not retried', async () => {
+  let calls = 0;
+  const out = await smokeUntil({ check: async () => { calls++; return { result: 'skipped', detail: 'protégée' }; }, retryMs: 5 * 60_000, intervalMs: 60_000, sleep: async () => {}, now: () => 0 });
+  assert.equal(out.result, 'skipped');
+  assert.equal(calls, 1);
 });

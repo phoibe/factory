@@ -1687,3 +1687,52 @@ test('outage: a lost report never blocks the card by itself, an outage past 3 ho
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => T + 3.5 * 3_600_000, log: quiet }).handle(tick);
   assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
 });
+
+// Issue #227: a host that failed to publish is not a broken live site.
+test('the live check reads the newest deployment: a re-run still publishing is waited for, not the older failure', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 2, environment: 'github-pages' }, { id: 1, environment: 'github-pages' }];
+  let done = false;
+  gh.deploymentStatuses = async (id) => (id === 2 ? (done ? [{ state: 'success', environment_url: 'https://new.example' }] : [{ state: 'in_progress' }]) : [{ state: 'failure', description: 'boom' }]);
+  const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => { done = true; } });
+  assert.equal(await relay.liveUrl('s', { attempts: 2 }), 'https://new.example');
+});
+
+test('the live check of an older version still finds its address once it is superseded (inactive)', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 1, environment: 'Production' }];
+  gh.deploymentStatuses = async () => [{ state: 'inactive' }, { state: 'success', environment_url: 'https://app.example' }];
+  assert.equal(await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 1 }), 'https://app.example');
+});
+
+test('a failed publication gives the host message and the run to re-run', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.deployments = async () => [{ id: 1, environment: 'github-pages' }];
+  gh.deploymentStatuses = async () => [{ state: 'failure', description: 'Deployment failed', log_url: 'https://github.com/o/r/actions/runs/777/job/9' }];
+  assert.deepEqual(await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).liveUrl('s', { attempts: 1 }), { failed: true, detail: 'Deployment failed', runId: 777 });
+});
+
+test('a failed publication is re-run once and checked again, nothing undone and no message', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: 'Closes #1' }] });
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', detail: 'Deployment failed', runId: 777, git: (a) => git.push(a) });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 777]]);
+  assert.deepEqual(JSON.parse(gh.calls.find((c) => c[0] === 'dispatch')[3].payload), { prodCheck: { pr: 10, sha: 'm1', deployRetried: true } });
+  assert.equal(git.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
+test('a publication that fails again is only reported, with the host message, never undone', async () => {
+  const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: 'Closes #1' }] });
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+  gh.createIssue = async () => { throw new Error('no card expected'); };
+  const git = [];
+  await createRelay({ gh, repo: 'r', config, env, log: quiet }).deployFailed({ pr: 10, sha: 'm1', detail: 'Deployment failed', runId: 778, retried: true, git: (a) => git.push(a) });
+  assert.equal(git.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'rerun' || c[0] === 'dispatch'));
+  const [, n, body] = gh.calls.find((c) => c[0] === 'comment');
+  assert.equal(n, 10);
+  assert.match(body, /hébergeur refuse de la publier/);
+  assert.match(body, /Deployment failed/);
+});

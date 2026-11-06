@@ -302,13 +302,14 @@ jobs:
     needs: decide
     if: needs.decide.outputs.production != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
       deployments: read
     outputs:
       url: ${{ steps.live.outputs.url }}
       deployFailed: ${{ steps.live.outputs.deployFailed }}
+      deployFailure: ${{ steps.live.outputs.deployFailure }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -331,13 +332,14 @@ jobs:
           ref: ${{ fromJSON(needs.decide.outputs.production).sha }}
           path: project
           persist-credentials: false
+      # Checked again for about 5 minutes before a failure counts: a site still being published answers 404 (#227).
       - name: Open the live site
         if: steps.live.outputs.url != ''
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           URL: ${{ steps.live.outputs.url }}
-        run: node .factory-src/scripts/smoke.mjs --url "$URL" --dir project --out "$RUNNER_TEMP/smoke/smoke.json"
+        run: node .factory-src/scripts/smoke.mjs --url "$URL" --dir project --out "$RUNNER_TEMP/smoke/smoke.json" --retry-minutes 5
       - uses: actions/upload-artifact@v4
         if: always() && steps.live.outputs.url != ''
         with:
@@ -383,6 +385,7 @@ jobs:
         env:
           URL: ${{ needs.production-open.outputs.url }}
           DEPLOY_FAILED: ${{ needs.production-open.outputs.deployFailed }}
+          DEPLOY_FAILURE: ${{ needs.production-open.outputs.deployFailure }}
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.production }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
