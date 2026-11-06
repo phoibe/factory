@@ -1,7 +1,7 @@
 {
   "version": 1,
   "runner": "claude-cloud",
-  "maxParallel": 3,
+  "maxParallel": 5,
   "autoPick": true,
   "maxQuestions": 2,
   "stack": "JavaScript sans dépendance (modules Node.js et navigateur), tests intégrés node --test, GitHub Actions et GitHub Pages pour le panneau",
