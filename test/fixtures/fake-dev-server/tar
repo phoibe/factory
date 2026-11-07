@@ -24,4 +24,5 @@ cat > "$dir/bin/installdependencies.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "installdependencies.sh" >> "$FAKE/log"
 EOS
-chmod +x "$dir/config.sh" "$dir/svc.sh" "$dir/bin/installdependencies.sh"
+printf '#!/usr/bin/env bash\n' > "$dir/bin/runsvc.sh"
+chmod +x "$dir/config.sh" "$dir/svc.sh" "$dir/bin/installdependencies.sh" "$dir/bin/runsvc.sh"

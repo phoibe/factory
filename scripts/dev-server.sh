@@ -297,6 +297,11 @@ remove_unit() {
 # found, or written, and driven by systemctl only.
 start_on_boot() {
   local dir=$1 owner unit
+  # The service starts runsvc.sh from the runner's root, where svc.sh used to copy it: copied by the runner's own
+  # user, like any other file of its folder.
+  if ! exists "$dir/runsvc.sh" && exists "$dir/bin/runsvc.sh" && [ "$(root stat -c %U "$dir")" != root ]; then
+    in_dir_as_runner "$dir" cp bin/runsvc.sh runsvc.sh
+  fi
   unit=$(hand_unit "$dir")
   [ -n "$unit" ] || unit=$(svc_unit "$dir")
   if [ -z "$unit" ]; then
