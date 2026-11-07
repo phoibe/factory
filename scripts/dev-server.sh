@@ -162,8 +162,8 @@ install_software() {
 }
 
 # ---- Runners ------------------------------------------------------------------------------------
-# One « id name label,label status » line per runner GitHub knows for this project.
-list_runners() { gh api "repos/$REPO/actions/runners" --paginate --jq '.runners[] | "\(.id) \(.name) \([.labels[].name] | join(",")) \(.status)"'; }
+# One « id name label,label status busy » line per runner GitHub knows for this project.
+list_runners() { gh api "repos/$REPO/actions/runners" --paginate --jq '.runners[] | "\(.id) \(.name) \([.labels[].name] | join(",")) \(.status) \(.busy)"'; }
 
 # A field of the runner configured in folder $1 (empty when its configuration never finished).
 runner_field() { root sed -n "s/.*\"$2\": *\"\([^\"]*\)\".*/\1/p" "$1/.runner" 2>/dev/null | head -1 || true; }
@@ -204,6 +204,47 @@ clean_leftovers() {
   done <<EOF
 $(root find "$RUNNER_HOME" -mindepth 1 -maxdepth 1 -type d -name "$SLUG-*" 2>/dev/null || true)
 EOF
+}
+
+# The number of runner $1 when this command made it on this server (« <host>-<project>-<number> »), empty otherwise.
+own_number() {
+  local suffix=${1#"$PREFIX"}
+  [ "$suffix" != "$1" ] || return 0
+  case "$suffix" in ''|*[!0-9]*) return 0 ;; esac
+  printf '%s' "$suffix"
+}
+
+# Runners this command made on this server that are offline on GitHub and have no folder here any more (an install
+# that failed halfway): deleted on GitHub, so that their number is used again instead of a new one.
+prune_dead() {
+  local id name labels status busy pruned=0
+  while read -r id name labels status busy <&3; do
+    [ -n "$id" ] && [ -n "$(own_number "$name")" ] && [ "$status" != online ] || continue
+    [ -z "$(local_dir "$name")" ] || continue
+    gh api -X DELETE "repos/$REPO/actions/runners/$id" >/dev/null
+    warn "Runner $name retiré chez GitHub : hors ligne, il n'avait plus de dossier sur ce serveur"
+    pruned=1; CHANGED=1
+  done 3<<EOF
+$LINES
+EOF
+  if [ "$pruned" = 1 ]; then LINES=$(list_runners); fi
+}
+
+# Unregisters runner $2 (GitHub id $1) of folder $3, stops its service and deletes its folder.
+remove_runner() {
+  remove_unit "$3"
+  gh api -X DELETE "repos/$REPO/actions/runners/$1" >/dev/null
+  root rm -rf "$3"
+  ok "Runner $2 retiré (numéro en trop)"
+  CHANGED=1
+}
+
+# The lowest number from 1 to $WANTED that no runner of the project uses, empty when they are all taken.
+free_number() {
+  local n
+  for n in $(seq 1 "$WANTED"); do
+    if ! on_github "$PREFIX$n" && ! exists "$RUNNER_HOME/$SLUG-$n"; then printf '%s' "$n"; return; fi
+  done
 }
 
 # The runner archive, kept in a cache that belongs to the administrator: the dedicated user can read it, never change
@@ -323,15 +364,16 @@ start_on_boot() {
 
 ensure_runners() {
   say "Runners de $REPO sur le serveur"
-  local host repo_name count=0 id name labels status dir n
+  local host count=0 id name labels status busy dir n extras=""
   host=$(hostname | tr -c 'A-Za-z0-9-\n' '-')
-  repo_name=${REPO#*/}
+  PREFIX="$host-${REPO#*/}-"
   SLUG=$(printf '%s' "$REPO" | tr '/' '-')
   CHANGED=0
   LINES=$(list_runners)
+  prune_dead
   clean_leftovers
   # The list comes on fd 3: the commands inside the loop keep the terminal as their input.
-  while read -r id name labels status <&3; do
+  while read -r id name labels status busy <&3; do
     [ -n "$id" ] || continue
     dir=$(local_dir "$name")
     if [ -z "$dir" ]; then
@@ -346,17 +388,44 @@ ensure_runners() {
          ok "Runner $name déjà là, je le garde (étiquette de la factory ajoutée)"; CHANGED=1 ;;
     esac
     start_on_boot "$dir"
+    n=$(own_number "$name")
+    if [ -n "$n" ] && [ "$n" -gt "$WANTED" ] && [ "$dir" = "$RUNNER_HOME/$SLUG-$n" ]; then
+      extras="$extras$n $id $name ${busy:-false} $dir
+"
+    fi
   done 3<<EOF
 $LINES
 EOF
   n=1
   while [ "$count" -lt "$WANTED" ]; do
-    name="$host-$repo_name-$n"
+    name="$PREFIX$n"
     if on_github "$name" || exists "$RUNNER_HOME/$SLUG-$n"; then n=$((n + 1)); continue; fi
     add_runner "$name" "$RUNNER_HOME/$SLUG-$n"
     start_on_boot "$RUNNER_HOME/$SLUG-$n"
     count=$((count + 1)); CHANGED=1; n=$((n + 1))
   done
+  # Numbers above $WANTED (left by an earlier install that went wrong): the project keeps runners 1 to $WANTED. Such a
+  # runner moves to the lowest free number (the new one is added first), or simply goes when the project has enough.
+  # One busy with a job is left alone, so that no work is cut off.
+  while read -r n id name busy dir <&4; do
+    [ -n "$n" ] || continue
+    if [ "$busy" = true ]; then
+      warn "Runner $name occupé par une tâche : je le laisse, relancez la commande plus tard pour le retirer"
+      continue
+    fi
+    if [ "$count" -le "$WANTED" ]; then
+      n=$(free_number)
+      [ -n "$n" ] || continue
+      add_runner "$PREFIX$n" "$RUNNER_HOME/$SLUG-$n"
+      start_on_boot "$RUNNER_HOME/$SLUG-$n"
+      LINES=$(list_runners)
+      count=$((count + 1))
+    fi
+    remove_runner "$id" "$name" "$dir"
+    count=$((count - 1))
+  done 4<<EOF
+$(printf '%s' "$extras" | sort -rn)
+EOF
   if [ "$CHANGED" -eq 0 ]; then ok "Rien à ajouter : le projet a déjà ses $WANTED runners"; fi
 }
 

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -48,6 +48,20 @@ function isolatedRunner(name, repo, { groups = 'gh-runner' } = {}) {
   writeFileSync(join(fake, 'systemd', `actions.runner.${repo.replace('/', '-')}.${name}.service`), `[Service]\nExecStart=${dir}/runsvc.sh\nUser=gh-runner\nWorkingDirectory=${dir}\n`);
   return { fake, env: { DEV_SERVER_SYSTEMD: join(fake, 'systemd'), FAKE_RUNNER_USER: groups.includes('docker') ? 'factory-runner' : 'gh-runner' } };
 }
+
+// Three runners made by this command (1, 2 and 3), as left by an install that went wrong once: runner 3 is a copy of
+// runner 2 with its own name, service and GitHub entry. `busy` marks runner 3 as running a job.
+async function threeRunners({ busy = false } = {}) {
+  const first = await run(['phoibe/prive']);
+  const runners = join(first.fake, 'runners');
+  cpSync(join(runners, 'phoibe-prive-2'), join(runners, 'phoibe-prive-3'), { recursive: true });
+  writeFileSync(join(runners, 'phoibe-prive-3', '.runner'), '{\n  "agentName": "devbox-prive-3",\n  "gitHubUrl": "https://github.com/phoibe/prive"\n}\n');
+  writeFileSync(join(first.fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-3.service'), `[Service]\nExecStart=${runners}/phoibe-prive-3/runsvc.sh\nWorkingDirectory=${runners}/phoibe-prive-3\n`);
+  writeFileSync(join(first.fake, 'runners.txt'), `${first.runners}333 devbox-prive-3 self-hosted,Linux,X64,factory-dev online${busy ? ' true' : ''}\n`);
+  return first.fake;
+}
+
+const names = (runners) => runners.trim().split('\n').map((l) => l.split(' ')[1]).sort();
 
 const factoryDev = (runners) => runners.trim().split('\n').filter((l) => l && l.split(' ')[2].split(',').includes('factory-dev') && l.endsWith(' online'));
 
@@ -278,6 +292,69 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.ok(existsSync(join(first.fake, 'runners', 'phoibe-prive-1', 'runsvc.sh')));
     assert.match(again.log, /^sudo -u factory-runner .*cp bin\/runsvc\.sh runsvc\.sh/m);
     assert.match(again.log, /^systemctl enable --now actions\.runner\.phoibe-prive\.devbox-prive-1\.service$/m);
+  });
+
+  test('a runner that failed to install (offline, no folder here) is deleted on GitHub and its number used again', async () => {
+    const r = await run(['phoibe/prive'], { runners: '111 devbox-prive-1 self-hosted,Linux,X64,factory-dev offline\n' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.log, /^gh api -X DELETE repos\/phoibe\/prive\/actions\/runners\/111$/m);
+    assert.deepEqual(names(r.runners), ['devbox-prive-1', 'devbox-prive-2']);
+    assert.equal(factoryDev(r.runners).length, 2);
+    assert.doesNotMatch(r.log, /devbox-prive-3/);
+  });
+
+  test('an offline runner of this server that still has its folder is restarted, not deleted', async () => {
+    const first = await run(['phoibe/prive']);
+    writeFileSync(join(first.fake, 'runners.txt'), first.runners.replace(/devbox-prive-1 (\S+) online/, 'devbox-prive-1 $1 offline'));
+    const again = await run(['phoibe/prive'], { fake: first.fake });
+    assert.equal(again.code, 0, again.out);
+    assert.doesNotMatch(again.log, /DELETE/);
+    assert.match(again.log, /^systemctl enable --now actions\.runner\.phoibe-prive\.devbox-prive-1\.service$/m);
+  });
+
+  test('runners numbered 2 and 3 become 1 and 2: runner 1 is added first, then runner 3 removed', async () => {
+    const fake = await threeRunners();
+    rmSync(join(fake, 'runners', 'phoibe-prive-1'), { recursive: true });
+    rmSync(join(fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-1.service'));
+    const runners = readFileSync(join(fake, 'runners.txt'), 'utf8').replace(/^\d+ devbox-prive-1 (\S+) online$/m, '111 devbox-prive-1 $1 offline');
+    writeFileSync(join(fake, 'runners.txt'), runners);
+    const r = await run(['phoibe/prive'], { fake });
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(names(r.runners), ['devbox-prive-1', 'devbox-prive-2']);
+    assert.ok(r.log.indexOf('--name devbox-prive-1 ') < r.log.indexOf('actions/runners/333'), 'the new runner comes before the old one goes');
+    assert.match(r.log, /^systemctl disable --now actions\.runner\.phoibe-prive\.devbox-prive-3\.service$/m);
+    assert.ok(!existsSync(join(fake, 'runners', 'phoibe-prive-3')));
+    assert.ok(!existsSync(join(fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-3.service')));
+    assert.ok(existsSync(join(fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-1.service')));
+    assert.match(r.out, /devbox-prive-3 retiré/);
+  });
+
+  test('a third runner beyond the two wanted is removed', async () => {
+    const fake = await threeRunners();
+    const r = await run(['phoibe/prive'], { fake });
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(names(r.runners), ['devbox-prive-1', 'devbox-prive-2']);
+    assert.doesNotMatch(r.log, /^config\.sh /m);
+    assert.ok(!existsSync(join(fake, 'runners', 'phoibe-prive-3')));
+  });
+
+  test('a runner to remove that is running a job is left alone until the next run', async () => {
+    const fake = await threeRunners({ busy: true });
+    const r = await run(['phoibe/prive'], { fake });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.runners, /devbox-prive-3/);
+    assert.ok(existsSync(join(fake, 'runners', 'phoibe-prive-3')));
+    assert.doesNotMatch(r.log, /DELETE|disable --now/);
+    assert.match(r.out, /devbox-prive-3 occupé par une tâche/);
+  });
+
+  test('a hand-made runner is never removed, even with more runners than wanted', async () => {
+    const fake = handMadeRunner('ancien-runner', 'phoibe/prive');
+    const first = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64,factory-dev online\n' });
+    const again = await run(['phoibe/prive'], { fake: first.fake });
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.runners, /ancien-runner/);
+    assert.doesNotMatch(again.log, /DELETE/);
   });
 
   test('without the administrator right on the project, it stops in French before installing anything', async () => {
