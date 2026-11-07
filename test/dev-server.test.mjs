@@ -13,7 +13,8 @@ function run(args, { runners = '', fake, answers = [], env = {} } = {}) {
   fake ??= mkdtempSync(join(tmpdir(), 'dev-server-'));
   if (!existsSync(join(fake, 'runners.txt'))) writeFileSync(join(fake, 'runners.txt'), runners);
   writeFileSync(join(fake, 'log'), '');
-  const fullEnv = { PATH: `${STUBS}:/usr/bin:/bin`, HOME: fake, FAKE: fake, DEV_SERVER_ROOT: join(fake, 'runners'), DEV_SERVER_SCAN: join(fake, 'elsewhere'), ...env };
+  const fullEnv = { PATH: `${STUBS}:/usr/bin:/bin`, HOME: fake, FAKE: fake, DEV_SERVER_ROOT: join(fake, 'runners'), DEV_SERVER_SCAN: join(fake, 'elsewhere'), DEV_SERVER_SYSTEMD: join(fake, 'systemd'), DEV_SERVER_CACHE: join(fake, 'cache'), ...env };
+  mkdirSync(join(fake, 'systemd'), { recursive: true });
   return new Promise((done) => {
     const child = execFile('bash', [SCRIPT, ...args], { env: fullEnv, encoding: 'utf8', timeout: 30_000 }, (err, out, stderr) => {
       done({ code: err ? err.code : 0, out: `${out}${stderr}`, log: readFileSync(join(fake, 'log'), 'utf8'), runners: readFileSync(join(fake, 'runners.txt'), 'utf8'), fake });
@@ -43,7 +44,7 @@ function isolatedRunner(name, repo, { groups = 'gh-runner' } = {}) {
   writeFileSync(join(dir, 'svc.sh'), '#!/usr/bin/env bash\necho "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"\nexit 0\n', { mode: 0o755 });
   mkdirSync(join(fake, 'users'));
   writeFileSync(join(fake, 'users', 'gh-runner'), `${groups}\n`);
-  mkdirSync(join(fake, 'systemd'));
+  mkdirSync(join(fake, 'systemd'), { recursive: true });
   writeFileSync(join(fake, 'systemd', `actions.runner.${repo.replace('/', '-')}.${name}.service`), `[Service]\nExecStart=${dir}/runsvc.sh\nUser=gh-runner\nWorkingDirectory=${dir}\n`);
   return { fake, env: { DEV_SERVER_SYSTEMD: join(fake, 'systemd'), FAKE_RUNNER_USER: groups.includes('docker') ? 'factory-runner' : 'gh-runner' } };
 }
@@ -57,8 +58,12 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.equal(factoryDev(r.runners).length, 2, JSON.stringify(r.runners));
     assert.match(r.log, /config\.sh --unattended --url https:\/\/github\.com\/phoibe\/prive --token REGTOKEN --name devbox-prive-1 --labels factory-dev/);
     assert.match(r.log, /--name devbox-prive-2 /);
-    assert.equal((r.log.match(/^svc\.sh install factory-runner/gm) || []).length, 2);
-    assert.equal((r.log.match(/^svc\.sh start/gm) || []).length, 2);
+    for (const n of [1, 2]) {
+      const unit = readFileSync(join(r.fake, 'systemd', `actions.runner.phoibe-prive.devbox-prive-${n}.service`), 'utf8');
+      assert.match(unit, /^User=factory-runner$/m);
+      assert.match(unit, new RegExp(`^ExecStart=.*/runners/phoibe-prive-${n}/runsvc\\.sh$`, 'm'));
+    }
+    assert.equal((r.log.match(/^systemctl enable --now actions\.runner\.phoibe-prive\.devbox-prive-\d\.service$/gm) || []).length, 2);
     assert.match(r.out, /2 runners prêts/);
   });
 
@@ -151,7 +156,20 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.match(r.log, /useradd .*factory-runner/);
     assert.match(r.log, /runuser -u factory-runner -- .*config\.sh/);
     assert.doesNotMatch(r.log, /^sudo /m);
-    assert.match(r.log, /^svc\.sh install factory-runner/m);
+    assert.match(readFileSync(join(r.fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-1.service'), 'utf8'), /^User=factory-runner$/m);
+  });
+
+  test('the administrator never runs a file of a runner\'s folder, which its jobs can rewrite', async () => {
+    const first = await run(['phoibe/prive']);
+    const again = await run(['phoibe/prive'], { fake: first.fake });
+    for (const r of [first, again]) {
+      assert.equal(r.code, 0, r.out);
+      assert.doesNotMatch(r.log, /svc\.sh/);
+    }
+    // The runner's libraries come from the administrator's own copy of the archive, outside the runners' folders.
+    const extracts = first.log.match(/^tar -xzf \S+ -C (\S+)$/gm) || [];
+    assert.ok(extracts.some((l) => !l.includes('/runners/')), first.log);
+    assert.match(first.log, /^sudo curl -fsSL -o .*\/cache\/actions-runner-linux-/m);
   });
 
   test('a runner deleted on GitHub leaves no folder or service behind, and its place is taken again', async () => {
@@ -159,7 +177,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
     writeFileSync(join(first.fake, 'runners.txt'), '');
     const again = await run(['phoibe/prive'], { fake: first.fake });
     assert.equal(again.code, 0, again.out);
-    assert.match(again.log, /^svc\.sh uninstall in phoibe-prive-1/m);
+    assert.match(again.log, /^systemctl disable --now actions\.runner\.phoibe-prive\.devbox-prive-1\.service$/m);
     assert.match(again.log, /--name devbox-prive-1 /);
     assert.match(again.log, /--name devbox-prive-2 /);
     assert.doesNotMatch(again.log, /devbox-prive-3/);
@@ -205,7 +223,8 @@ describe('dev-server.sh', { concurrency: true }, () => {
     const fake = handMadeRunner('ancien-runner', 'phoibe/prive');
     const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64 offline\n' });
     assert.equal(r.code, 0, r.out);
-    assert.match(r.log, /^svc\.sh install pierre in actions-runner/m);
+    assert.match(readFileSync(join(r.fake, 'systemd', 'actions.runner.phoibe-prive.ancien-runner.service'), 'utf8'), /^User=pierre$/m);
+    assert.doesNotMatch(r.log, /svc\.sh/);
     assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
   });
 
@@ -215,7 +234,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.log, /svc\.sh (install|start) in appli/);
     assert.match(r.log, /systemctl enable --now actions\.runner\.phoibe-prive\.pulsar-dev-prive\.service/);
-    assert.match(r.out, /garde son propre démarrage automatique/);
+    assert.match(r.out, /garde son démarrage automatique/);
     assert.match(r.runners, /^91 pulsar-dev-prive self-hosted,pulsar-dev,factory-dev online$/m);
     assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
   });
@@ -227,7 +246,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.doesNotMatch(r.log, /useradd/);
     assert.match(r.log, /sudo -u gh-runner .*config\.sh/);
     assert.doesNotMatch(r.log, /factory-runner/);
-    assert.match(r.log, /^svc\.sh install gh-runner/m);
+    assert.match(readFileSync(join(r.fake, 'systemd', 'actions.runner.phoibe-prive.devbox-prive-1.service'), 'utf8'), /^User=gh-runner$/m);
     assert.match(r.out, /compte isolé déjà en place sur ce serveur : gh-runner/);
   });
 
@@ -237,6 +256,15 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.log, /useradd .*factory-runner/);
     assert.doesNotMatch(r.log, /sudo -u gh-runner/);
+  });
+
+  test('a runner installed earlier with svc.sh keeps its service, started by systemctl only', async () => {
+    const fake = handMadeRunner('ancien-runner', 'phoibe/prive');
+    writeFileSync(join(fake, 'elsewhere', 'actions-runner', '.service'), 'actions.runner.phoibe-prive.ancien-runner.service\n');
+    const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64,factory-dev online\n' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.log, /^systemctl enable --now actions\.runner\.phoibe-prive\.ancien-runner\.service$/m);
+    assert.doesNotMatch(r.log, /svc\.sh/);
   });
 
   test('without the administrator right on the project, it stops in French before installing anything', async () => {
