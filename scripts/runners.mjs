@@ -130,8 +130,14 @@ export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, no
         }
         if (rerun.length) rerun = await rerunStopped(api, r, rerun, { sleep, now, log, budget, tag: k });
       } catch (e) {
-        log(`${k}: could not switch (${status(e)}), tried again at the next check`);
-        entry.error = true;
+        // A public project the key does not cover (the guide selects the private ones only): the factory never set a
+        // variable there, so there is nothing to switch and nothing to warn the owner about.
+        if (!repo.private && ['403', '404'].includes(status(e)) && was.machine !== 'dev-server') {
+          rerun = [];
+        } else {
+          log(`${k}: could not switch (${status(e)}), tried again at the next check`);
+          entry.error = true;
+        }
       }
       if (rerun.length) entry.rerun = rerun;
       next.projects[k] = entry;

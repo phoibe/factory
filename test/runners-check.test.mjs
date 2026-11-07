@@ -89,6 +89,19 @@ test('a public project, or one set to GitHub, loses the variable', async () => {
   assert.deepEqual(a.state.vars, {});
 });
 
+test('a public project the key does not cover raises no warning', async () => {
+  const a = account({ repos: [{ ...priv('site'), private: false }] });
+  const request = a.keyApi.request;
+  a.keyApi.request = async (method, path, body) => {
+    if (path.includes('/actions/variables')) throw new Error(`GitHub ${method} ${path} -> 403`);
+    return request(method, path, body);
+  };
+  const res = await run({ keyApi: a.keyApi, store: store() });
+  const entry = res.status.projects[await repoKey('103')];
+  assert.equal(entry.machine, 'github');
+  assert.equal(entry.error, undefined);
+});
+
 test('the general setting on GitHub keeps every project there', async () => {
   const a = account({ repos: [priv('app')], runners: { 'pierre/app': online } });
   const res = await run({ keyApi: a.keyApi, store: store({ 'settings.json': { machine: 'github' } }) });
