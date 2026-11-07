@@ -53,6 +53,7 @@ check_machine() {
   # Where runners installed by hand before the factory may live, and the services written by hand for them.
   SCAN_DIRS=${DEV_SERVER_SCAN:-/home /root /opt}
   SYSTEMD_DIR=${DEV_SERVER_SYSTEMD:-/etc/systemd/system}
+  CACHE_DIR=${DEV_SERVER_CACHE:-/var/cache/factory-runner}
 }
 
 # Jobs run project code: never as root nor as the owner (whose home holds his GitHub login), always as a dedicated
@@ -197,10 +198,7 @@ clean_leftovers() {
       of_this_project "$dir" || continue
       on_github "$name" && continue
     fi
-    if exists "$dir/.service"; then
-      in_dir "$dir" ./svc.sh stop >/dev/null 2>&1 || true
-      in_dir "$dir" ./svc.sh uninstall >/dev/null 2>&1 || true
-    fi
+    remove_unit "$dir"
     root rm -rf "$dir"
     warn "Ancien dossier ${dir##*/} nettoyé (son runner n'existait plus chez GitHub)"
   done <<EOF
@@ -208,29 +206,41 @@ $(root find "$RUNNER_HOME" -mindepth 1 -maxdepth 1 -type d -name "$SLUG-*" 2>/de
 EOF
 }
 
+# The runner archive, kept in a cache that belongs to the administrator: the dedicated user can read it, never change
+# it, since the administrator also runs a program taken from it (installdependencies.sh).
 runner_archive() {
   local version file
   version=$(gh api repos/actions/runner/releases/latest --jq .tag_name)
   version=${version#v}
-  file="$RUNNER_HOME/.cache/actions-runner-linux-$ARCH-$version.tar.gz"
+  file="$CACHE_DIR/actions-runner-linux-$ARCH-$version.tar.gz"
   if ! root test -s "$file"; then
-    as_runner mkdir -p "$RUNNER_HOME/.cache"
+    root mkdir -p "$CACHE_DIR"
+    root chmod 755 "$CACHE_DIR"
     # Downloaded beside, then renamed: a cut-off download never looks like a complete archive.
-    as_runner curl -fsSL -o "$file.part" "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-$ARCH-$version.tar.gz" \
-      && as_runner mv "$file.part" "$file" \
+    root curl -fsSL -o "$file.part" "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-$ARCH-$version.tar.gz" \
+      && root chmod 644 "$file.part" && root mv "$file.part" "$file" \
       || die "Le téléchargement du runner a été coupé. Vérifiez la connexion à Internet du serveur, puis relancez la commande."
   fi
   printf '%s' "$file"
 }
 
+# The runner's own system libraries (ICU…), missing on a minimal Debian. Run by the administrator from his own copy
+# of the archive, never from the runner's folder, which the jobs can rewrite.
+runner_dependencies() {
+  local archive=$1 tmp
+  tmp=$(root mktemp -d)
+  root tar -xzf "$archive" -C "$tmp"
+  in_dir "$tmp" ./bin/installdependencies.sh >/dev/null 2>&1 || warn "Bibliothèques du runner : installation incomplète (sans gravité si le runner démarre)"
+  root rm -rf "$tmp"
+}
+
 add_runner() {
   local name=$1 dir=$2 archive token
   archive=$(runner_archive)
+  runner_dependencies "$archive"
   token=$(gh api -X POST "repos/$REPO/actions/runners/registration-token" --jq .token)
   as_runner mkdir -p "$dir"
   as_runner tar -xzf "$archive" -C "$dir"
-  # The runner's own system libraries (ICU…), missing on a minimal Debian.
-  in_dir "$dir" ./bin/installdependencies.sh >/dev/null
   in_dir_as_runner "$dir" ./config.sh --unattended --url "https://github.com/$REPO" --token "$token" --name "$name" --labels "$LABEL" --replace >/dev/null
   ok "Runner $name ajouté"
 }
@@ -243,29 +253,67 @@ hand_unit() {
   done
 }
 
+# The service named in the « .service » file that svc.sh leaves in folder $1 (runners installed by an earlier version
+# of this command, or by hand with svc.sh), empty when there is none. Only read, never run.
+svc_unit() {
+  local u
+  u=$(root cat "$1/.service" 2>/dev/null | head -1 || true)
+  case "$u" in actions.runner.*.service) ;; *) return 0 ;; esac
+  case "$u" in */*|*' '*) return 0 ;; esac
+  printf '%s' "$u"
+}
+
+# The name svc.sh would give the service of runner $2 of project $1 (systemd caps it at 80 characters).
+unit_name() {
+  local n="actions.runner.${1//\//-}.$2"
+  printf '%s.service' "${n:0:80}"
+}
+
+# Writes, as the administrator, the systemd service of the runner in folder $1, owned by user $2: the same service
+# svc.sh would write, without running anything of the runner's folder as the administrator.
+write_unit() {
+  local dir=$1 owner=$2 unit
+  unit=$(unit_name "$REPO" "$(runner_name "$dir")")
+  printf '[Unit]\nDescription=GitHub Actions Runner (%s)\nAfter=network.target\n\n[Service]\nExecStart=%s/runsvc.sh\nUser=%s\nWorkingDirectory=%s\nKillMode=process\nKillSignal=SIGTERM\nTimeoutStopSec=5min\n\n[Install]\nWantedBy=multi-user.target\n' \
+    "${unit#actions.runner.}" "$dir" "$owner" "$dir" | root tee "$SYSTEMD_DIR/$unit" >/dev/null
+  root chmod 644 "$SYSTEMD_DIR/$unit"
+  root systemctl daemon-reload
+  printf '%s' "$unit"
+}
+
+# Stops and removes the service of the runner in folder $1, if it has one.
+remove_unit() {
+  local unit
+  unit=$(hand_unit "$1")
+  [ -n "$unit" ] || unit=$(svc_unit "$1")
+  [ -n "$unit" ] || return 0
+  root systemctl disable --now "$unit" >/dev/null 2>&1 || true
+  root rm -f "$SYSTEMD_DIR/$unit"
+  root systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
 # The runner in folder $1 starts with the server (a systemd service), and is started now in case it was not.
+# Nothing inside the runner's folder (which its jobs can rewrite) is ever run by the administrator: the service is
+# found, or written, and driven by systemctl only.
 start_on_boot() {
   local dir=$1 owner unit
   unit=$(hand_unit "$dir")
-  if [ -n "$unit" ] && ! exists "$dir/.service"; then
-    # Its own service, written by the administrator: kept as it is, and nothing inside the runner's folder (which
-    # its jobs can rewrite) is ever run by the administrator.
-    root systemctl enable --now "$unit" >/dev/null 2>&1 || true
-    ok "Runner $(runner_name "$dir") : il garde son propre démarrage automatique ($unit)"
-    return 0
-  fi
-  if ! exists "$dir/.service"; then
+  [ -n "$unit" ] || unit=$(svc_unit "$dir")
+  if [ -z "$unit" ]; then
     owner=$(root stat -c %U "$dir")
     if [ "$owner" = root ]; then
       warn "Runner $(runner_name "$dir") installé par l'administrateur : je n'y touche pas, il garde son propre démarrage"
       return 0
     fi
     [ -n "$owner" ] || owner=$RUNNER_USER
-    in_dir "$dir" ./svc.sh install "$owner" >/dev/null
+    unit=$(write_unit "$dir" "$owner")
+    root systemctl enable --now "$unit" >/dev/null
     ok "Runner $(runner_name "$dir") : démarrage automatique avec le serveur activé"
     CHANGED=1
+    return 0
   fi
-  in_dir "$dir" ./svc.sh start >/dev/null 2>&1 || true
+  root systemctl enable --now "$unit" >/dev/null 2>&1 || true
+  ok "Runner $(runner_name "$dir") : il garde son démarrage automatique ($unit)"
 }
 
 ensure_runners() {
