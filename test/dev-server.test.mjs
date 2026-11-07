@@ -62,6 +62,8 @@ describe('dev-server.sh', { concurrency: true }, () => {
       const unit = readFileSync(join(r.fake, 'systemd', `actions.runner.phoibe-prive.devbox-prive-${n}.service`), 'utf8');
       assert.match(unit, /^User=factory-runner$/m);
       assert.match(unit, new RegExp(`^ExecStart=.*/runners/phoibe-prive-${n}/runsvc\\.sh$`, 'm'));
+      // The service's program is in place, or systemd fails to start it (203/EXEC).
+      assert.ok(existsSync(join(r.fake, 'runners', `phoibe-prive-${n}`, 'runsvc.sh')));
     }
     assert.equal((r.log.match(/^systemctl enable --now actions\.runner\.phoibe-prive\.devbox-prive-\d\.service$/gm) || []).length, 2);
     assert.match(r.out, /2 runners prêts/);
@@ -164,7 +166,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
     const again = await run(['phoibe/prive'], { fake: first.fake });
     for (const r of [first, again]) {
       assert.equal(r.code, 0, r.out);
-      assert.doesNotMatch(r.log, /svc\.sh/);
+      assert.doesNotMatch(r.log, /\bsvc\.sh/);
     }
     // The runner's libraries come from the administrator's own copy of the archive, outside the runners' folders.
     const extracts = first.log.match(/^tar -xzf \S+ -C (\S+)$/gm) || [];
@@ -224,7 +226,7 @@ describe('dev-server.sh', { concurrency: true }, () => {
     const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64 offline\n' });
     assert.equal(r.code, 0, r.out);
     assert.match(readFileSync(join(r.fake, 'systemd', 'actions.runner.phoibe-prive.ancien-runner.service'), 'utf8'), /^User=pierre$/m);
-    assert.doesNotMatch(r.log, /svc\.sh/);
+    assert.doesNotMatch(r.log, /\bsvc\.sh/);
     assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
   });
 
@@ -264,7 +266,18 @@ describe('dev-server.sh', { concurrency: true }, () => {
     const r = await run(['phoibe/prive'], { fake, runners: '77 ancien-runner self-hosted,Linux,X64,factory-dev online\n' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.log, /^systemctl enable --now actions\.runner\.phoibe-prive\.ancien-runner\.service$/m);
-    assert.doesNotMatch(r.log, /svc\.sh/);
+    assert.doesNotMatch(r.log, /\bsvc\.sh/);
+  });
+
+  test('a runner whose service could not start (runsvc.sh missing) is repaired by running the command again', async () => {
+    const first = await run(['phoibe/prive']);
+    const { rmSync } = await import('node:fs');
+    rmSync(join(first.fake, 'runners', 'phoibe-prive-1', 'runsvc.sh'));
+    const again = await run(['phoibe/prive'], { fake: first.fake });
+    assert.equal(again.code, 0, again.out);
+    assert.ok(existsSync(join(first.fake, 'runners', 'phoibe-prive-1', 'runsvc.sh')));
+    assert.match(again.log, /^sudo -u factory-runner .*cp bin\/runsvc\.sh runsvc\.sh/m);
+    assert.match(again.log, /^systemctl enable --now actions\.runner\.phoibe-prive\.devbox-prive-1\.service$/m);
   });
 
   test('without the administrator right on the project, it stops in French before installing anything', async () => {
