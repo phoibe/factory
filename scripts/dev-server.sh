@@ -183,13 +183,16 @@ $(root find "$RUNNER_HOME" $SCAN_DIRS -maxdepth 6 -name .runner 2>/dev/null || t
 EOF
 }
 
-on_github() { printf '%s\n' "$LINES" | awk -v n="$1" '$2==n { found=1 } END { exit !found }'; }
+# The runners GitHub lists are kept in RUNNER_LIST, never in LINES: in a terminal, bash rewrites LINES with the
+# window height after each command it runs (the list became « 47 » and every runner looked gone).
+on_github() { printf '%s\n' "$RUNNER_LIST" | awk -v n="$1" '$2==n { found=1 } END { exit !found }'; }
 
 # Folders this script made for the project (« <slug>-<number> ») that match no runner on GitHub (failed halfway,
 # or deleted on GitHub): their service is removed and the folder deleted, so the number can be used again.
 clean_leftovers() {
   local dir name suffix
-  while IFS= read -r dir; do
+  # The list comes on fd 3: systemctl and rm inside the loop never eat it.
+  while IFS= read -r dir <&3; do
     [ -n "$dir" ] || continue
     suffix=${dir##*/"$SLUG"-}
     case "$suffix" in ''|*[!0-9]*) continue ;; esac  # another project whose name starts the same
@@ -201,7 +204,7 @@ clean_leftovers() {
     remove_unit "$dir"
     root rm -rf "$dir"
     warn "Ancien dossier ${dir##*/} nettoyé (son runner n'existait plus chez GitHub)"
-  done <<EOF
+  done 3<<EOF
 $(root find "$RUNNER_HOME" -mindepth 1 -maxdepth 1 -type d -name "$SLUG-*" 2>/dev/null || true)
 EOF
 }
@@ -225,9 +228,9 @@ prune_dead() {
     warn "Runner $name retiré chez GitHub : hors ligne, il n'avait plus de dossier sur ce serveur"
     pruned=1; CHANGED=1
   done 3<<EOF
-$LINES
+$RUNNER_LIST
 EOF
-  if [ "$pruned" = 1 ]; then LINES=$(list_runners); fi
+  if [ "$pruned" = 1 ]; then RUNNER_LIST=$(list_runners); fi
 }
 
 # Unregisters runner $2 (GitHub id $1) of folder $3, stops its service and deletes its folder.
@@ -369,7 +372,7 @@ ensure_runners() {
   PREFIX="$host-${REPO#*/}-"
   SLUG=$(printf '%s' "$REPO" | tr '/' '-')
   CHANGED=0
-  LINES=$(list_runners)
+  RUNNER_LIST=$(list_runners)
   prune_dead
   clean_leftovers
   # The list comes on fd 3: the commands inside the loop keep the terminal as their input.
@@ -394,7 +397,7 @@ ensure_runners() {
 "
     fi
   done 3<<EOF
-$LINES
+$RUNNER_LIST
 EOF
   n=1
   while [ "$count" -lt "$WANTED" ]; do
@@ -418,7 +421,7 @@ EOF
       [ -n "$n" ] || continue
       add_runner "$PREFIX$n" "$RUNNER_HOME/$SLUG-$n"
       start_on_boot "$RUNNER_HOME/$SLUG-$n"
-      LINES=$(list_runners)
+      RUNNER_LIST=$(list_runners)
       count=$((count + 1))
     fi
     remove_runner "$id" "$name" "$dir"

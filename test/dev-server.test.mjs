@@ -357,6 +357,27 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.doesNotMatch(again.log, /DELETE/);
   });
 
+  test('run from a real terminal, the runners already there are recognised and kept', { skip: !existsSync('/usr/bin/script') }, async () => {
+    const first = await run(['phoibe/prive']);
+    const fake = first.fake;
+    writeFileSync(join(fake, 'log'), '');
+    const env = { PATH: `${STUBS}:/usr/bin:/bin`, HOME: fake, FAKE: fake, DEV_SERVER_ROOT: join(fake, 'runners'), DEV_SERVER_SCAN: join(fake, 'elsewhere'), DEV_SERVER_SYSTEMD: join(fake, 'systemd'), DEV_SERVER_CACHE: join(fake, 'cache') };
+    // A pseudo-terminal 47 rows high: bash then rewrites LINES after every command.
+    const out = await new Promise((done) => execFile('script', ['-qec', `stty rows 47 cols 120; bash ${SCRIPT} phoibe/prive </dev/null`, '/dev/null'], { env, encoding: 'utf8', timeout: 30_000 }, (err, o) => done(o)));
+    assert.match(out, /devbox-prive-1 déjà là/, out);
+    assert.doesNotMatch(out, /nettoyé|Runner {2}\(/, out);
+    assert.doesNotMatch(readFileSync(join(fake, 'log'), 'utf8'), /^config\.sh /m);
+    assert.ok(existsSync(join(fake, 'runners', 'phoibe-prive-1', '.runner')));
+  });
+
+  test('the script never keeps its data in a variable bash rewrites by itself', () => {
+    const script = readFileSync(SCRIPT, 'utf8');
+    for (const name of ['LINES', 'COLUMNS', 'RANDOM', 'SECONDS', 'PWD', 'OLDPWD', 'LINENO', 'PIPESTATUS', 'BASH_REMATCH']) {
+      assert.doesNotMatch(script, new RegExp(`(^|[\\s;(])${name}=`, 'm'), name);
+      assert.doesNotMatch(script, new RegExp(`\\$\\{?${name}\\b`), name);
+    }
+  });
+
   test('without the administrator right on the project, it stops in French before installing anything', async () => {
     const r = await run(['phoibe/prive'], { env: { FAKE_NOT_ADMIN: '1' } });
     assert.notEqual(r.code, 0);
