@@ -50,11 +50,40 @@ check_machine() {
     aarch64|arm64) ARCH=arm64 ;;
     *) die "Le processeur de ce serveur ($(uname -m)) n'est pas pris en charge par les runners GitHub." ;;
   esac
-  # Jobs run project code: never as root nor as the owner (whose home holds his GitHub login), always as this user.
-  RUNNER_USER=$DEDICATED_USER
-  RUNNER_HOME=${DEV_SERVER_ROOT:-/home/$DEDICATED_USER/actions-runners}
-  # Where runners installed by hand before the factory may live.
+  # Where runners installed by hand before the factory may live, and the services written by hand for them.
   SCAN_DIRS=${DEV_SERVER_SCAN:-/home /root /opt}
+  SYSTEMD_DIR=${DEV_SERVER_SYSTEMD:-/etc/systemd/system}
+}
+
+# Jobs run project code: never as root nor as the owner (whose home holds his GitHub login), always as a dedicated
+# user. A server that already runs runners under its own isolated account (outside the sudo, docker, adm groups and
+# the owner's group, often behind firewall rules written for that account) keeps it: new runners join that account
+# instead of opening a second one that those rules would not cover.
+pick_user() {
+  local f d owner me
+  me=$(id -un)
+  RUNNER_USER=$DEDICATED_USER
+  # shellcheck disable=SC2086
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    d=${f%/.runner}
+    owner=$(root stat -c %U "$d" 2>/dev/null || true)
+    case "$owner" in ''|root|"$me"|"$DEDICATED_USER") continue ;; esac
+    if isolated "$owner"; then RUNNER_USER=$owner; break; fi
+  done <<EOF
+$(root find $SCAN_DIRS -maxdepth 6 -name .runner 2>/dev/null || true)
+EOF
+  RUNNER_HOME=${DEV_SERVER_ROOT:-/home/$RUNNER_USER/actions-runners}
+  if [ "$RUNNER_USER" != "$DEDICATED_USER" ]; then ok "Les runners tournent sous le compte isolé déjà en place sur ce serveur : $RUNNER_USER"; fi
+}
+
+# User $1 is in none of the groups that would open the owner's files, the administrator or Docker to the jobs.
+isolated() {
+  local g me
+  me=$(id -un)
+  for g in $(id -nG "$1" 2>/dev/null || echo sudo); do
+    case "$g" in sudo|wheel|admin|adm|docker|lxd|root|"$me") return 1 ;; esac
+  done
 }
 
 # ---- GitHub CLI ---------------------------------------------------------------------------------
@@ -206,9 +235,25 @@ add_runner() {
   ok "Runner $name ajouté"
 }
 
+# The systemd service written by hand (not by svc.sh) that starts the runner of folder $1, empty when there is none.
+hand_unit() {
+  local u
+  for u in $(root grep -lsF -- "$1/" "$SYSTEMD_DIR"/actions.runner.*.service 2>/dev/null || true); do
+    if root grep -qsE "^(WorkingDirectory=$1/?\$|ExecStart=$1/run)" "$u"; then basename "$u"; return; fi
+  done
+}
+
 # The runner in folder $1 starts with the server (a systemd service), and is started now in case it was not.
 start_on_boot() {
-  local dir=$1 owner
+  local dir=$1 owner unit
+  unit=$(hand_unit "$dir")
+  if [ -n "$unit" ] && ! exists "$dir/.service"; then
+    # Its own service, written by the administrator: kept as it is, and nothing inside the runner's folder (which
+    # its jobs can rewrite) is ever run by the administrator.
+    root systemctl enable --now "$unit" >/dev/null 2>&1 || true
+    ok "Runner $(runner_name "$dir") : il garde son propre démarrage automatique ($unit)"
+    return 0
+  fi
   if ! exists "$dir/.service"; then
     owner=$(root stat -c %U "$dir")
     if [ "$owner" = root ]; then
@@ -268,6 +313,7 @@ main() {
   REPO=${1:-}
   if [ -z "$REPO" ]; then choose_project; else case "$REPO" in */*) ;; *) REPO="$OWNER_LOGIN/$REPO" ;; esac; fi
   check_project
+  pick_user
   ensure_user
   install_software
   ensure_runners

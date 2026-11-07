@@ -98,6 +98,12 @@ Au plus tard 15 minutes après, le panneau (onglet « Paramètres », section «
 seulement l'étiquette de la factory et le démarrage automatique, puis installe ce qui manque pour arriver à 2
 (un seul runner de plus s'il y en avait un).
 
+**Le serveur avait déjà ses runners, sous un compte à part et protégés par un pare-feu (comme pour Pulsar Wheel).**
+La commande les garde tels quels : leur démarrage automatique, écrit à la main, n'est pas réécrit. Elle leur ajoute
+seulement l'étiquette de la factory, et installe sur le serveur ce que les contrôles de la factory demandent. Les
+nouveaux runners rejoignent ce même compte à part, pour rester derrière les mêmes protections, au lieu d'en créer un
+second. Un compte qui aurait accès à l'administrateur ou à Docker n'est jamais repris.
+
 **Un runner qui n'est pas sur ce serveur (un ancien, ou sur une autre machine) ?** La commande le laisse tel quel chez
 GitHub, mais ne le compte pas : elle installe 2 runners sur le serveur. Vous pouvez le supprimer depuis la page des runners.
 

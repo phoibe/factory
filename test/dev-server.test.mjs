@@ -32,6 +32,22 @@ function handMadeRunner(name, repo) {
   return fake;
 }
 
+// A runner installed before the factory under its own isolated account (« gh-runner »), with a systemd service written
+// by hand (no « .service » file from svc.sh in its folder), as on a server hardened by the owner.
+function isolatedRunner(name, repo, { groups = 'gh-runner' } = {}) {
+  const fake = mkdtempSync(join(tmpdir(), 'dev-server-'));
+  const dir = join(fake, 'elsewhere', 'gh-runner', 'appli');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.runner'), `{\n  "agentName": "${name}",\n  "gitHubUrl": "https://github.com/${repo}"\n}\n`);
+  writeFileSync(join(dir, '.owner'), 'gh-runner\n');
+  writeFileSync(join(dir, 'svc.sh'), '#!/usr/bin/env bash\necho "svc.sh $* in $(basename "$PWD")" >> "$FAKE/log"\nexit 0\n', { mode: 0o755 });
+  mkdirSync(join(fake, 'users'));
+  writeFileSync(join(fake, 'users', 'gh-runner'), `${groups}\n`);
+  mkdirSync(join(fake, 'systemd'));
+  writeFileSync(join(fake, 'systemd', `actions.runner.${repo.replace('/', '-')}.${name}.service`), `[Service]\nExecStart=${dir}/runsvc.sh\nUser=gh-runner\nWorkingDirectory=${dir}\n`);
+  return { fake, env: { DEV_SERVER_SYSTEMD: join(fake, 'systemd'), FAKE_RUNNER_USER: groups.includes('docker') ? 'factory-runner' : 'gh-runner' } };
+}
+
 const factoryDev = (runners) => runners.trim().split('\n').filter((l) => l && l.split(' ')[2].split(',').includes('factory-dev') && l.endsWith(' online'));
 
 describe('dev-server.sh', { concurrency: true }, () => {
@@ -191,6 +207,36 @@ describe('dev-server.sh', { concurrency: true }, () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.log, /^svc\.sh install pierre in actions-runner/m);
     assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
+  });
+
+  test('a runner with its own hand-written service keeps it: the administrator never runs svc.sh from its folder', async () => {
+    const { fake, env } = isolatedRunner('pulsar-dev-prive', 'phoibe/prive');
+    const r = await run(['phoibe/prive'], { fake, env, runners: '91 pulsar-dev-prive self-hosted,pulsar-dev online\n' });
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.log, /svc\.sh (install|start) in appli/);
+    assert.match(r.log, /systemctl enable --now actions\.runner\.phoibe-prive\.pulsar-dev-prive\.service/);
+    assert.match(r.out, /garde son propre démarrage automatique/);
+    assert.match(r.runners, /^91 pulsar-dev-prive self-hosted,pulsar-dev,factory-dev online$/m);
+    assert.equal((r.log.match(/^config\.sh /gm) || []).length, 1);
+  });
+
+  test('new runners join the isolated account already used on the server, not a second account', async () => {
+    const { fake, env } = isolatedRunner('pulsar-dev-autre', 'phoibe/autre');
+    const r = await run(['phoibe/prive'], { fake, env });
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.log, /useradd/);
+    assert.match(r.log, /sudo -u gh-runner .*config\.sh/);
+    assert.doesNotMatch(r.log, /factory-runner/);
+    assert.match(r.log, /^svc\.sh install gh-runner/m);
+    assert.match(r.out, /compte isolé déjà en place sur ce serveur : gh-runner/);
+  });
+
+  test('an existing account that can reach the administrator or Docker is not reused', async () => {
+    const { fake, env } = isolatedRunner('pulsar-dev-autre', 'phoibe/autre', { groups: 'gh-runner docker' });
+    const r = await run(['phoibe/prive'], { fake, env });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.log, /useradd .*factory-runner/);
+    assert.doesNotMatch(r.log, /sudo -u gh-runner/);
   });
 
   test('without the administrator right on the project, it stops in French before installing anything', async () => {

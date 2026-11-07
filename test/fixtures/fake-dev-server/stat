@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-# Stand-in for « stat -c %U <dir> »: folders made by the script belong to the dedicated user, others to the owner.
-case "$3" in "$DEV_SERVER_ROOT"/*) echo factory-runner ;; *) echo pierre ;; esac
+# Stand-in for « stat -c %U <dir> »: a folder may name its owner in « .owner » (a runner of another account);
+# otherwise folders made by the script belong to the dedicated user, others to the owner.
+if [ -f "$3/.owner" ]; then cat "$3/.owner"; exit 0; fi
+case "$3" in "$DEV_SERVER_ROOT"/*) echo "${FAKE_RUNNER_USER:-factory-runner}" ;; *) echo pierre ;; esac
