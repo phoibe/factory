@@ -1,9 +1,43 @@
 {
-  "checkedAt": "2026-11-07T07:01:58.057Z",
-  "key": "missing",
+  "checkedAt": "2026-11-07T09:49:20.785Z",
+  "key": "ok",
   "general": "dev-server",
   "labels": [
     "self-hosted"
   ],
-  "projects": {}
+  "projects": {
+    "254e4c21ade6cdfa": {
+      "machine": "github",
+      "reason": "public",
+      "online": 0,
+      "since": "2026-11-07T09:49:20.785Z",
+      "error": true
+    },
+    "0c297ad5e6d8d9af": {
+      "machine": "github",
+      "reason": "public",
+      "online": 0,
+      "since": "2026-11-07T09:49:20.785Z",
+      "error": true
+    },
+    "695e35c1ebe0912c": {
+      "machine": "dev-server",
+      "reason": "online",
+      "online": 2,
+      "since": "2026-11-07T09:49:20.785Z"
+    },
+    "4f72ae7b744d6c66": {
+      "machine": "github",
+      "reason": "offline",
+      "online": 0,
+      "since": "2026-11-07T09:49:20.785Z"
+    },
+    "2e7e558342bc9d65": {
+      "machine": "github",
+      "reason": "offline",
+      "online": 0,
+      "since": "2026-11-07T09:49:20.785Z"
+    }
+  },
+  "keyExpires": "2027-11-06T23:00:00.000Z"
 }
