@@ -107,6 +107,11 @@ second. Un compte qui aurait accès à l'administrateur ou à Docker n'est jamai
 **Un runner qui n'est pas sur ce serveur (un ancien, ou sur une autre machine) ?** La commande le laisse tel quel chez
 GitHub, mais ne le compte pas : elle installe 2 runners sur le serveur. Vous pouvez le supprimer depuis la page des runners.
 
+**Les runners sont numérotés 2 et 3, ou un runner « hors ligne » de ce serveur traîne dans la liste ?** C'est la trace
+d'une installation interrompue. Relancez la commande : elle retire chez GitHub le runner hors ligne qui n'a plus de
+dossier sur le serveur, puis remet les runners sous les numéros 1 et 2 (le nouveau est ajouté avant que l'ancien parte).
+Un runner occupé par une tâche n'est pas touché : relancez simplement la commande un peu plus tard.
+
 **Je ne sais plus si je l'ai déjà lancée.** Relancez-la sans crainte : elle ne change rien si tout est déjà en place,
 et le dit (« Rien à ajouter »).
 
