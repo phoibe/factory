@@ -152,6 +152,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     // Every PR (open, closed, merged) of one branch of this repository.
     pullsByHead: (branch) => request('GET', `/repos/{repo}/pulls?state=all&per_page=30&head=${enc(`${repo.split('/')[0]}:${branch}`)}`),
     listClosedPulls: () => request('GET', '/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=30'),
+    // One page of 100 closed PRs, most recently updated first (to find an older merge).
+    listClosedPullsPage: (page) => request('GET', `/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`),
     paginate,
     getRepo: () => request('GET', '/repos/{repo}'),
     listComments: (n) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`),

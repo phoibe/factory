@@ -2531,3 +2531,35 @@ test('an agent that could not update the branch twice on the same code gives the
   assert.equal(sent.length, 0);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 52 && c[2] === L.blocked));
 });
+
+test('waits: a request merged long ago (its PR beyond the latest closed ones) is still a merge', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed', closed_at: '2026-11-01T10:00:00Z' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const recent = Array.from({ length: 100 }, (_, i) => ({ number: 100 + i, merged_at: null, updated_at: '2026-11-08T10:00:00Z', body: '' }));
+  gh.listClosedPullsPage = async (page) => (page === 1 ? recent : page === 2 ? [{ ...mergedPr12, updated_at: '2026-11-01T10:00:00Z' }] : []);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[2].includes('abandonnée')));
+});
+
+test('waits: a deleted awaited request (410) is an abandon', async () => {
+  const state = { issues: [blockedWaiting(5)], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const get = gh.getIssue;
+  gh.getIssue = async (n) => { if (n === 12) throw new Error('GET /repos/r/issues/12 -> 410 Gone'); return get(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('#12 a été abandonnée')));
+});
+
+test('waits: the wake message uses up the link even if removing the label fails', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const remove = gh.removeLabel;
+  gh.removeLabel = async (n, l) => { if (n === 5 && l === L.blocked) throw new Error('500'); return remove(n, l); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER)));
+});

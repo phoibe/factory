@@ -284,7 +284,30 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function wakeWaiters(freed = null) {
     const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.running));
     let free = null; // places left, counted once: GitHub's lists lag behind the cards resumed here
-    let mergedIssues = null; // the issues a merged PR closes, read once and only when a card waits
+    // The issues a merged PR closes: the latest closed PRs first, older pages only for an issue closed before them.
+    let mergedIssues = null;
+    let pages = 0;
+    let oldest = Infinity; // update time of the oldest closed PR read so far
+    const addPulls = (pulls) => {
+      for (const p of pulls) {
+        if (p.merged_at && prIssue(p)) mergedIssues.add(prIssue(p));
+        if (p.updated_at) oldest = Math.min(oldest, Date.parse(p.updated_at));
+      }
+    };
+    const readMerged = async (issue) => {
+      if (!mergedIssues) { mergedIssues = new Set(); addPulls((await gh.listClosedPulls?.()) || []); }
+      // A PR is updated when it is merged, and the factory closes the issue right after: no need to read further back.
+      const since = Date.parse(issue?.closed_at || 0) - 3_600_000;
+      while (issue?.state === 'closed' && !issue.pull_request && !mergedIssues.has(issue.number) && gh.listClosedPullsPage && pages < 5 && !(oldest < since)) {
+        const page = (await gh.listClosedPullsPage(pages + 1)) || [];
+        pages += 1;
+        addPulls(page);
+        if (page.length < 100) { pages = 5; break; }
+      }
+    };
+    // A 404 gives null (the request is gone), and so does a 410 (deleted); any other error throws and the card is
+    // looked at again next time.
+    const readRequest = (n) => gh.getIssue(n).catch((e) => { if (/-> 410\b/.test(String(e.message))) return null; throw e; });
     const tell = async (n, text) => {
       await gh.comment(n, text);
       commentCache.delete(n); // the card's thread changed: never act on the old copy again in this run
@@ -293,10 +316,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       try {
         const waits = waitedFor(await cardComments(item)).filter((w) => w !== item.number);
         if (!waits.length) continue;
-        mergedIssues ||= new Set(((await gh.listClosedPulls?.()) || []).filter((p) => p.merged_at).map(prIssue).filter(Boolean));
         const states = new Map();
-        // A 404 gives null (the request is gone); any other error throws and the card is looked at again next time.
-        for (const w of waits) states.set(w, requestState(await gh.getIssue(w), mergedIssues));
+        for (const w of waits) {
+          const req = await readRequest(w);
+          await readMerged(req);
+          states.set(w, requestState(req, mergedIssues));
+        }
         const abandoned = waits.filter((w) => states.get(w) === 'abandoned');
         if (!abandoned.length && waits.some((w) => states.get(w) !== 'merged')) continue;
         const labels = await liveLabels(item.number);
@@ -324,10 +349,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}, mais je n'ai pas pu relancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`)}`);
           continue;
         }
-        await gh.removeLabel(item.number, L.blocked);
         woken.add(item.number);
         if (holdsPlace) free -= 1;
+        // The link is used up first: whatever fails next, the agent is never sent back a second time for it.
         await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
+        await gh.removeLabel(item.number, L.blocked);
       } catch (e) { log(`waits #${item.number}: ${e.message}`); }
     }
   }
