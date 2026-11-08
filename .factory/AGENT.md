@@ -98,6 +98,13 @@ ensemble : les contrôles tournent pendant qu'il regarde les captures, et son «
 `factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, `factory:checks` seul, puis
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
+**Bloqué parce que tu attends la fusion d'une autre demande** (du même projet) : bloque-toi comme d'habitude
+(`factory:blocked` sur l'issue, un message clair), et ajoute dans ce message la ligne invisible
+`<!-- factory-waits-for #12 -->` (plusieurs numéros séparés par un espace : `#12 #15`). Dis-lui qu'il n'a rien à
+faire : la carte repartira toute seule quand toutes ces demandes seront fusionnées (le tableau affiche « Attend #12 »).
+Si l'une d'elles est abandonnée, la factory le prévient et la carte attend sa décision. S'il t'écrit avant, le lien
+est oublié et tu reprends normalement.
+
 - Quand ton étape le dit, change les labels (voir « API GitHub »).
 - **La toute dernière action de chaque run**, même en cas d'échec : retirer `factory:running` de l'issue et
   de la PR concernées. Rien après.
