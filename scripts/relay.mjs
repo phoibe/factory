@@ -35,6 +35,11 @@ export const PROJECT_WORKFLOW = 'factory.yml';
 // The branch the host publishes on projects whose production waits for the owner (issue #294).
 export const PROD_BRANCH = 'production';
 export const MAX_BRANCH_UPDATES = 2;
+// A branch update is marked with the commit it started from. Only the tries on the PR's current code count: a PR
+// updated successfully twice (two other features merged meanwhile) is not given up on at its third conflict.
+const updateMark = (sha) => `<!-- factory-update-sha:${sha || ''} -->`;
+export const branchUpdates = (comments, sha) => (comments || [])
+  .filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER) && Boolean(sha) && (c.body || '').includes(updateMark(sha))).length;
 // A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
 export const IDLE_MINUTES = 30;
 const HEAL_MARKER = '<!-- factory-heal -->';
@@ -364,12 +369,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) {
       log(`merge failed: ${e}`);
       const state = (await gh.getPr(prNumber))?.mergeable_state;
-      const updates = ((await gh.listComments(prNumber)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
+      const head = sha || pr?.head?.sha;
+      const updates = branchUpdates(await gh.listComments(prNumber), head);
       if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
         if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion' }))) return;
         for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
         await gh.addLabels(prNumber, [L.fixing]);
-        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}`);
+        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${updateMark(head)}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}`);
         return;
       }
       for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
@@ -714,7 +720,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const pr = await settledPr(item.number);
       if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
-      const updates = ((await gh.listComments(item.number)) || []).filter((c) => (c.body || '').includes(UPDATE_BRANCH_MARKER)).length;
+      const updates = branchUpdates(await gh.listComments(item.number), pr.head?.sha);
       const issue = prIssue(pr);
       if (updates >= MAX_BRANCH_UPDATES) {
         await gh.removeLabel(item.number, L.checks);
@@ -725,7 +731,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: item.number, why: 'La branche est en conflit avec la version en ligne' }))) continue;
       await gh.removeLabel(item.number, L.checks);
       await gh.addLabels(item.number, [L.fixing]);
-      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté pour l'instant.")}`);
+      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${updateMark(pr.head?.sha)}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté pour l'instant.")}`);
     }
   }
 
@@ -1444,6 +1450,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (result === 'cancelled' && !(started && nowMs - started * 1000 >= CHECKS_TIMEOUT_MS)) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
+    // An agent was sent on the PR after these checks started (a branch update after a conflict, a fix): new code is
+    // coming and its own checks will decide. Merging now raced the update and blocked the card (pulsarwheel #382).
+    // The agent hands the PR back with factory:checks when it is done: from then on a report counts again.
+    const live = await liveLabels(prNumber);
+    if (live.includes(L.fixing) && !live.includes(L.checks)) return log('stale report: an agent is changing the PR, its own checks will report');
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
     if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs);
