@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
 import { createRelay, eventFromPayload, linkedIssue } from '../scripts/relay.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER } from '../scripts/lib/labels.mjs';
+import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER, UPDATE_BRANCH_MARKER } from '../scripts/lib/labels.mjs';
 import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
@@ -348,6 +348,7 @@ test('red checks fire a fix, then block after maxLoops failures', async () => {
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
   assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
   state.comments[10] = [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER }));
+  await gh.removeLabel(10, L.fixing); // the agent hands its fix back to the checks (stages/fix-checks.md)
   gh = fakeGh(state);
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).report({ result: 'failure', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
@@ -2482,4 +2483,51 @@ test('waits: a failed launch tells the owner once and leaves a normal block', as
   assert.ok(state.issues[0].labels.includes(L.blocked));
   const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER));
   assert.ok(msg && msg[2].includes('réessaie'));
+});
+
+test('green checks that end while the branch is being updated do not merge or block the card', async () => {
+  // pulsarwheel #382, 2026-11-08: the checks of « ok » finished 20 s after a conflict had sent the agent to update
+  // the branch. The report merged on the old code, GitHub refused (conflict) and the card was blocked for nothing.
+  // (A bug here, so that green checks alone would merge.)
+  const gh = fakeGh({
+    issues: [{ number: 368, labels: [L.bug, L.building] }, { number: 382, labels: [L.fixing, L.running], pull_request: {} }],
+    prs: [{ number: 382, state: 'open', mergeable_state: 'dirty', body: 'Closes #368', head: { sha: 'old' }, labels: [L.fixing, L.running] }],
+    comments: { 382: [{ user: { login: 'phoibe' }, body: `${VISUAL_OK_MARKER}\nCaptures validées` }] },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'success', pr: 382, sha: 'old' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[1] === 382 && c[2] === L.fixing));
+  assert.equal(sent.length, 0);
+});
+
+test('a PR whose earlier conflicts were all fixed is updated again at its next conflict', async () => {
+  // Two other features merged one after the other: two successful updates must not use up the tries of the third.
+  const earlier = [
+    { user: { login: 'phoibe' }, body: `${UPDATE_BRANCH_MARKER}\nLes contrôles ne pouvaient pas démarrer` },
+    { user: { login: 'phoibe' }, body: `${UPDATE_BRANCH_MARKER}\n<!-- factory-update-sha:aaa -->\nLes contrôles ne pouvaient pas démarrer` },
+  ];
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'bbb' }, labels: [L.checks] }],
+    comments: { 61: earlier },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 61 && c[2].includes('<!-- factory-update-sha:bbb -->')));
+});
+
+test('an agent that could not update the branch twice on the same code gives the card back to the owner', async () => {
+  const tries = [1, 2].map(() => ({ user: { login: 'phoibe' }, body: `${UPDATE_BRANCH_MARKER}\n<!-- factory-update-sha:bbb -->\nconflit` }));
+  const gh = fakeGh({
+    issues: [{ number: 52, labels: [L.feature, L.building] }, { number: 61, labels: [L.checks], pull_request: {} }],
+    prs: [{ number: 61, state: 'open', mergeable_state: 'dirty', body: 'Closes #52', head: { sha: 'bbb' }, labels: [L.checks] }],
+    comments: { 61: tries },
+  });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 52 && c[2] === L.blocked));
 });
