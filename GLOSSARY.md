@@ -19,3 +19,17 @@ _À éviter_ : fallback, repli
 **Clé d'accès des runners** :
 La clé personnelle, limitée aux projets du propriétaire, qui permet à la factory de voir si le serveur de dev est connecté et de basculer les projets.
 _À éviter_ : token, jeton
+
+## Mise en production
+
+**Mise en production automatique** :
+Le réglage d'un projet dont chaque modification validée part en ligne dès que la factory l'intègre.
+_À éviter_ : déploiement continu
+
+**Mise en production sur accord** :
+Le réglage d'un projet dont les modifications validées sont intégrées mais n'arrivent sur le site en ligne qu'au clic du propriétaire sur « Mise en production ».
+_À éviter_ : approbation, validation de déploiement
+
+**Modifications en attente** :
+Les modifications validées et intégrées d'un projet sur accord qui ne sont pas encore sur le site en ligne ; elles partent toutes ensemble.
+_À éviter_ : file de déploiement, release
