@@ -378,8 +378,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
-    // On approval (issue #294) the change waits for « Mise en production »; an undo of a broken delivery never waits.
-    const held = config.production === 'approval' && !String(pr?.body || '').includes(REVERT_MARKER);
+    // On approval (issue #294) the change waits for « Mise en production ». An undo of a broken delivery goes live at
+    // once, unless other changes already wait: publishing main would then publish them too, without the owner's accord.
+    const isUndo = String(pr?.body || '').includes(REVERT_MARKER);
+    const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
+    const held = config.production === 'approval' && (!isUndo || await othersWait());
     await afterMerge(prNumber, { held });
     if (held) {
       await holdForApproval(prNumber).catch((e) => log(`hold for approval: ${e.message}`));
@@ -450,15 +453,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       }
       return;
     }
-    const head = (await gh.getBranch(ref))?.object?.sha;
-    if (!head) throw new Error(`no ${ref} branch`);
-    try { await moveProduction(head); } catch (e) {
+    let head = null;
+    let from = null;
+    try {
+      head = (await gh.getBranch(ref))?.object?.sha;
+      if (!head) throw new Error(`branche ${ref} introuvable`);
+      from = (await gh.getBranch(PROD_BRANCH).catch(() => null))?.object?.sha || null;
+      await moveProduction(head);
+    } catch (e) {
       if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
       throw e;
     }
-    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch { /* the project has no GitHub Pages workflow */ }
+    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
-    await checkLive(pending.at(-1).number, head).catch((e) => log(`live check not started: ${e.message}`));
+    const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null };
+    await checkLive(pending.at(-1).number, head, { release }).catch((e) => log(`live check not started: ${e.message}`));
     const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
     const n = pending.length;
     const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.`;
@@ -468,11 +477,31 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The live site broke after a « Mise en production »: the production branch goes back to what was live before
+  // (main is untouched, nothing is undone there), the released changes wait again, and an urgent bug fixes them.
+  async function rollbackRelease({ release, sha, detail, runId }) {
+    const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
+    await gh.resetRef(PROD_BRANCH, release.from);
+    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch { /* no GitHub Pages workflow */ }
+    const prs = release.prs || [];
+    for (const n of prs) await gh.addLabels(n, [L.awaitingProd]);
+    const titles = [];
+    for (const n of prs) titles.push(`- ${(await gh.getPr(n).catch(() => null))?.title || 'Modification'} (#${n})`);
+    const body = [AGENT_MARKER,
+      `Après la mise en production${release.issue ? ` (#${release.issue})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`, '',
+      "La factory a remis en ligne la version d'avant. Les modifications parties attendent de nouveau :", '', ...titles, '',
+      `Trouve laquelle casse la version en ligne (commit \`${sha}\`, l'ancienne version en ligne est \`${release.from}\`), corrige-la, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
+    const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
+    if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJ'ai remis la version d'avant en ligne. Les modifications attendent de nouveau (le bouton « Mise en production » les compte), et la demande #${bug?.number} les corrige. Rien à faire de votre côté pour l'instant.`));
+    if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
+    log(`release broke the live site: production back to ${String(release.from).slice(0, 7)}`);
+  }
+
   // After a merge, the live site is opened as soon as its new version is deployed (production job of relay.yml).
   // Only for a project its host deploys (Vercel, Netlify, GitHub Pages…): elsewhere there is nothing to open.
   // A host that tells GitHub nothing (Vercel without deployments, as on yoldmewhen2) is still checked when the site's
   // address is known (siteUrl, or the repository's website) and the host builds the project (it comments the PRs).
-  async function checkLive(prNumber, releasedSha = null) {
+  async function checkLive(prNumber, releasedSha = null, extra = {}) {
     const envs = ((await gh.recentDeployments?.().catch(() => null)) || []).map((d) => d.environment);
     let url = null;
     if (!envs.some(isLiveEnv)) {
@@ -488,7 +517,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const sha = releasedSha || (await gh.getPr(prNumber))?.merge_commit_sha;
     if (!sha) return;
     const ref = (await gh.getRepo())?.default_branch || 'main';
-    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}) } }) });
+    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}), ...extra } }) });
     log(`live check started for #${prNumber} (${sha.slice(0, 7)})${url ? ` on ${url}` : ''}`);
   }
 
@@ -555,8 +584,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The host did not publish the new version: the old one still runs, nothing is broken. The publication is run
   // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
-  async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false }) {
-    const ref = (await gh.getRepo())?.default_branch || 'main';
+  async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false, release = null }) {
+    const def = (await gh.getRepo())?.default_branch || 'main';
+    // After a « Mise en production », the host publishes the production branch: main may already be further ahead.
+    const ref = release ? PROD_BRANCH : def;
     // A newer delivery was merged since: re-running this one would publish an older version over it, and the newer
     // one's own live check covers the site (its deploy carries this commit too).
     const head = gh.getBranch ? (await gh.getBranch(ref).catch(() => null))?.object?.sha : sha;
@@ -565,7 +596,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       try {
         const retriedAt = now() - 60_000; // a minute of slack: GitHub's clock, rounded to the second
         await gh.rerunFailed(runId);
-        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true, retriedAt } }) });
+        await gh.dispatch(PROJECT_WORKFLOW, def, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true, retriedAt, ...(release ? { release } : {}) } }) });
         return log(`live deploy of #${prNumber} failed: run ${runId} re-run`);
       } catch (e) { log(`live deploy re-run failed: ${String(e.message || e).slice(0, 80)}`); }
     }
@@ -576,9 +607,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The live site does not work after a merge: undo the delivery at once (a PR that goes live on green checks), and
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
-  async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null }) {
+  async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null, release = null }) {
     if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
+    if (release?.from) return rollbackRelease({ release, sha, detail, runId });
     const pr = await gh.getPr(prNumber);
     const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
     if (String(pr?.body || '').includes(REVERT_MARKER)) {
@@ -1224,7 +1256,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
-      if (!ev.fromOwner || ev.closed) return { action: { type: 'ignore', reason: 'mise en production demandée par un autre que le propriétaire' }, outputs };
+      if (ev.closed) return { action: { type: 'ignore', reason: 'demande de mise en production déjà traitée' }, outputs };
+      if (!ev.fromOwner) return { action: { type: 'ignore', reason: 'mise en production demandée par un autre que le propriétaire' }, outputs };
       await releaseToProduction(ev.number);
       return { action: { type: 'release' }, outputs };
     }
@@ -1652,13 +1685,13 @@ async function main() {
     if (arg('deploy-failed') === 'true') {
       let failure = {};
       try { failure = JSON.parse(fromJobOutput(process.env.DEPLOY_FAILURE) || '{}') || {}; } catch { /* no details */ }
-      await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried) }));
+      await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried), release: check.release || null }));
       return;
     }
     const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
-    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: fromJobOutput(arg('url')), ...res, runId: process.env.GITHUB_RUN_ID, git, redo: check.redo || null }));
+    await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, url: fromJobOutput(arg('url')), ...res, runId: process.env.GITHUB_RUN_ID, git, redo: check.redo || null, release: check.release || null }));
   } else if (command === 'dequeue') {
     await withLock(gh.queueLock, () => relay.dequeue());
   } else {

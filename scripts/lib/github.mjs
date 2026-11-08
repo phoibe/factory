@@ -183,6 +183,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     createRef: (name, sha) => request('POST', '/repos/{repo}/git/refs', { ref: `refs/heads/${name}`, sha }),
     // Fast-forward only: the production branch never loses a commit (issue #294).
     updateRef: (name, sha) => request('PATCH', `/repos/{repo}/git/refs/heads/${enc(name)}`, { sha, force: false }),
+    // Puts the production branch back on what was live before a broken release (not a fast-forward).
+    resetRef: (name, sha) => request('PATCH', `/repos/{repo}/git/refs/heads/${enc(name)}`, { sha, force: true }),
     getCommit: (sha) => request('GET', `/repos/{repo}/git/commits/${sha}`),
     // The merged PRs that wait for the owner's « Mise en production » (issue #294).
     listAwaiting: () => paginate('/repos/{repo}/issues?state=closed&labels=factory%3Aawaiting-production&per_page=100'),
