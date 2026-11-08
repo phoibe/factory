@@ -168,3 +168,28 @@ test('a stack sheet card has no questions and no spec, like a bug', async () => 
   const { stepsFor } = await import('../panel/live.mjs');
   assert.deepEqual(stepsFor(['factory:stack']), stepsFor(['factory:bug']));
 });
+
+// Issue #298: a card blocked only while it waits for another request's merge asks nothing of the owner.
+import { waitsText, waitsEta, stillWaited } from '../panel/live.mjs';
+test('a blocked card that waits for a merge sits in the queue lane, not in « À vous »', () => {
+  const c = { labels: ['factory:feature', 'factory:building', 'factory:blocked'], column: 'blocked', waits: [12] };
+  assert.equal(laneFor(c), 'queued');
+  assert.equal(laneFor({ ...c, waits: [] }), 'yours');
+  assert.equal(laneFor({ ...c, labels: [...c.labels, 'factory:running'] }), 'working');
+  assert.deepEqual(yoursList([{ ...c, updated_at: '2026-11-08T10:00:00Z' }]), []);
+});
+test('waitsText names the awaited requests, with the title of a single one when known', () => {
+  assert.equal(waitsText([12]), 'Attend #12');
+  assert.equal(waitsText([12], new Map([[12, 'Ajouter un compte']])), 'Attend #12 · Ajouter un compte');
+  assert.equal(waitsText([12, 15], new Map([[12, 'Ajouter un compte']])), 'Attend #12, #15');
+});
+test('waitsEta says when the card starts again, and that it is about to once everything is merged', () => {
+  assert.equal(waitsEta({ waits: [12] }), 'Repart seule dès sa fusion');
+  assert.equal(waitsEta({ waits: [12, 15] }), 'Repart seule dès leur fusion');
+  assert.equal(waitsEta({ waits: [12], waitsMerged: true }), 'Reprise imminente');
+});
+test('stillWaited drops the requests already merged', () => {
+  assert.deepEqual(stillWaited([12, 15], [{ number: 30, issue: 12, reason: null }]), [15]);
+  assert.deepEqual(stillWaited([12], [{ number: 12, issue: 12, reason: 'Déjà réglée' }]), [12]);
+  assert.deepEqual(stillWaited([30], [{ number: 30, issue: 12, reason: null }]), []);
+});

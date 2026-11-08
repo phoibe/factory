@@ -21,6 +21,7 @@ import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiC
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
+import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -166,10 +167,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // seconds, which used to keep its place taken until the next regular tick.
   // A place is taken only while the agent builds: once the card's PR is open (checks, captures, recette), the
   // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
+  const woken = new Set(); // cards wakeWaiters resumed during this relay run
+  // A blocked card's comments, read once per relay run while the card does not change (its `updated_at` moves with
+  // every new comment): the queue is checked several times per run, and the alerts read the same cards.
+  const commentCache = new Map();
+  async function cardComments(item) {
+    const hit = commentCache.get(item.number);
+    if (hit && item.updated_at && hit.at === item.updated_at) return hit.comments;
+    const comments = (await gh.listComments(item.number)) || [];
+    commentCache.set(item.number, { at: item.updated_at, comments });
+    return comments;
+  }
+
   async function inFlight(freed = null) {
     const open = await gh.listIssues({ labels: L.building });
     const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
-    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && !names(i.labels).includes(L.blocked)).length;
+    // A card woken by this run counts even when GitHub's list still shows it blocked.
+    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
   }
 
   async function lockStart(number) {
@@ -264,7 +278,88 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // Blocked cards that wait for the merge of other requests (issue #298): once all are merged, the card resumes
+  // (or queues when the factory is full, like an owner's answer); one abandoned, the owner is told and decides.
+  // A card an agent is still working on is left for the end of its run.
+  async function wakeWaiters(freed = null) {
+    const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.running));
+    let free = null; // places left, counted once: GitHub's lists lag behind the cards resumed here
+    // The issues a merged PR closes: the latest closed PRs first, older pages only for an issue closed before them.
+    let mergedIssues = null;
+    let pages = 0;
+    let oldest = Infinity; // update time of the oldest closed PR read so far
+    const addPulls = (pulls) => {
+      for (const p of pulls) {
+        if (p.merged_at && prIssue(p)) mergedIssues.add(prIssue(p));
+        if (p.updated_at) oldest = Math.min(oldest, Date.parse(p.updated_at));
+      }
+    };
+    const readMerged = async (issue) => {
+      if (!mergedIssues) { mergedIssues = new Set(); addPulls((await gh.listClosedPulls?.()) || []); }
+      // A PR is updated when it is merged, and the factory closes the issue right after: no need to read further back.
+      const since = Date.parse(issue?.closed_at || 0) - 3_600_000;
+      while (issue?.state === 'closed' && !issue.pull_request && !mergedIssues.has(issue.number) && gh.listClosedPullsPage && pages < 5 && !(oldest < since)) {
+        const page = (await gh.listClosedPullsPage(pages + 1)) || [];
+        pages += 1;
+        addPulls(page);
+        if (page.length < 100) { pages = 5; break; }
+      }
+    };
+    // A 404 gives null (the request is gone), and so does a 410 (deleted); any other error throws and the card is
+    // looked at again next time.
+    const readRequest = (n) => gh.getIssue(n).catch((e) => { if (/-> 410\b/.test(String(e.message))) return null; throw e; });
+    const tell = async (n, text) => {
+      await gh.comment(n, text);
+      commentCache.delete(n); // the card's thread changed: never act on the old copy again in this run
+    };
+    for (const item of blocked) {
+      try {
+        const waits = waitedFor(await cardComments(item)).filter((w) => w !== item.number);
+        if (!waits.length) continue;
+        const states = new Map();
+        for (const w of waits) {
+          const req = await readRequest(w);
+          await readMerged(req);
+          states.set(w, requestState(req, mergedIssues));
+        }
+        const abandoned = waits.filter((w) => states.get(w) === 'abandoned');
+        if (!abandoned.length && waits.some((w) => states.get(w) !== 'merged')) continue;
+        const labels = await liveLabels(item.number);
+        if (!labels.includes(L.blocked) || labels.includes(L.running)) continue; // another relay run took it
+        const list = (ns) => ns.map((w) => `#${w}`).join(', ');
+        if (abandoned.length) {
+          const verb = abandoned.length > 1 ? 'ont été abandonnées' : 'a été abandonnée';
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${list(abandoned)} ${verb} : que voulez-vous faire ?`)}`);
+          continue;
+        }
+        const merged = `${list(waits)} ${waits.length > 1 ? 'sont fusionnées' : 'est fusionnée'}`;
+        const holdsPlace = labels.includes(L.building) && !labels.includes(L.project);
+        if (holdsPlace && free === null) free = config.maxParallel - (await inFlight(freed));
+        if (holdsPlace && free <= 0) {
+          for (const l of [L.blocked, L.building]) await gh.removeLabel(item.number, l);
+          await gh.addLabels(item.number, [L.queued, L.resumeQueued]);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${mergedMarker(waits)}\n${say(`${merged}. La factory est pleine : je reprends dès qu'une place se libère.`)}`);
+          continue;
+        }
+        try {
+          await fireAgent({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true });
+        } catch (e) {
+          // Told once (the link is used up): the card becomes a normal block that his « réessaie » resumes.
+          log(`waits #${item.number}: resume failed: ${e.message}`);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}, mais je n'ai pas pu relancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`)}`);
+          continue;
+        }
+        woken.add(item.number);
+        if (holdsPlace) free -= 1;
+        // The link is used up first: whatever fails next, the agent is never sent back a second time for it.
+        await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
+        await gh.removeLabel(item.number, L.blocked);
+      } catch (e) { log(`waits #${item.number}: ${e.message}`); }
+    }
+  }
+
   async function dequeue({ freed = null } = {}) {
+    await wakeWaiters(freed).catch((e) => log(`waits: ${e.message}`));
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
@@ -274,8 +369,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
       const resumed = labels.includes(L.resumeQueued);
+      // Queued by wakeWaiters once its awaited requests were merged (issue #298), not by an owner's answer.
+      const merged = resumed ? mergedWaits((await gh.listComments(issue.number)) || []) : [];
       try {
-        await fireAgent({ stage: resumed ? 'resume' : buildStage(labels), issue: issue.number, quiet: true });
+        await fireAgent({ stage: resumed ? 'resume' : buildStage(labels), issue: issue.number, quiet: true, extra: merged.length ? { merged } : {} });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
         failed = true;
@@ -284,7 +381,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(issue.number, L.queued);
       await gh.removeLabel(issue.number, L.resumeQueued);
       await gh.addLabels(issue.number, [L.building]);
-      await gh.comment(issue.number, say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
+      await gh.comment(issue.number, merged.length ? `${RESUMED_MARKER}\n${say("Une place s'est libérée : je reprends.")}`
+        : say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
     }
     if (free > 0 && !failed) await autoPick(free, freed);
@@ -1187,6 +1285,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const isWait = (card) => (e) => e.event === 'labeled' && e.label?.name === card.label;
       for (const card of cards) {
         try {
+          // A card that only waits for another request's merge needs nothing from the owner (issue #298). If that
+          // request is abandoned the link is used up, and this same wait is announced then.
+          if (card.label === L.blocked && waitedFor(await cardComments(card)).length) continue;
           const newest = (list) => list.reduce((a, e) => (!a || Number(e.id) > Number(a.id) ? e : a), null);
           const wait = newest(recent.filter((e) => e.issue?.number === card.number && isWait(card)(e)))
             || newest(((await gh.listEvents(card.number)) || []).filter(isWait(card)));

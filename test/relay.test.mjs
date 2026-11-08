@@ -2284,6 +2284,207 @@ test('on approval, an undo waits like the rest when other changes already wait (
   assert.ok(!gh.calls.some((c) => c[0] === 'updateRef'));
 });
 
+// Issue #298: a card blocked while it waits for the merge of other requests resumes on its own.
+import { waitsMarker, WAITS_DONE_MARKER } from '../scripts/lib/waits.mjs';
+const blockedWaiting = (n, waits, extra = []) => ({ number: n, labels: [L.feature, L.building, L.blocked, ...extra] });
+const mergedPr12 = { number: 40, state: 'closed', merged_at: '2026-11-08T10:00:00Z', body: 'Closes #12', labels: [] };
+const waitsComment = (waits) => ({ body: `${AGENT_MARKER}\nJ'attends.\n${waitsMarker(waits)}`, user: { login: 'phoibe' } });
+
+test('waits: the merge of the awaited request resumes the blocked card with a message', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [L.feature], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'resume', factory: 'phoibe/factory', merged: [12] });
+  assert.ok(!state.issues[0].labels.includes(L.blocked));
+  const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER));
+  assert.ok(msg[2].includes('#12 est fusionnée : je reprends.'));
+});
+
+test('waits: a card waiting for two requests stays blocked until the second is merged', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }, { number: 15, labels: [L.feature, L.building] }], prs: [mergedPr12], comments: { 5: [waitsComment([12, 15])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+  assert.ok(state.issues[0].labels.includes(L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 5));
+});
+
+test('waits: factory full, the card goes to the queue and resumes once a place is free', async () => {
+  const busy = [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.building] }];
+  const state = { issues: [blockedWaiting(5), ...busy, { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+  const labels = state.issues[0].labels;
+  assert.ok(labels.includes(L.queued) && labels.includes(L.resumeQueued) && !labels.includes(L.blocked) && !labels.includes(L.building));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('#12 est fusionnée') && c[2].includes(WAITS_DONE_MARKER)));
+});
+
+test('waits: an abandoned awaited request leaves the card blocked and tells the owner', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'not_planned' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+  assert.ok(state.issues[0].labels.includes(L.blocked));
+  const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5);
+  assert.ok(msg[2].includes('#12 a été abandonnée : que voulez-vous faire ?') && msg[2].includes(WAITS_DONE_MARKER));
+});
+
+test('waits: an owner message after the block forgets the link', async () => {
+  const comments = [waitsComment([12]), { body: 'vas-y sans attendre', user: { login: 'phoibe' } }];
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: comments } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+});
+
+test('waits: a card the agent is still working on is left alone', async () => {
+  const state = { issues: [blockedWaiting(5, null, [L.running]), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+});
+
+test('waits: a merged PR number counts as the merged request', async () => {
+  const state = { issues: [blockedWaiting(5)], prs: [{ number: 20, state: 'closed', merged_at: '2026-11-08T10:00:00Z', labels: [], body: 'Closes #12' }], comments: { 5: [waitsComment([20])] } };
+  const gh = fakeGh(state);
+  gh.getIssue = async (n) => (n === 20 ? { number: 20, state: 'closed', pull_request: { merged_at: '2026-11-08T10:00:00Z' }, labels: [] } : { number: n, state: 'open', labels: state.issues.find((i) => i.number === n).labels.map((name) => ({ name })) });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+});
+
+test('waits: a request already merged when the agent blocks resumes the card as soon as its run ends', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 5, labels: state.issues[0].labels, fromOwner: true });
+  assert.equal(sent.length, 1);
+  assert.equal(payloadOf(sent[0].init.body).stage, 'resume');
+  assert.ok(!state.issues[0].labels.includes(L.blocked));
+});
+
+test('waits: no phone alert for a card that only waits for another merge', async () => {
+  const state = { issues: [{ ...blockedWaiting(5), html_url: 'u', title: 't' }, { number: 15, labels: [L.feature, L.building] }], prs: [], comments: { 5: [waitsComment([15])] } };
+  const gh = fakeGh(state);
+  gh.updateComment = async () => {};
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'o/r', config, env: { ...env, NTFY_TOPIC: 'topic' }, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [] });
+  assert.ok(!sent.some((s) => s.url === 'https://ntfy.sh'));
+});
+
+test('waits: a GitHub error while reading the awaited request is not an abandon', async () => {
+  const state = { issues: [blockedWaiting(5)], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const get = gh.getIssue;
+  gh.getIssue = async (n) => { if (n === 12) throw new Error('502 Bad Gateway'); return get(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 5));
+});
+
+test('waits: a card queued after the merge resumes later with the merged requests and a neutral message', async () => {
+  const busy = [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.building] }];
+  const state = { issues: [blockedWaiting(5), ...busy, { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); (state.comments[n] ||= []).push({ body, user: { login: 'github-actions[bot]' } }); };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  state.issues[1].open = false; // a place frees up
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(payloadOf(sent[0].init.body).merged, [12]);
+  const last = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 5).pop()[2];
+  assert.ok(last.includes("Une place s'est libérée : je reprends.") && !last.includes('votre réponse'));
+});
+
+test('waits: one free place, two waiting cards whose requests are merged: only one resumes', async () => {
+  const state = { issues: [blockedWaiting(5), blockedWaiting(6), { number: 7, labels: [L.feature, L.building] }, { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])], 6: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const list = gh.listIssues;
+  let stale = null; // GitHub's list lags: the first answer for building cards is served again
+  gh.listIssues = async (q) => { if (q.labels !== L.building) return list(q); stale ||= await list(q); return stale; };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.ok(state.issues[1].labels.includes(L.queued));
+});
+
+test('waits: the comments of an unchanged blocked card are read once per relay run', async () => {
+  const state = { issues: [{ ...blockedWaiting(5), updated_at: '2026-11-08T10:00:00Z' }, { number: 15, labels: [L.feature, L.building] }], prs: [], comments: { 5: [waitsComment([15])] } };
+  const gh = fakeGh(state);
+  let reads = 0;
+  const lc = gh.listComments;
+  gh.listComments = async (n) => { if (n === 5) reads += 1; return lc(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  await relay.dequeue();
+  assert.equal(reads, 1);
+});
+
+test('waits: a request the owner closed by hand (no merged PR) is an abandon, not a merge', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('#12 a été abandonnée')));
+});
+
+test('waits: the abandon message is posted once even when the queue is checked twice in a run', async () => {
+  const state = { issues: [{ ...blockedWaiting(5), updated_at: '2026-11-08T10:00:00Z' }, { number: 12, labels: [], open: false, state_reason: 'not_planned' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); (state.comments[n] ||= []).push({ body, user: { login: 'github-actions[bot]' } }); };
+  gh.listComments = async (n) => [...(state.comments[n] || [])];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  await relay.dequeue();
+  assert.equal(gh.calls.filter((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('abandonnée')).length, 1);
+});
+
+test('waits: the place freed by the merge itself is counted, the card resumes at once', async () => {
+  // #12 just merged: GitHub's list still shows it building for a few seconds.
+  const state = { issues: [blockedWaiting(5), { number: 7, labels: [L.feature, L.building] }, { number: 12, labels: [L.feature, L.building], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const list = gh.listIssues;
+  gh.listIssues = async (q) => (q.labels === L.building ? [...(await list(q)), { number: 12, labels: [{ name: L.building }] }] : list(q));
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue({ freed: 12 });
+  assert.equal(sent.length, 1);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('factory est pleine')));
+});
+
+test('waits: a failed launch tells the owner once and leaves a normal block', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet });
+  await relay.dequeue();
+  assert.ok(state.issues[0].labels.includes(L.blocked));
+  const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER));
+  assert.ok(msg && msg[2].includes('réessaie'));
+});
+
 test('green checks that end while the branch is being updated do not merge or block the card', async () => {
   // pulsarwheel #382, 2026-11-08: the checks of « ok » finished 20 s after a conflict had sent the agent to update
   // the branch. The report merged on the old code, GitHub refused (conflict) and the card was blocked for nothing.
@@ -2329,4 +2530,36 @@ test('an agent that could not update the branch twice on the same code gives the
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   assert.equal(sent.length, 0);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 52 && c[2] === L.blocked));
+});
+
+test('waits: a request merged long ago (its PR beyond the latest closed ones) is still a merge', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed', closed_at: '2026-11-01T10:00:00Z' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const recent = Array.from({ length: 100 }, (_, i) => ({ number: 100 + i, merged_at: null, updated_at: '2026-11-08T10:00:00Z', body: '' }));
+  gh.listClosedPullsPage = async (page) => (page === 1 ? recent : page === 2 ? [{ ...mergedPr12, updated_at: '2026-11-01T10:00:00Z' }] : []);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[2].includes('abandonnée')));
+});
+
+test('waits: a deleted awaited request (410) is an abandon', async () => {
+  const state = { issues: [blockedWaiting(5)], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const get = gh.getIssue;
+  gh.getIssue = async (n) => { if (n === 12) throw new Error('GET /repos/r/issues/12 -> 410 Gone'); return get(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes('#12 a été abandonnée')));
+});
+
+test('waits: the wake message uses up the link even if removing the label fails', async () => {
+  const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const remove = gh.removeLabel;
+  gh.removeLabel = async (n, l) => { if (n === 5 && l === L.blocked) throw new Error('500'); return remove(n, l); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER)));
 });

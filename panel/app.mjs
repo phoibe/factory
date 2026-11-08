@@ -3,7 +3,8 @@ import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale } from './live.mjs?v=8';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
+import { waitedFor } from './waits.mjs?v=1';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -194,7 +195,7 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -237,7 +238,7 @@ async function refresh() {
   const repo = current.repo.full_name;
   try {
     const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), read: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
+    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
     // Every page: beyond 100 open items, the others would silently vanish from the board.
     const issues = { data: [], changed: false };
     for (let page = 1; page <= 10; page++) {
@@ -283,6 +284,12 @@ async function refresh() {
       const session = sessionFrom([...before.data, ...res.data]);
       if (live.sessions.get(c.number) !== session) {
         live.sessions.set(c.number, session);
+        previewsChanged = true;
+      }
+      // A blocked card that only waits for other requests' merge (issue #298).
+      const waits = c.labels.includes('factory:blocked') ? waitedFor([...before.data, ...res.data]) : [];
+      if (JSON.stringify(live.waits.get(c.number) || []) !== JSON.stringify(waits)) {
+        live.waits.set(c.number, waits);
         previewsChanged = true;
       }
       const plan = parseEstimate([...before.data, ...res.data]);
@@ -335,7 +342,7 @@ function stepTrack(c) {
   return el('div', { class: 'step' },
     el('ol', { class: 'track', 'aria-hidden': 'true' },
       Array.from({ length: p.total }, (_, i) => el('li', { class: i < p.index ? 'done' : i === p.index ? 'now' : '' }))),
-    el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
+    el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' || c.waits?.length ? ' à venir' : ''}`));
 }
 
 // The button names what it asks for, not a generic « Répondre ».
@@ -359,6 +366,9 @@ const replyLink = (c, short = false) => el('a', { class: 'button secondary', hre
 const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c, !waiting)]
   : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c, !waiting)]);
 
+// The titles of the project's requests, open or done, to name the one a card waits for.
+const requestTitles = () => new Map([...(live.done || []).map((d) => [d.issue, d.title]), ...(live.issues || []).map((i) => [i.number, i.title])]);
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
@@ -366,7 +376,7 @@ function card(c, lane, minutes, now, moved) {
   const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
-  const blocked = c.column === 'blocked' && !running;
+  const blocked = c.column === 'blocked' && !running && !c.waits?.length;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
@@ -376,7 +386,8 @@ function card(c, lane, minutes, now, moved) {
         running && live.sessions.get(c.number)
           ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
           : null)
-      : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub') : null;
+      : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub')
+        : lane === 'queued' && c.waits?.length ? el('p', { class: 'doing waits' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', {}, waitsText(c.waits, requestTitles()))) : null;
   const waiting = lane === 'pending';
   const asks = waiting || lane === 'yours'; // the card carries its answer buttons
   const preview = live.previews.get(c.number);
@@ -396,7 +407,7 @@ function card(c, lane, minutes, now, moved) {
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
     asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     stepTrack(c),
-    el('p', { class: 'eta', 'data-time': '' }, timeLine(e)),
+    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.
@@ -624,7 +635,12 @@ async function sortIdea(i, keep, pick) {
 function drawBoard() {
   const board = $('board');
   const now = Date.now();
-  const cards = boardItems(live.issues);
+  // Requests merged meanwhile drop out of « Attend #… »; once all are, the card keeps them until the factory resumes it.
+  const cards = boardItems(live.issues).map((c) => {
+    const waits = c.column === 'blocked' ? live.waits.get(c.number) || [] : [];
+    const left = stillWaited(waits, live.done);
+    return waits.length ? { ...c, waits: left.length ? left : waits, waitsMerged: !left.length } : c;
+  });
   const moved = moves(live.prev, cards);
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));

@@ -34,13 +34,32 @@ export function progress(item) {
 }
 
 // 'yours' (waits for the owner), 'working' (agents or machines are on it) or 'queued'.
+// A blocked card that only waits for the merge of other requests (`waits`, issue #298) waits in the queue lane:
+// it starts again by itself, nothing is asked of the owner.
 export function laneFor(item) {
   if (item.column === 'queued') return 'queued';
   if (item.labels.includes('factory:running')) return 'working';
+  if (item.column === 'blocked' && item.waits?.length) return 'queued';
   return COLUMNS.find((c) => c.id === item.column)?.yours ? 'yours' : 'working';
 }
 
 export const actionFor = (column) => ACTIONS[column] || null;
+
+// « Attend #12 · Ajouter un compte » (a single request whose title is known) or « Attend #12, #15 ».
+export function waitsText(waits, titles = new Map()) {
+  const title = waits.length === 1 ? titles.get(waits[0]) : null;
+  return `Attend ${waits.map((n) => `#${n}`).join(', ')}${title ? ` · ${title}` : ''}`;
+}
+
+// The card's time line. `waitsMerged`: all its requests are in « Terminé », the factory is about to resume it.
+export const waitsEta = (c) => (c.waitsMerged ? 'Reprise imminente' : `Repart seule dès ${c.waits.length > 1 ? 'leur' : 'sa'} fusion`);
+
+// The awaited requests not merged yet, from the « Terminé » items (a request or its PR merged; one closed by the
+// agent without a merge does not count).
+export function stillWaited(waits, done) {
+  const merged = new Set((done || []).filter((d) => !d.reason).flatMap((d) => [d.number, d.issue]));
+  return (waits || []).filter((n) => !merged.has(n));
+}
 
 // Cards whose column changed since the previous refresh (prev: Map number -> column, null on first load).
 export function moves(prev, cards) {

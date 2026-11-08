@@ -29,7 +29,7 @@ export function waitingCards(items) {
     if (!label) continue;
     if (label === L.specReview && labels.includes(L.autoGo)) continue;
     seen.add(item.number);
-    out.push({ number: item.number, label, url: item.html_url, title: item.title });
+    out.push({ number: item.number, label, url: item.html_url, title: item.title, updated_at: item.updated_at });
   }
   return out;
 }
