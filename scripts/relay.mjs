@@ -32,6 +32,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECKS_TIMEOUT_MS = 28 * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 export const PROJECT_WORKFLOW = 'factory.yml';
+// The branch the host publishes on projects whose production waits for the owner (issue #294).
+export const PROD_BRANCH = 'production';
 export const MAX_BRANCH_UPDATES = 2;
 // A building card with no agent, no PR and no question for this long is stuck: the guard relaunches it once.
 export const IDLE_MINUTES = 30;
@@ -376,10 +378,18 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
-    await afterMerge(prNumber);
-    await checkLive(prNumber).catch((e) => log(`live check not started: ${e.message}`));
+    // On approval (issue #294) the change waits for « Mise en production »; an undo of a broken delivery never waits.
+    const held = config.production === 'approval' && !String(pr?.body || '').includes(REVERT_MARKER);
+    await afterMerge(prNumber, { held });
+    if (held) {
+      await holdForApproval(prNumber).catch((e) => log(`hold for approval: ${e.message}`));
+      await gh.comment(prNumber, say("C'est fusionné ✅. Le site en ligne ne change pas encore : cette modification attend que vous cliquiez sur « Mise en production », en haut du projet dans le tableau de bord."));
+    } else {
+      await followMain(prNumber).catch((e) => log(`production branch: ${e.message}`));
+      await checkLive(prNumber).catch((e) => log(`live check not started: ${e.message}`));
+    }
     await redoAfterRevert(pr).catch((e) => log(`redo after revert: ${e.message}`));
-    await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
+    if (!held) await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
     // A merge made with the workflow's token does not close the issues the PR names (« Closes #n »): close it here.
     if (issue) await gh.closeIssue(issue).catch((e) => log(`close #${issue}: ${e.message}`));
@@ -389,13 +399,72 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // A merge made with the workflow's own token starts no workflow, so the panel deploy (GitHub Pages) and the
   // skills sync that the push would have started are started by hand. A project without them is skipped.
-  async function afterMerge(prNumber) {
+  async function afterMerge(prNumber, { held = false } = {}) {
     let files = [];
     try { files = ((await gh.listPrFiles(prNumber)) || []).map((f) => f.filename); } catch { /* deploy anyway */ }
     const ref = (await gh.getRepo())?.default_branch || 'main';
-    const wanted = ['pages.yml', ...(files.includes('factory.config.json') ? ['factory-sync.yml'] : [])];
+    // A held change is not published: GitHub Pages is deployed at « Mise en production » instead.
+    const wanted = [...(held ? [] : ['pages.yml']), ...(files.includes('factory.config.json') ? ['factory-sync.yml'] : [])];
     for (const wf of wanted) {
       try { await gh.dispatch(wf, ref, {}); } catch (e) { log(`after merge: ${wf} not started (${String(e.message || e).slice(0, 80)})`); }
+    }
+  }
+
+  // ---- Production on approval (issue #294) ----
+  // The host publishes the `production` branch instead of the default one: merges land on main, and the live site
+  // moves only when that branch does. In automatic mode the branch (when the project has one) follows main.
+  async function moveProduction(sha) {
+    const cur = (await gh.getBranch(PROD_BRANCH).catch(() => null))?.object?.sha;
+    if (cur === sha) return false;
+    if (cur) await gh.updateRef(PROD_BRANCH, sha); else await gh.createRef(PROD_BRANCH, sha);
+    log(`production branch moved to ${String(sha).slice(0, 7)}`);
+    return true;
+  }
+
+  async function followMain(prNumber) {
+    if (!gh.getBranch || !(await gh.getBranch(PROD_BRANCH).catch(() => null))) return;
+    const sha = (await gh.getPr(prNumber))?.merge_commit_sha;
+    if (sha) await moveProduction(sha);
+  }
+
+  // A held change: labelled for the board's button. The very first one creates the production branch on what is
+  // live now (the merge's parent), so that the host has a branch to publish.
+  async function holdForApproval(prNumber) {
+    await gh.addLabels(prNumber, [L.awaitingProd]);
+    if (await gh.getBranch(PROD_BRANCH).catch(() => null)) return;
+    const sha = (await gh.getPr(prNumber))?.merge_commit_sha;
+    const parent = sha ? (await gh.getCommit(sha).catch(() => null))?.parents?.[0]?.sha : null;
+    if (parent) await gh.createRef(PROD_BRANCH, parent);
+  }
+
+  const mergedAt = (p) => Date.parse(p.pull_request?.merged_at || p.merged_at || p.closed_at || 0);
+  // « Mise en production » (the board's button opens an issue with L.production): every pending change goes live
+  // together, the live site is checked as after any merge, and the owner is told what left.
+  async function releaseToProduction(issueNumber) {
+    const pending = ((await gh.listAwaiting()) || []).filter((p) => names(p.labels).includes(L.awaitingProd)).sort((a, b) => mergedAt(a) - mergedAt(b));
+    const ref = (await gh.getRepo())?.default_branch || 'main';
+    if (!pending.length) {
+      if (issueNumber) {
+        await gh.comment(issueNumber, say("Rien n'attendait d'être mis en production : le site en ligne est déjà à jour."));
+        await gh.closeIssue(issueNumber).catch(() => {});
+      }
+      return;
+    }
+    const head = (await gh.getBranch(ref))?.object?.sha;
+    if (!head) throw new Error(`no ${ref} branch`);
+    try { await moveProduction(head); } catch (e) {
+      if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
+      throw e;
+    }
+    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch { /* the project has no GitHub Pages workflow */ }
+    for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
+    await checkLive(pending.at(-1).number, head).catch((e) => log(`live check not started: ${e.message}`));
+    const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+    const n = pending.length;
+    const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.`;
+    if (issueNumber) {
+      await gh.comment(issueNumber, say(text));
+      await gh.closeIssue(issueNumber).catch(() => {});
     }
   }
 
@@ -403,7 +472,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // Only for a project its host deploys (Vercel, Netlify, GitHub Pages…): elsewhere there is nothing to open.
   // A host that tells GitHub nothing (Vercel without deployments, as on yoldmewhen2) is still checked when the site's
   // address is known (siteUrl, or the repository's website) and the host builds the project (it comments the PRs).
-  async function checkLive(prNumber) {
+  async function checkLive(prNumber, releasedSha = null) {
     const envs = ((await gh.recentDeployments?.().catch(() => null)) || []).map((d) => d.environment);
     let url = null;
     if (!envs.some(isLiveEnv)) {
@@ -416,8 +485,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       }
       url = site;
     }
-    const merged = await gh.getPr(prNumber);
-    const sha = merged?.merge_commit_sha;
+    const sha = releasedSha || (await gh.getPr(prNumber))?.merge_commit_sha;
     if (!sha) return;
     const ref = (await gh.getRepo())?.default_branch || 'main';
     await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}) } }) });
@@ -1153,6 +1221,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
+    }
+    // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
+    if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
+      if (!ev.fromOwner || ev.closed) return { action: { type: 'ignore', reason: 'mise en production demandée par un autre que le propriétaire' }, outputs };
+      await releaseToProduction(ev.number);
+      return { action: { type: 'release' }, outputs };
     }
     const isComment = ev.event === 'issue_comment' || ev.event === 'pull_request_review';
     if (isComment && !ctx.lockFresh && ev.labels.includes(L.pending) && ev.fromOwner && !ev.fromAgent) {
