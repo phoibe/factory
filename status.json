@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-11-08T07:26:07.285Z",
+  "checkedAt": "2026-11-08T14:28:29.191Z",
   "key": "ok",
   "general": "dev-server",
   "labels": [
@@ -27,13 +27,13 @@
     "4f72ae7b744d6c66": {
       "machine": "dev-server",
       "reason": "online",
-      "online": 3,
+      "online": 2,
       "since": "2026-11-07T10:20:53.060Z"
     },
     "2e7e558342bc9d65": {
       "machine": "dev-server",
       "reason": "online",
-      "online": 3,
+      "online": 2,
       "since": "2026-11-07T10:20:53.060Z"
     }
   },
