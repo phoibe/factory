@@ -1,2 +1,6 @@
 {"t":"2026-11-08T19:42:43.544Z","kind":"run","stage":"build","issue":294,"pr":null,"repo":"phoibe/factory"}
 {"t":"2026-11-08T19:44:26.316Z","kind":"skill","name":"writing-plans","id":"toolu_01Q9XW6QzmYHoxjnke3tEkWK"}
+{"t":"2026-11-08T19:45:40.459Z","kind":"skill","name":"executing-plans","id":"toolu_017EzdtGifNFH1SgpNxH1YzJ"}
+{"t":"2026-11-08T19:45:40.690Z","kind":"skill","name":"test-driven-development","id":"toolu_01YB4NzJHwBEkpDDrr7Le4xS"}
+{"t":"2026-11-08T19:45:53.550Z","kind":"test","cmd":"cat >> test/config.test.mjs <<'EOF'\n\ntest('production is « auto » by default, « approval » when asked, and an unknown value falls back with a warning (#294)', () => {\n  assert.equal(resolveConfig({}, ","ok":false,"id":"toolu_01U5CFQvS2k3vMJ9aNNZK6yp"}
+{"t":"2026-11-08T19:46:32.824Z","kind":"test","cmd":"python3 - <<'EOF'\np='scripts/lib/config-core.mjs'\ns=open(p).read()\ns=s.replace(\"\"\"export const PROJECT_MACHINES = ['default', 'dev-server', 'github'];\"\"\",\"\"\"export const PROJECT_MACHINES = ['default',","ok":true,"id":"toolu_018H5YcXjEHXagagcLNrr2hm"}
