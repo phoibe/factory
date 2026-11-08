@@ -35,7 +35,7 @@ test('a later agent message without marker (session note) keeps the link', () =>
 
 test('requestState tells merged, abandoned and open requests apart', () => {
   assert.equal(requestState({ state: 'open' }), 'open');
-  assert.equal(requestState({ state: 'closed', state_reason: 'completed' }), 'merged');
+  assert.equal(requestState({ number: 3, state: 'closed', state_reason: 'completed' }, new Set([3])), 'merged');
   assert.equal(requestState({ state: 'closed', state_reason: 'not_planned' }), 'abandoned');
   assert.equal(requestState(null), 'abandoned');
   assert.equal(requestState({ state: 'closed', pull_request: { merged_at: '2026-11-08T10:00:00Z' } }), 'merged');
@@ -44,13 +44,28 @@ test('requestState tells merged, abandoned and open requests apart', () => {
 });
 
 test('a request the agent closed by itself (already done, duplicate, obsolete) is not a merge', () => {
-  assert.equal(requestState({ state: 'closed', state_reason: 'completed', labels: [{ name: 'factory:already-done' }] }), 'abandoned');
-  assert.equal(requestState({ state: 'closed', state_reason: 'completed', labels: ['factory:duplicate'] }), 'abandoned');
+  assert.equal(requestState({ number: 3, state: 'closed', state_reason: 'completed', labels: [{ name: 'factory:already-done' }] }, new Set([3])), 'abandoned');
+  assert.equal(requestState({ number: 3, state: 'closed', state_reason: 'completed', labels: ['factory:duplicate'] }, new Set([3])), 'abandoned');
 });
 
-test('mergedWaits reads the merged requests a queued card resumes with, until the owner writes', async () => {
+test('mergedWaits reads the merged requests a queued card resumes with', async () => {
   const { mergedWaits, mergedMarker } = await import('../scripts/lib/waits.mjs');
   assert.deepEqual(mergedWaits([agent(`${WAITS_DONE_MARKER}\n${mergedMarker([12, 15])}\n…`)]), [12, 15]);
-  assert.deepEqual(mergedWaits([agent(mergedMarker([12])), owner('finalement non')]), []);
   assert.deepEqual(mergedWaits([agent('rien')]), []);
+});
+
+test('a marker outside an agent message is ignored', () => {
+  assert.deepEqual(waitedFor([owner(waitsMarker([12]))]), []);
+});
+
+test('an owner message while queued does not drop the merged requests; the factory resuming the card does', async () => {
+  const { mergedWaits, mergedMarker, RESUMED_MARKER } = await import('../scripts/lib/waits.mjs');
+  assert.deepEqual(mergedWaits([agent(mergedMarker([12])), owner('au fait…')]), [12]);
+  assert.deepEqual(mergedWaits([agent(mergedMarker([12])), agent(`${RESUMED_MARKER}\nje reprends`)]), []);
+});
+
+test('requestState counts a closed issue as merged only when a merged PR closes it', () => {
+  const closed = { number: 12, state: 'closed', state_reason: 'completed', labels: [] };
+  assert.equal(requestState(closed, new Set([12])), 'merged');
+  assert.equal(requestState(closed, new Set()), 'abandoned');
 });

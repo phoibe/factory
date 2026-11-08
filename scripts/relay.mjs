@@ -21,7 +21,7 @@ import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiC
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
-import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER } from './lib/waits.mjs';
+import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -276,16 +276,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // Blocked cards that wait for the merge of other requests (issue #298): once all are merged, the card resumes
   // (or queues when the factory is full, like an owner's answer); one abandoned, the owner is told and decides.
   // A card an agent is still working on is left for the end of its run.
-  async function wakeWaiters() {
+  async function wakeWaiters(freed = null) {
     const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.running));
     let free = null; // places left, counted once: GitHub's lists lag behind the cards resumed here
+    let mergedIssues = null; // the issues a merged PR closes, read once and only when a card waits
+    const tell = async (n, text) => {
+      await gh.comment(n, text);
+      commentCache.delete(n); // the card's thread changed: never act on the old copy again in this run
+    };
     for (const item of blocked) {
       try {
         const waits = waitedFor(await cardComments(item)).filter((w) => w !== item.number);
         if (!waits.length) continue;
+        mergedIssues ||= new Set(((await gh.listClosedPulls?.()) || []).filter((p) => p.merged_at).map(prIssue).filter(Boolean));
         const states = new Map();
         // A 404 gives null (the request is gone); any other error throws and the card is looked at again next time.
-        for (const w of waits) states.set(w, requestState(await gh.getIssue(w)));
+        for (const w of waits) states.set(w, requestState(await gh.getIssue(w), mergedIssues));
         const abandoned = waits.filter((w) => states.get(w) === 'abandoned');
         if (!abandoned.length && waits.some((w) => states.get(w) !== 'merged')) continue;
         const labels = await liveLabels(item.number);
@@ -293,29 +299,36 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         const list = (ns) => ns.map((w) => `#${w}`).join(', ');
         if (abandoned.length) {
           const verb = abandoned.length > 1 ? 'ont été abandonnées' : 'a été abandonnée';
-          await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${say(`${list(abandoned)} ${verb} : que voulez-vous faire ?`)}`);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${list(abandoned)} ${verb} : que voulez-vous faire ?`)}`);
           continue;
         }
         const merged = `${list(waits)} ${waits.length > 1 ? 'sont fusionnées' : 'est fusionnée'}`;
         const holdsPlace = labels.includes(L.building) && !labels.includes(L.project);
-        if (holdsPlace && free === null) free = config.maxParallel - (await inFlight());
+        if (holdsPlace && free === null) free = config.maxParallel - (await inFlight(freed));
         if (holdsPlace && free <= 0) {
           for (const l of [L.blocked, L.building]) await gh.removeLabel(item.number, l);
           await gh.addLabels(item.number, [L.queued, L.resumeQueued]);
-          await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${mergedMarker(waits)}\n${say(`${merged}. La factory est pleine : je reprends dès qu'une place se libère.`)}`);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${mergedMarker(waits)}\n${say(`${merged}. La factory est pleine : je reprends dès qu'une place se libère.`)}`);
           continue;
         }
-        await fireAgent({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true });
+        try {
+          await fireAgent({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true });
+        } catch (e) {
+          // Told once (the link is used up): the card becomes a normal block that his « réessaie » resumes.
+          log(`waits #${item.number}: resume failed: ${e.message}`);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}, mais je n'ai pas pu relancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`)}`);
+          continue;
+        }
         await gh.removeLabel(item.number, L.blocked);
         woken.add(item.number);
         if (holdsPlace) free -= 1;
-        await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
+        await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
       } catch (e) { log(`waits #${item.number}: ${e.message}`); }
     }
   }
 
   async function dequeue({ freed = null } = {}) {
-    await wakeWaiters().catch((e) => log(`waits: ${e.message}`));
+    await wakeWaiters(freed).catch((e) => log(`waits: ${e.message}`));
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
@@ -337,8 +350,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(issue.number, L.queued);
       await gh.removeLabel(issue.number, L.resumeQueued);
       await gh.addLabels(issue.number, [L.building]);
-      await gh.comment(issue.number, say(merged.length ? "Une place s'est libérée : je reprends."
-        : resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
+      await gh.comment(issue.number, merged.length ? `${RESUMED_MARKER}\n${say("Une place s'est libérée : je reprends.")}`
+        : say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
       free -= 1;
     }
     if (free > 0 && !failed) await autoPick(free, freed);
