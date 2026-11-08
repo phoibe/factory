@@ -219,3 +219,10 @@ export function ideasToShow(ideas, sorting) {
     settled: [...sorting].filter(([n, s]) => s === 'sent' && !listed.has(n)).map(([n]) => n),
   };
 }
+
+// The « Mise en production » button of a project whose production waits for the owner (issue #294).
+export function releaseButton(pending) {
+  const n = (pending || []).length;
+  if (!n) return { text: 'Mise en production', disabled: true, hint: 'Rien en attente' };
+  return { text: `Mise en production (${n})`, disabled: false, hint: `${n} modification${n > 1 ? 's' : ''} en attente` };
+}

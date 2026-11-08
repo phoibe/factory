@@ -18,7 +18,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
 // `chatServer`: { delay, answer } turns on the instant chat: its server answers `answer` after `delay` ms and
 // saves the conversation on the `factory-chat` branch the panel reads.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -90,7 +90,12 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const one = /^\/repos\/o\/r\/issues\/(\d+)$/.exec(path)?.[1];
       if (one && issues.some((i) => String(i.number) === one)) return json(issues.find((i) => String(i.number) === one));
       if (path === '/repos/o/r/issues/events') return json(new URL(req.url()).searchParams.get('page') === '1' ? events : []);
-      if (path === '/repos/o/r/issues') return json(new URL(req.url()).searchParams.get('state') === 'closed' ? [] : issues);
+      const ref = /^\/repos\/o\/r\/git\/ref\/heads\/(.+)$/.exec(path)?.[1];
+      if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
+      const q = new URL(req.url()).searchParams;
+      // Merged PRs waiting for « Mise en production » (issue #294).
+      if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
+      if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);
       return json([]);
     });
     await journey({ page, writes, url: `http://localhost:${server.address().port}/` });

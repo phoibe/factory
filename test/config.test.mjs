@@ -94,3 +94,11 @@ test('machine follows the general setting by default; only dev-server or github 
   assert.equal(config.machine, 'default');
   assert.ok(warnings.some((w) => w.includes('machine')));
 });
+
+test('production is « auto » by default, « approval » when asked, and an unknown value falls back with a warning (#294)', () => {
+  assert.equal(resolveConfig({}, catalog).config.production, 'auto');
+  assert.equal(resolveConfig({ production: 'approval' }, catalog).config.production, 'approval');
+  const bad = resolveConfig({ production: 'later' }, catalog);
+  assert.equal(bad.config.production, 'auto');
+  assert.equal(bad.warnings.length, 1);
+});

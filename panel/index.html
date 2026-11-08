@@ -49,6 +49,7 @@
         </div>
         <div class="actions">
           <a id="new-feature" class="button" target="_blank" rel="noopener">Nouvelle fonctionnalité</a>
+          <button id="release" type="button" class="button secondary" aria-disabled="true" hidden>Mise en production</button>
           <details id="more" class="more"><summary class="button secondary">Plus</summary><div id="more-menu" class="more-menu"></div></details>
           <a id="new-bug" data-menu class="button secondary" target="_blank" rel="noopener">Signaler un bug</a>
           <a id="new-project" data-menu class="button secondary" target="_blank" rel="noopener">Cadrer le projet</a>
@@ -113,7 +114,16 @@
       <button id="stack-close" type="button">Fermer</button>
     </div>
   </dialog>
+  <dialog id="release-dialog" aria-labelledby="release-title">
+    <h2 id="release-title">Mettre en production&nbsp;?</h2>
+    <ul id="release-list" class="release-list"></ul>
+    <p id="release-error" class="release-error small" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button id="release-cancel" class="secondary" type="button">Annuler</button>
+      <button id="release-confirm" type="button" class="ink">Confirmer</button>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=44"></script>
+  <script type="module" src="app.mjs?v=46"></script>
 </body>
 </html>

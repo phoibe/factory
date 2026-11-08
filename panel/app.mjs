@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue } from './lib.mjs?v=22';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton } from './lib.mjs?v=23';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
@@ -185,6 +185,8 @@ async function openProject(fullName) {
   resetChat();
   renderRules();
   loadMachine(current).catch(() => {});
+  drawRelease();
+  refreshRelease().catch(() => {});
   await renderBoard();
   if (!live.tick) startLive();
 }
@@ -257,6 +259,7 @@ async function refresh() {
     }
     if (live.repo !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
+    if (current.config.production === 'approval') await refreshRelease().catch((e) => (e?.rateLimited ? Promise.reject(e) : null));
     if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
@@ -869,6 +872,18 @@ function renderRules() {
         if (v) next.siteUrl = v; else delete next.siteUrl;
         update(next);
       } }));
+  // The one sentence the owner asked for (spec of #294): where to set the host once so that it waits.
+  const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, 'Réglez une fois votre hébergeur pour publier la branche « production » : ',
+    el('a', { class: 'quiet-link', href: 'https://vercel.com/dashboard', target: '_blank', rel: 'noopener' }, 'Vercel'), ' (Settings → Git → Production Branch) ou ',
+    el('a', { class: 'quiet-link', href: `${current.repo.html_url}/settings/environments`, target: '_blank', rel: 'noopener' }, 'GitHub Pages'), ' (Environments → github-pages).');
+  const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
+    ...[['auto', 'Automatique, dès qu\'une modification est validée'],
+      ['approval', 'Sur mon accord, avec le bouton « Mise en production »']]
+      .map(([v, t]) => el('div', { class: 'row' },
+        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: (c.production || 'auto') === v, onchange: () => update(setPath(c, 'production', v)),
+          ...(v === 'approval' && c.production === 'approval' ? { 'aria-describedby': 'production-hint' } : {}) }),
+        el('label', { for: `production-${v}` }, t))),
+    ...(c.production === 'approval' ? [hostHint] : []));
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
     ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
       ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
@@ -916,7 +931,7 @@ function renderRules() {
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   const name = current.repo.name;
   form.replaceChildren(
-    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, machineFieldset(update), engine, stages, checks, ...packs]),
+    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, production, machineFieldset(update), engine, stages, checks, ...packs]),
     rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
     bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
@@ -933,15 +948,17 @@ async function writeRules() {
   const projectDirty = JSON.stringify(current.config) !== current.saved;
   const generalDirty = machine.general !== machine.savedGeneral;
   const machineChanged = generalDirty || current.config.machine !== JSON.parse(current.saved || '{}').machine;
+  const wasMode = JSON.parse(current.saved || '{}').production || 'auto';
   if (generalDirty) await writeGeneral();
   if (projectDirty) await writeProjectRules();
+  const released = projectDirty ? await productionModeChanged(wasMode, current.config.production || 'auto') : 0;
   // The dev server check applies the change now instead of at its next run (15 minutes at most).
   if (machineChanged) {
     api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
   }
   renderRules();
   drawSite();
-  toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
+  toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
@@ -1052,6 +1069,103 @@ async function refreshRuns() {
     $('runs').hidden = false;
     $('runs-sep').hidden = false;
   } catch { /* the next try is in 5 minutes */ }
+}
+
+// ---- « Mise en production » (issue #294) ----------------------------------------------------------------------
+// On a project set to « sur mon accord », validated changes are merged but wait (label factory:awaiting-production on
+// their PR) until the owner sends them live together. The button opens an issue the relay acts on.
+const AWAITING = 'factory:awaiting-production';
+// `sent`: changes already asked for (key → time), hidden from the count until the relay takes their label off. Forgotten
+// after 5 minutes, so that a release the relay could not do shows its changes again.
+const SENT_MS = 5 * 60_000;
+const release = { repo: null, pending: [], sent: new Map() };
+const wasSent = (key) => Date.now() - (release.sent.get(key) || 0) < SENT_MS;
+const awaitingOf = (repo, list) => (list || []).filter((i) => (i.labels || []).some((l) => (l.name || l) === AWAITING) && !wasSent(`${repo}#${i.number}`))
+  .sort((a, b) => Date.parse(a.pull_request?.merged_at || a.closed_at || 0) - Date.parse(b.pull_request?.merged_at || b.closed_at || 0));
+async function refreshRelease() {
+  const repo = current.repo.full_name;
+  if (current.config.production !== 'approval') { release.pending = []; return drawRelease(); }
+  const res = await cachedGet(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`);
+  if (current.repo.full_name !== repo) return;
+  release.repo = repo;
+  release.pending = awaitingOf(repo, res.data);
+  drawRelease();
+}
+function drawRelease() {
+  const btn = $('release');
+  const on = current?.config.production === 'approval';
+  btn.hidden = !on;
+  if (!on) return;
+  const pending = release.repo === current.repo.full_name ? release.pending : [];
+  const b = releaseButton(pending);
+  // The count in the mono face (Mono Numbers Rule).
+  const m = /^(.*) \((\d+)\)$/.exec(b.text);
+  btn.replaceChildren(...(m ? [`${m[1]} `, el('span', { class: 'num' }, `(${m[2]})`)] : [b.text]));
+  btn.setAttribute('aria-disabled', String(b.disabled));
+  btn.title = b.hint;
+}
+async function sendRelease(pending) {
+  const repo = current.repo.full_name;
+  const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+  await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: 'Mise en production', labels: ['factory:production'], body: `Demandé depuis le tableau de bord.\n\n${list}` }) });
+  for (const p of pending) release.sent.set(`${repo}#${p.number}`, Date.now());
+  release.pending = release.pending.filter((p) => !wasSent(`${repo}#${p.number}`));
+  drawRelease();
+}
+$('release').addEventListener('click', () => {
+  if ($('release').getAttribute('aria-disabled') === 'true') return toast('Rien en attente');
+  const n = release.pending.length;
+  $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
+  $('release-error').hidden = true;
+  $('release-list').replaceChildren(...release.pending.map((p) => el('li', {}, p.title)));
+  $('release-dialog').showModal();
+});
+$('release-cancel').addEventListener('click', () => $('release-dialog').close());
+$('release-confirm').addEventListener('click', async () => {
+  const btn = $('release-confirm');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  $('release-cancel').disabled = true;
+  btn.textContent = 'Envoi…';
+  $('release-error').hidden = true;
+  try {
+    await sendRelease(release.pending.slice());
+    $('release-dialog').close();
+    toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
+  } catch {
+    // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
+    $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';
+    $('release-error').hidden = false;
+  } finally {
+    btn.disabled = false;
+    $('release-cancel').disabled = false;
+    btn.textContent = 'Confirmer';
+  }
+});
+// Switching to « sur mon accord » creates the branch the host will publish, on what is live now (main). Switching
+// back to « automatique » sends what was waiting at once: otherwise it would stay stuck with no button.
+async function productionModeChanged(was, now) {
+  if (was === now) return 0;
+  const repo = current.repo.full_name;
+  if (now === 'approval') {
+    const main = current.repo.default_branch || 'main';
+    const has = await api(`/repos/${repo}/git/ref/heads/production`).catch(() => null);
+    if (!has?.object?.sha) {
+      const sha = (await api(`/repos/${repo}/git/ref/heads/${encodeURIComponent(main)}`).catch(() => null))?.object?.sha;
+      if (sha) await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/production', sha }) }).catch(() => {});
+    }
+    await refreshRelease().catch(() => {});
+    return 0;
+  }
+  // Read afresh: the board's copy may not be loaded yet, and a change left labelled would have no button any more.
+  const fresh = await api(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).catch(() => null);
+  const waiting = awaitingOf(repo, fresh || (release.repo === repo ? release.pending : []));
+  let sent = 0;
+  if (waiting.length) {
+    try { await sendRelease(waiting); sent = waiting.length; } catch { toast('Les modifications en attente n\'ont pas pu partir. Repassez en « sur mon accord » puis utilisez le bouton.'); }
+  }
+  drawRelease();
+  return sent;
 }
 
 // « Déclarer stable »: projects follow the factory's `stable` branch; this shows how far main is ahead of it.

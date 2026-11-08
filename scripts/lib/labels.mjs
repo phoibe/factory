@@ -28,6 +28,9 @@ export const L = {
   duplicate: 'factory:duplicate',
   obsolete: 'factory:obsolete',
   kept: 'factory:kept',
+  // Issue #294: a merged PR whose project waits for the owner's « Mise en production », and the panel's request to send them.
+  awaitingProd: 'factory:awaiting-production',
+  production: 'factory:production',
 };
 
 // Why the agent closed a feature or bug by itself (issue #203). The label stays on the closed issue: the board shows
@@ -64,6 +67,8 @@ export const LABEL_DEFS = [
   [L.duplicate, 'ededed', "Fermée par l'agent : en double. Écrivez dedans pour la rouvrir"],
   [L.obsolete, 'ededed', "Fermée par l'agent : obsolète. Écrivez dedans pour la rouvrir"],
   [L.kept, 'c2e0c6', "Idée de l'agent gardée par le propriétaire : la factory peut la prendre"],
+  [L.awaitingProd, 'c5def5', 'Modification validée et intégrée : elle attend votre « Mise en production »'],
+  [L.production, '0e8a16', 'Mise en production demandée depuis le tableau de bord'],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 

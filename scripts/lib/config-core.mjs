@@ -2,6 +2,8 @@
 export const RUNNERS = ['claude-cloud', 'github-actions'];
 // The machine of the project's factory jobs (issue #271): `default` follows the general setting of the factory.
 export const PROJECT_MACHINES = ['default', 'dev-server', 'github'];
+// When a validated change goes live (issue #294): at once, or when the owner presses « Mise en production ».
+export const PRODUCTION_MODES = ['auto', 'approval'];
 
 const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
@@ -19,6 +21,7 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     version: 1,
     runner: DEFAULTS.runner,
     machine: 'default',
+    production: 'auto',
     maxParallel: DEFAULTS.maxParallel,
     autoPick: DEFAULTS.autoPick === true,
     maxQuestions: DEFAULTS.maxQuestions,
@@ -40,6 +43,10 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   if (input.machine !== undefined) {
     if (PROJECT_MACHINES.includes(input.machine)) config.machine = input.machine;
     else warnings.push(`machine "${input.machine}" inconnue, réglage général utilisé`);
+  }
+  if (input.production !== undefined) {
+    if (PRODUCTION_MODES.includes(input.production)) config.production = input.production;
+    else warnings.push(`production "${input.production}" inconnu, mise en production automatique`);
   }
   if (input.maxParallel !== undefined) {
     if (isPosInt(input.maxParallel)) config.maxParallel = input.maxParallel;
