@@ -29,6 +29,7 @@ Issues et pull requests GitHub, labels `factory:*` comme machine à états, rout
 ## Capabilities and Constraints
 
 - Panneau web statique sur GitHub Pages : règles de chaque projet et suivi des tâches, thème clair/sombre automatique.
+- Mise en production réglable par projet : automatique (par défaut) ou sur accord du propriétaire, avec un bouton « Mise en production » qui envoie en ligne toutes les modifications en attente ensemble ; l'hébergeur publie alors la branche `production`.
 - Les projets appartiennent au compte personnel (pas à une organisation).
 - Pas de compte multiple, pas de service payant, pas d'hébergement hors solutions gratuites.
 - Le jeton GitHub du panneau reste dans le navigateur ; le serveur de discussion garde seulement son propre jeton Claude dans les secrets de Modal. Aucune donnée d'autres personnes.

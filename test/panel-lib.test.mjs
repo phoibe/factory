@@ -239,3 +239,10 @@ test('deliveredIssue reads the first « Closes #n » of a PR', async () => {
   assert.equal(deliveredIssue({ body: 'Résumé\n\nCloses #12, closes #13' }), 12);
   assert.equal(deliveredIssue({ body: 'see #4' }), null);
 });
+
+test('the « Mise en production » button shows how many changes wait, and is greyed with « Rien en attente » when none (#294)', async () => {
+  const { releaseButton } = await import('../panel/lib.mjs');
+  assert.deepEqual(releaseButton([]), { text: 'Mise en production', disabled: true, hint: 'Rien en attente' });
+  assert.deepEqual(releaseButton([{}, {}, {}]), { text: 'Mise en production (3)', disabled: false, hint: '3 modifications en attente' });
+  assert.deepEqual(releaseButton([{}]), { text: 'Mise en production (1)', disabled: false, hint: '1 modification en attente' });
+});
