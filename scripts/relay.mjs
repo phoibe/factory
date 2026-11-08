@@ -21,6 +21,7 @@ import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiC
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
+import { waitedFor, requestState, WAITS_DONE_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
 const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impeccable: 'la passe design', screenshots: 'les captures avant/après' };
@@ -259,7 +260,43 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // Blocked cards that wait for the merge of other requests (issue #298): once all are merged, the card resumes
+  // (or queues when the factory is full, like an owner's answer); one abandoned, the owner is told and decides.
+  // A card an agent is still working on is left for the end of its run.
+  async function wakeWaiters() {
+    const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.running));
+    for (const item of blocked) {
+      try {
+        const waits = waitedFor((await gh.listComments(item.number)) || []).filter((w) => w !== item.number);
+        if (!waits.length) continue;
+        const states = new Map();
+        for (const w of waits) states.set(w, requestState(await gh.getIssue(w).catch(() => null)));
+        const list = (ns) => ns.map((w) => `#${w}`).join(', ');
+        const abandoned = waits.filter((w) => states.get(w) === 'abandoned');
+        if (abandoned.length) {
+          const verb = abandoned.length > 1 ? 'ont été abandonnées' : 'a été abandonnée';
+          await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${say(`${list(abandoned)} ${verb} : que voulez-vous faire ?`)}`);
+          continue;
+        }
+        if (waits.some((w) => states.get(w) !== 'merged')) continue;
+        const labels = await liveLabels(item.number);
+        if (!labels.includes(L.blocked) || labels.includes(L.running)) continue; // another relay run took it
+        const merged = `${list(waits)} ${waits.length > 1 ? 'sont fusionnées' : 'est fusionnée'}`;
+        if (labels.includes(L.building) && !labels.includes(L.project) && (await inFlight()) >= config.maxParallel) {
+          for (const l of [L.blocked, L.building]) await gh.removeLabel(item.number, l);
+          await gh.addLabels(item.number, [L.queued, L.resumeQueued]);
+          await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}. La factory est pleine : je reprends dès qu'une place se libère.`)}`);
+          continue;
+        }
+        await fireAgent({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true });
+        await gh.removeLabel(item.number, L.blocked);
+        await gh.comment(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
+      } catch (e) { log(`waits #${item.number}: ${e.message}`); }
+    }
+  }
+
   async function dequeue({ freed = null } = {}) {
+    await wakeWaiters().catch((e) => log(`waits: ${e.message}`));
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
     const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
@@ -1181,6 +1218,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const isWait = (card) => (e) => e.event === 'labeled' && e.label?.name === card.label;
       for (const card of cards) {
         try {
+          // A card that only waits for another request's merge needs nothing from the owner (issue #298). If that
+          // request is abandoned the link is used up, and this same wait is announced then.
+          if (card.label === L.blocked && waitedFor((await gh.listComments(card.number)) || []).length) continue;
           const newest = (list) => list.reduce((a, e) => (!a || Number(e.id) > Number(a.id) ? e : a), null);
           const wait = newest(recent.filter((e) => e.issue?.number === card.number && isWait(card)(e)))
             || newest(((await gh.listEvents(card.number)) || []).filter(isWait(card)));
