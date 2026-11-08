@@ -111,10 +111,20 @@ test('repasser le projet en « automatique » avec une modification en attente l
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     await page.locator('#production-auto').check();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.').waitFor({ timeout: 5000 });
-    await page.waitForFunction(() => true);
+    await page.getByText('Paramètres enregistrés. 1 modification mise en ligne.').waitFor({ timeout: 5000 });
     const sent = writes.find((w) => w.method === 'POST' && w.path === '/repos/o/r/issues');
     assert.deepEqual(sent?.body.labels, ['factory:production']);
     assert.equal(await button(page).isVisible(), false);
+  });
+});
+
+test('si l\'envoi échoue, la fenêtre reste ouverte et dit « L\'envoi a échoué. Réessayez. »', async () => {
+  await withPanel({ config: approval, awaiting: pending, forbidden: new Set(['/repos/o/r/issues']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Mise en production (2)' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Confirmer' }).click();
+    await dialog.getByRole('alert').filter({ hasText: 'L\'envoi a échoué. Réessayez.' }).waitFor();
+    assert.equal(await dialog.isVisible(), true);
   });
 });

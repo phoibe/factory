@@ -115,15 +115,15 @@
     </div>
   </dialog>
   <dialog id="release-dialog" aria-labelledby="release-title">
-    <h2 id="release-title">Mettre en production ?</h2>
-    <p class="muted small">Ces modifications partent en ligne ensemble :</p>
+    <h2 id="release-title">Mettre en production&nbsp;?</h2>
     <ul id="release-list" class="release-list"></ul>
+    <p id="release-error" class="release-error small" role="alert" hidden></p>
     <div class="dialog-actions">
       <button id="release-cancel" class="secondary" type="button">Annuler</button>
-      <button id="release-confirm" type="button">Confirmer</button>
+      <button id="release-confirm" type="button" class="ink">Confirmer</button>
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=45"></script>
+  <script type="module" src="app.mjs?v=46"></script>
 </body>
 </html>
