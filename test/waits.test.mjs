@@ -42,3 +42,15 @@ test('requestState tells merged, abandoned and open requests apart', () => {
   assert.equal(requestState({ state: 'closed', pull_request: { merged_at: null } }), 'abandoned');
   assert.equal(requestState({ state: 'open', pull_request: { merged_at: null } }), 'open');
 });
+
+test('a request the agent closed by itself (already done, duplicate, obsolete) is not a merge', () => {
+  assert.equal(requestState({ state: 'closed', state_reason: 'completed', labels: [{ name: 'factory:already-done' }] }), 'abandoned');
+  assert.equal(requestState({ state: 'closed', state_reason: 'completed', labels: ['factory:duplicate'] }), 'abandoned');
+});
+
+test('mergedWaits reads the merged requests a queued card resumes with, until the owner writes', async () => {
+  const { mergedWaits, mergedMarker } = await import('../scripts/lib/waits.mjs');
+  assert.deepEqual(mergedWaits([agent(`${WAITS_DONE_MARKER}\n${mergedMarker([12, 15])}\n…`)]), [12, 15]);
+  assert.deepEqual(mergedWaits([agent(mergedMarker([12])), owner('finalement non')]), []);
+  assert.deepEqual(mergedWaits([agent('rien')]), []);
+});

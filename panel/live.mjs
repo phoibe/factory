@@ -45,8 +45,14 @@ export function laneFor(item) {
 
 export const actionFor = (column) => ACTIONS[column] || null;
 
-// « Attend #12 » or « Attend #12, #15 ».
-export const waitsText = (waits) => `Attend ${waits.map((n) => `#${n}`).join(', ')}`;
+// « Attend #12 · Ajouter un compte » (a single request whose title is known) or « Attend #12, #15 ».
+export function waitsText(waits, titles = new Map()) {
+  const title = waits.length === 1 ? titles.get(waits[0]) : null;
+  return `Attend ${waits.map((n) => `#${n}`).join(', ')}${title ? ` · ${title}` : ''}`;
+}
+
+// The card's time line. `waitsMerged`: all its requests are in « Terminé », the factory is about to resume it.
+export const waitsEta = (c) => (c.waitsMerged ? 'Reprise imminente' : `Repart seule dès ${c.waits.length > 1 ? 'leur' : 'sa'} fusion`);
 
 // The awaited requests not merged yet, from the « Terminé » items (a request or its PR merged; one closed by the
 // agent without a merge does not count).

@@ -12,6 +12,7 @@ test('une carte bloquée qui attend une autre demande affiche « Attend #… » 
     const c = page.locator('.ticket[data-number="5"]');
     await c.locator('.waits').waitFor();
     assert.equal(await c.locator('.waits').textContent(), 'Attend #12, #15');
+    assert.match(await c.locator('.eta').textContent(), /Repart seule dès leur fusion/);
     assert.equal(await c.getByText('Bloqué', { exact: true }).count(), 0, 'no « Bloqué » tag');
     assert.equal(await page.locator('section.lane-yours .ticket[data-number="5"]').count(), 0, 'nothing for the owner to do');
     assert.equal(await page.locator('section.lane-queued .ticket[data-number="5"]').count(), 1);

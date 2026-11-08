@@ -6,20 +6,34 @@ const MARKER = /<!-- factory-waits-for ([#\d,\s]+?) -->/;
 // On the factory's wake or abandon message: the link is used up, a later block is a normal one.
 export const WAITS_DONE_MARKER = '<!-- factory-waits-done -->';
 
-export const waitsMarker = (numbers) => `<!-- factory-waits-for ${numbers.map((n) => `#${n}`).join(' ')} -->`;
+const MERGED = /<!-- factory-waits-merged ([#\d,\s]+?) -->/;
+// The requests the agent closed by itself without a merge (already done, duplicate, obsolete).
+const CLOSED_BY_AGENT = ['factory:already-done', 'factory:duplicate', 'factory:obsolete'];
+const tags = (numbers) => numbers.map((n) => `#${n}`).join(' ');
+
+export const waitsMarker = (numbers) => `<!-- factory-waits-for ${tags(numbers)} -->`;
+// On the message of a card queued once its requests are merged: it resumes with them when a place frees up.
+export const mergedMarker = (numbers) => `<!-- factory-waits-merged ${tags(numbers)} -->`;
+
+// The numbers named by the last comment matching `marker`, unless the owner wrote after it (or, with `stop`, a
+// later comment holds that marker).
+function lastMarked(comments, marker, stop = null) {
+  const list = comments || [];
+  let i = list.length - 1;
+  for (; i >= 0; i--) if (marker.test(String(list[i]?.body || ''))) break;
+  if (i < 0) return [];
+  const later = list.slice(i + 1).map((c) => String(c?.body || ''));
+  if (later.some((b) => !b.includes(AGENT) || (stop && b.includes(stop)))) return [];
+  const nums = marker.exec(String(list[i].body))[1].match(/\d+/g) || [];
+  return [...new Set(nums.map(Number))];
+}
 
 // The requests the card waits for, from its comments (oldest first). Empty when the last marker was used up or
 // the owner wrote after it (he took the matter in hand: the link is forgotten).
-export function waitedFor(comments) {
-  const list = comments || [];
-  let i = list.length - 1;
-  for (; i >= 0; i--) if (MARKER.test(String(list[i]?.body || ''))) break;
-  if (i < 0) return [];
-  const later = list.slice(i + 1).map((c) => String(c?.body || ''));
-  if (later.some((b) => !b.includes(AGENT) || b.includes(WAITS_DONE_MARKER))) return [];
-  const nums = MARKER.exec(String(list[i].body))[1].match(/\d+/g) || [];
-  return [...new Set(nums.map(Number))];
-}
+export const waitedFor = (comments) => lastMarked(comments, MARKER, WAITS_DONE_MARKER);
+
+// The merged requests a card queued by the factory resumes with (empty once the owner wrote meanwhile).
+export const mergedWaits = (comments) => lastMarked(comments, MERGED);
 
 // 'merged', 'abandoned' or 'open', from the GitHub issue (or PR) object of a waited request. A request closed as
 // done (its PR merged, the factory closes it) counts as merged; one closed otherwise, or gone, as abandoned.
@@ -27,5 +41,6 @@ export function requestState(item) {
   if (!item) return 'abandoned';
   if (item.pull_request) return item.pull_request.merged_at ? 'merged' : item.state === 'closed' ? 'abandoned' : 'open';
   if (item.state !== 'closed') return 'open';
-  return item.state_reason === 'completed' ? 'merged' : 'abandoned';
+  const labels = (item.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
+  return item.state_reason === 'completed' && !labels.some((l) => CLOSED_BY_AGENT.includes(l)) ? 'merged' : 'abandoned';
 }

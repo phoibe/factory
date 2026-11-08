@@ -40,8 +40,11 @@ the same marker from the comments it already loads and shows « Attend #12 » in
   (`factory:queued` + `factory:resume-queued`, minus `factory:blocked`/`factory:building`) when full. Comment with
   `WAITS_DONE_MARKER`.
 - Any abandoned → comment with `WAITS_DONE_MARKER`, the card stays blocked.
-- `decide`: end of a run (`factory:running` removed) on a blocked issue → `dequeue`.
-- Tests in `test/relay.test.mjs` and `test/decide.test.mjs`.
+- No `decide` change: the relay already checks the queue after every event, the end of an agent's run included.
+- Queued after the merge: the message carries `<!-- factory-waits-merged #12 -->`, read back when a place frees up
+  so the resume gets `merged` too. A request the agent closed itself (already done, duplicate, obsolete) is not a
+  merge. A GitHub error is retried at the next event, never read as an abandon. Comments read once per run.
+- Tests in `test/relay.test.mjs` and `test/waits.test.mjs`.
 
 ## Task 3: panel
 

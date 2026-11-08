@@ -2386,3 +2386,54 @@ test('waits: no phone alert for a card that only waits for another merge', async
   await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [] });
   assert.ok(!sent.some((s) => s.url === 'https://ntfy.sh'));
 });
+
+test('waits: a GitHub error while reading the awaited request is not an abandon', async () => {
+  const state = { issues: [blockedWaiting(5)], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const get = gh.getIssue;
+  gh.getIssue = async (n) => { if (n === 12) throw new Error('502 Bad Gateway'); return get(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 5));
+});
+
+test('waits: a card queued after the merge resumes later with the merged requests and a neutral message', async () => {
+  const busy = [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.building] }];
+  const state = { issues: [blockedWaiting(5), ...busy, { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [], comments: { 5: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); (state.comments[n] ||= []).push({ body, user: { login: 'github-actions[bot]' } }); };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  state.issues[1].open = false; // a place frees up
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(payloadOf(sent[0].init.body).merged, [12]);
+  const last = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 5).pop()[2];
+  assert.ok(last.includes("Une place s'est libérée : je reprends.") && !last.includes('votre réponse'));
+});
+
+test('waits: one free place, two waiting cards whose requests are merged: only one resumes', async () => {
+  const state = { issues: [blockedWaiting(5), blockedWaiting(6), { number: 7, labels: [L.feature, L.building] }, { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [], comments: { 5: [waitsComment([12])], 6: [waitsComment([12])] } };
+  const gh = fakeGh(state);
+  const list = gh.listIssues;
+  let stale = null; // GitHub's list lags: the first answer for building cards is served again
+  gh.listIssues = async (q) => { if (q.labels !== L.building) return list(q); stale ||= await list(q); return stale; };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 1);
+  assert.ok(state.issues[1].labels.includes(L.queued));
+});
+
+test('waits: the comments of an unchanged blocked card are read once per relay run', async () => {
+  const state = { issues: [{ ...blockedWaiting(5), updated_at: '2026-11-08T10:00:00Z' }, { number: 15, labels: [L.feature, L.building] }], prs: [], comments: { 5: [waitsComment([15])] } };
+  const gh = fakeGh(state);
+  let reads = 0;
+  const lc = gh.listComments;
+  gh.listComments = async (n) => { if (n === 5) reads += 1; return lc(n); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.dequeue();
+  await relay.dequeue();
+  assert.equal(reads, 1);
+});

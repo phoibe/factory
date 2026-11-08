@@ -3,8 +3,8 @@ import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, stillWaited } from './live.mjs?v=9';
-import { waitedFor } from './waits.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
+import { waitedFor } from './waits.mjs?v=1';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -342,7 +342,7 @@ function stepTrack(c) {
   return el('div', { class: 'step' },
     el('ol', { class: 'track', 'aria-hidden': 'true' },
       Array.from({ length: p.total }, (_, i) => el('li', { class: i < p.index ? 'done' : i === p.index ? 'now' : '' }))),
-    el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' ? ' à venir' : ''}`));
+    el('span', { class: 'step-name' }, `Étape ${p.index + 1}/${p.total} · ${p.name}${c.column === 'queued' || c.waits?.length ? ' à venir' : ''}`));
 }
 
 // The button names what it asks for, not a generic « Répondre ».
@@ -366,6 +366,9 @@ const replyLink = (c, short = false) => el('a', { class: 'button secondary', hre
 const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c, !waiting)]
   : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c, !waiting)]);
 
+// The titles of the project's requests, open or done, to name the one a card waits for.
+const requestTitles = () => new Map([...(live.done || []).map((d) => [d.issue, d.title]), ...(live.issues || []).map((i) => [i.number, i.title])]);
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
@@ -384,7 +387,7 @@ function card(c, lane, minutes, now, moved) {
           ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
           : null)
       : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub')
-        : lane === 'queued' && c.waits?.length ? el('p', { class: 'doing waits' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), waitsText(c.waits)) : null;
+        : lane === 'queued' && c.waits?.length ? el('p', { class: 'doing waits' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', {}, waitsText(c.waits, requestTitles()))) : null;
   const waiting = lane === 'pending';
   const asks = waiting || lane === 'yours'; // the card carries its answer buttons
   const preview = live.previews.get(c.number);
@@ -404,7 +407,7 @@ function card(c, lane, minutes, now, moved) {
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
     asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     stepTrack(c),
-    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? 'Repart toute seule après la fusion' : timeLine(e)),
+    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.
@@ -636,7 +639,7 @@ function drawBoard() {
   const cards = boardItems(live.issues).map((c) => {
     const waits = c.column === 'blocked' ? live.waits.get(c.number) || [] : [];
     const left = stillWaited(waits, live.done);
-    return waits.length ? { ...c, waits: left.length ? left : waits } : c;
+    return waits.length ? { ...c, waits: left.length ? left : waits, waitsMerged: !left.length } : c;
   });
   const moved = moves(live.prev, cards);
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
