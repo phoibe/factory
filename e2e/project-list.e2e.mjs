@@ -124,3 +124,27 @@ test('quand une demande d\'un autre projet change d\'état, son point se met à 
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'delta');
   });
 });
+
+test('un autre projet dont la demande attend seulement la fusion d\'une autre (« Attend #… ») a un point gris', async () => {
+  const waiting = { 'o/delta': [issue(4, 'Attend', ['factory:feature', 'factory:building', 'factory:blocked'], { comments: 1 })] };
+  const repoComments = { 'o/delta': { 4: [{ id: 1, body: '<!-- factory-agent -->\nJ\'attends.\n<!-- factory-waits-for #12 -->', user: { login: 'o' }, created_at: new Date().toISOString(), html_url: 'https://github.com/o/delta/issues/4#issuecomment-1' }] } };
+  await withPanel({ repos, repoIssues: { ...repoIssues, ...waiting }, repoComments, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await openR(page);
+    await page.goto(url);
+    await page.locator('#projects .pdot-blocked').waitFor();
+    assert.match(await page.locator('#projects .project-item', { hasText: 'delta' }).locator('.pdot').getAttribute('class'), /pdot-working/);
+  });
+});
+
+test('si GitHub ne répond pas pour un projet, son dernier point reste affiché', async () => {
+  const failing = new Set();
+  await withPanel({ repos, repoIssues, failing, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.clock.install();
+    await openR(page);
+    await page.goto(url);
+    await page.locator('#projects .pdot-blocked').waitFor();
+    failing.add('/repos/o/alpha/issues');
+    await page.clock.runFor(65_000);
+    assert.match(await page.locator('#projects .project-item', { hasText: 'alpha' }).locator('.pdot').getAttribute('class'), /pdot-blocked/);
+  });
+});

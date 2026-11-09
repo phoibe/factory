@@ -13,7 +13,7 @@ import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { machineLine, repoKey } from './machine.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, DOT_LABELS } from './projects.mjs?v=1';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -218,28 +218,37 @@ async function projectDotOf(repo) {
     for (const n of blockedNumbers(issues)) {
       const count = issues.find((i) => i.number === n).comments || 0;
       if (!count) continue;
+      // The last page and the one before, as the board reads them.
       const page = Math.max(1, Math.ceil(count / 100));
       const { data } = await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`, dotEtags);
-      waits.set(n, waitedFor(data));
+      const before = page > 1 ? (await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`, dotEtags)).data : [];
+      waits.set(n, waitedFor([...before, ...data]));
     }
     return projectDot(issues, waits);
-  } catch {
+  } catch (err) {
+    if (err?.rateLimited) throw err; // the whole round stops and waits, see refreshDots
     return undefined;
   }
 }
 
 async function refreshDots() {
   clearTimeout(dotsTimer);
-  dotsTimer = setTimeout(refreshDots, 30_000);
+  dotsTimer = setTimeout(refreshDots, dotsDelay());
   if (!token || !projects.length || dotsBusy) return;
   dotsBusy = true;
+  const session = token;
   try {
     const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
     const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, await projectDotOf(p.repo.full_name)]);
+    if (token !== session) return; // logged out meanwhile: these dots belong to the previous session
     // The project opened meanwhile is drawn from the board's own data.
     const results = new Map(found.filter(([repo]) => !current || repo !== current.repo.full_name));
+    const before = JSON.stringify([...dots]);
     dots = nextDots(dots, results);
-    renderProjectList();
+    if (JSON.stringify([...dots]) !== before) renderProjectList();
+  } catch (err) {
+    // GitHub limits the calls: no more requests until the wait it asked for (the dots stay as they were).
+    if (err?.rateLimited && token === session) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, dotsDelay(err.waitMs)); }
   } finally {
     dotsBusy = false;
   }
@@ -1155,9 +1164,9 @@ async function start() {
   }
   refreshStable().catch(() => {});
   refreshRuns();
-  refreshDots();
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
+  refreshDots(); // after the board: the open project's dot comes from it
 }
 
 // Agent starts of the day, all projects together, refreshed every 5 minutes (the routines have a daily limit).

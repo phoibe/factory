@@ -16,10 +16,11 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `config`: the project's factory.config.json. `writeDelay`: how long GitHub takes to answer a write (ms).
 // `events`: the issue events GitHub returns (labels put on or taken off), first page only.
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
-// `repoIssues`: the open requests of the other projects (full name → list).
+// `repoIssues`: the open requests of the other projects (full name → list); `repoComments`: their threads
+// (full name → { number: comments }).
 // `chatServer`: { delay, answer } turns on the instant chat: its server answers `answer` after `delay` ms and
 // saves the conversation on the `factory-chat` branch the panel reads.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -98,6 +99,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
       if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);
       // The other projects' open requests (project list dots, issue #314).
+      const otherThread = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(path);
+      if (otherThread && repoComments[otherThread[1]]?.[otherThread[2]]) return json(repoComments[otherThread[1]][otherThread[2]]);
       const other = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(path)?.[1];
       if (other && repoIssues[other]) return json(q.get('state') === 'closed' ? [] : repoIssues[other]);
       return json([]);

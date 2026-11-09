@@ -66,3 +66,11 @@ test('un projet pour lequel GitHub n\'a pas répondu garde son dernier point con
 test('chaque point a sa légende', () => {
   assert.deepEqual(DOT_LABELS, { blocked: 'Bloqué', yours: 'À vous de jouer', working: 'En cours' });
 });
+
+test('quand GitHub limite les appels, la vérification des autres projets attend ce qu\'il demande (5 min au plus)', async () => {
+  const { dotsDelay } = await import('../panel/projects.mjs');
+  assert.equal(dotsDelay(), 30_000);
+  assert.equal(dotsDelay(10_000), 30_000);
+  assert.equal(dotsDelay(120_000), 120_000);
+  assert.equal(dotsDelay(3_600_000), 300_000);
+});

@@ -1,6 +1,6 @@
 // Pure helpers for the project list and its status dots (issue #314, tested in test/panel-projects.test.mjs).
-import { boardItems } from './lib.mjs';
-import { laneFor } from './live.mjs';
+import { boardItems } from './lib.mjs?v=23';
+import { laneFor } from './live.mjs?v=9';
 
 export const DOT_LABELS = { blocked: 'Bloqué', yours: 'À vous de jouer', working: 'En cours' };
 const RANK = { blocked: 3, yours: 2, working: 1 };
@@ -43,3 +43,7 @@ export function nextDots(prev, results) {
   for (const [repo, dot] of results) if (dot !== undefined) out.set(repo, dot);
   return out;
 }
+
+// Milliseconds before the next check of the other projects: 30 s, or the wait GitHub asked for when it limits
+// the calls (at most 5 min, like the board).
+export const dotsDelay = (limitedMs = 0) => Math.min(Math.max(limitedMs, 30_000), 300_000);
