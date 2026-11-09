@@ -90,16 +90,16 @@ test('« Confirmer » demande la mise en production des deux modifications, puis
   });
 });
 
-test('passer un projet « sur mon accord » crée la branche que l\'hébergeur publiera', async () => {
+test('passer un projet « sur mon accord » crée la branche « preprod » où les modifications attendront', async () => {
   await withPanel({ branches: { main: 'm1' } }, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     await page.locator('#production-approval').check();
-    await page.getByText(/branche « production »/).waitFor();
+    await page.getByText(/attendent sur «.preprod.».; le bouton les envoie sur «.main.»/).waitFor();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.').waitFor({ timeout: 5000 });
     const ref = writes.find((w) => w.path === '/repos/o/r/git/refs');
-    assert.deepEqual(ref?.body, { ref: 'refs/heads/production', sha: 'm1' });
+    assert.deepEqual(ref?.body, { ref: 'refs/heads/preprod', sha: 'm1' });
     await button(page).waitFor();
   });
 });

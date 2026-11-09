@@ -83,7 +83,7 @@ bloqué dans le cloud. `R` désigne `repos/<repo du payload>` :
 | Commenter | `gh api R/issues/<n>/comments -F body=@fichier.md` |
 | Ajouter un label | `gh api R/issues/<n>/labels -f 'labels[]=factory:checks'` |
 | Retirer un label | `gh api -X DELETE R/issues/<n>/labels/factory:running` (ignorer l'erreur 404) |
-| Ouvrir une PR | `gh api R/pulls -f title=... -f head=<branche> -f base=main -F body=@pr.md` |
+| Ouvrir une PR | `gh api R/pulls -f title=... -f head=<branche> -f base={{base}} -F body=@pr.md` |
 | Ouvrir une issue | `gh api R/issues -f title=... -F body=@issue.md -f 'labels[]=factory:feature'` |
 | État des contrôles | `gh api R/commits/<sha>/check-runs` puis `gh run view <id> --log-failed` |
 
@@ -146,11 +146,11 @@ est oublié et tu reprends normalement.
 ## Code et Git
 
 - Code, noms, commits et descriptions techniques en anglais.
-- Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main`. Tu ne fusionnes jamais une PR :
+- Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main` ni sur `preprod`. Tu ne fusionnes jamais une PR :
   la factory le fait après les contrôles et la recette.
 - La PR contient `Closes #<n>` dans sa description, et un résumé en français pour le propriétaire en tête.
-- **Toujours à jour avec `main` avant de pousser pour la factory.** Juste avant d'ouvrir une PR, et avant chaque push
-  suivi de `factory:visual-review` ou `factory:checks` : `git fetch origin main && git merge origin/main` (pas de
+- **Toujours à jour avec `{{base}}` avant de pousser pour la factory.** Juste avant d'ouvrir une PR, et avant chaque push
+  suivi de `factory:visual-review` ou `factory:checks` : `git fetch origin {{base}} && git merge origin/{{base}}` (pas de
   rebase), résous les conflits, relance les tests, puis pousse. Une PR en conflit ne déclenche aucun contrôle et
   reste bloquée jusqu'à ce que la factory s'en aperçoive.
 - **Tests navigateur dans le cloud** : le Chromium de la session est `/opt/pw-browsers/chromium`. Lance `test:a11y`

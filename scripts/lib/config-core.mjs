@@ -6,6 +6,12 @@ export const PROJECT_MACHINES = ['default', 'dev-server', 'github'];
 // outside the factory (`external`: a merge deploys nothing, the owner does it his own way, as on Pulsar Wheel).
 export const PRODUCTION_MODES = ['auto', 'approval', 'external'];
 
+// On « Sur mon accord », validated changes are merged into this branch; « Mise en production » merges it into the
+// default branch, which the host publishes as usual (nothing to set up there).
+export const PREPROD_BRANCH = 'preprod';
+// The branch the factory merges into and the agent starts from.
+export const workBranch = (mode, defaultBranch = 'main') => (mode === 'approval' ? PREPROD_BRANCH : defaultBranch);
+
 // The mode in force. A project that never chose one follows its stack sheet (STACK.md, « Mise en production »):
 // « Manuelle » means external, anything else automatic. `delivery` is what panel/stack.mjs deliveryOf() read, or null.
 export function effectiveProduction(config, delivery) {

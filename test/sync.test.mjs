@@ -120,3 +120,18 @@ test('the sync records the fingerprint of the factory version it installed', asy
   const { fingerprint } = JSON.parse(readFileSync(join(dir, '.factory/synced.json'), 'utf8'));
   assert.equal(fingerprint, syncFingerprint(join(import.meta.dirname, '..')));
 });
+
+test('the agent starts from preprod and opens its PRs there on « Sur mon accord », from main otherwise', () => {
+  const read = (dir, f) => readFileSync(join(dir, f), 'utf8');
+  const approval = project({ production: 'approval' });
+  sync({ projectDir: approval });
+  assert.match(read(approval, '.factory/AGENT.md'), /base=preprod/);
+  assert.match(read(approval, '.factory/AGENT.md'), /git fetch origin preprod && git merge origin\/preprod/);
+  assert.match(read(approval, '.factory/stages/build.md'), /depuis `preprod`/);
+  for (const config of [{}, { production: 'auto' }, { production: 'external' }]) {
+    const dir = project(config);
+    sync({ projectDir: dir });
+    assert.match(read(dir, '.factory/AGENT.md'), /base=main/, JSON.stringify(config));
+    assert.match(read(dir, '.factory/stages/build.md'), /depuis `main`/);
+  }
+});

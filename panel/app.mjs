@@ -890,10 +890,8 @@ function renderRules() {
         if (v) next.siteUrl = v; else delete next.siteUrl;
         update(next);
       } }));
-  // The one sentence the owner asked for (spec of #294): where to set the host once so that it waits.
-  const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, 'Réglez une fois votre hébergeur pour publier la branche « production » : ',
-    el('a', { class: 'quiet-link', href: 'https://vercel.com/dashboard', target: '_blank', rel: 'noopener' }, 'Vercel'), ' (Settings → Git → Production Branch) ou ',
-    el('a', { class: 'quiet-link', href: `${current.repo.html_url}/settings/environments`, target: '_blank', rel: 'noopener' }, 'GitHub Pages'), ' (Environments → github-pages).');
+  // On approval, one line says where validated changes wait; nothing to set up at the host any more.
+  const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, frenchSpaces('Les modifications validées attendent sur « preprod » ; le bouton les envoie sur « main ».'));
   // Never chosen: the stack sheet decides, and says so in one short line.
   const mode = effectiveProduction(c, current.delivery);
   const bySheet = !c.production && current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
@@ -1189,11 +1187,12 @@ async function productionModeChanged(was, now) {
   if (was === now) return 0;
   const repo = current.repo.full_name;
   if (now === 'approval') {
+    // Validated changes now wait on preprod, started from main (the relay creates it too if this fails).
     const main = current.repo.default_branch || 'main';
-    const has = await api(`/repos/${repo}/git/ref/heads/production`).catch(() => null);
+    const has = await api(`/repos/${repo}/git/ref/heads/preprod`).catch(() => null);
     if (!has?.object?.sha) {
       const sha = (await api(`/repos/${repo}/git/ref/heads/${encodeURIComponent(main)}`).catch(() => null))?.object?.sha;
-      if (sha) await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/production', sha }) }).catch(() => {});
+      if (sha) await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/preprod', sha }) }).catch(() => {});
     }
     await refreshRelease().catch(() => {});
     return 0;

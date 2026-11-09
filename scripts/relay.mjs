@@ -11,7 +11,7 @@ import { decide, afterChecks } from './lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
-import { effectiveProduction } from './lib/config-core.mjs';
+import { effectiveProduction, workBranch, PREPROD_BRANCH } from './lib/config-core.mjs';
 import { github } from './lib/github.mjs';
 import { isRateLimited } from './lib/ratelimit.mjs';
 import { syncFingerprint } from './lib/fingerprint.mjs';
@@ -453,8 +453,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const pr = await gh.getPr(prNumber);
     const sha = pr?.head?.sha;
     const def = (await gh.getRepo?.())?.default_branch || 'main';
-    // Only the factory's own branch, in this repo, aimed at the default branch.
-    if (!pr || pr.state !== 'open' || pr.draft || pr.base?.ref !== def || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
+    // Only the factory's own branch, in this repo, aimed at the branch the factory merges into.
+    if (!pr || pr.state !== 'open' || pr.draft || ![def, workBranch(config.production, def)].includes(pr.base?.ref) || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
       log(`docs PR #${prNumber}: not a plain docs PR of this repo, left alone`); return;
     }
     const list = (await gh.listPrFiles(prNumber)) || [];
@@ -471,6 +471,25 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
     const issue = prIssue(pr);
+    // Where the change lands. External production (chosen in the settings, or by default when the stack sheet says
+    // « Manuelle »: a merge deploys nothing, as on Pulsar Wheel): main, and the factory stops there. On approval
+    // (« Sur mon accord »): preprod, until « Mise en production » merges it into main. An undo of a broken delivery
+    // goes to main at once, unless other changes already wait: publishing them without the owner's accord is worse.
+    const isUndo = String(pr?.body || '').includes(REVERT_MARKER);
+    const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
+    const mode = effectiveProduction(config, config.production ? null : await readDelivery());
+    const manual = mode === 'external';
+    const held = mode === 'approval' && (!isUndo || await othersWait());
+    const def = (await gh.getRepo?.().catch(() => null))?.default_branch || 'main';
+    const target = held ? PREPROD_BRANCH : def;
+    // A PR opened before the mode changed is moved onto the right branch before its merge.
+    if (pr?.base?.ref && pr.base.ref !== target && [def, PREPROD_BRANCH].includes(pr.base.ref) && gh.setPrBase) {
+      try {
+        if (held) await ensurePreprod(def);
+        await gh.setPrBase(prNumber, target);
+        log(`PR #${prNumber} moved from ${pr.base.ref} to ${target}`);
+      } catch (e) { log(`PR #${prNumber} not moved to ${target}: ${e.message || e}`); }
+    }
     try {
       await gh.merge(prNumber, sha);
     } catch (e) {
@@ -491,16 +510,6 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
-    // On approval (issue #294) the change waits for « Mise en production ». An undo of a broken delivery goes live at
-    // once, unless other changes already wait: publishing main would then publish them too, without the owner's accord.
-    const isUndo = String(pr?.body || '').includes(REVERT_MARKER);
-    const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
-    // External production (chosen in the settings, or by default when the stack sheet says « Manuelle »: a merge
-    // deploys nothing, as on Pulsar Wheel): the factory stops at the merge and says so. No hold, no production
-    // branch, no live check: there is nothing to watch.
-    const mode = effectiveProduction(config, config.production ? null : await readDelivery());
-    const manual = mode === 'external';
-    const held = mode === 'approval' && (!isUndo || await othersWait());
     await afterMerge(prNumber, { held });
     if (manual) {
       await gh.comment(prNumber, say(manualMergeText()));
@@ -543,8 +552,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // ---- Production on approval (issue #294) ----
-  // The host publishes the `production` branch instead of the default one: merges land on main, and the live site
-  // moves only when that branch does. In automatic mode the branch (when the project has one) follows main.
+  // Validated changes are merged into `preprod`; « Mise en production » merges preprod into the default branch, which
+  // the host publishes as usual: nothing to set up at the host. The `production` branch of the first version (the host
+  // was set to publish it) is still moved along with main when a project has one, so that such a host keeps working.
   async function moveProduction(sha) {
     const cur = (await gh.getBranch(PROD_BRANCH).catch(() => null))?.object?.sha;
     if (cur === sha) return false;
@@ -559,14 +569,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (sha) await moveProduction(sha);
   }
 
-  // A held change: labelled for the board's button. The very first one creates the production branch on what is
-  // live now (the merge's parent), so that the host has a branch to publish.
+  // A held change: labelled for the board's button.
   async function holdForApproval(prNumber) {
     await gh.addLabels(prNumber, [L.awaitingProd]);
-    if (await gh.getBranch(PROD_BRANCH).catch(() => null)) return;
-    const sha = (await gh.getPr(prNumber))?.merge_commit_sha;
-    const parent = sha ? (await gh.getCommit(sha).catch(() => null))?.parents?.[0]?.sha : null;
-    if (parent) await gh.createRef(PROD_BRANCH, parent);
+  }
+
+  // The preprod branch, created on the default branch the first time it is needed.
+  async function ensurePreprod(def) {
+    if (await gh.getBranch(PREPROD_BRANCH).catch(() => null)) return;
+    const sha = (await gh.getBranch(def))?.object?.sha;
+    if (sha) { await gh.createRef(PREPROD_BRANCH, sha); log(`${PREPROD_BRANCH} created on ${def} (${sha.slice(0, 7)})`); }
+  }
+
+  // On approval, what lands on main without going through preprod (the panel's settings, the factory's own syncs) is
+  // brought into preprod, so that the agent starts from it and the next « Mise en production » does not undo it.
+  async function syncPreprod() {
+    if (config.production !== 'approval' || !gh.mergeBranches) return;
+    const def = (await gh.getRepo())?.default_branch || 'main';
+    if (!(await gh.getBranch(PREPROD_BRANCH).catch(() => null))) return ensurePreprod(def);
+    const res = await gh.mergeBranches(PREPROD_BRANCH, def, `chore(factory): bring ${def} into ${PREPROD_BRANCH}`);
+    if (res?.sha) log(`${def} brought into ${PREPROD_BRANCH} (${res.sha.slice(0, 7)})`);
   }
 
   const mergedAt = (p) => Date.parse(p.pull_request?.merged_at || p.merged_at || p.closed_at || 0);
@@ -585,15 +607,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     let head = null;
     let from = null;
     try {
-      head = (await gh.getBranch(ref))?.object?.sha;
-      if (!head) throw new Error(`branche ${ref} introuvable`);
-      from = (await gh.getBranch(PROD_BRANCH).catch(() => null))?.object?.sha || null;
-      await moveProduction(head);
+      from = (await gh.getBranch(ref))?.object?.sha;
+      if (!from) throw new Error(`branche ${ref} introuvable`);
+      // preprod into main: the host publishes main. Nothing in preprod (changes merged before preprod existed): main
+      // already holds them.
+      const merged = (await gh.getBranch(PREPROD_BRANCH).catch(() => null))
+        ? await gh.mergeBranches(ref, PREPROD_BRANCH, `Mise en production : ${pending.map((p) => `#${p.number}`).join(', ')}`)
+        : null;
+      head = merged?.sha || from;
+      if (await gh.getBranch(PROD_BRANCH).catch(() => null)) {
+        from = (await gh.getBranch(PROD_BRANCH))?.object?.sha || from;
+        await moveProduction(head);
+      }
     } catch (e) {
       if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
       throw e;
     }
-    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
+    try { await gh.dispatch('pages.yml', ref, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
     const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null };
     await checkLive(pending.at(-1).number, head, { release }).catch((e) => log(`live check not started: ${e.message}`));
@@ -606,12 +636,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  // The live site broke after a « Mise en production »: the production branch goes back to what was live before
-  // (main is untouched, nothing is undone there), the released changes wait again, and an urgent bug fixes them.
+  // The live site broke after a « Mise en production »: main goes back to what was live before (preprod keeps the
+  // changes: nothing is lost), the released changes wait again, and an urgent bug fixes them.
   async function rollbackRelease({ release, sha, detail, runId }) {
     const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
-    await gh.resetRef(PROD_BRANCH, release.from);
-    try { await gh.dispatch('pages.yml', PROD_BRANCH, {}); } catch { /* no GitHub Pages workflow */ }
+    const def = (await gh.getRepo())?.default_branch || 'main';
+    const legacy = await gh.getBranch(PROD_BRANCH).catch(() => null);
+    await gh.resetRef(legacy ? PROD_BRANCH : def, release.from);
+    try { await gh.dispatch('pages.yml', legacy ? PROD_BRANCH : def, {}); } catch { /* no GitHub Pages workflow */ }
     const prs = release.prs || [];
     for (const n of prs) await gh.addLabels(n, [L.awaitingProd]);
     const titles = [];
@@ -715,8 +747,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
   async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false, release = null }) {
     const def = (await gh.getRepo())?.default_branch || 'main';
-    // After a « Mise en production », the host publishes the production branch: main may already be further ahead.
-    const ref = release ? PROD_BRANCH : def;
+    // After a « Mise en production » on a project of the first version (its host publishes the production branch),
+    // main may already be further ahead: the production branch is the one to compare with. Otherwise main is.
+    const ref = release && await gh.getBranch?.(PROD_BRANCH).catch(() => null) ? PROD_BRANCH : def;
     // A newer delivery was merged since: re-running this one would publish an older version over it, and the newer
     // one's own live check covers the site (its deploy carries this commit too).
     const head = gh.getBranch ? (await gh.getBranch(ref).catch(() => null))?.object?.sha : sha;
@@ -967,6 +1000,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
     await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
+    await syncPreprod().catch((e) => log(`${PREPROD_BRANCH}: ${e.message}`));
   }
 
   // Issue #242: every framed project keeps a stack sheet (STACK.md). One without it gets an « Établir la fiche » card,

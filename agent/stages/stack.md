@@ -4,7 +4,7 @@ La factory (ou le propriétaire, avec « Établir la fiche » dans le panneau) d
 projet : `STACK.md` à la racine. Le bouton « Stack technique » du panneau l'affiche telle quelle. Pas de questions,
 pas de spec : tu l'établis en lisant le projet.
 
-1. **Branche** `claude/issue-<n>-stack` depuis `main`. Si `STACK.md` existe déjà sur `main` et qu'il est complet
+1. **Branche** `claude/issue-<n>-stack` depuis `{{base}}`. Si `STACK.md` existe déjà sur `{{base}}` et qu'il est complet
    et exact, ferme la demande comme « déjà réglée » (voir AGENT.md) au lieu d'ouvrir une PR. Une fiche sans la partie
    « Mise en production » n'est pas complète : la demande « Compléter la fiche stack : la mise en production » ne
    change que cette partie (et corrige au passage ce qui serait faux).

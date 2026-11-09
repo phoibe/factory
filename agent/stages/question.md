@@ -23,7 +23,7 @@ puis ouvre-les avec l'outil Read avant de répondre. Dans la conversation, une i
 1. Relis l'issue en entier : la dernière question du propriétaire est celle à traiter, les précédentes
    donnent le contexte.
 2. Cherche la réponse dans les faits, par ordre de fiabilité :
-   - le code de `main` et ses tests (un test qui couvre le cas est la meilleure preuve) ;
+   - le code de `{{base}}` et ses tests (un test qui couvre le cas est la meilleure preuve) ;
    - `PRODUCT.md` (ou `docs/PRODUCT.md`), `DESIGN.md` et les specs validées (commentaires `<!-- factory-spec -->` des issues) ;
    - les issues et PR ouvertes, pour ce qui est prévu ou en cours.
    N'ouvre que ce qui sert la question.

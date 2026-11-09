@@ -185,8 +185,12 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     createRef: (name, sha) => request('POST', '/repos/{repo}/git/refs', { ref: `refs/heads/${name}`, sha }),
     // Fast-forward only: the production branch never loses a commit (issue #294).
     updateRef: (name, sha) => request('PATCH', `/repos/{repo}/git/refs/heads/${enc(name)}`, { sha, force: false }),
-    // Puts the production branch back on what was live before a broken release (not a fast-forward).
+    // Puts a branch back on what was live before a broken release (main, or the production branch of the first version).
     resetRef: (name, sha) => request('PATCH', `/repos/{repo}/git/refs/heads/${enc(name)}`, { sha, force: true }),
+    // Merges one branch into another on GitHub (« Mise en production » sends preprod into main). 201: merged, with the
+    // new commit; 204 (null here): nothing to merge; 409: conflict (thrown).
+    mergeBranches: (base, head, message) => request('POST', '/repos/{repo}/merges', { base, head, commit_message: message }),
+    setPrBase: (n, base) => request('PATCH', `/repos/{repo}/pulls/${n}`, { base }),
     getCommit: (sha) => request('GET', `/repos/{repo}/git/commits/${sha}`),
     // The merged PRs that wait for the owner's « Mise en production » (issue #294).
     listAwaiting: () => paginate('/repos/{repo}/issues?state=closed&labels=factory%3Aawaiting-production&per_page=100'),

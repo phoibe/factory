@@ -2188,10 +2188,61 @@ test('on approval, a validated change is merged but waits for « Mise en product
   assert.doesNotMatch(said, /se met à jour automatiquement/);
 });
 
-test('on approval, the first held change creates the production branch at what is live (the merge parent)', async () => {
+test('on approval, a validated change is merged into preprod (created on main the first time), not main', async () => {
   const { gh, relay } = prodGh();
+  gh.setPrBase = async (n, base) => gh.calls.push(['setPrBase', n, base]);
+  gh.getPr = ((get) => async (n) => ({ ...(await get(n)), base: { ref: 'main' } }))(gh.getPr);
   await deliver10(relay);
-  assert.deepEqual(gh.calls.find((c) => c[0] === 'createRef'), ['createRef', 'production', 'm1-parent']);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'createRef'), ['createRef', 'preprod', 'm1']);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'setPrBase'), ['setPrBase', 10, 'preprod']);
+  const order = gh.calls.map((c) => c[0]);
+  assert.ok(order.indexOf('setPrBase') < order.indexOf('merge'), 'moved before the merge');
+  assert.ok(!gh.calls.some((c) => c[0] === 'createRef' && c[1] === 'production'), 'no production branch any more');
+});
+
+test('in automatic or external mode, a PR left on preprod is moved back to main before its merge', async () => {
+  for (const mode of ['auto', 'external']) {
+    const { gh, relay } = prodGh({ mode, branches: { main: 'm1', preprod: 'p1' } });
+    gh.setPrBase = async (n, base) => gh.calls.push(['setPrBase', n, base]);
+    gh.getPr = ((get) => async (n) => ({ ...(await get(n)), base: { ref: 'preprod' } }))(gh.getPr);
+    await deliver10(relay);
+    assert.deepEqual(gh.calls.find((c) => c[0] === 'setPrBase'), ['setPrBase', 10, 'main'], mode);
+  }
+});
+
+test('« Mise en production » merges preprod into main, then checks the live site on that new main', async () => {
+  const awaiting = [{ number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z' }];
+  const { gh, relay } = prodGh({ awaiting, branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.mergeBranches = async (base, head, msg) => { gh.calls.push(['mergeBranches', base, head, msg]); return { sha: 'm2' }; };
+  await relay().handle({ kind: 'issue', event: 'issues', action: 'opened', number: 50, labels: [L.production], fromOwner: true });
+  const merged = gh.calls.find((c) => c[0] === 'mergeBranches');
+  assert.deepEqual(merged.slice(0, 3), ['mergeBranches', 'main', 'preprod']);
+  assert.match(merged[3], /#11/);
+  assert.deepEqual(prodChecksOf(gh).map(({ sha, release }) => ({ sha, from: release.from })), [{ sha: 'm2', from: 'm1' }]);
+  assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /En production/);
+});
+
+test('a release that breaks the live site puts main back where it was (preprod keeps the changes)', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm2', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], open: false }] });
+  gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
+  gh.createIssue = async () => ({ number: 60 });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'm2', result: 'failed', detail: 'la page répond 500', release: { from: 'm1', prs: [11], issue: 50 } });
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'resetRef'), ['resetRef', 'main', 'm1']);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 11 && c[2] === L.awaitingProd));
+});
+
+test('on approval, what lands on main directly (settings, syncs) is brought into preprod at each tick', async () => {
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.getBranch = async (name) => ({ main: { object: { sha: 'm1' } }, preprod: { object: { sha: 'p1' } } })[name] || null;
+  gh.mergeBranches = async (base, head) => { gh.calls.push(['mergeBranches', base, head]); return { sha: 'p2' }; };
+  await createRelay({ gh, repo: 'r', config: { ...config, production: 'approval' }, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'mergeBranches'), ['mergeBranches', 'preprod', 'main']);
+  const auto = fakeGh({ issues: [], prs: [] });
+  auto.mergeBranches = async () => auto.calls.push(['mergeBranches']);
+  await createRelay({ gh: auto, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.ok(!auto.calls.some((c) => c[0] === 'mergeBranches'));
 });
 
 test('on approval, an undo of a broken delivery still goes live at once', async () => {
