@@ -2580,7 +2580,7 @@ for (const mode of ['auto', 'approval']) {
     assert.deepEqual(prodChecksOf(gh), []);
     const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
     assert.match(said, /s'arrête ici/);
-    assert.match(said, /mise en production est manuelle \(`git push prod main vX\.Y\.Z` depuis votre poste/);
+    assert.match(said, /Mise en production manuelle/);
     assert.doesNotMatch(said, /se met à jour automatiquement|cliquiez sur « Mise en production »/);
     assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1) || !gh.calls.some((c) => c[0] === 'close'), 'the issue follows its usual path');
   });

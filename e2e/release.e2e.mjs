@@ -140,14 +140,16 @@ test('une fiche stack « Manuelle » : « Mise en production manuelle » sous le
   });
 });
 
-test('une fiche stack « Manuelle » : les paramètres disent que la factory s\'arrête au merge, sans choix à faire', async () => {
+test('une fiche stack « Manuelle » : les paramètres le disent en une ligne, et le choix reste modifiable', async () => {
   await withPanel(manualSheet, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#project-sub', { hasText: 'Mise en production manuelle' }).waitFor();
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     const group = page.getByRole('group', { name: 'Mise en production' });
-    await group.getByText(/git push prod main vX\.Y\.Z.*La factory s.arrête au merge/).waitFor();
-    assert.equal(await page.locator('#production-auto').count(), 0);
+    await group.getByText(/Fiche stack.:.manuelle\. La factory s.arrête au merge\./).waitFor();
+    assert.equal(await page.locator('#production-auto').isChecked(), true);
+    await page.locator('#production-approval').check();
+    assert.equal(await page.locator('#production-approval').isChecked(), true);
   });
 });
 

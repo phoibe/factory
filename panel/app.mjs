@@ -894,18 +894,16 @@ function renderRules() {
   const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, 'Réglez une fois votre hébergeur pour publier la branche « production » : ',
     el('a', { class: 'quiet-link', href: 'https://vercel.com/dashboard', target: '_blank', rel: 'noopener' }, 'Vercel'), ' (Settings → Git → Production Branch) ou ',
     el('a', { class: 'quiet-link', href: `${current.repo.html_url}/settings/environments`, target: '_blank', rel: 'noopener' }, 'GitHub Pages'), ' (Environments → github-pages).');
-  // A project whose stack sheet says « Manuelle »: nothing to choose, the factory stops at the merge.
-  const manualHow = current.delivery?.mode === 'manual' ? current.delivery.how.replace(/`/g, '') : null;
-  const production = manualHow !== null ? el('fieldset', {}, el('legend', {}, 'Mise en production'),
-    el('p', { id: 'production-manual', class: 'muted small' }, frenchSpaces(`Manuelle, d'après la fiche stack technique${manualHow ? ` : ${manualHow}` : ''}. La factory s'arrête au merge : la version en ligne ne change que lorsque vous la mettez en production vous-même.`)))
-    : el('fieldset', {}, el('legend', {}, 'Mise en production'),
+  // A project whose stack sheet says « Manuelle »: one short line under the choice, which stays available.
+  const manualNote = current.delivery?.mode === 'manual' ? [el('p', { id: 'production-manual', class: 'muted small' }, frenchSpaces('Fiche stack : manuelle. La factory s\'arrête au merge.'))] : [];
+  const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: (c.production || 'auto') === v, onchange: () => update(setPath(c, 'production', v)),
           ...(v === 'approval' && c.production === 'approval' ? { 'aria-describedby': 'production-hint' } : {}) }),
         el('label', { for: `production-${v}` }, t))),
-    ...(c.production === 'approval' ? [hostHint] : []));
+    ...(c.production === 'approval' ? [hostHint] : []), ...manualNote);
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
     ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
       ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
@@ -1099,7 +1097,6 @@ async function refreshRuns() {
 function drawSub() {
   const manual = current.delivery?.mode === 'manual';
   $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production manuelle' : ''}`;
-  $('project-sub').title = manual ? 'La factory s\'arrête au merge : la fiche stack dit que la mise en production se fait à la main.' : '';
 }
 async function loadDelivery(project) {
   const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);

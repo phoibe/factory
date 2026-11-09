@@ -40,10 +40,8 @@ export const PROD_BRANCH = 'production';
 export const DELIVERY_MARKER = '<!-- factory-stack-delivery -->';
 
 // After a merge on a project whose production is manual (its stack sheet says so): the factory stops at the merge.
-export function manualMergeText(delivery) {
-  const how = String(delivery?.how || '').trim().replace(/[.\s]+$/, '');
-  return ["C'est fusionné ✅. La factory s'arrête ici : pour ce projet, un merge ne met rien en production.",
-    `La mise en production est manuelle${how ? ` (${how})` : ''} : la version en ligne ne change pas tant que vous ne l'avez pas faite.`].join('\n\n');
+export function manualMergeText() {
+  return "C'est fusionné ✅. Mise en production manuelle : la factory s'arrête ici.";
 }
 export const MAX_BRANCH_UPDATES = 2;
 // A branch update is marked with the commit it started from. Only the tries on the PR's current code count: a PR
@@ -503,7 +501,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const held = !manual && config.production === 'approval' && (!isUndo || await othersWait());
     await afterMerge(prNumber, { held });
     if (manual) {
-      await gh.comment(prNumber, say(manualMergeText(delivery)));
+      await gh.comment(prNumber, say(manualMergeText()));
     } else if (held) {
       await holdForApproval(prNumber).catch((e) => log(`hold for approval: ${e.message}`));
       await gh.comment(prNumber, say("C'est fusionné ✅. Le site en ligne ne change pas encore : cette modification attend que vous cliquiez sur « Mise en production », en haut du projet dans le tableau de bord."));
@@ -1000,8 +998,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (!stage?.content || !Buffer.from(stage.content, 'base64').toString('utf8').includes(`## ${DELIVERY_SECTION}`)) return;
     if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).some((i) => String(i.body || '').includes(DELIVERY_MARKER))) return;
     if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
-    const body = [AGENT_MARKER, DELIVERY_MARKER, `La factory complète la **fiche stack technique** de ce projet avec sa partie « ${DELIVERY_SECTION} » : un merge met-il le projet en ligne tout seul, ou sa mise en production est-elle un geste à part ?`, '',
-      'Elle le lit dans le projet lui-même (hébergeur, déploiement, procédures écrites). Ensuite, si la mise en production est manuelle, la factory s\'arrête au merge et le dit.'].join('\n');
+    const body = [AGENT_MARKER, DELIVERY_MARKER, `La factory ajoute à la fiche stack la partie « ${DELIVERY_SECTION} » : automatique ou manuelle.`].join('\n');
     const card = await gh.createIssue('Compléter la fiche stack : la mise en production', body, [L.stack, L.kept]);
     log(`stack sheet: delivery card #${card.number} opened`);
     const labels = await liveLabels(card.number);
