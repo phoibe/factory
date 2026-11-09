@@ -32,7 +32,7 @@ test('le projet ouvert a un fond plus clair et un nom en gras ; un clic sur un a
     const current = page.locator('#projects .project-item[aria-current="true"]');
     await current.waitFor();
     assert.equal(await current.locator('.pname').textContent(), 'r');
-    const style = await current.evaluate((n) => ({ weight: getComputedStyle(n).fontWeight, bg: getComputedStyle(n).backgroundColor, other: getComputedStyle(n.closest('li').nextElementSibling || n.closest('li').previousElementSibling).backgroundColor }));
+    const style = await page.evaluate(() => { const n = document.querySelector('#projects .project-item[aria-current="true"]'); return { weight: getComputedStyle(n).fontWeight, bg: getComputedStyle(n).backgroundColor }; });
     assert.ok(Number(style.weight) >= 600, `bold: ${style.weight}`);
     assert.notEqual(style.bg, 'rgba(0, 0, 0, 0)', 'own background');
     await page.locator('#projects .project-item', { hasText: 'charlie' }).click();
@@ -97,5 +97,30 @@ test('sur téléphone, toucher le nom du projet ouvre la liste en plein écran ;
     await page.waitForFunction(() => document.getElementById('project-name').textContent === 'Bravo');
     assert.equal(await dialog.isVisible(), false);
     assert.equal(await button.locator('.pdot-blocked').count(), 1, 'alpha still blocked');
+  });
+});
+
+test('sans projet mémorisé, le panneau ouvre le projet le plus récemment modifié, pas le premier de la liste', async () => {
+  await withPanel({ repos, repoIssues, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#projects .project-item[aria-current="true"]').waitFor();
+    assert.equal(await page.locator('#project-name').textContent(), 'r');
+  });
+});
+
+test('quand une demande d\'un autre projet change d\'état, son point se met à jour en moins d\'une minute, sans perdre le focus', async () => {
+  const live = { ...repoIssues };
+  await withPanel({ repos, repoIssues: live, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.clock.install();
+    await openR(page);
+    await page.goto(url);
+    const delta = page.locator('#projects .project-item', { hasText: 'delta' });
+    await page.locator('#projects .pdot-blocked').waitFor();
+    assert.doesNotMatch(await delta.locator('.pdot').getAttribute('class'), /pdot-blocked/);
+    await delta.focus();
+    live['o/delta'] = [issue(9, 'Bloquée', ['factory:feature', 'factory:building', 'factory:blocked'])];
+    await page.clock.runFor(31_000);
+    await page.waitForFunction(() => [...document.querySelectorAll('#projects .project-item')].find((b) => b.textContent === 'delta')?.querySelector('.pdot-blocked'));
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'delta');
   });
 });

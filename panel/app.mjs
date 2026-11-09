@@ -153,7 +153,7 @@ async function mapLimit(items, limit, fn) {
 async function reloadProjects() {
   const fresh = await loadProjects();
   if (fresh.length <= projects.length) return;
-  projects = sortProjects(fresh);
+  projects = fresh;
   if (current) renderProjectList(); else await openProject(store.get(PROJECT_KEY));
   refreshDots();
 }
@@ -164,18 +164,23 @@ function dotNode(kind, label = DOT_LABELS[kind]) {
   return kind ? el('span', { class: `pdot pdot-${kind}`, role: 'img', 'aria-label': label, title: label }) : el('span', { class: 'pdot', 'aria-hidden': 'true' });
 }
 
+// `projects` keeps GitHub's order (most recently pushed first: the one opened when none was remembered);
+// the list shows them alphabetically.
 function projectItems() {
-  return projects.map((p) => {
+  return sortProjects(projects).map((p) => {
     const name = p.repo.full_name, here = current && current.repo.full_name === name;
-    return el('li', {}, el('button', { type: 'button', class: 'project-item', 'aria-current': here ? 'true' : null, title: p.repo.name, onclick: () => pickProject(name) },
+    return el('li', {}, el('button', { type: 'button', class: 'project-item', 'data-repo': name, 'aria-current': here ? 'true' : null, title: p.repo.name, onclick: () => pickProject(name) },
       dotNode(dots.get(name) || null), el('span', { class: 'pname' }, p.repo.name)));
   });
 }
 
 const OTHERS = { blocked: 'Un autre projet est bloqué', yours: 'Un autre projet attend votre réponse' };
+// Redrawn every time a dot changes: the focused project keeps the focus.
 function renderProjectList() {
+  const focused = document.activeElement?.closest?.('.project-list') ? document.activeElement.dataset.repo : null;
   $('projects-list').replaceChildren(...projectItems());
   if ($('projects-dialog').open) $('projects-dialog-list').replaceChildren(...projectItems());
+  if (focused) document.querySelector(`${$('projects-dialog').open ? '#projects-dialog-list' : '#projects-list'} [data-repo="${CSS.escape(focused)}"]`)?.focus();
   const other = current ? othersDot(dots, current.repo.full_name) : null;
   const sd = $('switch-dot');
   sd.hidden = !other;
@@ -1134,7 +1139,7 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
-    projects = sortProjects(await loadProjects());
+    projects = await loadProjects();
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
