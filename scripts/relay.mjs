@@ -226,6 +226,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!quiet) await gh.comment(targets[targets.length - 1], say(message));
       throw new Error(error);
     };
+    // Without its instructions the agent stops at once and says nothing on the card (Pulsar Novae #173: every sync
+    // had failed). Only a file known to be absent stops the run; a GitHub hiccup lets it go.
+    if (gh.getContent && !(await gh.getContent('.factory/AGENT.md').catch(() => true))) {
+      try { await gh.dispatch('factory-sync.yml', (await gh.getRepo())?.default_branch || 'main', {}); }
+      catch (e) { log(`sync not started (${String(e.message || e).slice(0, 80)})`); }
+      await fail("Je n'ai pas lancé l'agent : la factory n'est pas encore installée dans ce projet (sa mise à jour, « Factory sync » dans l'onglet Actions, n'a pas abouti). "
+        + 'Je la relance. Écrivez « réessaie » ici dans quelques minutes.', 'factory not installed');
+    }
     if (config.runner === 'github-actions') {
       try {
         const ref = (await gh.getRepo())?.default_branch || 'main';

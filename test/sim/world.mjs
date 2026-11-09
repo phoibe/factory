@@ -146,6 +146,7 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
     },
     listPrFiles: async (n) => (get(n)?.files || []).map((f) => ({ filename: f.path, status: 'added', patch: '' })),
     getContent: async (path) => {
+      if (path === '.factory/AGENT.md') return { content: '' }; // the project is installed
       for (const i of items.values()) for (const f of i.files || []) if (f.path === path) return { content: Buffer.from(f.content).toString('base64') };
       return null;
     },

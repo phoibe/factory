@@ -1525,7 +1525,7 @@ test('an undo refused for another reason gives the owner GitHub\'s short reason,
 
 test('an undo goes live on green checks without recette, then the redo bug starts', async () => {
   const gh = fakeGh({ issues: [{ number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: PROD_BUG_MARKER }], prs: [{ number: 21, body: `${REVERT_MARKER}\n<!-- factory-revert-redo #20 -->`, head: { sha: 'r1' } }], files: { 21: [{ filename: 'src/App.tsx' }] } });
-  gh.getContent = async () => null;
+  gh.getContent = async (path) => (path === '.factory/AGENT.md' ? { content: '' } : null);
   const sent = [];
   await createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, screenshots: true } }, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 21 });
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 21));
@@ -2090,7 +2090,7 @@ test('any event brings a project whose agent instructions are behind the stable 
 
 // The stack sheet (issue #242): a framed project without STACK.md gets its « Établir la fiche » card once, as soon as
 // its synced agent instructions know the `stack` stage.
-function stackWorld({ files = ['PRODUCT.md', '.factory/stages/stack.md'], issues = [], closed = [] } = {}) {
+function stackWorld({ files = ['PRODUCT.md', '.factory/stages/stack.md', '.factory/AGENT.md'], issues = [], closed = [] } = {}) {
   const state = { issues: [...issues], prs: [] };
   const gh = fakeGh(state);
   gh.getContent = async (path) => (files.includes(path) ? { content: '' } : null);
@@ -2677,7 +2677,7 @@ test('a sheet that cannot be read keeps the usual way', async () => {
 const STAGE_NEW = b64('# Étape\n\n## Mise en production\n');
 function deliveryWorld({ sheet = '# Stack technique\n\n## Données\n- x\n', stage = STAGE_NEW, issues = [], closed = [] } = {}) {
   const { gh, state } = stackWorld({ issues, closed });
-  gh.getContent = async (path) => ({ 'STACK.md': sheet === null ? null : b64(sheet), '.factory/stages/stack.md': stage, 'PRODUCT.md': b64('') })[path] ?? null;
+  gh.getContent = async (path) => ({ 'STACK.md': sheet === null ? null : b64(sheet), '.factory/stages/stack.md': stage, 'PRODUCT.md': b64(''), '.factory/AGENT.md': b64('') })[path] ?? null;
   return { gh, state };
 }
 
@@ -2705,4 +2705,26 @@ test('no « Compléter la fiche » card when the sheet says it, the card was ope
     await guardTick(gh, []);
     assert.ok(!gh.calls.some((c) => c[0] === 'create'), name);
   }
+});
+
+test('a project whose factory is not installed gets no agent: the sync is started and the card says so', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
+  gh.getContent = async () => null;
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} })
+    .handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true, fromAgent: false }).catch(() => {});
+  assert.equal(sent.length, 0, 'no agent fired');
+  assert.ok(gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml'));
+  const msg = gh.calls.find((c) => c[0] === 'comment')?.[2] || '';
+  assert.match(msg, /pas encore installée/);
+  assert.equal(gh.calls.filter((c) => c[1] === 5 && c[2] === L.running).at(-1)?.[0], 'remove', 'lock released');
+});
+
+test('a GitHub hiccup while checking the install does not stop the agent', async () => {
+  const gh = fakeGh({ issues: [{ number: 5, labels: [L.feature, L.grilling] }], prs: [] });
+  gh.getContent = async () => { throw new Error('502 Bad Gateway'); };
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} })
+    .handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true, fromAgent: false }).catch(() => {});
+  assert.equal(sent.length, 1);
 });
