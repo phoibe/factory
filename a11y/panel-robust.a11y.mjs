@@ -61,7 +61,7 @@ test('a « go » counting down is cancelled when another project is opened', asy
     await context.addInitScript(() => { localStorage.setItem('factory.token', 'test'); localStorage.setItem('factory.project', 'o/a'); });
     await page.goto(url);
     await page.locator('button.go[data-go="1"]').click();
-    await page.selectOption('#project', 'o/b');
+    await page.locator('#projects .project-item', { hasText: /^b$/ }).click();
     await page.waitForFunction(() => document.querySelector('#project-name').textContent === 'b');
     await page.waitForTimeout(6500);
     assert.deepEqual(posts.filter((p) => p.endsWith('/comments')), []);

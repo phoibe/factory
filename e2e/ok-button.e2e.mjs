@@ -80,7 +80,7 @@ test('changer de projet pendant le décompte annule l\'envoi', async () => {
   await withPanel({ issues: [visual], repos: ['o/r', 'o/autre'] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').click();
-    await page.locator('#project').selectOption('o/autre');
+    await page.locator('#projects .project-item', { hasText: 'autre' }).click();
     await page.waitForTimeout(6000);
     assert.equal(writes.filter((w) => w.path.endsWith('/comments')).length, 0);
   });

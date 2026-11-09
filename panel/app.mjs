@@ -13,6 +13,7 @@ import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { machineLine, repoKey } from './machine.mjs';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, DOT_LABELS } from './projects.mjs?v=1';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -53,6 +54,8 @@ let token = store.get(TOKEN_KEY);
 // Ask the browser not to clear the token when it tidies its storage (mobile browsers do).
 if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
+// Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
+let dots = new Map();
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -78,7 +81,7 @@ function toast(msg) {
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
 function sessionExpired() {
   if (!token) return;
-  store.del(TOKEN_KEY); token = null; projects = []; current = null;
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); dotEtags.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; live.repo = null;
   $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
   show('login');
@@ -98,7 +101,10 @@ async function api(path, init = {}) {
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
   $('nav').hidden = id === 'login';
-  $('project').hidden = id !== 'project-view'; // no project to choose from on the empty screen
+  // The project list shows with a project only (none to choose from on the empty screen).
+  $('projects').hidden = id !== 'project-view';
+  document.body.classList.toggle('has-projects', id === 'project-view');
+  if (id !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
   if (typeof placeMenu === 'function') placeMenu();
 }
 
@@ -147,14 +153,91 @@ async function mapLimit(items, limit, fn) {
 async function reloadProjects() {
   const fresh = await loadProjects();
   if (fresh.length <= projects.length) return;
-  projects = fresh;
-  if (current) renderProjectSelect(); else await openProject(store.get(PROJECT_KEY));
+  projects = sortProjects(fresh);
+  if (current) renderProjectList(); else await openProject(store.get(PROJECT_KEY));
+  refreshDots();
 }
 
-function renderProjectSelect() {
-  const sel = $('project');
-  sel.replaceChildren(...projects.map((p) => el('option', { value: p.repo.full_name }, p.repo.name)));
-  sel.value = current.repo.full_name;
+// ---- Project list (issue #314) ------------------------------------------------------------------
+// Always open on the right of a computer; on a phone, the project name opens it full screen.
+function dotNode(kind, label = DOT_LABELS[kind]) {
+  return kind ? el('span', { class: `pdot pdot-${kind}`, role: 'img', 'aria-label': label, title: label }) : el('span', { class: 'pdot', 'aria-hidden': 'true' });
+}
+
+function projectItems() {
+  return projects.map((p) => {
+    const name = p.repo.full_name, here = current && current.repo.full_name === name;
+    return el('li', {}, el('button', { type: 'button', class: 'project-item', 'aria-current': here ? 'true' : null, title: p.repo.name, onclick: () => pickProject(name) },
+      dotNode(dots.get(name) || null), el('span', { class: 'pname' }, p.repo.name)));
+  });
+}
+
+const OTHERS = { blocked: 'Un autre projet est bloqué', yours: 'Un autre projet attend votre réponse' };
+function renderProjectList() {
+  $('projects-list').replaceChildren(...projectItems());
+  if ($('projects-dialog').open) $('projects-dialog-list').replaceChildren(...projectItems());
+  const other = current ? othersDot(dots, current.repo.full_name) : null;
+  const sd = $('switch-dot');
+  sd.hidden = !other;
+  sd.className = other ? `pdot pdot-${other}` : 'pdot';
+  if (other) { sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHERS[other]); sd.title = OTHERS[other]; }
+  else { sd.removeAttribute('role'); sd.removeAttribute('aria-label'); sd.removeAttribute('title'); }
+}
+
+function pickProject(fullName) {
+  if ($('projects-dialog').open) $('projects-dialog').close();
+  if (current && current.repo.full_name === fullName) return;
+  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); renderProjectList(); });
+}
+
+function setDot(repo, dot) {
+  if (dots.get(repo) === dot) return;
+  dots = nextDots(dots, new Map([[repo, dot]]));
+  renderProjectList();
+}
+
+// The other projects are checked at start, then every 30 s. Their requests carry the last ETag (an unchanged
+// answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
+// A project GitHub does not answer for keeps its last known dot.
+const dotEtags = new Map();
+let dotsTimer = null, dotsBusy = false;
+async function projectDotOf(repo) {
+  try {
+    const issues = [];
+    for (let page = 1; page <= 10; page++) {
+      const { data } = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`, dotEtags);
+      issues.push(...data);
+      if (data.length < 100) break;
+    }
+    const waits = new Map();
+    for (const n of blockedNumbers(issues)) {
+      const count = issues.find((i) => i.number === n).comments || 0;
+      if (!count) continue;
+      const page = Math.max(1, Math.ceil(count / 100));
+      const { data } = await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`, dotEtags);
+      waits.set(n, waitedFor(data));
+    }
+    return projectDot(issues, waits);
+  } catch {
+    return undefined;
+  }
+}
+
+async function refreshDots() {
+  clearTimeout(dotsTimer);
+  dotsTimer = setTimeout(refreshDots, 30_000);
+  if (!token || !projects.length || dotsBusy) return;
+  dotsBusy = true;
+  try {
+    const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
+    const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, await projectDotOf(p.repo.full_name)]);
+    // The project opened meanwhile is drawn from the board's own data.
+    const results = new Map(found.filter(([repo]) => !current || repo !== current.repo.full_name));
+    dots = nextDots(dots, results);
+    renderProjectList();
+  } finally {
+    dotsBusy = false;
+  }
 }
 
 async function openProject(fullName) {
@@ -165,12 +248,13 @@ async function openProject(fullName) {
   if (current && current.repo.full_name !== next.repo.full_name) cancelPendingGos();
   current = next;
   store.set(PROJECT_KEY, current.repo.full_name);
-  renderProjectSelect();
+  renderProjectList();
   const { config, warnings } = resolveConfig(raw, catalog, defaults);
   current.config = config;
   current.saved = JSON.stringify(config);
   for (const w of warnings) console.warn(w);
   $('project-name').textContent = current.repo.name;
+  $('project-switch-name').textContent = current.repo.name;
   current.delivery = null;
   drawSub();
   const base = current.repo.html_url;
@@ -206,8 +290,8 @@ const LANES = [
 
 // « Too many requests »: a short wait is spent here, then the same request goes again; a long one stops this
 // refresh quietly (no « connexion perdue »), and the next one comes after the wait GitHub asked for.
-async function cachedGet(path) {
-  const hit = live.etags.get(path);
+async function cachedGet(path, etags = live.etags) {
+  const hit = etags.get(path);
   let res;
   for (let pauses = 0; ; pauses++) {
     res = await fetch(API + path, {
@@ -224,7 +308,7 @@ async function cachedGet(path) {
   if (!res.ok) throw new Error(`${res.status}`);
   const data = await res.json();
   const etag = res.headers.get('etag');
-  if (etag) live.etags.set(path, { etag, data });
+  if (etag) etags.set(path, { etag, data });
   return { data, changed: true };
 }
 
@@ -306,6 +390,7 @@ async function refresh() {
       }
     });
     if (live.repo !== repo) return;
+    setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
     live.last = Date.now();
     live.failures = 0;
@@ -1049,7 +1134,7 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
-    projects = await loadProjects();
+    projects = sortProjects(await loadProjects());
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
@@ -1065,6 +1150,7 @@ async function start() {
   }
   refreshStable().catch(() => {});
   refreshRuns();
+  refreshDots();
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
 }
@@ -1247,7 +1333,7 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null;
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); dotEtags.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   show('login');
 });
@@ -1274,7 +1360,13 @@ $('site').addEventListener('click', (e) => {
 });
 $('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
 $('phone-close').addEventListener('click', () => $('phone').close());
-$('project').addEventListener('change', (e) => openProject(e.target.value).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); if (current) $('project').value = current.repo.full_name; }));
+$('project-switch').addEventListener('click', () => {
+  $('projects-dialog-list').replaceChildren(...projectItems());
+  $('projects-dialog').showModal();
+  $('projects-dialog-list').querySelector('[aria-current="true"]')?.focus();
+  refreshDots();
+});
+$('projects-close').addEventListener('click', () => $('projects-dialog').close());
 $('general-review').addEventListener('click', () => startGeneralReview());
 $('stack-open').addEventListener('click', () => openStack().catch(() => toast("La fiche ne s'est pas chargée.")));
 // A click on the dimmed page around the sheet closes it too (it only shows something).
