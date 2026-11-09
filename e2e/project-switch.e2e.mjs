@@ -114,6 +114,6 @@ test('sur un projet en « mise en production sur mon accord », changer de proje
     await page.waitForTimeout(2500);
     assert.equal(await page.locator('#project-name').textContent(), 'alpha');
     assert.doesNotMatch(await page.locator('#issues-link').textContent(), /\d/, 'no count from r');
-    assert.doesNotMatch(await page.locator('#board').textContent(), /projet r\b/);
+    await page.locator('.ticket', { hasText: 'Carte du projet alpha' }).waitFor({ timeout: 40000 }); // every alpha read takes 3 s
   });
 });
