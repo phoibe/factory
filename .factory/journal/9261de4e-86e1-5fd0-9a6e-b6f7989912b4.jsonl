@@ -8,3 +8,4 @@
 {"t":"2026-11-09T17:30:09.489Z","kind":"test","cmd":"python3 - <<'EOF'\np='e2e/project-switch.e2e.mjs'\ns=open(p).read()\ns=s.replace(\"\"\"// Records, from now on, every card title shown on the board (even for a fraction of a second).\"\"\",\"\"\"// Records every ","ok":false,"id":"toolu_01UfnKvYepWX1HApJJXTEv7X"}
 {"t":"2026-11-09T17:30:45.259Z","kind":"test","cmd":"cp panel/app.mjs /tmp/claude-0/-home-user-factory/9261de4e-86e1-5fd0-9a6e-b6f7989912b4/scratchpad/app.bak && sed -i 's/  if (switched) Object.assign(live, { repo: null, issues: null });//; s/ || curre","ok":false,"id":"toolu_01AupoHRkq9hK1EKr9PEzMsW"}
 {"t":"2026-11-09T17:31:55.237Z","kind":"skill","name":"requesting-code-review","id":"toolu_01AHoPXFm95Z2V7UvLHV8QDx"}
+{"t":"2026-11-09T17:34:09.391Z","kind":"agent","model":"opus","effort":"high","label":"Review project-switch fix","id":"toolu_016XuisjtUV7SeJNR99L9XPK"}
