@@ -132,24 +132,40 @@ test('si l\'envoi échoue, la fenêtre reste ouverte et dit « L\'envoi a échou
 // The stack sheet says how the project goes to production: « Manuelle » (a merge deploys nothing) is shown by itself.
 const manualSheet = { files: { 'STACK.md': '# Stack technique\n\n## Mise en production\n- **Manuelle** — `git push prod main vX.Y.Z` depuis votre poste, après la publication d\'une version\n' } };
 
-test('une fiche stack « Manuelle » : « Mise en production manuelle » sous le nom du projet, et pas de bouton même « sur mon accord »', async () => {
-  await withPanel({ ...manualSheet, config: approval, awaiting: pending }, async ({ page, url }) => {
+test('sans mode choisi, une fiche stack « Manuelle » : « Mise en production externe » sous le nom du projet, sans bouton', async () => {
+  await withPanel({ ...manualSheet, awaiting: pending }, async ({ page, url }) => {
     await page.goto(url);
-    await page.locator('#project-sub', { hasText: 'Mise en production manuelle' }).waitFor();
+    await page.locator('#project-sub', { hasText: 'Mise en production externe' }).waitFor();
     assert.equal(await button(page).isVisible(), false);
   });
 });
 
-test('une fiche stack « Manuelle » : les paramètres le disent en une ligne, et le choix reste modifiable', async () => {
-  await withPanel(manualSheet, async ({ page, url }) => {
+test('sans mode choisi, une fiche stack « Manuelle » : « Externe » est coché, proposé par la fiche, et je peux en changer', async () => {
+  await withPanel(manualSheet, async ({ page, url, writes }) => {
     await page.goto(url);
-    await page.locator('#project-sub', { hasText: 'Mise en production manuelle' }).waitFor();
+    await page.locator('#project-sub', { hasText: 'Mise en production externe' }).waitFor();
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     const group = page.getByRole('group', { name: 'Mise en production' });
-    await group.getByText(/Fiche stack.:.manuelle\. La factory s.arrête au merge\./).waitFor();
+    await group.getByText('Proposé par la fiche stack.').waitFor();
+    assert.equal(await page.locator('#production-external').isChecked(), true);
+    await page.locator('#production-auto').check();
     assert.equal(await page.locator('#production-auto').isChecked(), true);
-    await page.locator('#production-approval').check();
-    assert.equal(await page.locator('#production-approval').isChecked(), true);
+    assert.equal(await group.getByText('Proposé par la fiche stack.').count(), 0);
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.locator('#toast', { hasText: 'Paramètres enregistrés' }).waitFor();
+    const saved = writes.map((w) => w.body?.content).filter(Boolean).map((c) => JSON.parse(Buffer.from(c, 'base64').toString('utf8')));
+    assert.equal(saved.at(-1)?.production, 'auto');
+    assert.doesNotMatch(await page.locator('#project-sub').textContent(), /externe/);
+  });
+});
+
+test('« Externe » choisi dans les paramètres : la mention apparaît même sans fiche stack', async () => {
+  await withPanel({ config: { production: 'external' } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#project-sub', { hasText: 'Mise en production externe' }).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    assert.equal(await page.locator('#production-external').isChecked(), true);
+    assert.equal(await page.getByText('Proposé par la fiche stack.').count(), 0);
   });
 });
 
@@ -159,7 +175,7 @@ test('une fiche stack « Automatique », ou sans cette partie : rien ne change e
       await page.goto(url);
       await page.locator('#new-feature').waitFor();
       await page.waitForTimeout(300);
-      assert.doesNotMatch(await page.locator('#project-sub').textContent(), /manuelle/);
+      assert.doesNotMatch(await page.locator('#project-sub').textContent(), /externe/);
     });
   }
 });

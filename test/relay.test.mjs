@@ -2170,7 +2170,7 @@ function prodGh({ mode = 'approval', branches = { main: 'm1' }, awaiting = [], b
   gh.updateRef = async (name, sha) => { gh.calls.push(['updateRef', name, sha]); gh.branches[name] = sha; };
   gh.getCommit = async (sha) => ({ sha, parents: [{ sha: `${sha}-parent` }] });
   gh.listAwaiting = async () => [...gh.awaitingExtra || [], ...awaiting, { number: 10, title: 'Mode sombre', merged: true }].filter((p) => (p.labels || []).includes(L.awaitingProd)).map((p) => ({ ...p, labels: p.labels.map((name) => ({ name })) }));
-  return { gh, relay: () => createRelay({ gh, repo: 'r', config: { ...config, production: mode }, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} }) };
+  return { gh, relay: () => createRelay({ gh, repo: 'r', config: { ...config, production: mode === 'unset' ? undefined : mode }, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} }) };
 }
 const okOn10 = { kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [L.acceptance], text: 'ok', fromOwner: true };
 const deliver10 = async (relay) => { await relay().report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'u' } }); await relay().handle(okOn10); };
@@ -2569,26 +2569,44 @@ const b64 = (text) => ({ content: Buffer.from(text).toString('base64') });
 const sheetWith = (first) => `# Stack technique\n\n## Services nécessaires\n- x\n\n## Mise en production\n- ${first}\n`;
 const MANUAL = sheetWith('**Manuelle** — `git push prod main vX.Y.Z` depuis votre poste, après la publication d\'une version');
 
-for (const mode of ['auto', 'approval']) {
-  test(`a sheet saying « Manuelle »: merged, no hold, no production branch, no live check, and it says so (${mode})`, async () => {
-    const { gh, relay } = prodGh({ mode, branches: { main: 'm1', production: 'm0' } });
-    gh.getContent = async (path) => (path === 'STACK.md' ? b64(MANUAL) : null);
-    await deliver10(relay);
-    assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
-    assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.awaitingProd));
-    assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
-    assert.deepEqual(prodChecksOf(gh), []);
-    const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
-    assert.match(said, /s'arrête ici/);
-    assert.match(said, /Mise en production manuelle/);
-    assert.doesNotMatch(said, /se met à jour automatiquement|cliquiez sur « Mise en production »/);
-    assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1) || !gh.calls.some((c) => c[0] === 'close'), 'the issue follows its usual path');
-  });
-}
+const stopsAtMerge = (gh) => {
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.awaitingProd));
+  assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
+  assert.deepEqual(prodChecksOf(gh), []);
+  const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
+  assert.match(said, /Mise en production externe : la factory s'arrête ici/);
+  assert.doesNotMatch(said, /se met à jour automatiquement|cliquiez sur « Mise en production »/);
+};
+
+test('no mode chosen and a sheet saying « Manuelle »: external, the factory stops at the merge and says so', async () => {
+  const { gh, relay } = prodGh({ mode: 'unset', branches: { main: 'm1', production: 'm0' } });
+  gh.getContent = async (path) => (path === 'STACK.md' ? b64(MANUAL) : null);
+  await deliver10(relay);
+  stopsAtMerge(gh);
+});
+
+test('« Externe » chosen in the settings: the factory stops at the merge, whatever the sheet says', async () => {
+  const { gh, relay } = prodGh({ mode: 'external', branches: { main: 'm1', production: 'm0' } });
+  gh.getContent = async (path) => (path === 'STACK.md' ? b64(sheetWith('**Automatique** — Vercel')) : null);
+  await deliver10(relay);
+  stopsAtMerge(gh);
+});
+
+test('a mode chosen in the settings wins over a sheet saying « Manuelle »', async () => {
+  const auto = prodGh({ mode: 'auto' });
+  auto.gh.getContent = async (path) => (path === 'STACK.md' ? b64(MANUAL) : null);
+  await deliver10(auto.relay);
+  assert.ok(auto.gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /se met à jour automatiquement/.test(c[2])));
+  const approval = prodGh({ mode: 'approval', branches: { main: 'm1', production: 'm0' } });
+  approval.gh.getContent = async (path) => (path === 'STACK.md' ? b64(MANUAL) : null);
+  await deliver10(approval.relay);
+  assert.ok(approval.gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.awaitingProd));
+});
 
 test('a sheet saying « Automatique », or none at all, keeps the usual message and live check', async () => {
   for (const content of [b64(sheetWith('**Automatique** — Vercel publie chaque merge')), null]) {
-    const { gh, relay } = prodGh({ mode: 'auto' });
+    const { gh, relay } = prodGh({ mode: 'unset' });
     gh.getContent = async (path) => (path === 'STACK.md' ? content : null);
     await deliver10(relay);
     const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');

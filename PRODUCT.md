@@ -30,7 +30,7 @@ Issues et pull requests GitHub, labels `factory:*` comme machine à états, rout
 
 - Panneau web statique sur GitHub Pages : règles de chaque projet et suivi des tâches, thème clair/sombre automatique.
 - Mise en production réglable par projet : automatique (par défaut) ou sur accord du propriétaire, avec un bouton « Mise en production » qui envoie en ligne toutes les modifications en attente ensemble ; l'hébergeur publie alors la branche `production`.
-- La factory sait par elle-même si un merge met le projet en production : la fiche stack technique (`STACK.md`, partie « Mise en production ») le dit, « Automatique » ou « Manuelle ». Quand elle est manuelle (un geste à part, comme `git push prod main` sur Pulsar Wheel), la factory s'arrête au merge et le dit en une ligne, après chaque fusion et sur le panneau ; le choix automatique / sur accord reste modifiable dans les paramètres. Une fiche plus ancienne, sans cette partie, est complétée une fois par l'agent.
+- Trois modes de mise en production par projet : automatique, sur accord, ou externe (faite hors de la factory, comme `git push prod main` sur Pulsar Wheel : la factory s'arrête au merge et le dit). Tant qu'aucun mode n'est choisi, la fiche stack technique (`STACK.md`, partie « Mise en production ») décide : « Manuelle » vaut externe. Une fiche plus ancienne, sans cette partie, est complétée une fois par l'agent.
 - Les projets appartiennent au compte personnel (pas à une organisation).
 - Pas de compte multiple, pas de service payant, pas d'hébergement hors solutions gratuites.
 - Le jeton GitHub du panneau reste dans le navigateur ; le serveur de discussion garde seulement son propre jeton Claude dans les secrets de Modal. Aucune donnée d'autres personnes.

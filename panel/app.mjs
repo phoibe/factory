@@ -5,7 +5,7 @@ import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } 
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
 import { waitedFor } from './waits.mjs?v=1';
-import { resolveConfig, parseRawConfig } from './config-core.mjs';
+import { resolveConfig, parseRawConfig, effectiveProduction } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -894,16 +894,18 @@ function renderRules() {
   const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, 'Réglez une fois votre hébergeur pour publier la branche « production » : ',
     el('a', { class: 'quiet-link', href: 'https://vercel.com/dashboard', target: '_blank', rel: 'noopener' }, 'Vercel'), ' (Settings → Git → Production Branch) ou ',
     el('a', { class: 'quiet-link', href: `${current.repo.html_url}/settings/environments`, target: '_blank', rel: 'noopener' }, 'GitHub Pages'), ' (Environments → github-pages).');
-  // A project whose stack sheet says « Manuelle »: one short line under the choice, which stays available.
-  const manualNote = current.delivery?.mode === 'manual' ? [el('p', { id: 'production-manual', class: 'muted small' }, frenchSpaces('Fiche stack : manuelle. La factory s\'arrête au merge.'))] : [];
+  // Never chosen: the stack sheet decides, and says so in one short line.
+  const mode = effectiveProduction(c, current.delivery);
+  const bySheet = !c.production && current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
-      ['approval', 'Sur mon accord, avec le bouton « Mise en production »']]
+      ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
+      ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
       .map(([v, t]) => el('div', { class: 'row' },
-        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: (c.production || 'auto') === v, onchange: () => update(setPath(c, 'production', v)),
+        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)),
           ...(v === 'approval' && c.production === 'approval' ? { 'aria-describedby': 'production-hint' } : {}) }),
         el('label', { for: `production-${v}` }, t))),
-    ...(c.production === 'approval' ? [hostHint] : []), ...manualNote);
+    ...(c.production === 'approval' ? [hostHint] : []), ...bySheet);
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
     ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
       ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
@@ -968,16 +970,17 @@ async function writeRules() {
   const projectDirty = JSON.stringify(current.config) !== current.saved;
   const generalDirty = machine.general !== machine.savedGeneral;
   const machineChanged = generalDirty || current.config.machine !== JSON.parse(current.saved || '{}').machine;
-  const wasMode = JSON.parse(current.saved || '{}').production || 'auto';
+  const wasMode = effectiveProduction(JSON.parse(current.saved || '{}'), current.delivery);
   if (generalDirty) await writeGeneral();
   if (projectDirty) await writeProjectRules();
-  const released = projectDirty ? await productionModeChanged(wasMode, current.config.production || 'auto') : 0;
+  const released = projectDirty ? await productionModeChanged(wasMode, effectiveProduction(current.config, current.delivery)) : 0;
   // The dev server check applies the change now instead of at its next run (15 minutes at most).
   if (machineChanged) {
     api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
   }
   renderRules();
   drawSite();
+  drawSub();
   toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {
@@ -1092,11 +1095,11 @@ async function refreshRuns() {
 }
 
 // ---- How the project goes to production, read in its stack sheet (STACK.md, « Mise en production ») ----------------
-// « Manuelle »: a merge deploys nothing (Pulsar Wheel). The panel says so under the project name and in its settings,
-// and hides the « Mise en production » button, which could only move a branch nobody publishes.
+// A project that never chose its mode follows the sheet: « Manuelle » (a merge deploys nothing, Pulsar Wheel) means
+// « Externe ». The mode in force shows under the project name when it is external, and is pre-selected in the settings.
 function drawSub() {
-  const manual = current.delivery?.mode === 'manual';
-  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production manuelle' : ''}`;
+  const manual = effectiveProduction(current.config, current.delivery) === 'external';
+  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
 }
 async function loadDelivery(project) {
   const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);
@@ -1131,7 +1134,7 @@ async function refreshRelease() {
 }
 function drawRelease() {
   const btn = $('release');
-  const on = current?.config.production === 'approval' && current.delivery?.mode !== 'manual';
+  const on = current?.config.production === 'approval';
   btn.hidden = !on;
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];

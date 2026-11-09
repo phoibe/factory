@@ -11,6 +11,7 @@ import { decide, afterChecks } from './lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
+import { effectiveProduction } from './lib/config-core.mjs';
 import { github } from './lib/github.mjs';
 import { isRateLimited } from './lib/ratelimit.mjs';
 import { syncFingerprint } from './lib/fingerprint.mjs';
@@ -41,7 +42,7 @@ export const DELIVERY_MARKER = '<!-- factory-stack-delivery -->';
 
 // After a merge on a project whose production is manual (its stack sheet says so): the factory stops at the merge.
 export function manualMergeText() {
-  return "C'est fusionné ✅. Mise en production manuelle : la factory s'arrête ici.";
+  return "C'est fusionné ✅. Mise en production externe : la factory s'arrête ici.";
 }
 export const MAX_BRANCH_UPDATES = 2;
 // A branch update is marked with the commit it started from. Only the tries on the PR's current code count: a PR
@@ -494,11 +495,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // once, unless other changes already wait: publishing main would then publish them too, without the owner's accord.
     const isUndo = String(pr?.body || '').includes(REVERT_MARKER);
     const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
-    // A project whose sheet says its production is manual (a merge deploys nothing, as on Pulsar Wheel): the factory
-    // stops at the merge and says so. No hold, no production branch, no live check: there is nothing to watch.
-    const delivery = await readDelivery();
-    const manual = delivery?.mode === 'manual';
-    const held = !manual && config.production === 'approval' && (!isUndo || await othersWait());
+    // External production (chosen in the settings, or by default when the stack sheet says « Manuelle »: a merge
+    // deploys nothing, as on Pulsar Wheel): the factory stops at the merge and says so. No hold, no production
+    // branch, no live check: there is nothing to watch.
+    const mode = effectiveProduction(config, config.production ? null : await readDelivery());
+    const manual = mode === 'external';
+    const held = mode === 'approval' && (!isUndo || await othersWait());
     await afterMerge(prNumber, { held });
     if (manual) {
       await gh.comment(prNumber, say(manualMergeText()));

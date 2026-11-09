@@ -2,8 +2,16 @@
 export const RUNNERS = ['claude-cloud', 'github-actions'];
 // The machine of the project's factory jobs (issue #271): `default` follows the general setting of the factory.
 export const PROJECT_MACHINES = ['default', 'dev-server', 'github'];
-// When a validated change goes live (issue #294): at once, or when the owner presses « Mise en production ».
-export const PRODUCTION_MODES = ['auto', 'approval'];
+// When a validated change goes live (issue #294): at once, or when the owner presses « Mise en production », or
+// outside the factory (`external`: a merge deploys nothing, the owner does it his own way, as on Pulsar Wheel).
+export const PRODUCTION_MODES = ['auto', 'approval', 'external'];
+
+// The mode in force. A project that never chose one follows its stack sheet (STACK.md, « Mise en production »):
+// « Manuelle » means external, anything else automatic. `delivery` is what panel/stack.mjs deliveryOf() read, or null.
+export function effectiveProduction(config, delivery) {
+  if (PRODUCTION_MODES.includes(config?.production)) return config.production;
+  return delivery?.mode === 'manual' ? 'external' : 'auto';
+}
 
 const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
@@ -21,7 +29,6 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     version: 1,
     runner: DEFAULTS.runner,
     machine: 'default',
-    production: 'auto',
     maxParallel: DEFAULTS.maxParallel,
     autoPick: DEFAULTS.autoPick === true,
     maxQuestions: DEFAULTS.maxQuestions,
