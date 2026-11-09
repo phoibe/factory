@@ -91,9 +91,11 @@ export function modelFamily(model) {
   return FAMILIES.find((f) => String(model).toLowerCase().includes(f.toLowerCase())) || String(model);
 }
 
+// Without a model, an agent type may still carry its own; « session » is what the factory's agents get.
 const SESSION = 'le modèle de la session';
 const MAX_LABELS = 3;
 export function agentsLine(runs) {
+  if (!runs.length) return '**Sous-agents** : non mesuré';
   const groups = new Map();
   for (const a of runs.flatMap((r) => r.agents || [])) {
     const key = modelFamily(a.model) || SESSION;

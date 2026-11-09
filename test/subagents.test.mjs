@@ -48,3 +48,11 @@ test('the fabrication section shows the sub-agents line', () => {
   assert.match(body, /\*\*Sous-agents\*\* : 1 sur Haiku \(Captures\)/);
   assert.deepEqual(alerts, []);
 });
+
+test('a sub-agent label cannot break the PR comment nor notify anyone', () => {
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: 'Revue\n  de @someone *vite*' } }).label, 'Revue de @​someone *vite*');
+});
+
+test('no journal at all: the sub-agents line says it was not measured', () => {
+  assert.equal(agentsLine([]), '**Sous-agents** : non mesuré');
+});

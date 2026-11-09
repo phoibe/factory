@@ -47,7 +47,7 @@ export function runFromPrompt(prompt = '') {
 export function agentEntry(input) {
   if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
   const i = input.tool_input || {};
-  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').slice(0, 80) };
+  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
 }
 
 function responseFailed(res) {
