@@ -7,7 +7,7 @@ Le propriétaire a testé la preview et signale un problème.
    S'il n'a pas d'aperçu et demande les liens pour brancher l'hébergeur, redonne-les : ceux de l'encadré
    « Avant de répondre « go » » de la fiche projet (issue de cadrage) ou, à défaut, les liens et les clics
    exacts pour l'hébergeur de la stack et ce dépôt. C'est une réponse sans code.
-2. Corrige (TDD si actif), revue par un sous-agent neuf, passe design (`design-pass.md`) si l'interface
+2. Corrige (TDD si actif), revue par un sous-agent neuf (`sonnet`, effort `medium`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 3. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a
    changé et que les captures sont actives, refais les captures et mets `factory:visual-review` puis `factory:checks` (mais

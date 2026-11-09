@@ -17,7 +17,9 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
 3. **Plan** (si l'étape plan est active), **seulement pour une feature moyenne ou grande** (ton estimation de
    l'étape 0) : skill `writing-plans`, plan enregistré dans `docs/plans/issue-<n>.md`. Pas de validation humaine
-   du plan : exécute-le toi-même (`executing-plans` ou `subagent-driven-development`). Une petite feature se code
+   du plan : exécute-le toi-même (`executing-plans` ou `subagent-driven-development`, chaque tâche confiée à un
+   sous-agent sur `sonnet` effort `medium`, ou sur `opus` effort `high` pour une tâche d'architecture : grille
+   « Modèle et effort des sous-agents » d'AGENT.md). Une petite feature se code
    directement, sans plan écrit ; si elle touche finalement plus de 3 fichiers de code, le verrou te demandera
    le plan avant la PR.
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
@@ -33,14 +35,14 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    montrer au propriétaire, puis sur le site en ligne après la mise en ligne. Skill `webapp-testing` s'il est
    installé, pour piloter le navigateur.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
-   puis lance comme il l'explique un **sous-agent** qui n'a pas écrit le code, avec un contexte neuf : il
+   puis lance comme il l'explique un **sous-agent** (`opus`, effort `high` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
    relit le diff contre la spec et les standards du dépôt. Corrige ce
    qu'il trouve (skill `receiving-code-review`), puis relance une revue neuve. Au plus 3 tours.
    S'il reste un problème bloquant après le dernier tour : ouvre quand même la PR en brouillon, explique le
    blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
 5 bis. **Revue de sécurité**, seulement si la spec est **sensible** (connexion, codes, comptes, données
    personnelles, argent, partage, suppression de données : mêmes critères que `spec.md`) : skill
-   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf relit le diff uniquement
+   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (`opus`, effort `high`) relit le diff uniquement
    sous l'angle sécurité (accès sans droit, données d'un autre visibles, injection, secrets, force brute).
    Corrige ce qu'il trouve avec un test qui échoue d'abord, et ajoute une ligne « Sécurité » au résumé de la PR.
 6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`

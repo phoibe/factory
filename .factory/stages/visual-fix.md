@@ -4,7 +4,7 @@ Le propriétaire a commenté les captures de la PR sans les valider.
 
 1. Relis son dernier commentaire. Si c'est une idée nouvelle plutôt qu'une retouche, ouvre une nouvelle
    issue (labels `factory:feature` et `factory:kept`) avec son idée, et dis-le lui ; ne l'ajoute pas à cette PR.
-2. Applique les retouches, revue rapide par un sous-agent neuf, vérifications locales, push. Pas de nouvelle
+2. Applique les retouches, revue rapide par un sous-agent neuf (`sonnet`, effort `medium`), vérifications locales, push. Pas de nouvelle
    passe design : elle a déjà eu lieu à la construction, et le propriétaire juge lui-même les nouvelles captures.
 3. Refais les captures (`screenshots.md`).
    - **Plus aucun écran ne diffère de la version en ligne** (la sortie de l'outil contient `<!-- factory-shots-unchanged -->`) :

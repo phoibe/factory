@@ -12,7 +12,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Skill|Bash",
+        "matcher": "Skill|Bash|Agent|Task",
         "hooks": [
           {
             "type": "command",

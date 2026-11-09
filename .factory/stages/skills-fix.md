@@ -3,7 +3,7 @@
 Le journal de la PR montre qu'une étape obligatoire n'a pas été faite. Le payload contient `missing`, la liste
 des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil Skill (sinon rien n'est noté).
 
-1. **`requesting-code-review`** : fais relire le diff de la PR par un **sous-agent** neuf (skill
+1. **`requesting-code-review`** : fais relire le diff de la PR par un **sous-agent** neuf (`opus`, effort `high` : c'est la relecture finale) (skill
    `requesting-code-review`), contre la spec et les standards du dépôt. Corrige ce qu'il trouve (skill
    `receiving-code-review`), puis une revue neuve. Au plus 3 tours.
 2. **`impeccable`** : suis `.factory/stages/design-pass.md` sur les écrans créés ou modifiés par la PR,

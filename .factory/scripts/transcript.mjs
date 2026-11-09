@@ -5,11 +5,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { FAILED_TEXT, isTestCommand, runFromPrompt } from './journal.mjs';
+import { FAILED_TEXT, agentEntry, isTestCommand, runFromPrompt } from './journal.mjs';
 
 const text = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (typeof b === 'string' ? b : b?.text || '')).join('\n') : '');
 
-// Transcript lines -> journal entries ({kind: run | skill | test}), oldest first.
+// Transcript lines -> journal entries ({kind: run | skill | test | agent}), oldest first.
 export function fromTranscript(lines) {
   const out = [];
   const tests = new Map();
@@ -27,6 +27,8 @@ export function fromTranscript(lines) {
       if (b?.type === 'tool_use' && b.name === 'Skill') {
         const name = b.input?.skill || b.input?.name || b.input?.command;
         if (name) out.push({ t, kind: 'skill', name: String(name), id: b.id });
+      } else if (b?.type === 'tool_use' && agentEntry({ tool_name: b.name })) {
+        out.push({ t, ...agentEntry({ tool_name: b.name, tool_input: b.input }), id: b.id });
       } else if (b?.type === 'tool_use' && b.name === 'Bash' && isTestCommand(String(b.input?.command || ''))) {
         const e = { t, kind: 'test', cmd: String(b.input.command).slice(0, 200), ok: false, id: b.id };
         tests.set(b.id, e);

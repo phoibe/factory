@@ -15,10 +15,11 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    de `design-pass.md` sur tous les écrans. Reste dans `DESIGN.md` ; si un
    problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR.
 3. **Revue de code générale** : charge le skill `requesting-code-review` (outil Skill), puis fais relire
-   **tout le code** (pas un diff) par des sous-agents neufs, un par grande partie de l'appli si elle est
-   grosse. Ils cherchent : bugs, failles de sécurité et données personnelles, erreurs mal gérées, tests
-   manquants sur ce qui compte, accessibilité, performances, code mort ou dupliqué, écarts avec
-   `PRODUCT.md`. Corrige chaque point (skill `receiving-code-review`) ; pour un bug, écris d'abord le test qui
+   **tout le code** (pas un diff) par des sous-agents neufs (`sonnet`, effort `medium`), un par grande partie de
+   l'appli si elle est grosse. Ils cherchent : bugs, failles de sécurité et données personnelles, erreurs mal
+   gérées, tests manquants sur ce qui compte, accessibilité, performances, code mort ou dupliqué, écarts avec
+   `PRODUCT.md`. Puis un sous-agent `opus`, effort `high`, fait la synthèse de leurs rapports (doublons,
+   priorités, ce qui manque). Corrige chaque point (skill `receiving-code-review`) ; pour un bug, écris d'abord le test qui
    échoue. Puis une revue neuve des corrections, au plus 3 tours.
 3 bis. **Architecture** : skill `improve-codebase-architecture` (s'il est installé), en autonomie : repère les
    endroits où le code s'est alourdi au fil des features (modules trop bavards, logique dupliquée, parties

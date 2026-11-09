@@ -36,9 +36,10 @@ export function parseJournal(files) {
     for (const line of String(text).split('\n')) {
       let e;
       try { e = JSON.parse(line); } catch { continue; }
-      if (e.kind === 'run' || !run) { run = { stage: e.kind === 'run' ? e.stage : null, t: e.t, skills: [], tests: [] }; runs.push(run); }
+      if (e.kind === 'run' || !run) { run = { stage: e.kind === 'run' ? e.stage : null, t: e.t, skills: [], tests: [], agents: [] }; runs.push(run); }
       if (e.kind === 'skill') run.skills.push(e.name);
       if (e.kind === 'test') run.tests.push(e);
+      if (e.kind === 'agent') run.agents.push(e);
     }
   }
   return runs.sort((a, b) => String(a.t).localeCompare(String(b.t)));
@@ -83,6 +84,34 @@ export function missingSkills(runs, { stages = {}, ui = false, small = false } =
   return out;
 }
 
+// Sub-agents: which model each one ran on (the grid « Modèle et effort des sous-agents » of AGENT.md).
+const FAMILIES = ['Haiku', 'Sonnet', 'Opus'];
+export function modelFamily(model) {
+  if (!model) return null;
+  return FAMILIES.find((f) => String(model).toLowerCase().includes(f.toLowerCase())) || String(model);
+}
+
+// Without a model, an agent type may still carry its own; « session » is what the factory's agents get.
+const SESSION = 'le modèle de la session';
+const MAX_LABELS = 3;
+export function agentsLine(runs) {
+  if (!runs.length) return '**Sous-agents** : non mesuré';
+  const groups = new Map();
+  for (const a of runs.flatMap((r) => r.agents || [])) {
+    const key = modelFamily(a.model) || SESSION;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a.label);
+  }
+  if (!groups.size) return '**Sous-agents** : aucun';
+  const rank = (k) => (k === SESSION ? 99 : FAMILIES.includes(k) ? FAMILIES.indexOf(k) : 50);
+  const parts = [...groups].sort(([a], [b]) => rank(a) - rank(b)).map(([k, labels]) => {
+    const named = labels.filter(Boolean);
+    const shown = named.slice(0, MAX_LABELS).join(', ') + (named.length > MAX_LABELS ? ', …' : '');
+    return `${labels.length} sur ${k}${shown ? ` (${shown})` : ''}`;
+  });
+  return `**Sous-agents** : ${parts.join(', ')}`;
+}
+
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
@@ -118,6 +147,8 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
     ...lines.map((l) => `- ${l}`),
     '',
     `**Preuve TDD** : ${proof}`,
+    '',
+    agentsLine(runs),
     '',
     alerts.length ? `### ⚠️ Alertes\n\n${alerts.map((a) => `- ${a}`).join('\n')}` : '**Alertes** : aucune ✅',
     ...(note ? ['', note] : []),
