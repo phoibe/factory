@@ -11,7 +11,7 @@ const HOW = {
   'writing-plans': 'charge le skill `writing-plans` (outil Skill) et écris le plan',
   'test-driven-development': "charge le skill `test-driven-development` et fais échouer un test avec la commande de test du projet avant de coder",
   'systematic-debugging': 'charge le skill `systematic-debugging` pour trouver la cause',
-  'requesting-code-review': 'charge le skill `requesting-code-review` et fais relire le diff par un sous-agent neuf',
+  'requesting-code-review': 'charge le skill `requesting-code-review` et fais relire le diff par un sous-agent neuf (`opus`, effort `high`)',
   impeccable: 'suis `.factory/stages/design-pass.md` (skill `impeccable`, commande `critique`, sur chaque écran modifié)',
 };
 

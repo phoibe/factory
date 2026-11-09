@@ -28,7 +28,7 @@ fait se passe d'explications sur son fonctionnement.
    diff avec `main`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
    téléphone et sur ordinateur.
 2. **Critique** : pour chaque écran, skill `impeccable`, commande `critique`
-   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents et le détecteur.
+   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (`sonnet`, effort `medium`) et le détecteur.
    Elle juge l'écran contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » ci-dessus.
    Tu travailles seul : saute les questions de fin de
    critique en écrivant « Questions skipped: run autonome de la factory », et ne t'arrête pas sur elles.

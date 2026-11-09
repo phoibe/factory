@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code hook: records what the agent really did (skills loaded, test runs) in .factory/journal/.
+// Claude Code hook: records what the agent really did (skills loaded, test runs, sub-agents) in .factory/journal/.
 // Installed by scripts/sync.mjs into .claude/settings.json. It never blocks the agent: it always exits 0.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,6 +42,14 @@ export function runFromPrompt(prompt = '') {
   return null;
 }
 
+// A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on. No model
+// means it inherited the session's.
+export function agentEntry(input) {
+  if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
+  const i = input.tool_input || {};
+  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+}
+
 function responseFailed(res) {
   if (res == null) return false;
   if (typeof res === 'string') return FAILED_TEXT.test(res);
@@ -62,6 +70,10 @@ export function entryFor(input, now = new Date()) {
     const i = input.tool_input || {};
     const name = i.skill || i.name || i.command;
     return name ? { t, kind: 'skill', name: String(name) } : null;
+  }
+  if (ev === 'PostToolUse') {
+    const agent = agentEntry(input);
+    if (agent) return { t, ...agent };
   }
   if (input.tool_name === 'Bash' && (ev === 'PostToolUse' || ev === 'PostToolUseFailure')) {
     const cmd = String(input.tool_input?.command || '');
