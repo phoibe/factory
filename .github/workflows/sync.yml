@@ -35,7 +35,9 @@ jobs:
       - name: Commit
         run: |
           rm -rf .factory-src
-          git add -A .claude .factory
+          # Only what sync.mjs installs, forced: a project may ignore .claude/ (Pulsar Novae #173),
+          # and its local state there (settings.local.json, worktrees) never leaves the machine.
+          git add -A -f .claude/skills .claude/settings.json .factory
           git add factory.config.json 2>/dev/null || true
           if git diff --cached --quiet; then echo "Rien à synchroniser"; exit 0; fi
           git config user.name "factory-bot"
