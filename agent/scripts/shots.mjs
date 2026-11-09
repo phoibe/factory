@@ -172,6 +172,15 @@ export function sameScreens(before, after, files) {
   return files.filter((f) => existsSync(join(before, f)) && !differs(readFileSync(join(before, f)), readFileSync(join(after, f))));
 }
 
+// Which screens to show and which ones only to list. No capture at all is a mistake (a wrong folder, a capture that
+// failed), never « nothing changed »: that would skip the owner's review without anything having been compared.
+export function screensToShow(before, after) {
+  const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
+  if (!all.length) throw new Error(`Aucune capture dans ${after} : relance la commande capture avant de publier.`);
+  const unchanged = sameScreens(before, after, all);
+  return { files: all.filter((f) => !unchanged.includes(f)), unchanged };
+}
+
 export function markdownTable({ repo, dir, files, unchanged = [] }) {
   const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
   const rows = orderFiles(files).map((f) => `| ${label(f)} | ![avant · après](${url(f)}) |`);
@@ -199,9 +208,7 @@ async function publish({ pr, before, after }) {
   // Always removed, even on a failure: a leftover worktree holds the branch and makes the next try fail.
   try {
     const from = before && existsSync(before) ? before : null;
-    const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-    const unchanged = sameScreens(from, after, all);
-    const files = all.filter((f) => !unchanged.includes(f));
+    const { files, unchanged } = screensToShow(from, after);
     if (files.length) {
       await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
       git(['add', '.'], wt);

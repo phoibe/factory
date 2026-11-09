@@ -12,9 +12,9 @@ test('the screenshots stage never asks to validate when no screen changed', () =
   assert.match(s, /revérifie/);
 });
 
-for (const stage of ['build.md', 'bugfix.md', 'acceptance-fix.md']) {
+for (const stage of ['build.md', 'bugfix.md', 'acceptance-fix.md', 'audit.md', 'skills-fix.md']) {
   test(`${stage}: no « captures à valider » when no screen changed`, () => {
-    assert.match(read(stage), /aucun écran n'a changé[^\n]*\n?[^\n]*`factory:checks` seul/i);
+    assert.match(read(stage).replace(/\s+/g, ' '), /aucun écran n'a changé, mets `factory:checks` seul/i);
   });
 }
 
