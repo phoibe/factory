@@ -20,7 +20,10 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // (full name → { number: comments }).
 // `chatServer`: { delay, answer } turns on the instant chat: its server answers `answer` after `delay` ms and
 // saves the conversation on the `factory-chat` branch the panel reads.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {} }, journey) {
+// `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
+// `framedRepos`: the projects that have a PRODUCT.md (already framed).
+// `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [] }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -62,6 +65,10 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      const slow = Object.keys(slowRepos).find((r) => path.startsWith(`/repos/${r}/`));
+      if (slow && req.method() === 'GET') await new Promise((r) => setTimeout(r, slowRepos[slow]));
+      const lag = slowReads.find(([pattern]) => pattern.test(req.url()))?.[1];
+      if (lag && req.method() === 'GET') await new Promise((r) => setTimeout(r, lag));
       if (req.method() !== 'GET') {
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
@@ -78,7 +85,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         return data ? json(data) : json({ message: 'Not Found' }, 404);
       }
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
-      if (path.endsWith('/contents/PRODUCT.md')) return json({}, 404);
+      if (path.endsWith('/contents/PRODUCT.md')) return framedRepos.some((r) => path === `/repos/${r}/contents/PRODUCT.md`) ? json({ content: '', encoding: 'base64', sha: 'p' }) : json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
       const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];
       if (file && file in files) return json({ content: Buffer.from(files[file]).toString('base64'), encoding: 'base64', sha: 's' });
@@ -103,6 +110,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (otherThread && repoComments[otherThread[1]]?.[otherThread[2]]) return json(repoComments[otherThread[1]][otherThread[2]]);
       const other = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(path)?.[1];
       if (other && repoIssues[other]) return json(q.get('state') === 'closed' ? [] : repoIssues[other]);
+      // The other projects have no file (a PRODUCT.md only when framed, above).
+      if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
     await journey({ page, writes, url: `http://localhost:${server.address().port}/` });

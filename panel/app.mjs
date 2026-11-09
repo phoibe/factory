@@ -259,8 +259,11 @@ async function openProject(fullName) {
   // A broken settings file opens with the default settings: it must never lock the panel on that project.
   const { raw, warning } = parseRawConfig(next.file?.content ? fromBase64(next.file.content) : null);
   if (warning) toast('Les paramètres de ce projet sont illisibles : les paramètres par défaut sont affichés.');
-  if (current && current.repo.full_name !== next.repo.full_name) cancelPendingGos();
+  const switched = current && current.repo.full_name !== next.repo.full_name;
+  if (switched) cancelPendingGos();
   current = next;
+  // Never the old project's cards under the new name (issue #319): its late answers are dropped and the board waits for this one.
+  if (switched) Object.assign(live, { repo: null, issues: null });
   store.set(PROJECT_KEY, current.repo.full_name);
   renderProjectList();
   const { config, warnings } = resolveConfig(raw, catalog, defaults);
@@ -275,12 +278,9 @@ async function openProject(fullName) {
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
   $('new-project').href = `${base}/issues/new?template=project.yml`;
-  // An already framed project gets « Revoir le cadrage »: the agent then updates the brief, never the foundations.
-  const r = current.repo.full_name;
-  const framed = (await Promise.all(['PRODUCT.md', 'docs/PRODUCT.md'].map((f) => api(`/repos/${r}/contents/${f}`).catch(() => null)))).some(Boolean);
-  $('new-project').textContent = framed ? 'Revoir le cadrage' : 'Cadrer le projet';
   $('issues-link').href = issuesUrl(base);
   $('issues-link').textContent = issuesLinkText(null);
+  // Everything under the name starts over at once, before any request (issue #319); the board's grey cards come with renderBoard.
   show('project-view');
   resetChat();
   renderRules();
@@ -288,8 +288,17 @@ async function openProject(fullName) {
   drawRelease();
   refreshRelease().catch(() => {});
   loadDelivery(current).catch(() => {});
+  loadFramed(current).catch(() => {});
   await renderBoard();
   if (!live.tick) startLive();
+}
+
+// An already framed project gets « Revoir le cadrage »: the agent then updates the brief, never the foundations.
+async function loadFramed(project) {
+  const r = project.repo.full_name;
+  const framed = (await Promise.all(['PRODUCT.md', 'docs/PRODUCT.md'].map((f) => api(`/repos/${r}/contents/${f}`).catch(() => null)))).some(Boolean);
+  if (current !== project) return;
+  $('new-project').textContent = framed ? 'Revoir le cadrage' : 'Cadrer le projet';
 }
 
 // ---- Live board -------------------------------------------------------------------------------
@@ -358,9 +367,10 @@ async function refresh() {
         if (batch.length < 100) break;
       }
     }
-    if (live.repo !== repo) return; // the owner switched project meanwhile
+    if (live.repo !== repo || current.repo.full_name !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
     if (current.config.production === 'approval') await refreshRelease().catch((e) => (e?.rateLimited ? Promise.reject(e) : null));
+    if (live.repo !== repo || current.repo.full_name !== repo) return; // switched while the release list was read
     if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
@@ -403,13 +413,15 @@ async function refresh() {
         previewsChanged = true;
       }
     });
-    if (live.repo !== repo) return;
+    if (live.repo !== repo || current.repo.full_name !== repo) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
     live.last = Date.now();
     live.failures = 0;
     if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
+    // A failure of a project left meanwhile says nothing about the one on screen.
+    if (live.repo !== repo || current?.repo.full_name !== repo) return;
     // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
     if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
@@ -1522,6 +1534,9 @@ function resetChat() {
   Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null });
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
+  // The old project's « new answers » count goes with it.
+  $('chat-badge').hidden = true;
+  $('chat-badge-label').textContent = '';
   if (!$('chat').hidden) openChat(); else scheduleChat(2000);
 }
 
