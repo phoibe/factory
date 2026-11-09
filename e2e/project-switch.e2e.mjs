@@ -58,7 +58,7 @@ test('en cliquant très vite sur trois projets à la suite, le nom et les cartes
     await watchTitles(page);
     await pick(page, 'alpha');
     await page.locator('.ticket', { hasText: 'Carte du projet alpha' }).waitFor();
-    await page.waitForTimeout(2500); // the late answers of delta come in meanwhile
+    await page.waitForTimeout(2500); // delta's slow answers would come in meanwhile
     assert.equal(await page.locator('#project-name').textContent(), 'alpha');
     assert.deepEqual(await page.locator('#board .ticket').allTextContents().then((t) => t.map((x) => /projet (\w+)/.exec(x)?.[1])), ['alpha']);
     assert.doesNotMatch(await seen(page), /projet (delta|r)\b/);
@@ -75,5 +75,31 @@ test('en revenant au premier projet, ses cartes s\'affichent correctement, comme
     await pick(page, 'r');
     await page.locator('.ticket', { hasText: 'Carte du projet r' }).waitFor();
     assert.equal(await page.locator('#board .ticket').count(), 1);
+  });
+});
+
+test('une réponse tardive d\'un projet quitté ne change pas le menu du projet en cours', async () => {
+  await withPanel({ repos, issues, repoIssues, slowRepos: { 'o/delta': 1500 }, framedRepos: ['o/delta'], viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await openR(page);
+    await page.goto(url);
+    await page.locator('.ticket', { hasText: 'Carte du projet r' }).waitFor();
+    await pick(page, 'delta');
+    await pick(page, 'alpha');
+    await page.locator('.ticket', { hasText: 'Carte du projet alpha' }).waitFor();
+    await page.waitForTimeout(2500); // delta's answers (already framed) come in meanwhile
+    assert.equal(await page.locator('#new-project').textContent(), 'Cadrer le projet');
+  });
+});
+
+test('si le projet quitté ne répond plus, le nouveau projet n\'affiche pas « Connexion perdue »', async () => {
+  const failing = new Set(['/repos/o/alpha/issues']);
+  await withPanel({ repos, issues, repoIssues, failing, slowRepos: { 'o/alpha': 1500, 'o/r': 3000 }, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/alpha'));
+    await page.goto(url);
+    await page.waitForFunction(() => document.getElementById('project-name').textContent === 'alpha');
+    await pick(page, 'r');
+    await page.waitForTimeout(2000); // alpha's request fails meanwhile
+    assert.doesNotMatch(await page.locator('#board').textContent(), /Connexion perdue/);
+    await page.locator('.ticket', { hasText: 'Carte du projet r' }).waitFor({ timeout: 15000 });
   });
 });

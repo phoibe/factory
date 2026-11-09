@@ -419,6 +419,8 @@ async function refresh() {
     live.failures = 0;
     if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
   } catch (err) {
+    // A failure of a project left meanwhile says nothing about the one on screen.
+    if (live.repo !== repo || current?.repo.full_name !== repo) return;
     // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
     if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
