@@ -33,6 +33,12 @@ export function planChecks(enabled, pkg) {
   });
 }
 
+// The project's own checks, set in the panel (« Contrôles supplémentaires »): run after the usual ones, by bash at the
+// root of the project. The rules come from the default branch, so a PR can neither add nor change one.
+export function planExtraChecks(config) {
+  return (config.extraChecks || []).filter((x) => x.enabled).map((x) => ({ id: 'extra', label: x.label, run: ['bash', '-c', x.command] }));
+}
+
 export function summary(results) {
   const icon = { pass: '✅', fail: '❌', missing: '⚠️', skipped: '➖' };
   const note = { missing: (r) => `script npm « ${r.script} » absent`, skipped: () => 'pas encore de tests (ajoutés à la prochaine construction)' };
@@ -162,6 +168,14 @@ function main() {
     } else status = run(c.run) === 0 ? 'pass' : 'fail';
     console.log('::endgroup::');
     if (status === 'fail') console.log(`::error::${c.label} : échec`);
+    results.push({ ...c, status });
+  }
+  for (const c of planExtraChecks(config)) {
+    console.log(`::group::${c.label} (contrôle supplémentaire)`);
+    console.log(`$ ${c.run[2]}`);
+    const status = run(c.run) === 0 ? 'pass' : 'fail';
+    console.log('::endgroup::');
+    if (status === 'fail') console.log(`::error::${c.label} : échec (contrôle supplémentaire du projet)`);
     results.push({ ...c, status });
   }
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary(results) + '\n');

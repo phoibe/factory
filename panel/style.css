@@ -53,6 +53,12 @@ legend { font-weight: 700; padding: 0 6px; }
 .row p { margin: -6px 0 0; color: var(--muted); font-size: .8125rem; }
 .pack-skills { margin: 8px 0 0 28px; }
 .sub-setting { margin-top: 12px; }
+.extra-fields { flex: 1; min-width: 0; }
+.extra-fields label { padding: 0; margin: 8px 0 4px; }
+.extra-fields label.extra-switch { padding: 10px 0 2px; margin: 0; }
+.extra-fields input[type=text] { width: 100%; font-size: 16px; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 44px; }
+.extra-fields input.mono { font-family: var(--mono); }
+.extra-fields button { margin-top: 10px; }
 .sub-setting[aria-disabled=true] { opacity: .7; }
 .pack-skills[aria-disabled=true] { opacity: .7; }
 details summary { cursor: pointer; color: var(--accent); margin-top: 6px; padding: 10px 0; }

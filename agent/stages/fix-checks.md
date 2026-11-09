@@ -13,6 +13,9 @@ Les contrôles automatiques ont échoué sur la PR.
    **« Pas de package.json »** : le projet n'est pas en JavaScript et n'a pas encore le branchement qui lance ses
    propres outils sous les noms des contrôles. Ajoute-le comme le décrit l'étape 4 de `stages/stack.md` : ce n'est
    pas un contournement, c'est la façon prévue de contrôler un projet qui n'utilise pas npm.
+   **« contrôle supplémentaire du projet »** : un contrôle propre à ce projet, que le propriétaire a déclaré dans le
+   panneau (`extraChecks` de `factory.config.json`, commande lancée par bash à la racine du projet). Corrige le code
+   qu'il signale ; ne retouche jamais sa commande ni `factory.config.json` (seul le propriétaire les règle).
 2. Reproduis l'échec localement, corrige la cause (jamais en désactivant un test ou un contrôle), vérifie, push.
 3. Labels de la PR : retire `factory:fixing`, ajoute `factory:checks`.
 4. Pas besoin de commenter si tout s'est bien passé.
