@@ -19,6 +19,7 @@ des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil
 5. Labels de la PR : retire `factory:fixing`. Si `screenshots` est dans `missing`, ou si la revue ou la passe design a changé l'apparence, et que l'étape
    screenshots est active, refais les captures en suivant **tout** `screenshots.md`, y compris le commentaire
    avec le tableau : commence-le par une phrase qui dit que le rattrapage a retouché l'écran et ce qui a changé,
-   et que le propriétaire doit revalider. Puis mets `factory:visual-review` puis `factory:checks`. Sans ce commentaire, le dernier
+   et que le propriétaire doit revalider. Puis mets `factory:visual-review` puis `factory:checks` (mais
+   si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`), et ta phrase dit seulement que le rattrapage n'a rien changé à l'écran). Sans ce commentaire, le dernier
    message de la PR dit « rien à faire » alors que le tableau de suivi dit « À vous de jouer ».
    Sinon mets `factory:checks`, sans commenter.

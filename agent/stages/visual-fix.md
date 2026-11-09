@@ -8,3 +8,6 @@ Le propriétaire a commenté les captures de la PR sans les valider.
    passe design : elle a déjà eu lieu à la construction, et le propriétaire juge lui-même les nouvelles captures.
 3. Refais les captures (`screenshots.md`) et commente avec le nouveau tableau. Le label reste `factory:visual-review` ;
    remets `factory:checks` pour que les contrôles retournent sur le nouveau code.
+   **Plus aucun écran ne diffère de la version en ligne** (la sortie de l'outil contient `<!-- factory-shots-unchanged -->`) :
+   il n'y a plus rien à valider. Commente seulement avec la sortie de l'outil (sa phrase d'information, sans question),
+   retire `factory:visual-review` de la PR et remets `factory:checks` : la carte passe aux contrôles, puis à la recette.

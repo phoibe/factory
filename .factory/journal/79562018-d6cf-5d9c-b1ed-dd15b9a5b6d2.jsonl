@@ -1,0 +1,8 @@
+{"t":"2026-11-09T07:13:46.981Z","kind":"run","stage":"build","issue":303,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-09T07:14:36.915Z","kind":"skill","name":"test-driven-development","id":"toolu_01A53UaSSuYkMskvRJn7HZLP"}
+{"t":"2026-11-09T07:14:50.577Z","kind":"test","cmd":"sed -i \"s/^import { sameScreens, slug, markdownTable,/import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER,/\" test/shots.test.mjs && cat >> test/shots.test.mjs <<'EOF'\n\ntest('when no screen cha","ok":false,"id":"toolu_0181jT22VRRpanDgQwNWSVzf"}
+{"t":"2026-11-09T07:15:26.507Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":false,"id":"toolu_01CVswgVPo47yduc2qASmeDr"}
+{"t":"2026-11-09T07:16:24.321Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\ndef rep(p, old, new):\n    s=open(p).read(); assert old in s, (p, old); open(p,'w').write(s.replace(old,new,1))\nR=\"si l'outil dit qu'aucun écran n'a changé, mets `factory:ch","ok":false,"id":"toolu_01TffVTDJqHQQNx3uzpLXm5g"}
+{"t":"2026-11-09T07:16:27.244Z","kind":"test","cmd":"node --test test/no-empty-review.test.mjs 2>&1 | grep -A12 \"^not ok\" | head -20","ok":false,"id":"toolu_017MJqk9nAuuNoNc7mbg8eyj"}
+{"t":"2026-11-09T07:17:02.036Z","kind":"test","cmd":"sed -i 's|/ne demande rien/|/ne\\\\s+demande\\\\s+rien/|; s|/pas `factory:visual-review`/|/pas\\\\s+`factory:visual-review`/|' test/no-empty-review.test.mjs && npm test 2>&1 | grep -E \"^# (pass|fail)|^not o","ok":true,"id":"toolu_01Th8J211yw3ZGZk39sPgT2H"}
+{"t":"2026-11-09T07:17:08.680Z","kind":"skill","name":"requesting-code-review","id":"toolu_01RPtBDxbUmiXPVB2rWCME8G"}

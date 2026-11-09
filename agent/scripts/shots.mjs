@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 export const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
 export const ASSETS_BRANCH = 'claude/factory-assets';
+// Written when no screen changed: there is nothing to validate, so the agent does not ask for an « ok » (issue #303).
+export const NO_CHANGE_MARKER = '<!-- factory-shots-unchanged -->';
+export const NO_CHANGE_SENTENCE = "J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence.";
 
 export function parseArgs(argv) {
   const out = { _: [] };
@@ -172,9 +175,9 @@ export function sameScreens(before, after, files) {
 export function markdownTable({ repo, dir, files, unchanged = [] }) {
   const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
   const rows = orderFiles(files).map((f) => `| ${label(f)} | ![avant · après](${url(f)}) |`);
-  const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : "Aucun écran n'a changé d'apparence.";
+  const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : NO_CHANGE_SENTENCE;
   // The hidden mark names the assets branch even when no image is shown: the factory reads it as « captures shown ».
-  const mark = `<!-- shots: ${ASSETS_BRANCH} -->`;
+  const mark = `<!-- shots: ${ASSETS_BRANCH} -->${rows.length ? '' : `\n${NO_CHANGE_MARKER}`}`;
   if (!unchanged.length) return `${mark}\n${table}`;
   return `${mark}\n${table}\n\n_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._`;
 }

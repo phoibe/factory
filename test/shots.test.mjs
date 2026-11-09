@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameScreens, slug, markdownTable, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -80,7 +80,7 @@ test('screens identical before and after are listed, not shown, and the table st
   assert.match(md, /claude\/factory-assets/);
   assert.match(md, /identiques avant et après, non montrés : accueil · mobile/);
   assert.doesNotMatch(md, /\| accueil · mobile \|/);
-  assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /Aucun écran n'a changé/);
+  assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /aucun n'a changé d'apparence/);
 });
 
 test('the script runs from a folder whose path has a space', async () => {
@@ -160,4 +160,18 @@ test('each shot hides the text caret and stops animations', async () => {
   const { FROZEN_SHOT } = await import('../agent/scripts/shots.mjs');
   assert.equal(FROZEN_SHOT.caret, 'hide');
   assert.equal(FROZEN_SHOT.animations, 'disabled');
+});
+
+test('when no screen changed, the output carries the no-change mark and only an information sentence, no question', () => {
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: ['accueil--mobile.png'] });
+  assert.equal(NO_CHANGE_MARKER, '<!-- factory-shots-unchanged -->');
+  assert.ok(md.includes(NO_CHANGE_MARKER));
+  assert.match(md, /J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence\./);
+  assert.doesNotMatch(md, /Répondez|\?/);
+  assert.match(md, /claude\/factory-assets/);
+});
+
+test('when a screen changed, the output has no no-change mark', () => {
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: ['accueil--mobile.png'] });
+  assert.ok(!md.includes(NO_CHANGE_MARKER));
 });
