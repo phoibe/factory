@@ -73,9 +73,24 @@ pas de spec : tu l'établis en lisant le projet.
 - <précisions utiles : étapes, retour arrière>
 ```
 
-4. **Vérifie** : relis la fiche contre les fichiers de dépendances (aucune bibliothèque oubliée ni inventée), puis
+4. **Contrôles de la factory** : ils lancent les scripts npm `typecheck`, `lint`, `test`, `build` et `test:a11y`
+   (ceux que `factory.config.json` active). **Si le projet n'a pas de `package.json` à la racine** (projet Python,
+   Go…, souvent adopté), aucun contrôle ne peut tourner et cette PR même resterait rouge : ajoute dans la même PR
+   ce branchement, ce n'est pas un contournement.
+   - un `package.json` sans aucune dépendance npm (`"private": true`, une `description` qui dit son rôle) dont les
+     scripts lancent les **vrais outils du projet** sous ces noms : son vérificateur de types, son linter, sa
+     suite de tests, sa construction (image Docker, compilation…) ;
+   - si ces outils demandent une préparation (venv Python, version précise du langage), un script du projet, par
+     exemple `scripts/controles_factory.sh`, la fait **sur une machine de GitHub** (variable `CI`) depuis les
+     fichiers de dépendances du projet, puis lance l'outil. Modèle : `scripts/controles_factory.sh` de Pulsar Wheel ;
+   - lance chaque script toi-même avant de pousser. Un contrôle qui n'a pas d'équivalent dans le projet, ou qui ne
+     peut pas tourner sur une machine de GitHub (navigateurs, secrets, durée), ne fait jamais semblant de réussir :
+     il échoue en disant pourquoi, et ton message sur l'issue demande au propriétaire de le couper dans le
+     panneau (onglet Paramètres), en une phrase par contrôle. Mets alors `factory:blocked` sur l'issue ;
+   - cite ce branchement dans la fiche, sous « Pour la fabrication et les tests ».
+5. **Vérifie** : relis la fiche contre les fichiers de dépendances (aucune bibliothèque oubliée ni inventée), puis
    lance les tests du projet (`npm test` s'il existe) et `node .factory/scripts/journal-check.mjs`.
-5. **PR** (API REST, voir AGENT.md) : résumé en français (« La fiche stack technique du projet : vous la verrez avec
+6. **PR** (API REST, voir AGENT.md) : résumé en français (« La fiche stack technique du projet : vous la verrez avec
    le bouton « Stack technique » du panneau »), le marqueur `<!-- factory-nothing-to-test -->` sur une ligne (rien ne
    change dans l'appli), `Closes #<n>`, puis les détails en anglais. Mets `factory:checks` sur la PR.
-6. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
+7. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
