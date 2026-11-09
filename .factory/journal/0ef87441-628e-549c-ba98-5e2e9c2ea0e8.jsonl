@@ -10,3 +10,5 @@
 {"t":"2026-11-09T14:42:58.840Z","kind":"test","cmd":"sed -i \"s/## Modèle et effort des sous-agents/**Modèle et effort des sous-agents.**/g\" test/model-grid.test.mjs docs/plans/issue-309.md && npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; grep -rn \"S","ok":false,"id":"toolu_01LctgXmgAZXkV6owpnryRKP"}
 {"t":"2026-11-09T14:43:00.805Z","kind":"test","cmd":"node --test test/model-grid.test.mjs 2>&1 | grep -A10 \"error:\" | head -14","ok":true,"id":"toolu_01Jh5UFTeCYB9U6hhnKr1w4d"}
 {"t":"2026-11-09T14:43:41.968Z","kind":"test","cmd":"sed -i 's#/jamais `xhigh` ni `max`/#/jamais `xhigh` ni `max`/i#' test/model-grid.test.mjs && npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; npm run typecheck 2>&1 | tail -2; npm run lint 2>&1 | tai","ok":true,"id":"toolu_01Uq7tzgBeV2n2gPkK1okf1w"}
+{"t":"2026-11-09T14:43:52.519Z","kind":"skill","name":"requesting-code-review","id":"toolu_01EzJNsrHDp8VS24Kmt5mDvL"}
+{"t":"2026-11-09T14:45:49.560Z","kind":"test","cmd":"git rev-parse HEAD && npm test 2>&1 | tail -15","ok":true,"id":"toolu_01GrhvdWeyfkrg5tFSZmTLNw"}
