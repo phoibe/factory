@@ -8,13 +8,12 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=34">
+  <link rel="stylesheet" href="style.css?v=36">
 </head>
 <body>
   <header class="top">
     <a class="brand" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V10l5 3V10l5 3V6l8 4v10z"/></svg>Factory</a>
     <nav id="nav" hidden>
-      <select id="project" aria-label="Projet"></select>
       <a class="button ghost" data-menu href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip">Outils Mac</a>
       <button id="stable" data-menu class="ghost" type="button" hidden>Déclarer stable</button>
       <button id="phone-open" data-menu class="ghost" type="button">Sur mon téléphone</button>
@@ -43,7 +42,7 @@
     <section id="project-view" hidden>
       <div class="project-head">
         <div>
-          <h1 id="project-name"></h1>
+          <h1 class="project-title"><span id="project-name"></span><button id="project-switch" type="button" class="project-switch" aria-haspopup="dialog"><span id="project-switch-name"></span><span class="switch-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><span id="switch-dot" class="pdot" hidden></span></span></button></h1>
           <p id="project-sub" class="muted"></p>
           <p class="site-line" data-menu><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a><span id="runs-sep" class="sep" aria-hidden="true" hidden>·</span><a id="runs" class="quiet-link" href="https://claude.ai/code/routines" target="_blank" rel="noopener" hidden></a></p>
         </div>
@@ -95,6 +94,17 @@
       <div id="rules-panel" role="tabpanel" aria-labelledby="tab-rules" hidden><form id="rules"></form></div>
     </section>
   </main>
+  <aside id="projects" class="projects" aria-labelledby="projects-title" hidden>
+    <h2 id="projects-title">Projets</h2>
+    <ul id="projects-list" class="project-list"></ul>
+  </aside>
+  <dialog id="projects-dialog" aria-labelledby="projects-dialog-title">
+    <div class="projects-dialog-head">
+      <h2 id="projects-dialog-title">Projets</h2>
+      <button id="projects-close" type="button" class="secondary">Fermer</button>
+    </div>
+    <ul id="projects-dialog-list" class="project-list"></ul>
+  </dialog>
   <dialog id="phone" aria-labelledby="phone-title">
     <h2 id="phone-title">Ouvrir le panneau sur votre téléphone</h2>
     <div id="phone-qr"></div>
@@ -124,6 +134,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=46"></script>
+  <script type="module" src="app.mjs?v=47"></script>
 </body>
 </html>
