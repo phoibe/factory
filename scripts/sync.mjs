@@ -16,7 +16,7 @@ const STAGE_LABELS = {
 
 // The journal records what the agent does; the gate refuses to let a PR move on while a step is missing.
 const FACTORY_HOOKS = [
-  ['UserPromptSubmit', null, 'journal.mjs'], ['PostToolUse', 'Skill|Bash', 'journal.mjs'], ['PostToolUseFailure', 'Bash', 'journal.mjs'],
+  ['UserPromptSubmit', null, 'journal.mjs'], ['PostToolUse', 'Skill|Bash|Agent|Task', 'journal.mjs'], ['PostToolUseFailure', 'Bash', 'journal.mjs'],
   ['PreToolUse', 'Bash|mcp__github__.*', 'gate.mjs'], ['Stop', null, 'gate.mjs'],
 ];
 const isFactoryHook = (g) => (g.hooks || []).some((h) => /\.factory\/scripts\/(journal|gate)\.mjs/.test(String(h.command || '')));

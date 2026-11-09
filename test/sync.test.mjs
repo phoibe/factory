@@ -58,7 +58,7 @@ test('installs the journal hook and keeps the project settings', () => {
   assert.deepEqual(s.permissions, { allow: ['Bash(ls)'] });
   assert.equal(s.hooks.PostToolUse.length, 2);
   assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'echo mine');
-  assert.equal(s.hooks.PostToolUse[1].matcher, 'Skill|Bash');
+  assert.equal(s.hooks.PostToolUse[1].matcher, 'Skill|Bash|Agent|Task');
   assert.equal(s.hooks.UserPromptSubmit.length, 1);
   assert.match(s.hooks.PreToolUse[0].hooks[0].command, /gate\.mjs/);
   assert.equal(s.hooks.Stop.length, 1);
