@@ -95,10 +95,17 @@ test('machine follows the general setting by default; only dev-server or github 
   assert.ok(warnings.some((w) => w.includes('machine')));
 });
 
-test('production is « auto » by default, « approval » when asked, and an unknown value falls back with a warning (#294)', () => {
-  assert.equal(resolveConfig({}, catalog).config.production, 'auto');
-  assert.equal(resolveConfig({ production: 'approval' }, catalog).config.production, 'approval');
+test('production is unset by default (the stack sheet decides), set when asked, and an unknown value is dropped with a warning', async () => {
+  const { effectiveProduction } = await import('../scripts/lib/config-core.mjs');
+  assert.equal(resolveConfig({}, catalog).config.production, undefined);
+  for (const mode of ['auto', 'approval', 'external']) assert.equal(resolveConfig({ production: mode }, catalog).config.production, mode);
   const bad = resolveConfig({ production: 'later' }, catalog);
-  assert.equal(bad.config.production, 'auto');
+  assert.equal(bad.config.production, undefined);
   assert.equal(bad.warnings.length, 1);
+  // Unset: the sheet decides (« Manuelle » → external, anything else → automatic). Set: the setting wins.
+  assert.equal(effectiveProduction({}, null), 'auto');
+  assert.equal(effectiveProduction({}, { mode: 'auto' }), 'auto');
+  assert.equal(effectiveProduction({}, { mode: 'manual' }), 'external');
+  assert.equal(effectiveProduction({ production: 'auto' }, { mode: 'manual' }), 'auto');
+  assert.equal(effectiveProduction({ production: 'external' }, null), 'external');
 });

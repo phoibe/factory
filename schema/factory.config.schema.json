@@ -11,7 +11,7 @@
     "autoPick": { "type": "boolean", "description": "Piocher automatiquement dans les fiches existantes quand des places sont libres" },
     "stack": { "type": "string", "description": "Stack technique par défaut" },
     "siteUrl": { "type": "string", "pattern": "^https://\\S+$", "description": "Adresse du site en ligne" },
-    "production": { "enum": ["auto", "approval"], "description": "Mise en production : automatique, ou sur accord du propriétaire (bouton « Mise en production »)" },
+    "production": { "enum": ["auto", "approval", "external"], "description": "Mise en production : automatique, sur accord du propriétaire (bouton « Mise en production »), ou externe (faite hors de la factory, qui s'arrête au merge). Absent : selon la fiche stack." },
     "stages": {
       "type": "object",
       "properties": {
