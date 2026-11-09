@@ -103,3 +103,17 @@ test('si le projet quitté ne répond plus, le nouveau projet n\'affiche pas « 
     await page.locator('.ticket', { hasText: 'Carte du projet r' }).waitFor({ timeout: 15000 });
   });
 });
+
+test('sur un projet en « mise en production sur mon accord », changer de projet pendant sa vérification ne ramène pas son compteur', async () => {
+  await withPanel({ repos, issues, repoIssues, config: { production: 'approval' }, slowReads: [[/labels=factory%3Aawaiting-production/, 2000]], slowRepos: { 'o/alpha': 3000 }, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await openR(page);
+    await page.goto(url);
+    await page.waitForFunction(() => document.getElementById('project-name').textContent === 'r');
+    await page.waitForTimeout(500); // r's refresh now waits for its « mise en production » list
+    await pick(page, 'alpha');
+    await page.waitForTimeout(2500);
+    assert.equal(await page.locator('#project-name').textContent(), 'alpha');
+    assert.doesNotMatch(await page.locator('#issues-link').textContent(), /\d/, 'no count from r');
+    assert.doesNotMatch(await page.locator('#board').textContent(), /projet r\b/);
+  });
+});

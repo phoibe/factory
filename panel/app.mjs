@@ -370,6 +370,7 @@ async function refresh() {
     if (live.repo !== repo || current.repo.full_name !== repo) return; // the owner switched project meanwhile
     if (ev.changed) mergeEvents(ev.data);
     if (current.config.production === 'approval') await refreshRelease().catch((e) => (e?.rateLimited ? Promise.reject(e) : null));
+    if (live.repo !== repo || current.repo.full_name !== repo) return; // switched while the release list was read
     if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
