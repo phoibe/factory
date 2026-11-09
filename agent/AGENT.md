@@ -95,7 +95,7 @@ Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadra
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
 Sur la PR : `factory:visual-review` (captures à valider) **et** `factory:checks` (contrôles automatiques, posés
 ensemble : les contrôles tournent pendant qu'il regarde les captures, et son « ok » sur les captures vaut recette ;
-`factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, `factory:checks` seul, puis
+`factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, ou quand aucun écran n'a changé d'apparence (rien à valider), `factory:checks` seul, puis
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
 **Bloqué parce que tu attends la fusion d'une autre demande** (du même projet) : bloque-toi comme d'habitude

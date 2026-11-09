@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameScreens, slug, markdownTable, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -80,7 +80,7 @@ test('screens identical before and after are listed, not shown, and the table st
   assert.match(md, /claude\/factory-assets/);
   assert.match(md, /identiques avant et après, non montrés : accueil · mobile/);
   assert.doesNotMatch(md, /\| accueil · mobile \|/);
-  assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /Aucun écran n'a changé/);
+  assert.match(markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: same }), /aucun n'a changé d'apparence/);
 });
 
 test('the script runs from a folder whose path has a space', async () => {
@@ -160,4 +160,38 @@ test('each shot hides the text caret and stops animations', async () => {
   const { FROZEN_SHOT } = await import('../agent/scripts/shots.mjs');
   assert.equal(FROZEN_SHOT.caret, 'hide');
   assert.equal(FROZEN_SHOT.animations, 'disabled');
+});
+
+test('when no screen changed, the output carries the no-change mark and only an information sentence, no question', () => {
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: [], unchanged: ['accueil--mobile.png'] });
+  assert.ok(md.includes(NO_CHANGE_MARKER));
+  assert.ok(md.includes(NO_CHANGE_SENTENCE));
+  assert.doesNotMatch(md, /Répondez|\?/);
+  assert.match(md, /claude\/factory-assets/);
+});
+
+test('when a screen changed, the output has no no-change mark', () => {
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: ['accueil--mobile.png'] });
+  assert.ok(!md.includes(NO_CHANGE_MARKER));
+});
+
+test('no capture at all is an error, never reported as « no screen changed »', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const empty = mkdtempSync(join(tmpdir(), 'a-'));
+  assert.throws(() => screensToShow(null, empty), /Aucune capture/);
+});
+
+test('identical captures before and after end in the no-change output, with nothing to show', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  for (const f of ['accueil--mobile.png', 'accueil--desktop.png']) { writeFileSync(join(before, f), 'x'); writeFileSync(join(after, f), 'x'); }
+  const { files, unchanged } = screensToShow(before, after);
+  assert.deepEqual(files, []);
+  assert.deepEqual(unchanged, ['accueil--desktop.png', 'accueil--mobile.png']);
+  assert.ok(markdownTable({ repo: 'o/r', dir: 'd', files, unchanged }).includes(NO_CHANGE_MARKER));
 });

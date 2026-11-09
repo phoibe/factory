@@ -34,6 +34,15 @@
    (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
-6. Commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
+6. **Aucun écran n'a changé** : la sortie de l'outil contient alors `<!-- factory-shots-unchanged -->` et la phrase
+   « J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence. ».
+   - Si la demande prévoyait justement un changement d'apparence, revérifie d'abord tes captures (bonne page, bon état
+     d'écran, bonne option de thème sombre) et refais-les si l'une était mal prise.
+   - Si c'est confirmé, commente la PR : `<!-- factory-agent -->`, puis la sortie de l'outil telle quelle (avec ses marques
+     cachées), plus, si un changement d'apparence était prévu, une phrase qui explique pourquoi rien ne se voit. On ne
+     demande rien au propriétaire : pas de « Répondez « ok » », et pas `factory:visual-review` sur la PR, seulement
+     `factory:checks`. La carte passe directement aux contrôles, puis à la suite habituelle (recette ou mise en
+     ligne, selon les règles de la factory, qui ne changent pas).
+7. **Au moins un écran a changé** : commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
    sombre), le tableau (un écran que la feature ne devait pas toucher et qui a changé : corrige-le d'abord, ou
    explique pourquoi en une phrase), puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »

@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 export const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
 export const ASSETS_BRANCH = 'claude/factory-assets';
+// Written when no screen changed: there is nothing to validate, so the agent does not ask for an « ok » (issue #303).
+export const NO_CHANGE_MARKER = '<!-- factory-shots-unchanged -->';
+export const NO_CHANGE_SENTENCE = "J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence.";
 
 export function parseArgs(argv) {
   const out = { _: [] };
@@ -169,12 +172,21 @@ export function sameScreens(before, after, files) {
   return files.filter((f) => existsSync(join(before, f)) && !differs(readFileSync(join(before, f)), readFileSync(join(after, f))));
 }
 
+// Which screens to show and which ones only to list. No capture at all is a mistake (a wrong folder, a capture that
+// failed), never « nothing changed »: that would skip the owner's review without anything having been compared.
+export function screensToShow(before, after) {
+  const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
+  if (!all.length) throw new Error(`Aucune capture dans ${after} : relance la commande capture avant de publier.`);
+  const unchanged = sameScreens(before, after, all);
+  return { files: all.filter((f) => !unchanged.includes(f)), unchanged };
+}
+
 export function markdownTable({ repo, dir, files, unchanged = [] }) {
   const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
   const rows = orderFiles(files).map((f) => `| ${label(f)} | ![avant · après](${url(f)}) |`);
-  const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : "Aucun écran n'a changé d'apparence.";
+  const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : NO_CHANGE_SENTENCE;
   // The hidden mark names the assets branch even when no image is shown: the factory reads it as « captures shown ».
-  const mark = `<!-- shots: ${ASSETS_BRANCH} -->`;
+  const mark = `<!-- shots: ${ASSETS_BRANCH} -->${rows.length ? '' : `\n${NO_CHANGE_MARKER}`}`;
   if (!unchanged.length) return `${mark}\n${table}`;
   return `${mark}\n${table}\n\n_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._`;
 }
@@ -196,9 +208,7 @@ async function publish({ pr, before, after }) {
   // Always removed, even on a failure: a leftover worktree holds the branch and makes the next try fail.
   try {
     const from = before && existsSync(before) ? before : null;
-    const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
-    const unchanged = sameScreens(from, after, all);
-    const files = all.filter((f) => !unchanged.includes(f));
+    const { files, unchanged } = screensToShow(from, after);
     if (files.length) {
       await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
       git(['add', '.'], wt);
