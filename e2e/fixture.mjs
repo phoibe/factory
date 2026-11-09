@@ -20,7 +20,8 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // (full name → { number: comments }).
 // `chatServer`: { delay, answer } turns on the instant chat: its server answers `answer` after `delay` ms and
 // saves the conversation on the `factory-chat` branch the panel reads.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {} }, journey) {
+// `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -62,6 +63,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      const slow = Object.keys(slowRepos).find((r) => path.startsWith(`/repos/${r}/`));
+      if (slow && req.method() === 'GET') await new Promise((r) => setTimeout(r, slowRepos[slow]));
       if (req.method() !== 'GET') {
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
