@@ -43,3 +43,7 @@ La factory n'a pas d'application à installer : c'est un panneau web, un moteur 
 - **Claude (abonnement)** — fait travailler l'agent et répond dans la discussion. Payant, compte nécessaire. Le nombre de lancements de l'agent par jour dépend de votre abonnement.
 - **Modal** — héberge le serveur de discussion en direct. Gratuit, compte nécessaire. Gratuit jusqu'à 30 $ d'usage par mois.
 - **ntfy** — envoie les alertes sur votre téléphone. Gratuit, sans compte. Le service public limite le nombre de messages par jour (limite à vérifier), très au-dessus de l'usage de la factory.
+
+## Mise en production
+- **Automatique** — chaque merge sur la branche principale publie le panneau sur GitHub Pages (`.github/workflows/pages.yml`) ; vos projets reçoivent la nouvelle version quand la version stable avance
+- **Retour arrière** : la factory annule d'elle-même une livraison qui casse le site en ligne

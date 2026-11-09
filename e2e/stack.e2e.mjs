@@ -44,7 +44,7 @@ test('la fiche de la factory montre ses parties dans l\'ordre, avec « Mise à j
     await page.getByRole('button', { name: 'Stack technique' }).click();
     await page.waitForSelector('#stack[open] #stack-body h3');
     assert.equal(await page.locator('#stack-date').textContent(), 'Mise à jour le 6 novembre 2026');
-    assert.deepEqual(await page.locator('#stack-body h3').allTextContents(), ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires']);
+    assert.deepEqual(await page.locator('#stack-body h3').allTextContents(), ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires', 'Mise en production']);
     const text = await page.locator('#stack-body').textContent();
     for (const name of ['GitHub Pages', 'GitHub Actions', 'FastAPI 0.115', 'Modal', 'Playwright 1.56', 'axe-core 4.10']) assert.ok(text.includes(name), name);
   });

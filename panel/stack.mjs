@@ -1,6 +1,8 @@
 // The project's stack sheet (STACK.md, written by the agent): pure helpers, tested in test/panel-stack.test.mjs.
 // The sheet's `##` headings are its sections, in the order below; `###` are sub-headings (« Bibliothèques »).
-export const STACK_SECTIONS = ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires'];
+export const STACK_SECTIONS = ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires', 'Mise en production'];
+// The section that says whether a merge puts the project in production by itself (read by the relay and the panel).
+export const DELIVERY_SECTION = 'Mise en production';
 export const STACK_FILE = 'STACK.md';
 
 // { intro: [paragraphs before the first section], sections: [{ title, blocks: [{ type: 'p'|'h'|'ul', … }] }] }.
@@ -34,6 +36,18 @@ export function parseStack(md) {
   }
   flush();
   return { intro, sections };
+}
+
+// How the project goes to production, as its sheet says in « ## Mise en production »: its first item starts with
+// « **Automatique** » (the host publishes every merge by itself) or « **Manuelle** » (a merge publishes nothing: the
+// owner does it, as the rest of the line says). { mode: 'auto'|'manual', how } — null when the sheet says neither
+// (an older sheet without the section, or a line the agent wrote otherwise): the factory then keeps its former ways.
+export function deliveryOf(md) {
+  const section = parseStack(md).sections.find((s) => s.title.toLowerCase() === DELIVERY_SECTION.toLowerCase());
+  const first = section?.blocks.find((b) => b.type === 'ul')?.items[0] || '';
+  const m = /^\*\*\s*(automatique|manuelle)\b[^*]*\*\*\s*(?:[:—–-]\s*)?(.*)$/i.exec(first.trim());
+  if (!m) return null;
+  return { mode: m[1].toLowerCase() === 'manuelle' ? 'manual' : 'auto', how: m[2].trim() };
 }
 
 // « **Node.js 22** — moteur » → bold and plain parts, for display without innerHTML.
