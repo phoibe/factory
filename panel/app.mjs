@@ -5,7 +5,7 @@ import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } 
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
 import { waitedFor } from './waits.mjs?v=1';
-import { resolveConfig, parseRawConfig, effectiveProduction } from './config-core.mjs';
+import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
@@ -1043,6 +1043,7 @@ function renderRules() {
   const checks = el('fieldset', {}, el('legend', {}, 'Contrôles automatiques'),
     CHECKS.map(([k, t]) => el('div', { class: 'row' }, checkbox(`check-${k}`, c.checks[k], (on) => update(setPath(c, `checks.${k}`, on))),
       el('label', { for: `check-${k}` }, t))));
+  const extras = extraChecksFieldset(c, update);
   const packs = catalog.packs.map((p) => {
     const pc = c.skills[p.id];
     const on = p.skills.filter((s) => pc.skills[s.id]).length;
@@ -1062,15 +1063,47 @@ function renderRules() {
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   const name = current.repo.name;
   form.replaceChildren(
-    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, production, machineFieldset(update), engine, stages, checks, ...packs]),
+    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
     rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
     bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 
 let savingRules = false;
+// « Contrôles supplémentaires »: the project's own checks, run after the usual ones (scripts/checks.mjs). Each one is a
+// name, the command run at the root of the project, and a switch. A project without any keeps no trace in its settings.
+function extraChecksFieldset(c, update) {
+  const list = c.extraChecks || [];
+  const set = (next) => {
+    const out = structuredClone(c);
+    if (next.length) out.extraChecks = next; else delete out.extraChecks;
+    update(out);
+  };
+  const edit = (i, patch) => set(list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const items = list.map((x, i) => el('div', { class: 'row extra-check' },
+    el('input', { type: 'checkbox', id: `extra-on-${i}`, checked: x.enabled !== false, 'aria-label': `Activer ${x.label || 'ce contrôle'}`, onchange: (e) => edit(i, { enabled: e.target.checked }) }),
+    el('div', { class: 'extra-fields' },
+      el('label', { for: `extra-on-${i}`, class: 'extra-switch' }, 'Activé'),
+      el('label', { for: `extra-label-${i}` }, 'Nom'),
+      el('input', { type: 'text', id: `extra-label-${i}`, value: x.label || '', maxlength: '60', autocomplete: 'off',
+        onchange: (e) => edit(i, { label: e.target.value.trim() }) }),
+      el('label', { for: `extra-command-${i}` }, 'Commande'),
+      el('input', { type: 'text', id: `extra-command-${i}`, class: 'mono', value: x.command || '', maxlength: '500', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off',
+        onchange: (e) => edit(i, { command: e.target.value.trim() }) }),
+      el('button', { type: 'button', class: 'secondary', 'aria-label': `Retirer ${x.label || 'ce contrôle'}`, onclick: () => set(list.filter((_, j) => j !== i)) }, 'Retirer'))));
+  return el('fieldset', {}, el('legend', {}, 'Contrôles supplémentaires'),
+    el('p', { class: 'muted small' }, 'Propres à ce projet, lancés à sa racine après les contrôles automatiques.'),
+    ...items,
+    el('button', { type: 'button', class: 'secondary', disabled: list.length >= MAX_EXTRA_CHECKS,
+      onclick: () => { set([...list, { label: '', command: '', enabled: true }]); $(`extra-label-${list.length}`)?.focus(); } }, 'Ajouter un contrôle'));
+}
+
 async function saveRules(e) {
   e.preventDefault();
+  if ((current.config.extraChecks || []).some((x) => !x.label?.trim() || !x.command?.trim())) {
+    toast('Chaque contrôle supplémentaire a besoin d\'un nom et d\'une commande.');
+    return;
+  }
   if (savingRules) return; // a second tap would send the same version twice, and GitHub refuses the second one
   savingRules = true;
   try { await writeRules(); } finally { savingRules = false; }

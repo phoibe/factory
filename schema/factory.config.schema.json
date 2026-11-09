@@ -30,6 +30,20 @@
       },
       "additionalProperties": false
     },
+    "extraChecks": {
+      "type": "array", "maxItems": 10,
+      "description": "Contrôles propres au projet, joués après les contrôles habituels : un nom, la commande lancée à la racine du projet, un interrupteur.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+          "command": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\r\\n]*$" },
+          "enabled": { "type": "boolean" }
+        },
+        "required": ["label", "command"],
+        "additionalProperties": false
+      }
+    },
     "skills": {
       "type": "object",
       "additionalProperties": {

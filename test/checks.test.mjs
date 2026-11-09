@@ -52,3 +52,36 @@ test('a download that fails on the network is an outage, a test that mentions th
   assert.equal(isOutage('install', 0, 'npm warn ECONNRESET, retrying'), false);
   assert.equal(isOutage('test', 1, 'connect ECONNREFUSED 127.0.0.1:3000'), false);
 });
+
+test('extra checks: only the enabled ones, run by bash at the root of the project', async () => {
+  const { planExtraChecks } = await import('../scripts/checks.mjs');
+  assert.deepEqual(planExtraChecks({}), []);
+  const plan = planExtraChecks({ extraChecks: [{ label: 'A', command: './a.sh --x', enabled: true }, { label: 'B', command: 'b', enabled: false }] });
+  assert.deepEqual(plan, [{ id: 'extra', label: 'A', run: ['bash', '-c', './a.sh --x'] }]);
+});
+
+test('extra checks run after the usual ones: a red one turns the checks red, a switched off one never runs', async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const script = new URL('../scripts/checks.mjs', import.meta.url).pathname;
+  const runWith = (extraChecks) => {
+    const dir = mkdtempSync(join(tmpdir(), 'extra-checks-'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'p', private: true, scripts: { lint: 'touch lint-ran' } }));
+    const off = { typecheck: false, lint: true, test: false, build: false, a11y: false, e2e: false, audit: false };
+    writeFileSync(join(dir, 'rules.json'), JSON.stringify({ checks: off, extraChecks }));
+    const out = join(dir, 'summary.md');
+    const r = spawnSync(process.execPath, [script, dir, '--config', join(dir, 'rules.json')], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: out, GITHUB_OUTPUT: '' } });
+    return { status: r.status, summary: readFileSync(out, 'utf8'), dir, existsSync };
+  };
+  const green = runWith([{ label: 'Suite du projet', command: 'test -f lint-ran && touch extra-ran' }, { label: 'Coupé', command: 'touch off-ran', enabled: false }]);
+  assert.equal(green.status, 0, green.summary);
+  assert.equal(green.existsSync(join(green.dir, 'extra-ran')), true);
+  assert.equal(green.existsSync(join(green.dir, 'off-ran')), false);
+  assert.match(green.summary, /\| Suite du projet \| ✅/);
+  assert.doesNotMatch(green.summary, /Coupé/);
+  const red = runWith([{ label: 'Scan', command: 'exit 3' }]);
+  assert.equal(red.status, 1);
+  assert.match(red.summary, /\| Scan \| ❌/);
+});

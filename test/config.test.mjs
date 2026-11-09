@@ -109,3 +109,29 @@ test('production is unset by default (the stack sheet decides), set when asked, 
   assert.equal(effectiveProduction({ production: 'auto' }, { mode: 'manual' }), 'auto');
   assert.equal(effectiveProduction({ production: 'external' }, null), 'external');
 });
+
+test('extra checks: kept when valid, left out when none, bad ones dropped with a warning', () => {
+  assert.equal('extraChecks' in resolveConfig({}, catalog).config, false);
+  assert.equal('extraChecks' in resolveConfig({ extraChecks: [] }, catalog).config, false);
+  const { config, warnings } = resolveConfig({ extraChecks: [
+    { label: ' Scan des secrets ', command: ' ./scripts/installer_outil.sh gitleaks ' },
+    { label: 'Images', command: './scripts/scanner_images.sh --bases', enabled: false },
+    { label: '', command: 'true' },
+    { label: 'Deux lignes', command: 'true\nrm -rf /' },
+    { label: 'x'.repeat(61), command: 'true' },
+    'pas un objet',
+  ] }, catalog);
+  assert.deepEqual(config.extraChecks, [
+    { label: 'Scan des secrets', command: './scripts/installer_outil.sh gitleaks', enabled: true },
+    { label: 'Images', command: './scripts/scanner_images.sh --bases', enabled: false },
+  ]);
+  assert.equal(warnings.length, 4);
+  assert.match(resolveConfig({ extraChecks: 'true' }, catalog).warnings.join(), /une liste est attendue/);
+});
+
+test('extra checks: at most ten', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ label: `C${i}`, command: 'true' }));
+  const { config, warnings } = resolveConfig({ extraChecks: many }, catalog);
+  assert.equal(config.extraChecks.length, 10);
+  assert.equal(warnings.length, 2);
+});

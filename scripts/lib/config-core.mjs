@@ -21,6 +21,26 @@ export function effectiveProduction(config, delivery) {
 
 const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
+// A project's own checks (issue: Pulsar alignment), set from the panel: a name, the command run in the project after
+// the usual checks, and a switch. Empty for every project that declares none, and then left out of the settings.
+export const MAX_EXTRA_CHECKS = 10;
+export function parseExtraChecks(input, warnings = []) {
+  if (input === undefined) return [];
+  if (!Array.isArray(input)) { warnings.push('extraChecks invalide (une liste est attendue), ignoré'); return []; }
+  const out = [];
+  for (const x of input) {
+    const label = typeof x?.label === 'string' ? x.label.trim() : '';
+    const command = typeof x?.command === 'string' ? x.command.trim() : '';
+    if (!label || label.length > 60 || !command || command.length > 500 || /[\r\n]/.test(command)) {
+      warnings.push(`contrôle supplémentaire invalide (${JSON.stringify(x)?.slice(0, 80)}), ignoré`);
+      continue;
+    }
+    if (out.length >= MAX_EXTRA_CHECKS) { warnings.push(`plus de ${MAX_EXTRA_CHECKS} contrôles supplémentaires : « ${label} » ignoré`); continue; }
+    out.push({ label, command, enabled: x.enabled !== false });
+  }
+  return out;
+}
+
 function boolMap(defaults, raw = {}) {
   const out = {};
   for (const k of Object.keys(defaults)) out[k] = typeof raw[k] === 'boolean' ? raw[k] : defaults[k];
@@ -61,6 +81,8 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     if (PRODUCTION_MODES.includes(input.production)) config.production = input.production;
     else warnings.push(`production "${input.production}" inconnu, mise en production automatique`);
   }
+  const extra = parseExtraChecks(input.extraChecks, warnings);
+  if (extra.length) config.extraChecks = extra;
   if (input.maxParallel !== undefined) {
     if (isPosInt(input.maxParallel)) config.maxParallel = input.maxParallel;
     else warnings.push(`maxParallel invalide (${JSON.stringify(input.maxParallel)}), ${DEFAULTS.maxParallel} utilisé`);

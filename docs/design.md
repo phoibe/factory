@@ -34,7 +34,9 @@ avec des agents IA. Pierre n'intervient que sur le fonctionnel et ne lit jamais 
    (3 allers-retours max, sinon escalade en langage simple), passe impeccable si UI.
 4. Captures avant/après (ordinateur + mobile) si l'interface change ; Pierre valide (porte 2).
    Les contrôles automatiques ne tournent qu'après cet OK.
-5. Contrôles automatiques : types, lint, tests, build, accessibilité de base, failles des dépendances.
+5. Contrôles automatiques : types, lint, tests, build, accessibilité de base, failles des dépendances. Un projet peut
+   y ajouter ses propres contrôles (« Contrôles supplémentaires » du panneau : un nom, une commande, un interrupteur),
+   joués après les autres et pour lui seul.
    Rouge = rien ne fusionne.
 6. Preview, recette fonctionnelle de Pierre (porte 3). Refus = commentaire en langage simple ;
    une idée nouvelle devient une nouvelle issue.
