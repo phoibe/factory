@@ -33,3 +33,13 @@ _À éviter_ : release manuelle, déploiement manuel
 **Modifications en attente** :
 Les modifications validées et intégrées d'un projet « sur accord » qui ne sont pas encore en ligne ; leur nombre s'affiche sur le bouton « Mise en production ».
 _À éviter_ : backlog, file de déploiement
+
+## Tableau de bord
+
+**Liste des projets** :
+La colonne toujours ouverte à droite du tableau de bord (en plein écran au toucher du nom du projet sur téléphone) qui range tous les projets par ordre alphabétique et permet d'en ouvrir un.
+_À éviter_ : menu déroulant, sélecteur
+
+**Point d'état** :
+Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
+_À éviter_ : badge, pastille, notification
