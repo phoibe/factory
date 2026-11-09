@@ -128,3 +128,36 @@ test('si l\'envoi échoue, la fenêtre reste ouverte et dit « L\'envoi a échou
     assert.equal(await dialog.isVisible(), true);
   });
 });
+
+// The stack sheet says how the project goes to production: « Manuelle » (a merge deploys nothing) is shown by itself.
+const manualSheet = { files: { 'STACK.md': '# Stack technique\n\n## Mise en production\n- **Manuelle** — `git push prod main vX.Y.Z` depuis votre poste, après la publication d\'une version\n' } };
+
+test('une fiche stack « Manuelle » : « Mise en production manuelle » sous le nom du projet, et pas de bouton même « sur mon accord »', async () => {
+  await withPanel({ ...manualSheet, config: approval, awaiting: pending }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#project-sub', { hasText: 'Mise en production manuelle' }).waitFor();
+    assert.equal(await button(page).isVisible(), false);
+  });
+});
+
+test('une fiche stack « Manuelle » : les paramètres disent que la factory s\'arrête au merge, sans choix à faire', async () => {
+  await withPanel(manualSheet, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#project-sub', { hasText: 'Mise en production manuelle' }).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    const group = page.getByRole('group', { name: 'Mise en production' });
+    await group.getByText(/git push prod main vX\.Y\.Z.*La factory s.arrête au merge/).waitFor();
+    assert.equal(await page.locator('#production-auto').count(), 0);
+  });
+});
+
+test('une fiche stack « Automatique », ou sans cette partie : rien ne change en haut de la page', async () => {
+  for (const files of [{ 'STACK.md': '# Stack technique\n\n## Mise en production\n- **Automatique** — Vercel publie chaque merge\n' }, {}]) {
+    await withPanel({ files }, async ({ page, url }) => {
+      await page.goto(url);
+      await page.locator('#new-feature').waitFor();
+      await page.waitForTimeout(300);
+      assert.doesNotMatch(await page.locator('#project-sub').textContent(), /manuelle/);
+    });
+  }
+});

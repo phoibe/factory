@@ -21,6 +21,7 @@ import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiC
 import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
+import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -35,6 +36,15 @@ export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeo
 export const PROJECT_WORKFLOW = 'factory.yml';
 // The branch the host publishes on projects whose production waits for the owner (issue #294).
 export const PROD_BRANCH = 'production';
+// The card that completes an older stack sheet with its « Mise en production » section (opened once per project).
+export const DELIVERY_MARKER = '<!-- factory-stack-delivery -->';
+
+// After a merge on a project whose production is manual (its stack sheet says so): the factory stops at the merge.
+export function manualMergeText(delivery) {
+  const how = String(delivery?.how || '').trim().replace(/[.\s]+$/, '');
+  return ["C'est fusionné ✅. La factory s'arrête ici : pour ce projet, un merge ne met rien en production.",
+    `La mise en production est manuelle${how ? ` (${how})` : ''} : la version en ligne ne change pas tant que vous ne l'avez pas faite.`].join('\n\n');
+}
 export const MAX_BRANCH_UPDATES = 2;
 // A branch update is marked with the commit it started from. Only the tries on the PR's current code count: a PR
 // updated successfully twice (two other features merged meanwhile) is not given up on at its third conflict.
@@ -486,9 +496,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // once, unless other changes already wait: publishing main would then publish them too, without the owner's accord.
     const isUndo = String(pr?.body || '').includes(REVERT_MARKER);
     const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
-    const held = config.production === 'approval' && (!isUndo || await othersWait());
+    // A project whose sheet says its production is manual (a merge deploys nothing, as on Pulsar Wheel): the factory
+    // stops at the merge and says so. No hold, no production branch, no live check: there is nothing to watch.
+    const delivery = await readDelivery();
+    const manual = delivery?.mode === 'manual';
+    const held = !manual && config.production === 'approval' && (!isUndo || await othersWait());
     await afterMerge(prNumber, { held });
-    if (held) {
+    if (manual) {
+      await gh.comment(prNumber, say(manualMergeText(delivery)));
+    } else if (held) {
       await holdForApproval(prNumber).catch((e) => log(`hold for approval: ${e.message}`));
       await gh.comment(prNumber, say("C'est fusionné ✅. Le site en ligne ne change pas encore : cette modification attend que vous cliquiez sur « Mise en production », en haut du projet dans le tableau de bord."));
     } else {
@@ -496,12 +512,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await checkLive(prNumber).catch((e) => log(`live check not started: ${e.message}`));
     }
     await redoAfterRevert(pr).catch((e) => log(`redo after revert: ${e.message}`));
-    if (!held) await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
+    if (!held && !manual) await gh.comment(prNumber, say("C'est fusionné ✅. La version en ligne se met à jour automatiquement dans quelques minutes."));
     if (issue) for (const l of [L.building, L.blocked]) await gh.removeLabel(issue, l);
     // A merge made with the workflow's token does not close the issues the PR names (« Closes #n »): close it here.
     if (issue) await gh.closeIssue(issue).catch((e) => log(`close #${issue}: ${e.message}`));
     await dequeue({ freed: issue });
     await unstickConflicts().catch((e) => log(`conflicts: ${e.message}`));
+  }
+
+  // How the project goes to production, read in its stack sheet (STACK.md, « Mise en production »). null when the sheet
+  // is missing, says neither, or cannot be read: the factory then keeps its former ways (automatic).
+  async function readDelivery() {
+    if (!gh.getContent) return null;
+    const file = await gh.getContent('STACK.md').catch(() => null);
+    if (!file?.content) return null;
+    return deliveryOf(Buffer.from(file.content, 'base64').toString('utf8'));
   }
 
   // A merge made with the workflow's own token starts no workflow, so the panel deploy (GitHub Pages) and the
@@ -952,7 +977,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // A missing file is null (404); any other error throws and the guard simply tries again at the next tick.
     // The two cheap answers that settle it for good come first: the sheet exists, or its card was already opened.
     const exists = async (path) => Boolean(await gh.getContent(path));
-    if (await exists('STACK.md')) return;
+    const sheet = await gh.getContent('STACK.md');
+    if (sheet) return ensureDeliveryLine(sheet);
     if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).length) return;
     if (!(await exists('PRODUCT.md')) && !(await exists('docs/PRODUCT.md'))) return;
     if (!(await exists('.factory/stages/stack.md'))) return;
@@ -961,6 +987,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       'Elle s\'affiche ensuite avec le bouton « Stack technique » du panneau, et l\'agent la tient à jour à chaque construction.'].join('\n');
     const card = await gh.createIssue('Établir la fiche stack technique', body, [L.stack, L.kept]);
     log(`stack sheet: card #${card.number} opened`);
+    const labels = await liveLabels(card.number);
+    await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
+  }
+
+  // A sheet written before the « Mise en production » section (or without a readable first line) gets one card that
+  // completes it, once, as soon as the synced agent instructions know the section: the factory then knows by itself
+  // whether a merge puts the project in production. Never while the framing is under way.
+  async function ensureDeliveryLine(sheet) {
+    if (!sheet.content || deliveryOf(Buffer.from(sheet.content, 'base64').toString('utf8'))) return;
+    const stage = await gh.getContent('.factory/stages/stack.md');
+    if (!stage?.content || !Buffer.from(stage.content, 'base64').toString('utf8').includes(`## ${DELIVERY_SECTION}`)) return;
+    if (((await gh.listIssues({ labels: L.stack, state: 'all' })) || []).some((i) => String(i.body || '').includes(DELIVERY_MARKER))) return;
+    if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
+    const body = [AGENT_MARKER, DELIVERY_MARKER, `La factory complète la **fiche stack technique** de ce projet avec sa partie « ${DELIVERY_SECTION} » : un merge met-il le projet en ligne tout seul, ou sa mise en production est-elle un geste à part ?`, '',
+      'Elle le lit dans le projet lui-même (hébergeur, déploiement, procédures écrites). Ensuite, si la mise en production est manuelle, la factory s\'arrête au merge et le dit.'].join('\n');
+    const card = await gh.createIssue('Compléter la fiche stack : la mise en production', body, [L.stack, L.kept]);
+    log(`stack sheet: delivery card #${card.number} opened`);
     const labels = await liveLabels(card.number);
     await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
   }

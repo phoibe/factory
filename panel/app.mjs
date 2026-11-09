@@ -11,7 +11,7 @@ import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
-import { parseStack, inlineParts, stackDate, frenchSpaces, STACK_FILE } from './stack.mjs';
+import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { machineLine, repoKey } from './machine.mjs';
 
 const API = 'https://api.github.com';
@@ -171,7 +171,8 @@ async function openProject(fullName) {
   current.saved = JSON.stringify(config);
   for (const w of warnings) console.warn(w);
   $('project-name').textContent = current.repo.name;
-  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${config.maxParallel} en parallèle`;
+  current.delivery = null;
+  drawSub();
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -188,6 +189,7 @@ async function openProject(fullName) {
   loadMachine(current).catch(() => {});
   drawRelease();
   refreshRelease().catch(() => {});
+  loadDelivery(current).catch(() => {});
   await renderBoard();
   if (!live.tick) startLive();
 }
@@ -892,7 +894,11 @@ function renderRules() {
   const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, 'Réglez une fois votre hébergeur pour publier la branche « production » : ',
     el('a', { class: 'quiet-link', href: 'https://vercel.com/dashboard', target: '_blank', rel: 'noopener' }, 'Vercel'), ' (Settings → Git → Production Branch) ou ',
     el('a', { class: 'quiet-link', href: `${current.repo.html_url}/settings/environments`, target: '_blank', rel: 'noopener' }, 'GitHub Pages'), ' (Environments → github-pages).');
-  const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
+  // A project whose stack sheet says « Manuelle »: nothing to choose, the factory stops at the merge.
+  const manualHow = current.delivery?.mode === 'manual' ? current.delivery.how.replace(/`/g, '') : null;
+  const production = manualHow !== null ? el('fieldset', {}, el('legend', {}, 'Mise en production'),
+    el('p', { id: 'production-manual', class: 'muted small' }, frenchSpaces(`Manuelle, d'après la fiche stack technique${manualHow ? ` : ${manualHow}` : ''}. La factory s'arrête au merge : la version en ligne ne change que lorsque vous la mettez en production vous-même.`)))
+    : el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »']]
       .map(([v, t]) => el('div', { class: 'row' },
@@ -1087,6 +1093,25 @@ async function refreshRuns() {
   } catch { /* the next try is in 5 minutes */ }
 }
 
+// ---- How the project goes to production, read in its stack sheet (STACK.md, « Mise en production ») ----------------
+// « Manuelle »: a merge deploys nothing (Pulsar Wheel). The panel says so under the project name and in its settings,
+// and hides the « Mise en production » button, which could only move a branch nobody publishes.
+function drawSub() {
+  const manual = current.delivery?.mode === 'manual';
+  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production manuelle' : ''}`;
+  $('project-sub').title = manual ? 'La factory s\'arrête au merge : la fiche stack dit que la mise en production se fait à la main.' : '';
+}
+async function loadDelivery(project) {
+  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);
+  if (current !== project) return;
+  const delivery = file?.content ? deliveryOf(fromBase64(file.content)) : null;
+  if (JSON.stringify(delivery) === JSON.stringify(current.delivery)) return;
+  current.delivery = delivery;
+  drawSub();
+  drawRelease();
+  if (!$('rules').contains(document.activeElement)) renderRules();
+}
+
 // ---- « Mise en production » (issue #294) ----------------------------------------------------------------------
 // On a project set to « sur mon accord », validated changes are merged but wait (label factory:awaiting-production on
 // their PR) until the owner sends them live together. The button opens an issue the relay acts on.
@@ -1109,7 +1134,7 @@ async function refreshRelease() {
 }
 function drawRelease() {
   const btn = $('release');
-  const on = current?.config.production === 'approval';
+  const on = current?.config.production === 'approval' && current.delivery?.mode !== 'manual';
   btn.hidden = !on;
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];

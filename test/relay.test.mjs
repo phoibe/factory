@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
-import { createRelay, eventFromPayload, linkedIssue } from '../scripts/relay.mjs';
+import { createRelay, eventFromPayload, linkedIssue, DELIVERY_MARKER } from '../scripts/relay.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER, UPDATE_BRANCH_MARKER } from '../scripts/lib/labels.mjs';
 import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
@@ -2562,4 +2562,78 @@ test('waits: the wake message uses up the link even if removing the label fails'
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
   await relay.dequeue();
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER)));
+});
+
+// ---- Production read in the stack sheet: a merge that deploys nothing stops the factory at the merge ----
+const b64 = (text) => ({ content: Buffer.from(text).toString('base64') });
+const sheetWith = (first) => `# Stack technique\n\n## Services nécessaires\n- x\n\n## Mise en production\n- ${first}\n`;
+const MANUAL = sheetWith('**Manuelle** — `git push prod main vX.Y.Z` depuis votre poste, après la publication d\'une version');
+
+for (const mode of ['auto', 'approval']) {
+  test(`a sheet saying « Manuelle »: merged, no hold, no production branch, no live check, and it says so (${mode})`, async () => {
+    const { gh, relay } = prodGh({ mode, branches: { main: 'm1', production: 'm0' } });
+    gh.getContent = async (path) => (path === 'STACK.md' ? b64(MANUAL) : null);
+    await deliver10(relay);
+    assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+    assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.awaitingProd));
+    assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
+    assert.deepEqual(prodChecksOf(gh), []);
+    const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
+    assert.match(said, /s'arrête ici/);
+    assert.match(said, /mise en production est manuelle \(`git push prod main vX\.Y\.Z` depuis votre poste/);
+    assert.doesNotMatch(said, /se met à jour automatiquement|cliquiez sur « Mise en production »/);
+    assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1) || !gh.calls.some((c) => c[0] === 'close'), 'the issue follows its usual path');
+  });
+}
+
+test('a sheet saying « Automatique », or none at all, keeps the usual message and live check', async () => {
+  for (const content of [b64(sheetWith('**Automatique** — Vercel publie chaque merge')), null]) {
+    const { gh, relay } = prodGh({ mode: 'auto' });
+    gh.getContent = async (path) => (path === 'STACK.md' ? content : null);
+    await deliver10(relay);
+    const said = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n');
+    assert.match(said, /se met à jour automatiquement/);
+    assert.equal(prodChecksOf(gh).length, 1);
+  }
+});
+
+test('a sheet that cannot be read keeps the usual way', async () => {
+  const { gh, relay } = prodGh({ mode: 'auto' });
+  gh.getContent = async () => { throw new Error('502 Bad Gateway'); };
+  await deliver10(relay);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /se met à jour automatiquement/.test(c[2])));
+});
+
+// An older sheet without the section gets one card that completes it, once the synced instructions know the section.
+const STAGE_NEW = b64('# Étape\n\n## Mise en production\n');
+function deliveryWorld({ sheet = '# Stack technique\n\n## Données\n- x\n', stage = STAGE_NEW, issues = [], closed = [] } = {}) {
+  const { gh, state } = stackWorld({ issues, closed });
+  gh.getContent = async (path) => ({ 'STACK.md': sheet === null ? null : b64(sheet), '.factory/stages/stack.md': stage, 'PRODUCT.md': b64('') })[path] ?? null;
+  return { gh, state };
+}
+
+test('a sheet without « Mise en production » gets its « Compléter la fiche » card once, started at once', async () => {
+  const { gh } = deliveryWorld({ closed: [{ number: 3, open: false, labels: [L.stack], body: 'the first sheet' }] });
+  const sent = [];
+  await guardTick(gh, sent);
+  const created = gh.calls.find((c) => c[0] === 'create');
+  assert.ok(created, 'card created');
+  assert.equal(created[1], 'Compléter la fiche stack : la mise en production');
+  assert.ok(created[2].includes(DELIVERY_MARKER));
+  assert.ok(created[3].includes(L.stack) && created[3].includes(L.kept));
+  assert.equal(payloadOf(sent.at(-1).init.body).stage, 'stack');
+});
+
+test('no « Compléter la fiche » card when the sheet says it, the card was opened before, or the instructions lag', async () => {
+  const cases = {
+    'sheet says manual': deliveryWorld({ sheet: MANUAL }),
+    'sheet says automatic': deliveryWorld({ sheet: sheetWith('**Automatique** — Vercel') }),
+    'card opened before': deliveryWorld({ closed: [{ number: 3, open: false, labels: [L.stack], body: `x\n${DELIVERY_MARKER}` }] }),
+    'instructions not synced yet': deliveryWorld({ stage: b64('# Étape sans la partie\n') }),
+    'framing under way': deliveryWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] }),
+  };
+  for (const [name, { gh }] of Object.entries(cases)) {
+    await guardTick(gh, []);
+    assert.ok(!gh.calls.some((c) => c[0] === 'create'), name);
+  }
 });

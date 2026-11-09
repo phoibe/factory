@@ -51,7 +51,7 @@ test('the date reads « Mise à jour le 6 novembre 2026 »', () => {
 });
 
 test('the sheet sections are the ones of the spec, in order', () => {
-  assert.deepEqual(STACK_SECTIONS, ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires']);
+  assert.deepEqual(STACK_SECTIONS, ['Interface', 'Moteur / serveur', 'Autres services', 'Données', 'Bibliothèques', 'Services nécessaires', 'Mise en production']);
 });
 
 import { readFileSync } from 'node:fs';
@@ -93,4 +93,33 @@ test('French punctuation keeps its space: no colon or semicolon starts a line', 
   const { frenchSpaces } = await import('../panel/stack.mjs');
   assert.equal(frenchSpaces('fiche : technologies ; données ! « Plus »'), 'fiche : technologies ; données ! « Plus »');
   assert.equal(frenchSpaces('https://x.y'), 'https://x.y');
+});
+
+// « Mise en production »: the first item says whether a merge publishes the project by itself.
+test('deliveryOf reads « Automatique » or « Manuelle » from the first item of « Mise en production »', async () => {
+  const { deliveryOf } = await import('../panel/stack.mjs');
+  const sheet = (first) => `# Stack technique\n\n## Données\n- **Manuelle** — not this one\n\n## Mise en production\n- ${first}\n- **Retour arrière** : le tag d'avant\n`;
+  assert.deepEqual(deliveryOf(sheet('**Manuelle** — `git push prod main vX.Y.Z`, lancé par vous')), { mode: 'manual', how: '`git push prod main vX.Y.Z`, lancé par vous' });
+  assert.deepEqual(deliveryOf(sheet('**Automatique** — Vercel publie chaque merge')), { mode: 'auto', how: 'Vercel publie chaque merge' });
+  assert.deepEqual(deliveryOf(sheet('**manuelle** : un script')), { mode: 'manual', how: 'un script' });
+  assert.equal(deliveryOf(sheet('Le site est publié par Vercel')), null, 'a line in another form says nothing');
+  assert.equal(deliveryOf(sheet('**Automatiquement-ish** — x')), null);
+  assert.equal(deliveryOf('## Données\n- **Manuelle** — x\n'), null, 'only the « Mise en production » section counts');
+  assert.equal(deliveryOf(''), null);
+  assert.equal(deliveryOf(null), null);
+});
+
+test('the factory sheet says its own production is automatic', async () => {
+  const { deliveryOf } = await import('../panel/stack.mjs');
+  assert.equal(deliveryOf(readFileSync(new URL('../STACK.md', import.meta.url), 'utf8'))?.mode, 'auto');
+});
+
+test('the stack stage gives the two exact forms the factory reads', async () => {
+  const { deliveryOf } = await import('../panel/stack.mjs');
+  const stage = readFileSync(new URL('../agent/stages/stack.md', import.meta.url), 'utf8');
+  assert.match(stage, /## Mise en production/);
+  for (const form of ['`- **Automatique** — <qui publie et quand>`', '`- **Manuelle** — <le geste, en une phrase>`']) {
+    assert.ok(stage.includes(form), form);
+    assert.ok(deliveryOf(`## Mise en production\n${form.slice(1, -1)}\n`), `${form} is read by deliveryOf`);
+  }
 });
