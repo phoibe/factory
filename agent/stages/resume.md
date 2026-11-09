@@ -5,7 +5,7 @@ L'issue ou la PR était `factory:blocked` et le propriétaire a répondu. La fac
 
 **Reprise automatique après une fusion** : si le JSON contient `"merged": [12, …]`, la factory a relancé la
 carte toute seule : les demandes que tu attendais (ligne `factory-waits-for` de ton message de blocage) sont toutes
-fusionnées. Mets ta branche à jour (`git fetch origin main && git merge origin/main`), puis reprends l'étape
+fusionnées. Mets ta branche à jour (`git fetch origin {{base}} && git merge origin/{{base}}`), puis reprends l'étape
 interrompue, en tenant compte des messages qu'il aurait écrits depuis ton blocage.
 
 **Demande que tu avais fermée toi-même** (déjà réglée, en double, obsolète) et dans laquelle il vient d'écrire : la

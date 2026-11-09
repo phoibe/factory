@@ -25,7 +25,7 @@ fait se passe d'explications sur son fonctionnement.
 ## Étapes
 
 1. **Liste les écrans** créés ou modifiés par la branche (pages, routes, composants visibles), d'après le
-   diff avec `main`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
+   diff avec `{{base}}`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
    téléphone et sur ordinateur.
 2. **Critique** : pour chaque écran, skill `impeccable`, commande `critique`
    (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (`sonnet`, effort `medium`) et le détecteur.

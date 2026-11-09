@@ -5,6 +5,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, write
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig, enabledSkills, parseRawConfig } from './lib/config.mjs';
+import { workBranch } from './lib/config-core.mjs';
 import { hookCommand } from '../agent/scripts/run-root.mjs';
 import { syncFingerprint } from './lib/fingerprint.mjs';
 
@@ -81,6 +82,8 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   }
 
   const vars = {
+    // The branch the agent starts from and opens its PRs against: preprod on « Sur mon accord », main otherwise.
+    base: workBranch(config.production, 'main'),
     stack: config.stack,
     maxLoops: config.review.maxLoops,
     stages: Object.entries(config.stages).map(([k, on]) => `${STAGE_LABELS[k]} ${on ? '✅' : '❌'}`).join(', '),

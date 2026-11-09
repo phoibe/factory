@@ -3,10 +3,10 @@
 Le propriétaire a validé la fiche projet (dernier commentaire `<!-- factory-brief -->` de l'issue).
 Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seulement le socle.
 
-**Révision d'un projet déjà cadré** (`PRODUCT.md` ou `docs/PRODUCT.md` existe déjà sur `main`) : ne refais
+**Révision d'un projet déjà cadré** (`PRODUCT.md` ou `docs/PRODUCT.md` existe déjà sur `{{base}}`) : ne refais
 **pas** les fondations. À la place :
 
-1. Branche `claude/issue-<n>-revision` depuis `main`.
+1. Branche `claude/issue-<n>-revision` depuis `{{base}}`.
 2. Mets à jour `PRODUCT.md` à la racine d'après la nouvelle fiche (déplace `docs/PRODUCT.md` s'il existe) ;
    si le design change, mets à jour `DESIGN.md` et `.impeccable/` (étape 3 ci-dessous), en y ajoutant la
    règle « Textes à l'écran » si elle manque ; si la stack
@@ -17,7 +17,7 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
 4. PR comme à l'étape 7 (résumé « La fiche produit mise à jour : … »), sans captures : mets directement
    `factory:checks` sur la PR. Poste sur l'issue le lien de la PR et la liste des issues créées.
 
-**Adoption d'un projet commencé sans la factory** (du code existe mais pas de fiche produit sur `main`) :
+**Adoption d'un projet commencé sans la factory** (du code existe mais pas de fiche produit sur `{{base}}`) :
 ne refais **pas** l'appli et ne change pas son comportement.
 
 1. Branche `claude/issue-<n>-adoption` depuis la branche par défaut.
@@ -39,7 +39,7 @@ ne refais **pas** l'appli et ne change pas son comportement.
 
 Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
 
-1. **Branche** `claude/issue-<n>-foundation` depuis `main`.
+1. **Branche** `claude/issue-<n>-foundation` depuis `{{base}}`.
 2. **Fiche produit** : écris `PRODUCT.md` à la racine (en français), reprise fidèle de la fiche validée, au
    format du skill `impeccable` (`reference/init.md`, étape 4 : commentaire de schéma compris, plateforme,
    utilisateurs, but, positionnement, engagements de marque, principes, accessibilité), avec en plus les

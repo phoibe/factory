@@ -15,10 +15,10 @@ que s'il est vraiment nécessaire. Le glossaire ne contient aucun détail d'impl
 
 S'il y a quelque chose d'écrit (`GLOSSARY.md`, `docs/adr/*.md`) :
 
-1. Crée la branche `claude/docs-<n>` (n = numéro de l'issue) depuis `main`, **à part** de toute branche de
+1. Crée la branche `claude/docs-<n>` (n = numéro de l'issue) depuis `{{base}}`, **à part** de toute branche de
    feature. Elle ne contient que ces documents : jamais de code, jamais autre chose.
 2. Commit (`docs: glossary and decisions (#<n>)`, en anglais) et pousse.
-3. Ouvre une PR vers `main` (API REST, voir AGENT.md), titre « Glossaire et décisions (#<n>) », **sans**
+3. Ouvre une PR vers `{{base}}` (API REST, voir AGENT.md), titre « Glossaire et décisions (#<n>) », **sans**
    `Closes`, sans label `factory:*`. La factory la fusionne toute seule : n'attends rien et ne la fusionne pas.
 4. Reviens sur la branche de l'issue si tu y travailles encore.
 

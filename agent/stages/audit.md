@@ -3,7 +3,7 @@
 Le propriétaire a demandé, depuis le tableau, une review générale : pas une feature, mais une remise à niveau de
 toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. Pas de spec à valider.
 
-1. **Branche** `claude/issue-<n>-review` depuis `main`. Lis `PRODUCT.md` et `DESIGN.md`.
+1. **Branche** `claude/issue-<n>-review` depuis `{{base}}`. Lis `PRODUCT.md` et `DESIGN.md`.
 1 bis. **Estimation de durée** : après avoir listé les écrans et parcouru le code, publie sur l'issue une estimation
    du temps restant, au même format que l'étape 0 de `build.md` (taille `large`, marqueur `factory-estimate`). Le
    tableau l'affiche à la place d'une durée de feature, qui serait bien trop courte. Si tu dépasses le haut de ta
