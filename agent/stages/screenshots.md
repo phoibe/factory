@@ -41,8 +41,8 @@
    - Si c'est confirmé, commente la PR : `<!-- factory-agent -->`, puis la sortie de l'outil telle quelle (avec ses marques
      cachées), plus, si un changement d'apparence était prévu, une phrase qui explique pourquoi rien ne se voit. On ne
      demande rien au propriétaire : pas de « Répondez « ok » », et pas `factory:visual-review` sur la PR, seulement
-     `factory:checks`. La carte passe directement aux contrôles, puis à la recette habituelle (ou à la mise en ligne
-     directe si la PR porte `<!-- factory-nothing-to-test -->`).
+     `factory:checks`. La carte passe directement aux contrôles, puis à la suite habituelle (recette ou mise en
+     ligne, selon les règles de la factory, qui ne changent pas).
 7. **Au moins un écran a changé** : commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
    sombre), le tableau (un écran que la feature ne devait pas toucher et qui a changé : corrige-le d'abord, ou
    explique pourquoi en une phrase), puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »

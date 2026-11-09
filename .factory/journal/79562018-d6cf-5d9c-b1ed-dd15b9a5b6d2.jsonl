@@ -10,3 +10,5 @@
 {"t":"2026-11-09T07:19:16.868Z","kind":"skill","name":"receiving-code-review","id":"toolu_01Sc7DHq2FaS3PvLemm4YQgF"}
 {"t":"2026-11-09T07:20:02.960Z","kind":"test","cmd":"sed -i \"s/^import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER,/import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow,/\" test/shots.test.mjs && python3","ok":false,"id":"toolu_01RiWLmfNbKU6XRH4NJdSnZu"}
 {"t":"2026-11-09T07:20:49.874Z","kind":"test","cmd":"python3 - <<'EOF'\ndef rep(p, old, new):\n    s=open(p).read(); assert old in s, (p, old); open(p,'w').write(s.replace(old,new,1))\nrep('agent/scripts/shots.mjs', \"\"\"export function markdownTable(\"\"\", \"\"","ok":true,"id":"toolu_019DpKfEPcKaW45riG67hj32"}
+{"t":"2026-11-09T07:21:42.515Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_016TwncCdkzfxUAf3FUogqrq"}
+{"t":"2026-11-09T07:23:29.216Z","kind":"test","cmd":"python3 - <<'EOF'\ndef rep(p, old, new):\n    s=open(p).read(); assert old in s, (p, old); open(p,'w').write(s.replace(old,new,1))\nrep('agent/stages/skills-fix.md', \"\"\"5. Labels de la PR : retire `facto","ok":true,"id":"toolu_01TwX72eXKmbH8sxaKtRfoj2"}

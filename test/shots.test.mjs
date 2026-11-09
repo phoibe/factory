@@ -182,3 +182,16 @@ test('no capture at all is an error, never reported as « no screen changed »',
   const empty = mkdtempSync(join(tmpdir(), 'a-'));
   assert.throws(() => screensToShow(null, empty), /Aucune capture/);
 });
+
+test('identical captures before and after end in the no-change output, with nothing to show', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  for (const f of ['accueil--mobile.png', 'accueil--desktop.png']) { writeFileSync(join(before, f), 'x'); writeFileSync(join(after, f), 'x'); }
+  const { files, unchanged } = screensToShow(before, after);
+  assert.deepEqual(files, []);
+  assert.deepEqual(unchanged, ['accueil--desktop.png', 'accueil--mobile.png']);
+  assert.ok(markdownTable({ repo: 'o/r', dir: 'd', files, unchanged }).includes(NO_CHANGE_MARKER));
+});
