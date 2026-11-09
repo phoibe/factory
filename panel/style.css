@@ -476,16 +476,19 @@ dialog#release-dialog::backdrop { background: rgb(0 0 0 / .45); }
 .release-list li { padding: 4px 0; overflow-wrap: anywhere; }
 
 /* ---- Project list on the right, one status dot per project (issue #314) ---- */
+/* The column is a shade off the page; the open project is lighter than the column, in both themes. */
+:root { --list-bg: var(--surface-2); --list-current: var(--surface); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --list-bg: var(--bg); --list-current: var(--surface-2); } }
 .pdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: transparent; }
 .pdot-blocked { background: var(--danger); }
 .pdot-yours { background: var(--you); }
 .pdot-working { background: var(--muted); }
 .project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .project-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text); font-weight: 400; text-align: left; }
-.project-item:hover { border-color: transparent; background: var(--surface-2); }
-.project-item[aria-current="true"] { background: var(--surface); border-color: var(--line); font-weight: 600; }
+.project-item:hover { border-color: transparent; background: color-mix(in srgb, var(--list-current) 55%, var(--list-bg)); }
+.project-item[aria-current="true"], .project-item[aria-current="true"]:hover { background: var(--list-current); border-color: color-mix(in srgb, var(--text) 22%, var(--line)); font-weight: 600; }
 .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
-.projects { position: fixed; z-index: 2; top: 0; right: 0; bottom: 0; width: 240px; overflow-y: auto; overscroll-behavior: contain; padding: 20px 12px 24px; background: var(--bg); border-left: 1px solid var(--line); }
+.projects { position: fixed; z-index: 2; top: 0; right: 0; bottom: 0; width: 240px; overflow-y: auto; overscroll-behavior: contain; padding: 20px 12px 24px; background: var(--list-bg); border-left: 1px solid var(--line); }
 .projects h2, .projects-dialog-head h2 { font-size: 1rem; margin: 0 0 12px; padding: 0 12px; }
 .project-title { display: flex; align-items: center; min-width: 0; }
 .project-switch { display: none; }
@@ -498,9 +501,11 @@ dialog#release-dialog::backdrop { background: rgb(0 0 0 / .45); }
   body.has-projects .project-switch { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; margin: 0 0 0 -8px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent; font: inherit; color: inherit; text-align: left; }
   .project-switch:hover { background: var(--surface-2); }
   #project-switch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
-  .project-switch svg { flex: none; color: var(--muted); }
+  .switch-icon { position: relative; display: inline-flex; flex: none; color: var(--muted); }
+  /* The dot belongs to the list (another project), not to the name: it sits on the chevron's corner. */
+  #switch-dot { position: absolute; top: -1px; right: -3px; box-shadow: 0 0 0 2px var(--bg); }
 }
-dialog#projects-dialog { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 16px; border: 0; background: var(--bg); color: var(--text); }
-dialog#projects-dialog::backdrop { background: var(--bg); }
+dialog#projects-dialog { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 16px; border: 0; background: var(--list-bg); color: var(--text); }
+dialog#projects-dialog::backdrop { background: var(--list-bg); }
 .projects-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .projects-dialog-head h2 { margin: 0; padding: 0 4px; font-size: 1.125rem; }
