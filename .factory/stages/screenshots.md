@@ -21,7 +21,7 @@
 3. **Après** : lance l'appli de la branche (`npm run build && npm run start -- -p 3000`, ou `npm run dev`),
    puis `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
-4. **Avant** : `git worktree add /tmp/before main`, installe, lance sur le port 3001, puis la même commande
+4. **Avant** : `git worktree add /tmp/before origin/main`, installe, lance sur le port 3001, puis la même commande
    (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `main` n'a pas encore d'appli,
    pas de « avant ». Un écran ou un thème sombre absent de « avant » s'affiche « nouvel écran » côté avant.
    L'outil fige l'écran avant chaque photo (date et heure fixes, animations arrêtées, curseur caché), « avant » comme

@@ -163,7 +163,7 @@ est oublié et tu reprends normalement.
 ## Code et Git
 
 - Code, noms, commits et descriptions techniques en anglais.
-- Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main`. Tu ne fusionnes jamais une PR :
+- Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main` ni sur `preprod`. Tu ne fusionnes jamais une PR :
   la factory le fait après les contrôles et la recette.
 - La PR contient `Closes #<n>` dans sa description, et un résumé en français pour le propriétaire en tête.
 - **Toujours à jour avec `main` avant de pousser pour la factory.** Juste avant d'ouvrir une PR, et avant chaque push
