@@ -117,7 +117,7 @@ function main() {
     process.exit(status === 0 && stackResult.status !== 'fail' ? 0 : 1);
   }
   if (!existsSync(pkgPath)) {
-    console.log("::error::Pas de package.json : il n'y a pas encore d'application à contrôler.");
+    console.log("::error::Pas de package.json : aucun script ne lance les contrôles de ce projet (typecheck, lint, test, build, test:a11y). Un projet sans npm les branche par un package.json sans dépendance qui lance ses propres outils (voir l'étape « fiche stack »).");
     process.exit(1);
   }
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));

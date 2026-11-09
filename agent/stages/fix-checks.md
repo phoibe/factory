@@ -10,6 +10,9 @@ Les contrôles automatiques ont échoué sur la PR.
    une variable d'environnement absente chez l'hébergeur, une base pas branchée, une page qui plante sans données.
    Si la cause est un réglage que seul le propriétaire peut faire chez l'hébergeur, n'invente pas de contournement :
    explique-lui le clic exact sur la PR, mets `factory:blocked` sur l'issue et termine.
+   **« Pas de package.json »** : le projet n'est pas en JavaScript et n'a pas encore le branchement qui lance ses
+   propres outils sous les noms des contrôles. Ajoute-le comme le décrit l'étape 4 de `stages/stack.md` : ce n'est
+   pas un contournement, c'est la façon prévue de contrôler un projet qui n'utilise pas npm.
 2. Reproduis l'échec localement, corrige la cause (jamais en désactivant un test ou un contrôle), vérifie, push.
 3. Labels de la PR : retire `factory:fixing`, ajoute `factory:checks`.
 4. Pas besoin de commenter si tout s'est bien passé.
