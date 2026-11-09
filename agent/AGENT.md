@@ -49,6 +49,23 @@ puis committe `.factory/journal/`. Un verrou
 refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
+**Modèle et effort des sous-agents.** Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
+`model` et un `effort` explicites, selon cette grille (la même pour tous les projets). Sans eux, il hérite du
+modèle de la session, le plus cher. La grille remplace les conseils de modèle des skills
+(`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent et son modèle.
+
+| Modèle | `effort` | Tâches |
+| --- | --- | --- |
+| `haiku` | `low` | recherches dans le code, tâches mécaniques (renommer, déplacer, recopier un texte), captures d'écran |
+| `sonnet` | `medium` | tâches de construction courantes, corrections après relecture, relecture de chaque petite tâche, critique du design, chaque partie d'une revue générale |
+| `opus` | `high` | relecture finale du code avant la PR, revue de sécurité, tâches d'architecture, débogage d'un problème qui résiste, synthèse d'une revue générale |
+
+- Tout ce qui n'est pas listé : `sonnet`, effort `medium`. Jamais `xhigh` ni `max`.
+- **Monter d'un cran en cas d'échec** : si un sous-agent sur un modèle léger échoue (tests toujours rouges après
+  2 essais, ou travail refusé deux fois par le relecteur), relance la tâche sur le modèle au-dessus
+  (Haiku → Sonnet → Opus), sans déranger le propriétaire. Sur `opus`, les règles habituelles s'appliquent
+  (au plus {{maxLoops}} tours de revue, puis escalade).
+
 **Captures du propriétaire.** Les images qu'il colle dans GitHub ne s'ouvrent pas depuis ta machine. La factory
 les copie pour toi : le payload liste leurs chemins dans `attachments` (sur la branche `factory-attachments`).
 Pour chacune : `gh api "repos/<repo>/contents/<chemin>?ref=factory-attachments" -H "Accept: application/vnd.github.raw" > /tmp/<nom>`,
