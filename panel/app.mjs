@@ -1122,7 +1122,16 @@ function renderRules() {
       el('label', { for: `stage-${k}` }, t))));
   const checks = el('fieldset', {}, el('legend', {}, 'Contrôles automatiques'),
     CHECKS.map(([k, t]) => el('div', { class: 'row' }, checkbox(`check-${k}`, c.checks[k], (on) => update(setPath(c, `checks.${k}`, on))),
-      el('label', { for: `check-${k}` }, t))));
+      el('label', { for: `check-${k}` }, t))),
+    el('div', { class: 'row' },
+      el('div', {}, el('label', { for: 'checksMinutes' }, 'Durée maximale des contrôles (minutes)'),
+        el('input', { type: 'number', id: 'checksMinutes', min: '5', max: '180', inputmode: 'numeric', value: String(c.checksMinutes ?? 30),
+          onchange: (e) => {
+            const v = Number(e.target.value);
+            if (Number.isInteger(v) && v >= 5 && v <= 180) return update(setPath(c, 'checksMinutes', v));
+            e.target.value = String(c.checksMinutes ?? 30);
+            toast('Entre 5 et 180 minutes.');
+          } }))));
   const extras = extraChecksFieldset(c, update);
   const packs = catalog.packs.map((p) => {
     const pc = c.skills[p.id];

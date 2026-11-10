@@ -4,6 +4,7 @@
   "maxParallel": 2,
   "autoPick": false,
   "maxQuestions": 2,
+  "checksMinutes": 30,
   "stack": "À choisir au cadrage",
   "stages": {
     "grilling": true,

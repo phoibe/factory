@@ -1909,7 +1909,7 @@ async function main() {
   } else {
     throw new Error(`unknown command ${command}`);
   }
-  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', ...relay.outputs });
+  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

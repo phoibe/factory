@@ -38,6 +38,7 @@ jobs:
       production: ${{ steps.relay.outputs.production }}
       previewSha: ${{ steps.relay.outputs.previewSha }}
       productionSha: ${{ steps.relay.outputs.productionSha }}
+      checksMinutes: ${{ steps.relay.outputs.checksMinutes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,7 +124,8 @@ jobs:
       group: factory-checks-${{ github.repository }}-${{ needs.decide.outputs.pr }}
       cancel-in-progress: true
     runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
-    timeout-minutes: 30
+    # « Durée maximale des contrôles » of the project's settings (checksMinutes, 30 by default).
+    timeout-minutes: ${{ fromJSON(needs.decide.outputs.checksMinutes || '30') }}
     permissions:
       contents: read
     outputs:
