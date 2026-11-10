@@ -179,3 +179,47 @@ test('une fiche stack « Automatique », ou sans cette partie : rien ne change e
     });
   }
 });
+
+// Pulsar alignment: a project whose CHANGELOG has a « Non publié » section gives its version number at the click.
+const changelog = { 'docs/CHANGELOG.md': '# Changelog\n\n## [Non publié]\n\n- Ajout du mode sombre\n\n## [0.17.0] - 2026-11-01\n\n- Avant\n' };
+
+test('un projet versionné : la fenêtre demande le numéro de version, et la demande le porte', async () => {
+  await withPanel({ config: approval, awaiting: pending, files: changelog }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Mise en production (2)' }).click();
+    const dialog = page.getByRole('dialog');
+    const field = dialog.getByRole('textbox', { name: 'Numéro de version' });
+    await field.waitFor();
+    await dialog.getByText('Dernière version : 0.17.0.', { exact: false }).waitFor();
+    await field.fill('0.18.0');
+    await dialog.getByRole('button', { name: 'Confirmer' }).click();
+    await page.getByText(/Mise en production lancée/).waitFor();
+    const sent = writes.find((w) => w.method === 'POST' && w.path === '/repos/o/r/issues');
+    assert.equal(sent.body.title, 'Mise en production : version 0.18.0');
+    assert.match(sent.body.body, /^Version : 0\.18\.0$/m);
+  });
+});
+
+test('un numéro absent ou inférieur à la dernière version n\'envoie rien, et la fenêtre dit pourquoi', async () => {
+  await withPanel({ config: approval, awaiting: pending, files: changelog }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Mise en production (2)' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('textbox', { name: 'Numéro de version' }).waitFor();
+    await dialog.getByRole('button', { name: 'Confirmer' }).click();
+    await dialog.getByRole('alert').filter({ hasText: 'Indiquez le numéro de version.' }).waitFor();
+    await dialog.getByRole('textbox', { name: 'Numéro de version' }).fill('0.16.0');
+    await dialog.getByRole('button', { name: 'Confirmer' }).click();
+    await dialog.getByRole('alert').filter({ hasText: 'pas supérieur à la dernière version (0.17.0)' }).waitFor();
+    assert.equal(writes.filter((w) => w.method === 'POST').length, 0);
+  });
+});
+
+test('un projet sans CHANGELOG versionné : pas de numéro demandé', async () => {
+  await withPanel({ config: approval, awaiting: pending }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Mise en production (2)' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Confirmer' }).waitFor();
+    assert.equal(await page.locator('#release-version').isVisible(), false);
+  });
+});

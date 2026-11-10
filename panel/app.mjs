@@ -12,6 +12,7 @@ import { setupTabs } from './tabs.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
+import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
 
@@ -1351,7 +1352,9 @@ const AWAITING = 'factory:awaiting-production';
 // `sent`: changes already asked for (key → time), hidden from the count until the relay takes their label off. Forgotten
 // after 5 minutes, so that a release the relay could not do shows its changes again.
 const SENT_MS = 5 * 60_000;
-const release = { repo: null, pending: [], sent: new Map() };
+// `changelog`: the project's versioned CHANGELOG as preprod holds it ({ text, last }), or null: then the dialog asks for
+// a version number, which the relay writes into it and tags (Pulsar alignment).
+const release = { repo: null, pending: [], sent: new Map(), changelog: null };
 const wasSent = (key) => Date.now() - (release.sent.get(key) || 0) < SENT_MS;
 const awaitingOf = (repo, list) => (list || []).filter((i) => (i.labels || []).some((l) => (l.name || l) === AWAITING) && !wasSent(`${repo}#${i.number}`))
   .sort((a, b) => Date.parse(a.pull_request?.merged_at || a.closed_at || 0) - Date.parse(b.pull_request?.merged_at || b.closed_at || 0));
@@ -1362,7 +1365,18 @@ async function refreshRelease() {
   if (current.repo.full_name !== repo) return;
   release.repo = repo;
   release.pending = awaitingOf(repo, res.data);
+  release.changelog = release.pending.length ? await versionedChangelog(repo) : null;
+  if (current.repo.full_name !== repo) return;
   drawRelease();
+}
+async function versionedChangelog(repo) {
+  for (const path of CHANGELOG_PATHS) {
+    const res = await cachedGet(`/repos/${repo}/contents/${path}?ref=preprod`).catch(() => null);
+    const text = res?.data?.content ? fromBase64(res.data.content) : null;
+    const log = readChangelog(text);
+    if (log) return { text, last: log.last };
+  }
+  return null;
 }
 function drawRelease() {
   const btn = $('release');
@@ -1377,10 +1391,11 @@ function drawRelease() {
   btn.setAttribute('aria-disabled', String(b.disabled));
   btn.title = b.hint;
 }
-async function sendRelease(pending) {
+async function sendRelease(pending, version) {
   const repo = current.repo.full_name;
   const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
-  await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: 'Mise en production', labels: ['factory:production'], body: `Demandé depuis le tableau de bord.\n\n${list}` }) });
+  const body = `Demandé depuis le tableau de bord.\n\n${version ? `${versionLine(version)}\n\n` : ''}${list}`;
+  await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: version ? `Mise en production : version ${version}` : 'Mise en production', labels: ['factory:production'], body }) });
   for (const p of pending) release.sent.set(`${repo}#${p.number}`, Date.now());
   release.pending = release.pending.filter((p) => !wasSent(`${repo}#${p.number}`));
   drawRelease();
@@ -1391,18 +1406,34 @@ $('release').addEventListener('click', () => {
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;
   $('release-list').replaceChildren(...release.pending.map((p) => el('li', {}, p.title)));
+  const log = release.repo === current.repo.full_name ? release.changelog : null;
+  $('release-version').hidden = !log;
+  $('release-version-input').value = '';
+  $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}. Le CHANGELOG et le tag suivent ce numéro.` : 'Le CHANGELOG et le tag suivent ce numéro.';
   $('release-dialog').showModal();
 });
 $('release-cancel').addEventListener('click', () => $('release-dialog').close());
 $('release-confirm').addEventListener('click', async () => {
   const btn = $('release-confirm');
   if (btn.disabled) return;
+  // A versioned project: the number is always given, never deduced; checked here as the relay will.
+  const log = $('release-version').hidden ? null : release.changelog;
+  const version = log ? $('release-version-input').value.trim() : null;
+  const problem = log ? (version ? versionProblem(log.text, version) : 'Indiquez le numéro de version.') : null;
+  if (problem) {
+    $('release-error').textContent = problem.charAt(0).toUpperCase() + problem.slice(1);
+    $('release-error').hidden = false;
+    $('release-version-input').setAttribute('aria-invalid', 'true');
+    $('release-version-input').focus();
+    return;
+  }
+  $('release-version-input').removeAttribute('aria-invalid');
   btn.disabled = true;
   $('release-cancel').disabled = true;
   btn.textContent = 'Envoi…';
   $('release-error').hidden = true;
   try {
-    await sendRelease(release.pending.slice());
+    await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
     toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
   } catch {
