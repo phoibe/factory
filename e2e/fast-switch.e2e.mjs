@@ -76,6 +76,7 @@ test('une demande qui a changé pendant qu\'on était sur un autre projet se met
   });
 });
 
+// r is slow, so the project list has not read it yet after the reload: nothing can fill it but a memory, which must be gone.
 test('après un rechargement de la page, un projet s\'ouvre comme la première fois, sans ancien état', async () => {
   await withPanel({ repos: ['o/r', 'o/alpha'], issues: [issue(1, 'Carte r', ['factory:feature', 'factory:queued'])], repoIssues: { 'o/alpha': [issue(50, 'Carte alpha', ['factory:feature', 'factory:queued'])] }, slowRepos: { 'o/r': 1500 }, viewport: VP }, async ({ page, url }) => {
     await page.addInitScript(() => { if (!localStorage.getItem('factory.project')) localStorage.setItem('factory.project', 'o/r'); });

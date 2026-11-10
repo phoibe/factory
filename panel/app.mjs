@@ -82,7 +82,8 @@ function toast(msg) {
 function sessionExpired() {
   if (!token) return;
   store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
-  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; live.repo = null;
+  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
   $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
   show('login');
 }
@@ -240,7 +241,8 @@ async function refreshDots() {
   const session = token;
   try {
     const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
-    const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, await projectDotOf(p.repo.full_name)]);
+    // A project opened meanwhile is skipped: the board reads it, and must see its changes first (shared ETags).
+    const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, current?.repo.full_name === p.repo.full_name ? undefined : await projectDotOf(p.repo.full_name)]);
     if (token !== session) return; // logged out meanwhile: these dots belong to the previous session
     // The project opened meanwhile is drawn from the board's own data.
     const results = new Map(found.filter(([repo]) => !current || repo !== current.repo.full_name));
@@ -446,6 +448,7 @@ async function refresh() {
     const quiet = (e) => { if (e?.rateLimited) limited = e; return null; };
     const stale = boardItems(live.issues).filter((c) => commentsStale(c, live.read.get(c.number), { preview: live.previews.get(c.number) }));
     const comments = mapLimit(stale, 8, async (c) => {
+      if (!same()) return; // left meanwhile: no more requests for this project
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(quiet) : { data: [] };
       if (!res || !same()) return;
