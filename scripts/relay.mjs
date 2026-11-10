@@ -13,6 +13,7 @@ import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from './lib/config-core.mjs';
 import { github } from './lib/github.mjs';
+import { mergeBranchesSettling, MergeConflict } from './lib/merge-generated.mjs';
 import { isRateLimited } from './lib/ratelimit.mjs';
 import { syncFingerprint } from './lib/fingerprint.mjs';
 import { withLock } from './lib/lock.mjs';
@@ -595,7 +596,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (config.production !== 'approval' || !gh.mergeBranches) return;
     const def = (await gh.getRepo())?.default_branch || 'main';
     if (!(await gh.getBranch(PREPROD_BRANCH).catch(() => null))) return ensurePreprod(def);
-    const res = await gh.mergeBranches(PREPROD_BRANCH, def, `chore(factory): bring ${def} into ${PREPROD_BRANCH}`);
+    let res;
+    try {
+      res = await mergeBranchesSettling(gh, PREPROD_BRANCH, def, `chore(factory): bring ${def} into ${PREPROD_BRANCH}`, { prefer: def });
+    } catch (e) {
+      if (!(e instanceof MergeConflict)) throw e;
+      return log(`::warning::${def} ne peut pas être ramenée dans ${PREPROD_BRANCH} : ${e.message}. Un humain doit régler ce conflit.`);
+    }
+    if (res?.settled) log(`${PREPROD_BRANCH}: conflit réglé sur les fichiers de la factory (${res.settled.join(', ')})`);
     if (res?.sha) log(`${def} brought into ${PREPROD_BRANCH} (${res.sha.slice(0, 7)})`);
   }
 
@@ -620,7 +628,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       // preprod into main: the host publishes main. Nothing in preprod (changes merged before preprod existed): main
       // already holds them.
       const merged = (await gh.getBranch(PREPROD_BRANCH).catch(() => null))
-        ? await gh.mergeBranches(ref, PREPROD_BRANCH, `Mise en production : ${pending.map((p) => `#${p.number}`).join(', ')}`)
+        ? await mergeBranchesSettling(gh, ref, PREPROD_BRANCH, `Mise en production : ${pending.map((p) => `#${p.number}`).join(', ')}`, { prefer: ref })
         : null;
       head = merged?.sha || from;
       if (await gh.getBranch(PROD_BRANCH).catch(() => null)) {
@@ -628,6 +636,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await moveProduction(head);
       }
     } catch (e) {
+      if (issueNumber && e instanceof MergeConflict) {
+        await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production : ${PREPROD_BRANCH} et ${ref} ont modifié les mêmes fichiers, et je ne règle seul que les miens. Fichiers en conflit : ${e.files.slice(0, 10).map((f) => `\`${f}\``).join(', ')}${e.files.length > 10 ? ` (et ${e.files.length - 10} autres)` : ''}. Rien n'a changé en ligne ; il faut régler ce conflit avant de recliquer sur « Mise en production ».`));
+        throw e;
+      }
       if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
       throw e;
     }
