@@ -16,6 +16,7 @@ Les contrôles automatiques ont échoué sur la PR.
    **« contrôle supplémentaire du projet »** : un contrôle propre à ce projet, que le propriétaire a déclaré dans le
    panneau (`extraChecks` de `factory.config.json`, commande lancée par bash à la racine du projet). Corrige le code
    qu'il signale ; ne retouche jamais sa commande ni `factory.config.json` (seul le propriétaire les règle).
+   Un contrôle qui sort en 75 dit « je ne tourne que sur la machine du projet » : ne change jamais ce code de sortie.
 2. Reproduis l'échec localement, corrige la cause (jamais en désactivant un test ou un contrôle), vérifie, push.
 3. Labels de la PR : retire `factory:fixing`, ajoute `factory:checks`.
 4. Pas besoin de commenter si tout s'est bien passé.
