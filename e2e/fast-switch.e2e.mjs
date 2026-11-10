@@ -105,3 +105,53 @@ test('en cliquant très vite sur des projets déjà ouverts, le tableau finit su
     assert.deepEqual(await page.locator('#board .ticket h3').allTextContents(), ['Carte alpha']);
   });
 });
+
+test('à la première ouverture, les cartes que la liste des projets connaît déjà s\'affichent avant toute réponse de GitHub', async () => {
+  const slowRepos = {};
+  const alpha = [issue(101, 'Carte alpha', ['factory:feature', 'factory:building', 'factory:running'])];
+  await withPanel({ repos: ['o/r', 'o/alpha'], issues: [issue(1, 'Carte r', ['factory:feature', 'factory:queued'])], repoIssues: { 'o/alpha': alpha }, slowRepos, etag: true, viewport: VP }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+    await page.goto(url);
+    await page.locator('.ticket', { hasText: 'Carte r' }).waitFor();
+    await page.locator('#projects .project-item[data-repo="o/alpha"] .pdot-working').waitFor({ timeout: 15000 });
+    slowRepos['o/alpha'] = 3000; // from now on every read of alpha takes 3 s
+    const ms = await timeSwitch(page, 'o/alpha', '#board .ticket', 1);
+    assert.ok(ms !== null && ms < 250, `cards in ${ms} ms`);
+  });
+});
+
+test('une carte qui attend seulement une autre demande ne passe jamais par « À vous de jouer » à la première ouverture', async () => {
+  const wait = [{ id: 9, user: { login: 'o' }, created_at: new Date().toISOString(), body: '<!-- factory-agent -->\nJ\'attends la fusion de #7.\n<!-- factory-waits-for #7 -->' }];
+  const alpha = [issue(101, 'Carte qui attend', ['factory:feature', 'factory:building', 'factory:blocked'], { comments: 1 })];
+  await withPanel({ repos: ['o/r', 'o/alpha'], issues: [issue(1, 'Carte r', ['factory:feature', 'factory:queued'])], repoIssues: { 'o/alpha': alpha }, repoComments: { 'o/alpha': { 101: wait } }, slowReads: network, etag: true, viewport: VP }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+    await page.goto(url);
+    await page.locator('.ticket', { hasText: 'Carte r' }).waitFor();
+    await page.locator('#projects .project-item[data-repo="o/alpha"] .pdot-working').waitFor({ timeout: 15000 });
+    await page.evaluate(() => {
+      window.__lanes = new Set();
+      new MutationObserver(() => document.querySelectorAll('#board .ticket[data-number="101"]').forEach((t) => window.__lanes.add(t.closest('.lane, .you-card')?.className || '?')))
+        .observe(document.getElementById('board'), { childList: true, subtree: true });
+    });
+    await pick(page, 'alpha');
+    await page.locator('.lane-queued .ticket', { hasText: 'Carte qui attend' }).waitFor({ timeout: 10000 });
+    await page.waitForTimeout(1500);
+    assert.doesNotMatch([...await page.evaluate(() => [...window.__lanes])].join(' '), /you/);
+  });
+});
+
+test('au retour, une demande que la liste des projets a vue changer est à jour, même quand GitHub répond « rien de nouveau »', async () => {
+  const issues = [issue(1, 'Carte r', ['factory:feature', 'factory:queued'])];
+  await withPanel({ repos: ['o/r', 'o/alpha'], issues, repoIssues: { 'o/alpha': [issue(50, 'Carte alpha', ['factory:feature', 'factory:queued'])] }, etag: true, viewport: VP }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+    await page.goto(url);
+    await page.locator('.lane-queued .ticket', { hasText: 'Carte r' }).waitFor();
+    await pick(page, 'alpha');
+    await page.locator('.ticket', { hasText: 'Carte alpha' }).waitFor();
+    // Same date and no running agent: nothing else makes the board read this card again.
+    issues[0] = { ...issues[0], labels: ['factory:feature', 'factory:building'].map((name) => ({ name })) };
+    await page.waitForTimeout(33000); // the project list reads r in the background (every 30 s) and gets the change first
+    await pick(page, 'r');
+    await page.locator('.lane-working .ticket', { hasText: 'Carte r' }).waitFor({ timeout: 4000 });
+  });
+});

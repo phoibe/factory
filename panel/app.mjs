@@ -310,8 +310,8 @@ const live = { repo: null, issues: null, events: [], eventsDeep: false, previews
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'read', 'prev', 'done', 'doneLoaded'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -323,12 +323,29 @@ function knownIssues(repo) {
   }
   return issues.map((i) => ({ ...i, labels: i.labels.map((l) => l.name ?? l) }));
 }
+// What the blocked cards wait for, from the comment pages the project list read for its dot: a card that only
+// waits for another request's merge never shows in « À vous de jouer » meanwhile (issue #298).
+function knownWaits(repo, issues) {
+  const waits = new Map();
+  for (const n of blockedNumbers(issues || [])) {
+    const count = issues.find((i) => i.number === n).comments || 0;
+    const page = Math.max(1, Math.ceil(count / 100));
+    const last = count && etags.get(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`);
+    if (!last) continue;
+    const before = page > 1 ? etags.get(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`)?.data || [] : [];
+    waits.set(n, waitedFor([...before, ...last.data]));
+  }
+  return waits;
+}
 // Puts the left project's board away and takes out the new one's. The drawing state starts over: the board on
 // screen is the other project's (card numbers repeat across projects).
 function enterBoard(repo) {
   if (live.repo && live.issues) boards.set(live.repo, Object.fromEntries(BOARD_KEYS.map((k) => [k, live[k]])));
-  const known = boards.get(repo) || { issues: knownIssues(repo) };
-  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false });
+  const issues = boards.has(repo) ? null : knownIssues(repo);
+  const known = boards.get(repo) || { issues, waits: knownWaits(repo, issues) };
+  // `synced`: the first answers since coming back are always drawn, even « unchanged » ones (the ETags are shared
+  // with the project list, which may have fetched a change this board has not drawn yet).
+  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false });
 }
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
@@ -397,12 +414,16 @@ async function refresh() {
       cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(soft({ data: [], changed: false })),
     ]);
     if (!same()) return; // the owner switched project meanwhile
+    // More than a page of events while away: the older pages are read again, so that no step is missing.
+    if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
     if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
+    live.doneTried = true;
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // The cards show now; their details (preview, session, estimate) come in below, in their place.
-    if (!live.drawn || issues.changed || closed.changed || closedIssues.changed || ev.changed) drawBoard();
+    if (!live.drawn || !live.synced || issues.changed || closed.changed || closedIssues.changed || ev.changed) drawBoard();
+    live.synced = true;
     // The older history of steps (the cards' durations), read once per project.
     const deepEvents = async () => {
       if (live.eventsDeep) return false;
@@ -846,8 +867,8 @@ function drawBoard() {
         : el('p', { class: 'lane-empty' }, empty))),
     ideasLane(ideas),
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
-      el('h2', {}, 'Terminé', live.doneLoaded ? el('span', { class: 'count' }, String(live.done.length)) : null),
-      !live.doneLoaded ? null : live.done.length
+      el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
+      !live.doneTried ? null : live.done.length
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
@@ -1450,6 +1471,7 @@ $('login-form').addEventListener('submit', (e) => {
 $('logout').addEventListener('click', () => {
   store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null }); // the next account never sees this board
   show('login');
 });
 function loadScript(src) {
