@@ -85,3 +85,32 @@ test('extra checks run after the usual ones: a red one turns the checks red, a s
   assert.equal(red.status, 1);
   assert.match(red.summary, /\| Scan \| ❌/);
 });
+
+test('a check that can only run on the project machine (exit 75) waits for it, unless something else is red', async () => {
+  const { mkdtempSync, writeFileSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { verdict } = await import('../scripts/checks.mjs');
+  assert.equal(verdict([{ status: 'pass' }, { status: 'elsewhere' }]), 'server');
+  assert.equal(verdict([{ status: 'fail' }, { status: 'elsewhere' }]), 'fail');
+  assert.equal(verdict([{ status: 'pass' }, { status: 'skipped' }]), 'pass');
+  const script = new URL('../scripts/checks.mjs', import.meta.url).pathname;
+  const runWith = (lint, extra) => {
+    const dir = mkdtempSync(join(tmpdir(), 'elsewhere-'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'p', private: true, scripts: { lint } }));
+    const off = { typecheck: false, lint: true, test: false, build: false, a11y: false, e2e: false, audit: false };
+    writeFileSync(join(dir, 'rules.json'), JSON.stringify({ checks: off, extraChecks: [{ label: 'Images', command: extra }] }));
+    const out = join(dir, 'out.txt');
+    writeFileSync(out, '');
+    const r = spawnSync(process.execPath, [script, dir, '--config', join(dir, 'rules.json')], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: join(dir, 's.md'), GITHUB_OUTPUT: out } });
+    return { status: r.status, output: readFileSync(out, 'utf8'), summary: readFileSync(join(dir, 's.md'), 'utf8') };
+  };
+  const away = runWith('exit 75', 'exit 75');
+  assert.equal(away.status, 1);
+  assert.match(away.output, /transient=server/);
+  assert.match(away.summary, /serveur du projet déconnecté/);
+  const red = runWith('exit 1', 'exit 75');
+  assert.equal(red.status, 1);
+  assert.doesNotMatch(red.output, /transient/);
+});

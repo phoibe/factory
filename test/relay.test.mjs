@@ -1612,7 +1612,7 @@ test('a tick stopped by the rate limit is not re-run: the next tick does the sam
 });
 
 // ---- passing outages (issue #213) ----
-const { readOutage, writeOutage, OUTAGE_TOLD } = await import('../scripts/lib/outage.mjs');
+const { readOutage, writeOutage, OUTAGE_TOLD, SERVER_TOLD } = await import('../scripts/lib/outage.mjs');
 const outagePr = (marker, labels = [L.checks]) => ({ number: 10, body: writeOutage('Closes #1', marker), head: { sha: 'abc' }, labels, state: 'open' });
 function outageWorld(marker, { prLabels, issueLabels = [L.feature, L.building] } = {}) {
   const state = { issues: [{ number: 1, labels: issueLabels }], prs: [outagePr(marker, prLabels)], comments: { 10: [] } };
@@ -1668,6 +1668,20 @@ test('outage: after 3 hours the card is blocked, and the owner may answer « ré
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 1 && /réessaie/.test(c[2]) && /3 heures/.test(c[2])));
   assert.equal(readOutage(pr.body).blocked, true);
   assert.equal(sent.length, 0);
+});
+
+test('the project server away: same quiet retries, told in its own words, and remembered by the lost-report path', async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 2 });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', transient: 'server', pr: 10, sha: 'abc', now: T + 20 * 60_000 });
+  const said = gh.calls.filter((c) => c[0] === 'comment');
+  assert.equal(said.length, 1);
+  assert.ok(said[0][2].includes(SERVER_TOLD));
+  assert.equal(sent.length, 0);
+  assert.equal(readOutage(pr.body).server, true);
+  gh.calls.length = 0;
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T + 3 * 3_600_000 });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /serveur de développement est déconnecté/.test(c[2])));
 });
 
 test('outage: a real test failure still goes to the agent, and the outage is forgotten', async () => {

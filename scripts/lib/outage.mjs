@@ -30,6 +30,10 @@ export const OUTAGE_RETRIES_MS = [2 * MIN, 10 * MIN];
 export const OUTAGE_SLOW_MS = 30 * MIN;
 export const OUTAGE_GIVE_UP_MS = 3 * HOUR;
 export const OUTAGE_TOLD = "GitHub ou le réseau a un problème en ce moment, je réessaie plus tard, rien à faire de votre côté.";
+// A check the project says can only run on its own machine (exit code CANT_RUN_HERE), on a GitHub machine while that
+// machine is away (Pulsars, 2026-11-10): an outage too, told in its own words.
+export const CANT_RUN_HERE = 75;
+export const SERVER_TOLD = "Votre serveur de développement est déconnecté, et certains contrôles ne tournent que là. Je les relance quand il revient, rien à faire de votre côté.";
 
 // What to do after checks that failed on an outage. `state.tries` counts the retries already started; a state for
 // another commit is ignored (new code, new schedule). `retryInMs`: the retry the report starts itself, shortly.
