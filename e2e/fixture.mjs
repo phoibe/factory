@@ -1,5 +1,6 @@
 // The panel served locally against a fake GitHub, for the journeys of e2e/*.e2e.mjs.
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,9 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [] }, journey) {
+// `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
+// are read at each request: a journey may change them on the way.
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -64,7 +67,15 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
     await page.route('https://api.github.com/**', async (route) => {
       const req = route.request();
       const path = new URL(req.url()).pathname;
-      const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      // `etag`: GitHub's ETags on reads, and « 304 Not Modified » when the panel already has the same answer.
+      const json = (body, status = 200) => {
+        const text = JSON.stringify(body);
+        if (!etag || req.method() !== 'GET' || status !== 200) return route.fulfill({ status, contentType: 'application/json', body: text });
+        const tag = `"${createHash('sha1').update(text).digest('hex')}"`;
+        const headers = { etag: tag, 'access-control-expose-headers': 'ETag' };
+        if (req.headers()['if-none-match'] === tag) return route.fulfill({ status: 304, headers });
+        return route.fulfill({ status, contentType: 'application/json', headers, body: text });
+      };
       const slow = Object.keys(slowRepos).find((r) => path.startsWith(`/repos/${r}/`));
       if (slow && req.method() === 'GET') await new Promise((r) => setTimeout(r, slowRepos[slow]));
       const lag = slowReads.find(([pattern]) => pattern.test(req.url()))?.[1];
