@@ -516,7 +516,18 @@ test('checks stopped by the time limit count as a failure, so the PR never sits 
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: Date.now() / 1000 - 31 * 60 });
   assert.equal(payloadOf(sent[0].init.body).stage, 'fix-checks');
-  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /trop longtemps/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /dépassé la durée maximale réglée dans Paramètres \(30 min\)/.test(c[2]) && /aucun contrôle n'a échoué/.test(c[2])));
+});
+
+test('still over the time limit after the last try: the owner reads that the set limit was exceeded, not that tests fail', async () => {
+  const failed = Array.from({ length: 3 }, () => ({ body: `${CHECKS_FAILED_MARKER}\nx`, user: { login: 'github-actions[bot]' } }));
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: failed } };
+  const gh = fakeGh(state);
+  await createRelay({ gh, repo: 'r', config: { ...config, checksMinutes: 90 }, env, fetchImpl: fetchOk([]), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: Date.now() / 1000 - 91 * 60 });
+  const said = gh.calls.filter((c) => c[0] === 'comment').map((c) => c[2]).join('\n');
+  assert.match(said, /durée maximale réglée dans Paramètres \(90 min\)/);
+  assert.match(said, /dépassent encore la durée maximale réglée dans Paramètres \(90 min\) après 3 tentatives/);
+  assert.doesNotMatch(said, /échouent encore/);
 });
 
 test('checks cancelled because the PR changed are ignored (a newer run reports)', async () => {
