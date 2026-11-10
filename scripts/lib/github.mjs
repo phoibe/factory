@@ -190,6 +190,11 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     // Merges one branch into another on GitHub (« Mise en production » sends preprod into main). 201: merged, with the
     // new commit; 204 (null here): nothing to merge; 409: conflict (thrown).
     mergeBranches: (base, head, message) => request('POST', '/repos/{repo}/merges', { base, head, commit_message: message }),
+    // What `head` changed since it left `base` (files with their blob sha; at most 300 listed).
+    compare: (base, head) => request('GET', `/repos/{repo}/compare/${enc(base)}...${enc(head)}`),
+    getTree: (sha) => request('GET', `/repos/{repo}/git/trees/${sha}?recursive=1`),
+    createTree: (baseTree, tree) => request('POST', '/repos/{repo}/git/trees', { base_tree: baseTree, tree }),
+    createGitCommit: (message, tree, parents) => request('POST', '/repos/{repo}/git/commits', { message, tree, parents }),
     setPrBase: (n, base) => request('PATCH', `/repos/{repo}/pulls/${n}`, { base }),
     getCommit: (sha) => request('GET', `/repos/{repo}/git/commits/${sha}`),
     // The merged PRs that wait for the owner's « Mise en production » (issue #294).

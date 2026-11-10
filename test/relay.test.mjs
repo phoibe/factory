@@ -2223,6 +2223,18 @@ test('« Mise en production » merges preprod into main, then checks the live si
   assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /En production/);
 });
 
+test('« Mise en production » blocked by a conflict on the project files names them, and changes nothing', async () => {
+  const awaiting = [{ number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z' }];
+  const { gh, relay } = prodGh({ awaiting, branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.mergeBranches = async () => { throw new Error('GitHub 409: Merge conflict'); };
+  gh.compare = async () => ({ files: [{ filename: 'app.py', status: 'modified', sha: 'x' }] });
+  gh.createTree = async () => ({ sha: 't' });
+  gh.createGitCommit = async () => ({ sha: 'c' });
+  await assert.rejects(relay().handle({ kind: 'issue', event: 'issues', action: 'opened', number: 50, labels: [L.production], fromOwner: true }));
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /Fichiers en conflit : `app\.py`/);
+  assert.equal(prodChecksOf(gh).length, 0);
+});
+
 test('a release that breaks the live site puts main back where it was (preprod keeps the changes)', async () => {
   const { gh, relay } = prodGh({ branches: { main: 'm2', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], open: false }] });
   gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
