@@ -20,7 +20,7 @@ import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
-import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
+import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, SERVER_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
@@ -1635,7 +1635,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // `preview`: the result of the preview check ({ result: passed|failed|skipped, url }) when this report follows it.
-  // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213).
+  // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213); 'server' when the
+  // project's own machine was away (a check that only runs there).
   async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
     let pr = await gh.getPr(prNumber);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
@@ -1654,7 +1655,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (live.includes(L.fixing) && !live.includes(L.checks)) return log('stale report: an agent is changing the PR, its own checks will report');
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
-    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs);
+    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
     // Any other result ends the outage: a later one starts a new schedule.
     if (readOutage(pr.body)) {
       pr = { ...pr, body: writeOutage(pr.body, null) };
@@ -1764,9 +1765,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
   // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
   // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
-  async function onOutage(pr, nowMs) {
+  async function onOutage(pr, nowMs, cause) {
     const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
     let st = step.state;
+    const server = cause === 'server' || (cause === true && st.server);
+    if (server) st = { ...st, server: true };
     if (step.retryInMs) {
       st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };
       outputs.retryInMs = step.retryInMs;
@@ -1777,9 +1780,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const issueNumber = linkedIssue(pr.body) || branchIssue(pr);
       for (const l of [L.checks, L.fixing]) await gh.removeLabel(pr.number, l);
       await gh.addLabels(issueNumber || pr.number, [L.blocked]);
-      await gh.comment(issueNumber || pr.number, say(`Les contrôles automatiques de la PR #${pr.number} ne passent pas depuis 3 heures à cause d'une panne de GitHub ou du réseau. Ça ne ressemble pas à un problème de code, donc je n'ai pas envoyé l'agent corriger.\n\nRépondez « réessaie » ici quand vous voulez que je relance les contrôles.`));
+      const why = server ? 'parce que votre serveur de développement est déconnecté' : "à cause d'une panne de GitHub ou du réseau";
+      await gh.comment(issueNumber || pr.number, say(`Les contrôles automatiques de la PR #${pr.number} ne passent pas depuis 3 heures ${why}. Ça ne ressemble pas à un problème de code, donc je n'ai pas envoyé l'agent corriger.\n\nRépondez « réessaie » ici quand vous voulez que je relance les contrôles.`));
     } else if (step.tell) {
-      await gh.comment(pr.number, say(OUTAGE_TOLD));
+      await gh.comment(pr.number, say(server ? SERVER_TOLD : OUTAGE_TOLD));
     }
   }
 
@@ -1859,7 +1863,7 @@ async function main() {
     await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions.
-    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'true' }));
+    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {

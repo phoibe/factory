@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig } from './lib/config.mjs';
-import { isNetworkFailure } from './lib/outage.mjs';
+import { isNetworkFailure, CANT_RUN_HERE } from './lib/outage.mjs';
 import { isManifest, stackVerdict, STACK_FILE } from './lib/stack.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,8 +40,8 @@ export function planExtraChecks(config) {
 }
 
 export function summary(results) {
-  const icon = { pass: '✅', fail: '❌', missing: '⚠️', skipped: '➖' };
-  const note = { missing: (r) => `script npm « ${r.script} » absent`, skipped: () => 'pas encore de tests (ajoutés à la prochaine construction)' };
+  const icon = { pass: '✅', fail: '❌', missing: '⚠️', skipped: '➖', elsewhere: '⏸️' };
+  const note = { missing: (r) => `script npm « ${r.script} » absent`, skipped: () => 'pas encore de tests (ajoutés à la prochaine construction)', elsewhere: () => 'serveur du projet déconnecté, relancé quand il revient' };
   const rows = results.map((r) => `| ${r.label} | ${icon[r.status]} ${r.note || note[r.status]?.(r) || ''} |`);
   return ['### Contrôles automatiques', '', '| Contrôle | Résultat |', '| --- | --- |', ...rows].join('\n');
 }
@@ -66,6 +66,15 @@ export function browserSetup(pkg) {
 // The project's own checks never count as an outage, even when their output mentions the network.
 const DOWNLOADS = ['install', 'browser', 'audit'];
 export const isOutage = (step, status, output) => status !== 0 && DOWNLOADS.includes(step) && isNetworkFailure(output);
+
+// A check that ends with CANT_RUN_HERE says it can only run on the project's own machine (its server, away right now):
+// not the code's fault, the relay retries once that machine is back. Only when nothing else is red: a real failure
+// still goes to the agent.
+export function verdict(results) {
+  if (results.every((r) => r.status === 'pass' || r.status === 'skipped')) return 'pass';
+  return results.every((r) => r.status === 'pass' || r.status === 'skipped' || r.status === 'elsewhere') ? 'server' : 'fail';
+}
+const statusOf = (code) => (code === 0 ? 'pass' : code === CANT_RUN_HERE ? 'elsewhere' : 'fail');
 
 // The stack sheet check (issue #242): the PR's manifests and STACK.md against where it started (`baseRef`, its merge base, fetched
 // by relay.yml). Without that branch at hand the check is skipped, never red.
@@ -165,21 +174,25 @@ function main() {
       const r = fetchStep(c.run);
       if (isOutage('audit', r.status, r.output)) { console.log('::endgroup::'); outage('La vérification des failles'); }
       status = r.status === 0 ? 'pass' : 'fail';
-    } else status = run(c.run) === 0 ? 'pass' : 'fail';
+    } else status = statusOf(run(c.run));
     console.log('::endgroup::');
     if (status === 'fail') console.log(`::error::${c.label} : échec`);
+    if (status === 'elsewhere') console.log(`::error::${c.label} : ne tourne que sur le serveur du projet, déconnecté en ce moment (je relance quand il revient)`);
     results.push({ ...c, status });
   }
   for (const c of planExtraChecks(config)) {
     console.log(`::group::${c.label} (contrôle supplémentaire)`);
     console.log(`$ ${c.run[2]}`);
-    const status = run(c.run) === 0 ? 'pass' : 'fail';
+    const status = statusOf(run(c.run));
     console.log('::endgroup::');
     if (status === 'fail') console.log(`::error::${c.label} : échec (contrôle supplémentaire du projet)`);
+    if (status === 'elsewhere') console.log(`::error::${c.label} : ne tourne que sur le serveur du projet, déconnecté en ce moment (je relance quand il revient)`);
     results.push({ ...c, status });
   }
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary(results) + '\n');
-  process.exit(results.every((r) => r.status === 'pass' || r.status === 'skipped') ? 0 : 1);
+  const end = verdict(results);
+  if (end === 'server' && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'transient=server\n');
+  process.exit(end === 'pass' ? 0 : 1);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

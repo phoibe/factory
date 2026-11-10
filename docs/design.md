@@ -36,7 +36,8 @@ avec des agents IA. Pierre n'intervient que sur le fonctionnel et ne lit jamais 
    Les contrôles automatiques ne tournent qu'après cet OK.
 5. Contrôles automatiques : types, lint, tests, build, accessibilité de base, failles des dépendances. Un projet peut
    y ajouter ses propres contrôles (« Contrôles supplémentaires » du panneau : un nom, une commande, un interrupteur),
-   joués après les autres et pour lui seul.
+   joués après les autres et pour lui seul. Un contrôle qui ne peut tourner que sur la machine du projet sort en 75
+   quand elle est absente : la factory attend son retour comme une panne, sans envoyer l'agent.
    Rouge = rien ne fusionne.
 6. Preview, recette fonctionnelle de Pierre (porte 3). Refus = commentaire en langage simple ;
    une idée nouvelle devient une nouvelle issue.
