@@ -81,7 +81,7 @@ function toast(msg) {
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
 function sessionExpired() {
   if (!token) return;
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); dotEtags.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; live.repo = null;
   $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
   show('login');
@@ -204,13 +204,14 @@ function setDot(repo, dot) {
 // The other projects are checked at start, then every 30 s. Their requests carry the last ETag (an unchanged
 // answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
 // A project GitHub does not answer for keeps its last known dot.
-const dotEtags = new Map();
+// One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
+const etags = new Map();
 let dotsTimer = null, dotsBusy = false;
 async function projectDotOf(repo) {
   try {
     const issues = [];
     for (let page = 1; page <= 10; page++) {
-      const { data } = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`, dotEtags);
+      const { data } = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`);
       issues.push(...data);
       if (data.length < 100) break;
     }
@@ -220,8 +221,8 @@ async function projectDotOf(repo) {
       if (!count) continue;
       // The last page and the one before, as the board reads them.
       const page = Math.max(1, Math.ceil(count / 100));
-      const { data } = await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`, dotEtags);
-      const before = page > 1 ? (await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`, dotEtags)).data : [];
+      const { data } = await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`);
+      const before = page > 1 ? (await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`)).data : [];
       waits.set(n, waitedFor([...before, ...data]));
     }
     return projectDot(issues, waits);
@@ -262,8 +263,9 @@ async function openProject(fullName) {
   const switched = current && current.repo.full_name !== next.repo.full_name;
   if (switched) cancelPendingGos();
   current = next;
-  // Never the old project's cards under the new name (issue #319): its late answers are dropped and the board waits for this one.
-  if (switched) Object.assign(live, { repo: null, issues: null });
+  // Never the old project's cards under the new name (issue #319): its late answers are dropped. The new one shows
+  // at once from this tab's memory, or from what the project list knows, otherwise grey cards (issue #327).
+  if (live.repo !== next.repo.full_name) enterBoard(next.repo.full_name);
   store.set(PROJECT_KEY, current.repo.full_name);
   renderProjectList();
   const { config, warnings } = resolveConfig(raw, catalog, defaults);
@@ -304,7 +306,30 @@ async function loadFramed(project) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: false };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+
+// Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
+const boards = new Map();
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'read', 'prev', 'done', 'doneLoaded'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false });
+// The open requests the project list already read in the background for its dot (all pages, or nothing).
+function knownIssues(repo) {
+  const issues = [];
+  for (let page = 1; page <= 10; page++) {
+    const hit = etags.get(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`);
+    if (!hit) return null;
+    issues.push(...hit.data);
+    if (hit.data.length < 100) break;
+  }
+  return issues.map((i) => ({ ...i, labels: i.labels.map((l) => l.name ?? l) }));
+}
+// Puts the left project's board away and takes out the new one's. The drawing state starts over: the board on
+// screen is the other project's (card numbers repeat across projects).
+function enterBoard(repo) {
+  if (live.repo && live.issues) boards.set(live.repo, Object.fromEntries(BOARD_KEYS.map((k) => [k, live[k]])));
+  const known = boards.get(repo) || { issues: knownIssues(repo) };
+  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false });
+}
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
   ['working', 'Les agents travaillent', 'Aucun agent ne travaille en ce moment.'],
@@ -313,8 +338,8 @@ const LANES = [
 
 // « Too many requests »: a short wait is spent here, then the same request goes again; a long one stops this
 // refresh quietly (no « connexion perdue »), and the next one comes after the wait GitHub asked for.
-async function cachedGet(path, etags = live.etags) {
-  const hit = etags.get(path);
+async function cachedGet(path, cache = etags) {
+  const hit = cache.get(path);
   let res;
   for (let pauses = 0; ; pauses++) {
     res = await fetch(API + path, {
@@ -331,7 +356,7 @@ async function cachedGet(path, etags = live.etags) {
   if (!res.ok) throw new Error(`${res.status}`);
   const data = await res.json();
   const etag = res.headers.get('etag');
-  if (etag) etags.set(path, { etag, data });
+  if (etag) cache.set(path, { etag, data });
   return { data, changed: true };
 }
 
@@ -341,53 +366,71 @@ function mergeEvents(fresh) {
 }
 
 async function refresh() {
-  if (live.busy) { live.again = true; return; }
-  live.busy = true;
-  live.again = false;
+  if (!current) return;
   const repo = current.repo.full_name;
+  if (live.busy?.repo === repo) { live.again = true; return; }
+  // A refresh of a project left meanwhile does not hold this one up: it notices it was replaced and drops its answers.
+  const run = { repo };
+  live.busy = run;
+  live.again = false;
+  if (live.repo !== repo) enterBoard(repo);
+  const same = () => live.busy === run && live.repo === repo && current?.repo.full_name === repo;
+  const soft = (fallback) => (e) => (e?.rateLimited ? Promise.reject(e) : fallback);
   try {
-    const first = live.repo !== repo;
-    if (first) Object.assign(live, { repo, etags: new Map(), issues: null, events: [], previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false });
     // Every page: beyond 100 open items, the others would silently vanish from the board.
-    const issues = { data: [], changed: false };
-    for (let page = 1; page <= 10; page++) {
-      const res = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`);
-      issues.data.push(...res.data);
-      issues.changed ||= res.changed;
-      if (res.data.length < 100) break;
-    }
-    const closed = await cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
-    // Requests the agent closed by itself (already done, duplicate, obsolete): shown in « Terminé » with their reason.
-    const closedIssues = await cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: null, changed: false }));
-    const ev = await cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch((e) => (e?.rateLimited ? Promise.reject(e) : { data: [], changed: false }));
-    if (first) {
-      for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
-        const batch = await api(`/repos/${repo}/issues/events?per_page=100&page=${page}`).catch(() => []);
-        mergeEvents(batch);
-        if (batch.length < 100) break;
+    const openIssues = async () => {
+      const all = { data: [], changed: false };
+      for (let page = 1; page <= 10; page++) {
+        const res = await cachedGet(`/repos/${repo}/issues?state=open&per_page=100&page=${page}`);
+        all.data.push(...res.data);
+        all.changed ||= res.changed;
+        if (res.data.length < 100) break;
       }
-    }
-    if (live.repo !== repo || current.repo.full_name !== repo) return; // the owner switched project meanwhile
-    if (ev.changed) mergeEvents(ev.data);
-    if (current.config.production === 'approval') await refreshRelease().catch((e) => (e?.rateLimited ? Promise.reject(e) : null));
-    if (live.repo !== repo || current.repo.full_name !== repo) return; // switched while the release list was read
+      return all;
+    };
+    // The first requests go together (issue #327). Requests the agent closed by itself (already done, duplicate,
+    // obsolete) are shown in « Terminé » with their reason.
+    const [issues, closed, closedIssues, ev] = await Promise.all([
+      openIssues(),
+      cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(soft({ data: null, changed: false })),
+      cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch(soft({ data: null, changed: false })),
+      cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(soft({ data: [], changed: false })),
+    ]);
+    if (!same()) return; // the owner switched project meanwhile
+    mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
     if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
+    // The cards show now; their details (preview, session, estimate) come in below, in their place.
+    if (!live.drawn || issues.changed || closed.changed || closedIssues.changed || ev.changed) drawBoard();
+    // The older history of steps (the cards' durations), read once per project.
+    const deepEvents = async () => {
+      if (live.eventsDeep) return false;
+      let more = false;
+      for (let page = 2; page <= 3 && ev.data.length === 100; page++) {
+        const batch = await api(`/repos/${repo}/issues/events?per_page=100&page=${page}`).catch(() => []);
+        if (!same()) return false;
+        mergeEvents(batch);
+        more ||= batch.length > 0;
+        if (batch.length < 100) break;
+      }
+      if (same()) live.eventsDeep = true;
+      return more;
+    };
     // From each card's latest comments: the PR's preview link (Vercel bot or the factory's message),
     // and the message the card should open on, instead of the top of the issue.
-    // Only the cards that may have changed are read, a few at a time rather than one after the other.
+    // Only the cards that may have changed are read, several at a time rather than one after the other.
     let previewsChanged = false;
     let limited = null;
     const quiet = (e) => { if (e?.rateLimited) limited = e; return null; };
     const stale = boardItems(live.issues).filter((c) => commentsStale(c, live.read.get(c.number), { preview: live.previews.get(c.number) }));
-    await mapLimit(stale, 4, async (c) => {
+    const comments = mapLimit(stale, 8, async (c) => {
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(quiet) : { data: [] };
-      if (!res) return;
+      if (!res || !same()) return;
       // The agent's estimate may sit on the page before the last one on a long thread.
       const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
-      if (!before) return;
+      if (!before || !same()) return;
       live.read.set(c.number, cardSig(c));
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
@@ -413,23 +456,27 @@ async function refresh() {
         previewsChanged = true;
       }
     });
-    if (live.repo !== repo || current.repo.full_name !== repo) return;
+    const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release]);
+    if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
     live.last = Date.now();
     live.failures = 0;
-    if (issues.changed || closed.changed || closedIssues.changed || ev.changed || previewsChanged || first) drawBoard();
+    if (previewsChanged || eventsChanged) drawBoard();
   } catch (err) {
     // A failure of a project left meanwhile says nothing about the one on screen.
-    if (live.repo !== repo || current?.repo.full_name !== repo) return;
+    if (!same()) return;
     // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
     if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
-    live.busy = false;
-    drawStatus();
-    if (live.again) refresh(); else schedule();
+    if (live.busy === run) {
+      live.busy = null;
+      drawStatus();
+      if (live.again) refresh(); else schedule();
+    }
   }
 }
 
@@ -747,6 +794,7 @@ async function sortIdea(i, keep, pick) {
 
 function drawBoard() {
   const board = $('board');
+  live.drawn = true;
   const now = Date.now();
   // Requests merged meanwhile drop out of « Attend #… »; once all are, the card keeps them until the factory resumes it.
   const cards = boardItems(live.issues).map((c) => {
@@ -798,8 +846,8 @@ function drawBoard() {
         : el('p', { class: 'lane-empty' }, empty))),
     ideasLane(ideas),
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
-      el('h2', {}, 'Terminé', el('span', { class: 'count' }, String(live.done.length))),
-      live.done.length
+      el('h2', {}, 'Terminé', live.doneLoaded ? el('span', { class: 'count' }, String(live.done.length)) : null),
+      !live.doneLoaded ? null : live.done.length
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
@@ -848,7 +896,7 @@ function drawBoard() {
     board.replaceChildren(...holder.childNodes);
     announceIdea.clear();
     flip(before);
-    if (!reduced()) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
+    if (!reduced() && !live.instant) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
     for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
     if (leaving.length) setTimeout(() => {
       const mid = rectsOf(board);
@@ -888,7 +936,15 @@ function drawSite() {
 
 async function renderBoard() {
   drawSite();
-  if (live.repo !== current.repo.full_name) $('board').replaceChildren(skeleton());
+  if (!live.drawn) {
+    // Shown at once, without the cards' entrance (issue #327); the refresh below then brings it up to date silently.
+    if (live.issues) {
+      $('board').replaceChildren();
+      live.instant = true;
+      try { drawBoard(); } finally { live.instant = false; }
+      $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
+    } else $('board').replaceChildren(skeleton());
+  }
   clearTimeout(live.timer);
   await refresh();
 }
@@ -1392,7 +1448,7 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); dotEtags.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   show('login');
 });
