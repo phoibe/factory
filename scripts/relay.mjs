@@ -24,6 +24,7 @@ import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, SE
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
+import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -607,6 +608,48 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (res?.sha) log(`${def} brought into ${PREPROD_BRANCH} (${res.sha.slice(0, 7)})`);
   }
 
+  // The project's versioned CHANGELOG on `branch`: { path, text } of the first one with a « Non publié » section.
+  async function findChangelog(branch) {
+    for (const path of CHANGELOG_PATHS) {
+      const c = await gh.getContent(path, branch).catch(() => null);
+      const text = c?.content ? Buffer.from(c.content, 'base64').toString('utf8') : null;
+      if (readChangelog(text)) return { path, text };
+    }
+    return null;
+  }
+  // Cuts « Non publié » into « [version] - date » on the branch that goes live (preprod, else the default branch).
+  // Returns why it cannot (a sentence for the owner), or null once the cut is committed (or was already).
+  async function cutChangelog(version, ref) {
+    const branch = (await gh.getBranch(PREPROD_BRANCH).catch(() => null)) ? PREPROD_BRANCH : ref;
+    const cl = await findChangelog(branch);
+    if (!cl) return `le numéro de version ${version} a été donné, mais le projet n'a pas de CHANGELOG avec une section « Non publié ».`;
+    const problem = versionProblem(cl.text, version);
+    if (problem) return `le numéro de version ne convient pas : ${problem}`;
+    if (await gh.getTagRef(`v${version}`).catch(() => null)) return `le tag v${version} existe déjà.`;
+    const date = new Date(now()).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+    const text = cutVersion(cl.text, version, date);
+    if (text === cl.text) return null;
+    const parent = (await gh.getBranch(branch))?.object?.sha;
+    const tree = await gh.createTree((await gh.getCommit(parent))?.tree?.sha, [{ path: cl.path, mode: '100644', type: 'blob', content: text }]);
+    const commit = await gh.createGitCommit(`chore(release): v${version}`, tree.sha, [parent]);
+    await gh.updateRef(branch, commit.sha);
+    return null;
+  }
+  // Tags the commit that went live and publishes its notes (the CHANGELOG section). The sentence for the owner.
+  async function tagRelease(version, head, ref) {
+    const tag = `v${version}`;
+    try {
+      const notes = sectionOf((await findChangelog(ref))?.text, version);
+      const obj = await gh.createTagObject(tag, `Version ${version}`, head);
+      await gh.createTagRef(tag, obj.sha);
+      await gh.createRelease(tag, tag, notes.slice(0, 120000));
+      return `Version ${version} : le tag \`${tag}\` est posé sur ce qui part, et ses notes sont publiées dans les versions du projet.`;
+    } catch (e) {
+      log(`release: tag ${tag} failed (${String(e.message || e).slice(0, 120)})`);
+      return `⚠️ Le tag \`${tag}\` n'a pas pu être posé (GitHub répond : « ${String(e.message || e).slice(0, 160)} »).`;
+    }
+  }
+
   const mergedAt = (p) => Date.parse(p.pull_request?.merged_at || p.merged_at || p.closed_at || 0);
   // « Mise en production » (the board's button opens an issue with L.production): every pending change goes live
   // together, the live site is checked as after any merge, and the owner is told what left.
@@ -619,6 +662,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.closeIssue(issueNumber).catch(() => {});
       }
       return;
+    }
+    // The version number the owner gave in the dialog (a project whose CHANGELOG has a « Non publié » section): the
+    // section is cut on preprod before it goes to main, and the release is tagged there. A refusal changes nothing.
+    const version = issueNumber ? versionOf((await gh.getIssue(issueNumber))?.body) : null;
+    if (version) {
+      const refused = await cutChangelog(version, ref);
+      if (refused) {
+        await gh.comment(issueNumber, say(`Je n'ai pas mis en production : ${refused} Rien n'a changé ; recliquez sur « Mise en production » avec un autre numéro.`));
+        await gh.closeIssue(issueNumber).catch(() => {});
+        return;
+      }
     }
     let head = null;
     let from = null;
@@ -644,12 +698,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       throw e;
     }
     try { await gh.dispatch('pages.yml', ref, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
+    const tagged = version ? await tagRelease(version, head, ref) : null;
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
     const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null };
     await checkLive(pending.at(-1).number, head, { release }).catch((e) => log(`live check not started: ${e.message}`));
     const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
     const n = pending.length;
-    const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.`;
+    const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.${tagged ? `\n\n${tagged}` : ''}`;
     if (issueNumber) {
       await gh.comment(issueNumber, say(text));
       await gh.closeIssue(issueNumber).catch(() => {});

@@ -127,6 +127,11 @@
   <dialog id="release-dialog" aria-labelledby="release-title">
     <h2 id="release-title">Mettre en production&nbsp;?</h2>
     <ul id="release-list" class="release-list"></ul>
+    <div id="release-version" hidden>
+      <label for="release-version-input">Numéro de version</label>
+      <input id="release-version-input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="release-version-hint">
+      <p id="release-version-hint" class="muted small"></p>
+    </div>
     <p id="release-error" class="release-error small" role="alert" hidden></p>
     <div class="dialog-actions">
       <button id="release-cancel" class="secondary" type="button">Annuler</button>
@@ -134,6 +139,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=48"></script>
+  <script type="module" src="app.mjs?v=49"></script>
 </body>
 </html>

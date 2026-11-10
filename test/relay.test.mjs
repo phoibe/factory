@@ -7,6 +7,68 @@ import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
 
+// ---- « Mise en production » with a version number (Pulsar alignment) ----
+const CHANGELOG = ['# Changelog', '', '## [Non publié]', '', '- Ajout du mode sombre', '', '## [0.17.0] - 2026-11-01', '', '- Avant', ''].join('\n');
+function versionGh({ body = 'Version : 0.18.0', changelog = CHANGELOG, tags = [] } = {}) {
+  const awaiting = [{ number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z' }];
+  const made = prodGh({ awaiting, branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], body }] });
+  const { gh } = made;
+  const files = { preprod: changelog };
+  gh.getContent = async (path, ref) => (path === 'docs/CHANGELOG.md' && files[ref] ? { content: Buffer.from(files[ref]).toString('base64') } : null);
+  gh.getCommit = async (sha) => ({ sha, tree: { sha: `tree-${sha}` } });
+  gh.createTree = async (base, tree) => { gh.calls.push(['createTree', base, tree]); return { sha: 't2' }; };
+  gh.createGitCommit = async (msg, tree, parents) => { gh.calls.push(['createGitCommit', msg, tree, parents]); files.cut = gh.calls.at(-2)[2][0].content; return { sha: 'p2' }; };
+  gh.mergeBranches = async (base, head, msg) => { gh.calls.push(['mergeBranches', base, head, msg]); files.main = files.cut || files.preprod; return { sha: 'm2' }; };
+  gh.getTagRef = async (tag) => (tags.includes(tag) ? { object: { sha: 'x' } } : null);
+  gh.createTagObject = async (tag, msg, sha) => { gh.calls.push(['tag', tag, sha]); return { sha: 'tagobj' }; };
+  gh.createTagRef = async (tag, sha) => gh.calls.push(['tagRef', tag, sha]);
+  gh.createRelease = async (tag, name, notes) => gh.calls.push(['release', tag, notes]);
+  return { ...made, files };
+}
+const askRelease = (relay) => relay().handle({ kind: 'issue', event: 'issues', action: 'opened', number: 50, labels: [L.production], fromOwner: true });
+
+test('« Mise en production » with a version cuts the CHANGELOG on preprod, sends it to main, then tags what went live', async () => {
+  const { gh, relay, files } = versionGh();
+  await askRelease(relay);
+  const tree = gh.calls.find((c) => c[0] === 'createTree');
+  assert.equal(tree[1], 'tree-p1');
+  assert.equal(tree[2][0].path, 'docs/CHANGELOG.md');
+  assert.match(files.cut, /## \[Non publié\]\n\n## \[0\.18\.0\] - \d{4}-\d\d-\d\d\n\n- Ajout du mode sombre/);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'createGitCommit').slice(1), ['chore(release): v0.18.0', 't2', ['p1']]);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'updateRef'), ['updateRef', 'preprod', 'p2']);
+  const order = gh.calls.map((c) => c[0]);
+  assert.ok(order.indexOf('updateRef') < order.indexOf('mergeBranches'), 'cut before the merge');
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'tag'), ['tag', 'v0.18.0', 'm2']);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'tagRef'), ['tagRef', 'v0.18.0', 'tagobj']);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'release'), ['release', 'v0.18.0', '- Ajout du mode sombre']);
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /Version 0\.18\.0 : le tag `v0\.18\.0` est posé/);
+});
+
+test('a version number that does not fit (or whose tag exists) is refused: nothing cut, merged or tagged', async () => {
+  for (const [opts, said] of [[{ body: 'Version : 0.16.0' }, /pas supérieur à la dernière version \(0\.17\.0\)/], [{ tags: ['v0.18.0'] }, /le tag v0\.18\.0 existe déjà/], [{ changelog: '# rien' }, /pas de CHANGELOG/]]) {
+    const { gh, relay } = versionGh(opts);
+    await askRelease(relay);
+    assert.ok(!gh.calls.some((c) => ['createTree', 'mergeBranches', 'tag', 'remove'].includes(c[0])), JSON.stringify(opts));
+    assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], said);
+    assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  }
+});
+
+test('the same version again after a cut that did not go live: no second cut, the release goes on', async () => {
+  const { gh, relay } = versionGh({ changelog: CHANGELOG.replace('## [Non publié]\n', '## [Non publié]\n\n## [0.18.0] - 2026-11-10\n') });
+  await askRelease(relay);
+  assert.ok(!gh.calls.some((c) => c[0] === 'createTree'));
+  assert.ok(gh.calls.some((c) => c[0] === 'mergeBranches'));
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'release'), ['release', 'v0.18.0', '- Ajout du mode sombre']);
+});
+
+test('without a version line, « Mise en production » touches no CHANGELOG and no tag', async () => {
+  const { gh, relay } = versionGh({ body: 'Demandé depuis le tableau de bord.' });
+  await askRelease(relay);
+  assert.ok(gh.calls.some((c) => c[0] === 'mergeBranches'));
+  assert.ok(!gh.calls.some((c) => ['createTree', 'tag', 'release'].includes(c[0])));
+});
+
 function fakeGh(state) {
   const calls = [];
   const issue = (n) => state.issues.find((i) => i.number === n) || state.prs.find((p) => p.number === n);
