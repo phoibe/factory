@@ -40,3 +40,9 @@ test('every job of the project workflows runs on the machine the factory chose f
     for (const l of lines) assert.equal(l.trim(), `runs-on: \${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || '${image}' }}`, `${file}: ${l.trim()}`);
   }
 });
+
+test('the checks may run as long as the project allows (checksMinutes, 30 by default)', () => {
+  const job = yml.slice(yml.indexOf('\n  checks:'), yml.indexOf('\n  report:'));
+  assert.match(job, /timeout-minutes: \$\{\{ fromJSON\(needs\.decide\.outputs\.checksMinutes \|\| '30'\) \}\}/);
+  assert.match(yml, /checksMinutes: \$\{\{ steps\.relay\.outputs\.checksMinutes \}\}/);
+});

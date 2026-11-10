@@ -135,3 +135,13 @@ test('extra checks: at most ten', () => {
   assert.equal(config.extraChecks.length, 10);
   assert.equal(warnings.length, 2);
 });
+
+test('checksMinutes defaults to 30 and only an integer from 5 to 180 is kept', () => {
+  assert.equal(resolveConfig(undefined, catalog).config.checksMinutes, 30);
+  assert.equal(resolveConfig({ checksMinutes: 90 }, catalog).config.checksMinutes, 90);
+  for (const bad of [4, 181, 30.5, '90', null]) {
+    const { config, warnings } = resolveConfig({ checksMinutes: bad }, catalog);
+    assert.equal(config.checksMinutes, 30, String(bad));
+    assert.ok(warnings.some((w) => w.includes('checksMinutes')));
+  }
+});

@@ -23,6 +23,7 @@ const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
 // A project's own checks (issue: Pulsar alignment), set from the panel: a name, the command run in the project after
 // the usual checks, and a switch. Empty for every project that declares none, and then left out of the settings.
+export const CHECKS_MINUTES = [5, 180];
 export const MAX_EXTRA_CHECKS = 10;
 export function parseExtraChecks(input, warnings = []) {
   if (input === undefined) return [];
@@ -58,6 +59,7 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
     maxParallel: DEFAULTS.maxParallel,
     autoPick: DEFAULTS.autoPick === true,
     maxQuestions: DEFAULTS.maxQuestions,
+    checksMinutes: DEFAULTS.checksMinutes ?? 30,
     stack: typeof input.stack === 'string' && input.stack.trim() ? input.stack : DEFAULTS.stack,
     stages: boolMap(DEFAULTS.stages, input.stages),
     review: { maxLoops: DEFAULTS.review.maxLoops },
@@ -94,6 +96,12 @@ export function resolveConfig(raw, catalog, DEFAULTS) {
   if (input.maxQuestions !== undefined) {
     if (isPosInt(input.maxQuestions) && input.maxQuestions <= 10) config.maxQuestions = input.maxQuestions;
     else warnings.push(`maxQuestions invalide (${JSON.stringify(input.maxQuestions)}), ${DEFAULTS.maxQuestions} utilisé`);
+  }
+  // How long the automatic checks may run before they are stopped (a stuck test). Longer for a project whose heavy
+  // checks queue on its own server (Pulsars: one heavy suite at a time).
+  if (input.checksMinutes !== undefined) {
+    if (isPosInt(input.checksMinutes) && input.checksMinutes >= CHECKS_MINUTES[0] && input.checksMinutes <= CHECKS_MINUTES[1]) config.checksMinutes = input.checksMinutes;
+    else warnings.push(`checksMinutes invalide (${JSON.stringify(input.checksMinutes)}), ${config.checksMinutes} utilisé`);
   }
   const loops = input.review?.maxLoops;
   if (loops !== undefined) {

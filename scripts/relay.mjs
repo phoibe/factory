@@ -1755,11 +1755,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.removeLabel(prNumber, L.checks);
       await gh.addLabels(prNumber, [L.fixing]);
       const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
-      const what = timedOut ? 'Les contrôles automatiques ont tourné trop longtemps (un test bloqué), je les ai arrêtés' : 'Un contrôle automatique a échoué';
+      const what = timedOut ? `Les contrôles automatiques ont dépassé la durée maximale réglée dans Paramètres (${config.checksMinutes || 30} min), je les ai arrêtés : aucun contrôle n'a échoué, mais un test bloqué peut en être la cause` : 'Un contrôle automatique a échoué';
       await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}`);
       return;
     }
-    return blockOnRed(prNumber, issueNumber);
+    return blockOnRed(prNumber, issueNumber, timedOut);
   }
 
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
@@ -1788,11 +1788,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // Still red after the last try: pause. The next failure count starts again from zero once the owner unblocks it.
-  async function blockOnRed(prNumber, issueNumber) {
+  // `timedOut`: the last run was stopped by the time limit (checksMinutes), not by a failing check: said as such.
+  async function blockOnRed(prNumber, issueNumber, timedOut = false) {
     for (const l of [L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
     if (issueNumber) await gh.addLabels(issueNumber, [L.blocked]);
-    await gh.comment(prNumber, `${CHECKS_RESET_MARKER}\n${say("Les contrôles restent rouges : j'ai mis la construction en pause et expliqué la situation sur l'issue.")}`);
-    await gh.comment(issueNumber || prNumber, say(`Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Vous pouvez répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
+    const minutes = config.checksMinutes || 30;
+    await gh.comment(prNumber, `${CHECKS_RESET_MARKER}\n${say(timedOut
+      ? `Les contrôles dépassent encore la durée maximale réglée (${minutes} min) : j'ai mis la construction en pause et expliqué la situation sur l'issue.`
+      : "Les contrôles restent rouges : j'ai mis la construction en pause et expliqué la situation sur l'issue.")}`);
+    await gh.comment(issueNumber || prNumber, say(timedOut
+      ? `Les contrôles automatiques de la PR #${prNumber} dépassent encore la durée maximale réglée dans Paramètres (${minutes} min) après ${config.review.maxLoops} tentatives de correction. Aucun contrôle n'a échoué : ils ont été arrêtés avant la fin. Je m'arrête pour ne pas tourner en rond.\n\nS'ils sont seulement lents, augmentez « Durée maximale des contrôles » dans Paramètres, puis répondez ici « réessaie ».`
+      : `Les contrôles automatiques échouent encore après ${config.review.maxLoops} tentatives de correction, donc je m'arrête pour ne pas tourner en rond.\n\nLe détail technique est dans la PR #${prNumber}. Vous pouvez répondre ici par « réessaie » pour relancer une tentative, ou me dire de simplifier la feature.`));
   }
 
   // End of an agent run on GitHub Actions. Releases the lock if the agent did not, and asks for a replay of
@@ -1909,7 +1915,7 @@ async function main() {
   } else {
     throw new Error(`unknown command ${command}`);
   }
-  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', ...relay.outputs });
+  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
