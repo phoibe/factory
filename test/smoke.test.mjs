@@ -89,3 +89,13 @@ test('the result is written even when its folder does not exist yet (fresh runne
   assert.equal(run.status, 0, run.stderr);
   assert.equal(JSON.parse(readFileSync(out, 'utf8')).result, 'failed');
 });
+
+test('a page error counts only when it comes from the site itself', async () => {
+  const { isOwnPageError } = await import('../scripts/smoke.mjs');
+  const o = 'https://app.example';
+  assert.equal(isOwnPageError('Error: x\n    at https://app.example/_next/a.js:1:2', o), true);
+  assert.equal(isOwnPageError('Error: x\n    at https://cdn.tracker.com/t.js:1:2', o), false);
+  assert.equal(isOwnPageError('Error: x', o), true);
+  assert.equal(isOwnPageError(undefined, o), true);
+  assert.equal(isOwnPageError('Error: x\n at https://cdn.t.com/t.js:1:2\n at https://app.example/a.js:3:4', o), true);
+});

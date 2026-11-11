@@ -50,7 +50,14 @@ export function render(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
 
-const readJson = (p, fallback) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : fallback);
+const readJson = (p, fallback) => {
+  if (!existsSync(p)) return fallback;
+  try { return JSON.parse(readFileSync(p, 'utf8')); } catch (e) {
+    console.warn(`sync: ${p} est illisible (${e.message}) : valeur par défaut utilisée`);
+    return fallback;
+  }
+};
+const safeId = (id) => typeof id === 'string' && /^[\w.-]+$/.test(id) && !id.includes('..');
 
 export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   const catalog = readJson(join(factoryDir, 'packs/catalog.json'));
@@ -71,7 +78,11 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
 
   const skillsDir = join(projectDir, '.claude/skills');
   const manifestPath = join(projectDir, '.factory/installed-skills.json');
-  const previous = readJson(manifestPath, { skills: [] }).skills;
+  const previous = readJson(manifestPath, { skills: [] }).skills.filter((id) => {
+    if (safeId(id)) return true;
+    console.warn(`sync: identifiant de skill ignoré dans ${manifestPath} : ${JSON.stringify(id)}`);
+    return false;
+  });
   const wanted = new Set(skills.map((s) => s.id));
   const removed = previous.filter((id) => !wanted.has(id));
   for (const id of removed) rmSync(join(skillsDir, id), { recursive: true, force: true });

@@ -135,3 +135,29 @@ test('the agent starts from preprod and opens its PRs there on « Sur mon accord
     assert.match(read(dir, '.factory/stages/build.md'), /depuis `main`/);
   }
 });
+
+test('a malformed project file warns and falls back instead of breaking the sync', () => {
+  const dir = project();
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  mkdirSync(join(dir, '.factory'), { recursive: true });
+  writeFileSync(join(dir, '.claude/settings.json'), '{ nope');
+  writeFileSync(join(dir, '.factory/installed-skills.json'), '{ nope');
+  writeFileSync(join(dir, '.factory/migrations.json'), '{ nope');
+  const warn = [];
+  const orig = console.warn; console.warn = (m) => warn.push(String(m));
+  try { sync({ projectDir: dir }); } finally { console.warn = orig; }
+  assert.ok(warn.some((w) => w.includes('settings.json')));
+  assert.ok(warn.some((w) => w.includes('installed-skills.json')));
+  assert.ok(warn.some((w) => w.includes('migrations.json')));
+});
+
+test('manifest ids that could escape the skills folder are never removed', () => {
+  const dir = project();
+  mkdirSync(join(dir, '.factory'), { recursive: true });
+  mkdirSync(join(dir, 'victim'), { recursive: true });
+  writeFileSync(join(dir, 'victim/keep.txt'), 'x');
+  writeFileSync(join(dir, '.factory/installed-skills.json'), JSON.stringify({ skills: ['../../victim', '..', 'a/b'] }));
+  const orig = console.warn; console.warn = () => {};
+  try { sync({ projectDir: dir }); } finally { console.warn = orig; }
+  assert.ok(existsSync(join(dir, 'victim/keep.txt')));
+});
