@@ -8,7 +8,15 @@ const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, impo
 test('« Déclarer stable »: an unrelated new issue never cancels a waiting promotion (queue on the job, not the workflow)', () => {
   const yml = read('stable.yml');
   assert.doesNotMatch(yml, /^concurrency:/m, 'a workflow-level group lets every opened issue replace the pending release run');
-  assert.match(yml, /^  promote:\n[\s\S]*?^    concurrency:\n      group: factory-stable\n      cancel-in-progress: false/m);
+  assert.match(yml, /^  promote:\n[\s\S]*?^    concurrency:\n      group: .*'factory-stable'.*\n      cancel-in-progress: false/m);
+});
+
+test('« Déclarer stable »: the hourly run never takes the owner request\'s pending place (issue #344)', () => {
+  const yml = read('stable.yml');
+  assert.match(yml, /group: \$\{\{ github\.event_name == 'schedule' && 'factory-stable-hourly' \|\| 'factory-stable' \}\}/);
+  assert.match(yml, /if: github\.event_name != 'schedule'\n[\s\S]*?run: node scripts\/stable\.mjs wait/, 'an owner request waits for an hourly run under way');
+  assert.match(yml, /run: node scripts\/stable\.mjs yield/, 'the hourly run gives way just before promoting');
+  assert.match(yml, /if: github\.event_name != 'schedule' \|\| steps\.yield\.outputs\.ready == 'true'/);
 });
 
 test('the panel is published even when the chat server cannot be deployed', () => {

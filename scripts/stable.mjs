@@ -3,6 +3,8 @@
 //   node scripts/stable.mjs tag    -> the next version tag, vYYYY.MM.DD (then .2, .3… the same day)
 //   node scripts/stable.mjs notes  -> the changes since the current stable branch, in Markdown
 //   node scripts/stable.mjs ready  -> ready=true|false (GITHUB_OUTPUT) : may the hourly run promote main on its own?
+//   node scripts/stable.mjs yield  -> ready=true|false again, just before promoting: false once an owner request waits
+//   node scripts/stable.mjs wait   -> an owner request waits for an hourly run already under way (at most 20 min)
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +34,17 @@ export function readyToPromote({ ahead, lastCommitAt, mainGreen, troubles = [], 
   return { ready: true, reason: 'prête' };
 }
 
+// GitHub keeps one pending run per concurrency group and cancels the older one, so the hourly run has a queue of
+// its own (stable.yml) and never displaces the owner's « Déclarer stable ». It gives way instead: it does not
+// promote while an owner request is queued or running, and an owner request waits for an hourly run under way.
+const active = (runs, selfId) => runs.filter((r) => r.id !== selfId && r.status !== 'completed');
+export const ownerRequestActive = (runs, selfId) => active(runs, selfId).some((r) => r.event !== 'schedule');
+export const hourlyRunActive = (runs, selfId) => active(runs, selfId).some((r) => r.event === 'schedule');
+
+async function stableRuns() {
+  return (await api('/actions/workflows/stable.yml/runs?per_page=30')).workflow_runs || [];
+}
+
 async function api(path) {
   const res = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}${path}`, {
     headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, accept: 'application/vnd.github+json' },
@@ -46,6 +59,9 @@ async function ready(git) {
   const changes = git('log', '--format=%ct %H %s', 'FETCH_HEAD..HEAD').split('\n').filter(Boolean)
     .map((l) => { const [t, sha, ...s] = l.split(' '); return { at: Number(t) * 1000, sha, subject: s.join(' ') }; })
     .filter((c) => !/^chore\(factory\)/.test(c.subject));
+  if (ownerRequestActive(await stableRuns(), Number(process.env.GITHUB_RUN_ID))) {
+    return { ready: false, reason: 'une demande « Déclarer stable » passe en premier' };
+  }
   const head = git('rev-parse', 'HEAD');
   const runs = (await api(`/commits/${head}/check-runs?check_name=test`)).check_runs || [];
   const since = changes.length ? Math.min(...changes.map((c) => c.at)) : Date.now();
@@ -75,5 +91,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const r = await ready(git);
     console.log(`${r.ready ? 'Promotion automatique' : 'Pas de promotion'} : ${r.reason}`);
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `ready=${r.ready}\n`);
-  } else { console.error('usage: stable.mjs tag|notes|ready'); process.exit(1); }
+  } else if (cmd === 'yield') {
+    const waiting = ownerRequestActive(await stableRuns(), Number(process.env.GITHUB_RUN_ID));
+    console.log(waiting ? 'Pas de promotion : une demande « Déclarer stable » passe en premier' : 'Promotion automatique');
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `ready=${!waiting}\n`);
+  } else if (cmd === 'wait') {
+    const until = Date.now() + 20 * 60_000;
+    while (hourlyRunActive(await stableRuns(), Number(process.env.GITHUB_RUN_ID)) && Date.now() < until) {
+      console.log('La promotion automatique en cours se termine, puis votre demande passe');
+      await new Promise((r) => setTimeout(r, 20_000));
+    }
+  } else { console.error('usage: stable.mjs tag|notes|ready|yield|wait'); process.exit(1); }
 }

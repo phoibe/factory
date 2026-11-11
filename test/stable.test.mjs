@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextTag, notes, readyToPromote } from '../scripts/stable.mjs';
+import { nextTag, notes, readyToPromote, ownerRequestActive, hourlyRunActive } from '../scripts/stable.mjs';
 
 test('nextTag numbers the stable versions by day', () => {
   const d = new Date('2026-11-04T10:00:00Z');
@@ -29,4 +29,22 @@ test('readyToPromote: nothing new, too fresh, red tests or trouble on the factor
   assert.match(readyToPromote({ ...calm, lastCommitAt: now - 20 * 60_000 }).reason, /moins d'une heure/);
   assert.match(readyToPromote({ ...calm, mainGreen: false }).reason, /tests/);
   assert.match(readyToPromote({ ...calm, troubles: ['#12 bloquée'] }).reason, /#12 bloquée/);
+});
+
+// GitHub keeps a single pending run per concurrency group and cancels the older one: the hourly run must never
+// share the owner's queue, and it gives way whenever an owner request (button or issue) is queued or running.
+const run = (id, event, status) => ({ id, event, status });
+
+test('ownerRequestActive: an owner request queued or running makes the hourly run give way', () => {
+  assert.equal(ownerRequestActive([run(1, 'schedule', 'in_progress')], 1), false);
+  assert.equal(ownerRequestActive([run(1, 'schedule', 'in_progress'), run(2, 'workflow_dispatch', 'queued')], 1), true);
+  assert.equal(ownerRequestActive([run(1, 'schedule', 'in_progress'), run(2, 'issues', 'pending')], 1), true);
+  assert.equal(ownerRequestActive([run(1, 'schedule', 'in_progress'), run(2, 'workflow_dispatch', 'completed')], 1), false);
+  assert.equal(ownerRequestActive([run(1, 'schedule', 'in_progress'), run(3, 'schedule', 'queued')], 1), false);
+});
+
+test('hourlyRunActive: an owner request waits for an hourly run already under way', () => {
+  assert.equal(hourlyRunActive([run(2, 'workflow_dispatch', 'in_progress')], 2), false);
+  assert.equal(hourlyRunActive([run(1, 'schedule', 'in_progress'), run(2, 'workflow_dispatch', 'in_progress')], 2), true);
+  assert.equal(hourlyRunActive([run(1, 'schedule', 'completed'), run(2, 'workflow_dispatch', 'in_progress')], 2), false);
 });

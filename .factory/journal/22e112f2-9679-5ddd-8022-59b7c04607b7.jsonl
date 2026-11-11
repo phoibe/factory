@@ -1,0 +1,8 @@
+{"t":"2026-11-11T19:21:11.352Z","kind":"run","stage":"bugfix","issue":344,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-11T19:21:18.301Z","kind":"skill","name":"systematic-debugging","id":"toolu_01PxczbzZaN8PtDi4UqFc6bC"}
+{"t":"2026-11-11T19:21:56.237Z","kind":"test","cmd":"sed -i \"s/import { nextTag, notes, readyToPromote } from/import { nextTag, notes, readyToPromote, ownerRequestActive, hourlyRunActive } from/\" test/stable.test.mjs && cat >> test/stable.test.mjs <<'EO","ok":false,"id":"toolu_01HfJavSyhtzW3gzhSgwBF98"}
+{"t":"2026-11-11T19:22:51.936Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=…   node scripts/stable.mjs ready  -> ready=… (GITHUB_OUTPUT) : may the hourly run promote main on its own?\n\"\"\",\"\"\"//   node scripts/stable.mjs ready  -> ready=… (GITHUB_OU","ok":true,"id":"toolu_013Ds3NowPircqNvLw1mKfWd"}
+{"t":"2026-11-11T19:23:37.054Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; node --test test/stable.test.mjs 2>&1 | grep -E \"^# (pass|fail)\"; git diff .github scripts","ok":false,"id":"toolu_01RtVcv2vhN9PS4qweZ1Lzpq"}
+{"t":"2026-11-11T19:24:20.714Z","kind":"test","cmd":"npm test 2>&1 | grep -B3 -A15 \"^not ok\" | head -50","ok":false,"id":"toolu_01D7Qkx2fyzELEzjbPQ6n4Mq"}
+{"t":"2026-11-11T19:25:08.520Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=…  assert.match(yml, /^  promote:\\\\n[\\\\s\\\\S]*?^    concurrency:\\\\n      group: factory-stable\\\\n      cancel-in-progress: false/m);\n});\n\"\"\",\"\"\"  assert.match(yml, /^  promo","ok":false,"id":"toolu_01Q6te1D3Xviq2cjsHzco9zz"}
+{"t":"2026-11-11T19:25:10.114Z","kind":"skill","name":"requesting-code-review","id":"toolu_01VeH2Tcj5kam5QDua57EZn7"}
