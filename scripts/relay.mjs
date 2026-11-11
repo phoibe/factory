@@ -1363,7 +1363,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function relaunchIdle(closed, ownerLogin) {
     const building = ((await gh.listIssues({ labels: L.building })) || []).filter((i) => !i.pull_request);
     if (!building.length) return;
-    const linked = new Set([...((await gh.listPulls?.().catch(() => null)) || []), ...closed].flatMap((p) => [linkedIssue(p.body), branchIssue(p)]).filter(Boolean));
+    // A fork PR names whatever card it likes: it never stands for the card's own PR (issue #339).
+    const linked = new Set([...((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p)), ...closed].flatMap((p) => [linkedIssue(p.body), branchIssue(p)]).filter(Boolean));
     for (const item of building) {
       const n = item.number;
       if (linked.has(n)) continue; // it has a PR (open: the PR steps move it; closed by the owner: on purpose)

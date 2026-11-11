@@ -1068,6 +1068,15 @@ test('guard: a build that stopped without a PR or a question is relaunched once,
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- factory-heal -->')));
 });
 
+test("guard: a stranger's fork PR naming the card does not stop its relaunch (issue #339)", async () => {
+  const fork = { number: 30, state: 'open', body: 'Fixes #7', head: { sha: 'x', ref: 'claude/issue-7-x', repo: { full_name: 'stranger/r' } }, labels: [] };
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [fork], events: { 7: runEvents(60, 40) } });
+  const sent = [];
+  await createRelay({ gh, repo: 'o/r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet }).handle(tick);
+  const p = payloadOf(sent[0]?.init.body || '{}');
+  assert.deepEqual([p.stage, p.issue, p.relaunch], ['build', 7, true]);
+});
+
 test('guard: a build that stopped a few minutes ago is not relaunched yet', async () => {
   const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [], events: { 7: runEvents(30, 10) } });
   const sent = [];
