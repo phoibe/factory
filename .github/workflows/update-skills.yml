@@ -22,14 +22,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           git add -A packs
-          if git diff --cached --quiet; then echo "Skills déjà à jour"; exit 0; fi
+          # Only the sources' pins moved (upstream commits outside the vendored skills): nothing to propose.
+          if git diff --cached --quiet -- packs ':!packs/catalog.json' ':!packs/sources.json' ':!packs/NOTICE.md'; then echo "Skills déjà à jour"; exit 0; fi
           branch="skills-update-$(date +%Y-%m)"
           git config user.name "factory-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git add -A packs
           git commit -m "chore: update vendored skill packs"
+          node scripts/lib/skills-update-body.mjs HEAD~1 > "$RUNNER_TEMP/pr-body.md"
           git push -f origin "$branch"
-          changed=$(git diff --name-only HEAD~1 -- packs | { grep SKILL.md || true; } | sed -E 's#packs/([^/]+)/([^/]+)/.*#- \1 : \2#' | sort -u)
-          body=$(printf "Nouvelle version des skills de la factory.\n\nSkills modifiés :\n%s\n\nLes tests de la factory passent. Fusionnez cette PR pour que vos projets utilisent ces versions à leur prochaine synchro.\n" "$changed")
-          gh pr create --title "Mise à jour mensuelle des skills" --body "$body" --head "$branch" || echo "::warning::Active « Allow GitHub Actions to create and approve pull requests » dans Settings → Actions → General."
+          gh pr create --title "Mise à jour mensuelle des skills" --body-file "$RUNNER_TEMP/pr-body.md" --head "$branch" \
+            || gh pr edit "$branch" --body-file "$RUNNER_TEMP/pr-body.md" \
+            || echo "::warning::Activez « Allow GitHub Actions to create and approve pull requests » dans Settings → Actions → General."
