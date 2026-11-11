@@ -30,6 +30,5 @@ jobs:
           git add -A packs
           git commit -m "chore: update vendored skill packs"
           git push -f origin "$branch"
-          changed=$(git diff --name-only HEAD~1 -- packs | { grep SKILL.md || true; } | sed -E 's#packs/([^/]+)/([^/]+)/.*#- \1 : \2#' | sort -u)
-          body=$(printf "Nouvelle version des skills de la factory.\n\nSkills modifiés :\n%s\n\nLes tests de la factory passent. Fusionnez cette PR pour que vos projets utilisent ces versions à leur prochaine synchro.\n" "$changed")
-          gh pr create --title "Mise à jour mensuelle des skills" --body "$body" --head "$branch" || echo "::warning::Active « Allow GitHub Actions to create and approve pull requests » dans Settings → Actions → General."
+          node scripts/lib/skills-update-body.mjs HEAD~1 > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --title "Mise à jour mensuelle des skills" --body-file "$RUNNER_TEMP/pr-body.md" --head "$branch" || echo "::warning::Active « Allow GitHub Actions to create and approve pull requests » dans Settings → Actions → General."
