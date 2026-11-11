@@ -26,6 +26,7 @@ import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
+import { trustedAuthor } from './lib/trust.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -174,6 +175,10 @@ export const isDocFile = (f) => /^(GLOSSARY(-MAP)?\.md|docs\/adr\/[^/]+\.md)$/.t
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const outputs = {};
   const liveLabels = async (n) => names((await gh.getIssue(n))?.labels);
+  // The captures table, posted by the agent or the factory: a stranger who names the branch shows nothing (issue #339).
+  const postedCaptures = (c) => (c?.body || '').includes(SHOTS_BRANCH) && trustedAuthor(c, String(repo || '').split('/')[0]);
+  // A PR whose branch lives in another repository: anyone can open one and write what they like in it.
+  const fromFork = (p) => Boolean(p?.head && 'repo' in p.head && p.head.repo?.full_name !== repo);
 
   // `freed`: an issue whose build just ended. GitHub's issue list can still show its old label for a few
   // seconds, which used to keep its place taken until the next regular tick.
@@ -1264,12 +1269,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     catch (e) { log(`sync not started (${String(e.message || e).slice(0, 80)})`); }
   }
 
-  // The open PR of a card that a long outage blocked (its marker says so), or null.
+  // The open PR of a card that a long outage blocked (its marker says so), or null. A PR from a fork is never one:
+  // anyone can write that marker in its description (issue #339).
   async function outageBlockedPr(ev) {
     const prs = ev.kind === 'pr'
       ? [await gh.getPr(ev.number)]
       : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === ev.number || branchIssue(p) === ev.number);
-    return prs.find((p) => p && p.state !== 'closed' && readOutage(p.body)?.blocked)?.number || null;
+    return prs.find((p) => p && p.state !== 'closed' && !fromFork(p) && readOutage(p.body)?.blocked)?.number || null;
   }
 
   // The checks ran but their report step died (GitHub 503, runner lost): nothing else will ever move the PR, which
@@ -1306,7 +1312,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
 
   // The owner said « ok » to the captures after the last ones were posted: that « ok » is also the recette.
   const visualApproved = (comments) => {
-    const shots = comments.map((c) => (c.body || '').includes(SHOTS_BRANCH)).lastIndexOf(true);
+    const shots = comments.map(postedCaptures).lastIndexOf(true);
     return shots >= 0 && comments.map((c) => (c.body || '').includes(VISUAL_OK_MARKER)).lastIndexOf(true) > shots;
   };
 
@@ -1755,7 +1761,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const catchUp = reverting ? [] : (missing || []).filter((s) => CATCH_UP.includes(s));
     // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
     if (result === 'success' && ui && config.stages.screenshots !== false && !reverting) {
-      const shown = ((await gh.listComments(prNumber)) || []).some((c) => (c.body || '').includes(SHOTS_BRANCH));
+      const shown = ((await gh.listComments(prNumber)) || []).some(postedCaptures);
       if (!shown) catchUp.push('screenshots');
     }
     if (result === 'success' && catchUp.length) {

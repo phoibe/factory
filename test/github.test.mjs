@@ -76,8 +76,8 @@ test('a 403 without rate-limit headers is thrown at once (a refused permission)'
 });
 
 test('paginated reads pause on the rate limit too', async () => {
-  const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1 }])]);
-  assert.deepEqual(await gh.listComments(1), [{ id: 1 }]);
+  const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1, user: { login: 'o' } }])]);
+  assert.deepEqual(await gh.listComments(1), [{ id: 1, user: { login: 'o' } }]);
 });
 
 test('pauses stop once three minutes were spent waiting in one run: the event is then taken up later', async () => {

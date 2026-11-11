@@ -488,7 +488,7 @@ function prWithSkippedSteps(comments = []) {
   gh.updateComment = async () => {};
   return gh;
 }
-const SHOTS = { body: '<!-- factory-agent -->\n| Écran | ![x](https://github.com/r/blob/claude/factory-assets/pr-10/a.png) |' };
+const SHOTS = { body: '<!-- factory-agent -->\n| Écran | ![x](https://github.com/r/blob/claude/factory-assets/pr-10/a.png) |', user: { login: 'claude[bot]' } };
 const allStages = { ...config, stages: { ...config.stages, plan: true, tdd: true, review: true, designPass: true } };
 
 test('green checks after a skipped review and design pass start one catch-up run instead of acceptance', async () => {
@@ -515,6 +515,17 @@ test('green checks on a visible change with no captures shown start a captures c
   assert.match(JSON.parse(sent[0].init.body).text, /"missing":\["screenshots"\]/);
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /les captures avant\/après/.test(c[2])));
   assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+});
+
+test("a stranger naming the captures branch does not stand for the captures (issue #339)", async () => {
+  const gh = prWithSkippedSteps([{ body: 'see claude/factory-assets', user: { login: 'stranger' }, author_association: 'NONE' }]);
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async () => ({ content: Buffer.from(journal).toString('base64') });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.equal(sent.length, 1);
+  assert.match(JSON.parse(sent[0].init.body).text, /"missing":\["screenshots"\]/);
 });
 
 test('no captures catch-up when the screenshots step is off or the change is not visual', async () => {
@@ -1830,6 +1841,16 @@ test('outage: « réessaie » on the blocked card relaunches the checks, not the
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.blocked));
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.checks));
   assert.equal(readOutage(pr.body), null);
+});
+
+test("outage: a fork PR carrying an outage marker is never the card's blocked PR (issue #339)", async () => {
+  const { gh, pr } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
+  pr.head = { sha: 'abc', repo: { full_name: 'stranger/r' } };
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'o/r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  const { action } = await relay.handle(ownerSays(1, [L.feature, L.building, L.blocked], 'Réessaie'));
+  assert.notEqual(action.type, 'outage-retry');
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.checks));
 });
 
 test('outage: « réessaie » on a card blocked for another reason resumes the agent as before', async () => {
