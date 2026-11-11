@@ -109,7 +109,16 @@ export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, no
       let online = 0;
       if (repo.private) {
         try { online = onlineRunners((await api('GET', `/repos/${r}/actions/runners?per_page=100`))?.runners, settings.labels); }
-        catch (e) { log(`${k}: runners unreadable (${status(e)}), counted offline`); }
+        catch (e) {
+          // GitHub having a hiccup says nothing about the server: switching would cancel the work running on it.
+          const code = status(e);
+          if (code === 'network' || code === 'rate-limit' || Number(code) >= 500) {
+            log(`${k}: runners unreadable (${code}), left as they were`);
+            if (prev?.projects?.[k]) next.projects[k] = { ...was, error: true };
+            continue;
+          }
+          log(`${k}: runners unreadable (${code}), counted offline`);
+        }
       }
       const { machine, reason } = decideMachine({ isPrivate: Boolean(repo.private), project, general: settings.machine, key: 'ok', online });
       const entry = { machine, reason, online, since: was.machine === machine ? (was.since || next.checkedAt) : next.checkedAt };
@@ -186,11 +195,11 @@ function keyClient(token, fetchImpl = fetch) {
 }
 
 // The status branch of the factory, through its own GITHUB_TOKEN. Created on first use.
-function branchStore(gh) {
+export function branchStore(gh) {
   const shas = {};
   return {
     async read(path) {
-      const file = await gh.getContent(path, STATUS_BRANCH).catch(() => null);
+      const file = await gh.getContent(path, STATUS_BRANCH); // null when missing; any other error stops the check
       if (!file) return null;
       shas[path] = file.sha;
       try { return JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')); } catch { return null; }

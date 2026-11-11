@@ -112,6 +112,7 @@ class AccessTest(unittest.TestCase):
     def test_only_the_owner_on_his_own_repositories(self):
         self.assertIsNone(check_access("phoibe", "phoibe", "phoibe/habitudes"))
         self.assertIsNotNone(check_access("phoibe", "intrus", "phoibe/habitudes"))
+        self.assertIsNone(check_access("phoibe", "Phoibe", "PHOIBE/habitudes"))  # GitHub logins ignore case
         self.assertIsNotNone(check_access("phoibe", "phoibe", "autre/depot"))
         self.assertIsNotNone(check_access("phoibe", "phoibe", "phoibe/../x"))
 

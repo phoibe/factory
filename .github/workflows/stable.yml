@@ -12,12 +12,13 @@ on:
 permissions:
   contents: write
   issues: write
-concurrency:
-  group: factory-stable
-  cancel-in-progress: false
 jobs:
   promote:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
+    # On the job, not the workflow: a skipped run (any other new issue) never takes the queue's single pending place.
+    concurrency:
+      group: factory-stable
+      cancel-in-progress: false
     # Same image and same checks as test.yml: a release is refused only when the normal tests would be red too.
     runs-on: ubuntu-24.04
     timeout-minutes: 20

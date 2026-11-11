@@ -79,7 +79,9 @@ export function entryFor(input, now = new Date()) {
     const cmd = String(input.tool_input?.command || '');
     if (!isTestCommand(cmd)) return null;
     const ok = ev === 'PostToolUse' && !responseFailed(input.tool_response);
-    return { t, kind: 'test', cmd: cmd.slice(0, 200), ok };
+    // The journal is committed: values set before a command (a database address, a key) are never copied.
+    const shown = cmd.replace(/(^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=(?:'[^']*'|"[^"]*"|\S+)/g, '$1$2=…');
+    return { t, kind: 'test', cmd: shown.slice(0, 200), ok };
   }
   return null;
 }

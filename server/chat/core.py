@@ -47,9 +47,9 @@ IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp")
 
 def check_access(owner, login, repo):
     """None when allowed, else the reason. Only the owner, only on his own repositories."""
-    if login != owner:
+    if (login or "").lower() != owner.lower():
         return "Ce jeton n'appartient pas au propriétaire de la factory."
-    if not REPO_RE.match(repo or "") or ".." in repo or repo.split("/")[0] != owner:
+    if not REPO_RE.match(repo or "") or ".." in repo or repo.split("/")[0].lower() != owner.lower():
         return "Projet inconnu."
     return None
 

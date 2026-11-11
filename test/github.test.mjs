@@ -18,6 +18,15 @@ test('a network error is retried too', async () => {
   assert.equal((await gh.getPr(1)).number, 1);
 });
 
+test('a POST that hit a network error is not repeated (the server may have applied it), a PATCH is', async () => {
+  const sink = [];
+  await assert.rejects(client([new Error('ECONNRESET'), answer(201, { id: 1 })], sink).comment(1, 'hi'), /ECONNRESET/);
+  assert.equal(sink.length, 1);
+  const patched = [];
+  await client([new Error('ECONNRESET'), answer(200, {})], patched).updateIssue(1, { body: 'x' });
+  assert.deepEqual(patched, ['PATCH', 'PATCH']);
+});
+
 test('retries stop after a few tries and the error is reported', async () => {
   const sink = [];
   const gh = client([answer(503), answer(503), answer(503), answer(503)], sink);

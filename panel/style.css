@@ -169,7 +169,7 @@ dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
 #site { font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
 .quiet-link { font-size: .8125rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; }
-#site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
+#site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; min-height: 44px; }
 
 /* ---- No sideways scroll on phones: long words, links and titles wrap ---- */
 main, .top { overflow-wrap: anywhere; }
@@ -241,7 +241,7 @@ html { touch-action: manipulation; }
 .examples { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .example { font-weight: 500; text-align: left; border-radius: 10px; padding: 9px 12px; }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
-#chat-input { flex: 1; resize: none; font: inherit; font-size: 16px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 9px 16px; max-height: 200px; line-height: 1.4; }
+#chat-input { flex: 1; resize: none; font: inherit; font-size: 16px; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 9px 16px; max-height: 200px; line-height: 1.4; min-height: 44px; }
 #chat-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #chat-send { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 #chat-send:disabled { opacity: .5; cursor: default; }

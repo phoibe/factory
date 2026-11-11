@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton } from './lib.mjs?v=23';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=24';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
@@ -79,12 +79,17 @@ function toast(msg) {
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
-// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
-function sessionExpired() {
-  if (!token) return;
+// Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
+function resetSession() {
   store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
+}
+
+// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
+function sessionExpired() {
+  if (!token) return;
+  resetSession();
   $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
   show('login');
 }
@@ -944,7 +949,7 @@ function startLive() {
 }
 
 function drawSite() {
-  const url = current.config.siteUrl || current.repo.homepage || '';
+  const url = siteLink(current.config.siteUrl, current.repo.homepage);
   const a = $('site');
   if (url) {
     a.href = url;
@@ -1248,6 +1253,7 @@ function selectTab(name) {
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
 // reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
+let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
   if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -1255,7 +1261,11 @@ async function checkVersion() {
   // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
   const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
     || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
-  if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  if (unsaved) {
+    if (toldBuild === live.build) return; // already told for this version
+    toldBuild = live.build;
+    return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  }
   location.reload();
 }
 let watching = false, retryTimer = null;
@@ -1287,8 +1297,7 @@ async function start() {
       retryTimer = setTimeout(() => start().catch(() => {}), 15_000);
       return;
     }
-    store.del(TOKEN_KEY);
-    token = null;
+    resetSession();
     $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
     return show('login');
   }
@@ -1508,9 +1517,7 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
-  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
-  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null }); // the next account never sees this board
+  resetSession();
   show('login');
 });
 function loadScript(src) {
@@ -1676,12 +1683,14 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null });
+  // A send still running belongs to the project the owner just left: it stops touching the screen (the answer is saved on the server).
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false });
+  $('chat-send').disabled = false;
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   // The old project's « new answers » count goes with it.
@@ -2066,14 +2075,18 @@ async function sendChat(text, withImages = true) {
   if (chat.server) return sendToServer(text, files, withImages);
   const repo = chat.repo;
   const btn = $('chat-send');
+  const run = chat.run = {};
+  const gone = () => chat.run !== run; // the owner switched project: nothing below may touch the new one
   btn.disabled = true;
   chat.sending = true;
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
     const paths = await uploadImages(repo, files);
+    if (gone()) return;
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
     if (typeof chat.open !== 'number') {
       const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
+      if (gone()) return;
       chat.open = issue.number;
       chat.issue = issue;
       chat.comments = [];
@@ -2082,6 +2095,7 @@ async function sendChat(text, withImages = true) {
       if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
       await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
     }
+    if (gone()) return;
     if (withImages) {
       $('chat-input').value = '';
       chat.files = [];
@@ -2092,12 +2106,12 @@ async function sendChat(text, withImages = true) {
     chat.etags.clear();
     await refreshChat();
   } catch (e) {
+    if (gone()) return;
     chat.pending = null;
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
-    chat.sending = false;
-    btn.disabled = false;
+    if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
 }
 
@@ -2106,6 +2120,8 @@ async function sendToServer(text, files, withImages) {
   if (chat.live) return;
   const repo = chat.repo;
   const btn = $('chat-send');
+  const run = chat.run = {};
+  const gone = () => chat.run !== run; // the owner switched project: the answer is saved server-side, nothing to show or restore
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
@@ -2120,17 +2136,20 @@ async function sendToServer(text, files, withImages) {
   let answer = null;
   try {
     const paths = await uploadImages(repo, files);
+    if (gone()) return;
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
     });
+    if (gone()) { res.body?.cancel().catch(() => {}); return; }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     for (;;) {
       const { value, done } = await reader.read();
+      if (gone()) { reader.cancel().catch(() => {}); return; }
       if (done) break;
       const { events, rest } = ndjson(buffer + decoder.decode(value, { stream: true }));
       buffer = rest;
@@ -2161,16 +2180,19 @@ async function sendToServer(text, files, withImages) {
     }
     if (!answer) throw new Error('la réponse a été coupée');
   } catch (e) {
+    if (gone()) return;
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
     toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
   } finally {
-    chat.pending = null;
-    chat.live = null;
-    btn.disabled = false;
-    drawChat();
+    if (!gone()) {
+      chat.pending = null;
+      chat.live = null;
+      btn.disabled = false;
+      drawChat();
+    }
     if (answer?.issues?.length) renderBoard().catch(() => {});
   }
 }
@@ -2249,8 +2271,8 @@ $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));
 
-// Width diagnostic: shows by itself when something is wider than the screen (or with ?largeur),
-// listing the culprits, so the owner can send a screenshot from his phone.
+// Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
+// so the owner can send a screenshot from his phone.
 function widthReport() {
   const w = document.documentElement.clientWidth;
   const vv = window.visualViewport;
@@ -2273,7 +2295,7 @@ function showWidthReport(force) {
     el('pre', { style: 'margin:0;max-height:35vh;overflow:auto;white-space:pre-wrap' }, text),
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }
-setTimeout(() => showWidthReport(new URLSearchParams(location.search).has('largeur')), 4000);
+if (new URLSearchParams(location.search).has('largeur')) setTimeout(() => showWidthReport(true), 4000);
 
 // On a phone the secondary actions fold into « Plus »; on a computer they stay where they were.
 const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({ node, home: node.parentNode, next: node.nextSibling }));

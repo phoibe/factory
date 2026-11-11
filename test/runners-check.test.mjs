@@ -242,3 +242,32 @@ test('a 403 asking to wait is GitHub limiting, not a refused key', async () => {
   const res = await run({ keyApi: { repos: async () => ({ ok: false, status: 429, repos: [] }), request: async () => assert.fail() }, store: s, fetchImpl: async () => assert.fail('no alert') });
   assert.equal(res.status, null);
 });
+
+test('a GitHub hiccup while reading the runners never cancels the work running on a healthy server', async () => {
+  const key = await repoKey('101');
+  const a = account({
+    repos: [priv('app')],
+    vars: { 'pierre/app': '["self-hosted"]' },
+    runs: { 'pierre/app': [{ id: 7, status: 'in_progress', event: 'issue_comment' }] },
+    jobs: { 7: [{ status: 'in_progress', labels: ['self-hosted'] }] },
+  });
+  const request = a.keyApi.request;
+  a.keyApi.request = async (method, path, body) => {
+    if (/\/actions\/runners/.test(path)) throw new Error('GET /repos/pierre/app/actions/runners -> 502');
+    return request(method, path, body);
+  };
+  const prev = { key: 'ok', projects: { [key]: { machine: 'dev-server', reason: 'online', online: 1, since: '2026-11-06T10:00:00Z' } } };
+  const res = await run({ keyApi: a.keyApi, store: store({ 'status.json': prev }), fetchImpl: async () => assert.fail('no alert') });
+  assert.equal(a.state.vars['pierre/app'], '["self-hosted"]');
+  assert.deepEqual(a.calls, []);
+  assert.equal(res.status.projects[key].machine, 'dev-server');
+  assert.equal(res.status.projects[key].error, true);
+});
+
+test('the status branch unreadable for a moment stops the check instead of reading as « no setting »', async () => {
+  const { branchStore } = await import('../scripts/runners.mjs');
+  const gh = { getContent: async () => { throw new Error('GET /repos/o/factory/contents/settings.json -> 502'); } };
+  await assert.rejects(branchStore(gh).read('settings.json'), /502/);
+  const missing = branchStore({ getContent: async () => null });
+  assert.equal(await missing.read('settings.json'), null);
+});

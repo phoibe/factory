@@ -4,6 +4,7 @@
 //   node scripts/relay.mjs report --result success|failure --pr 12
 //   node scripts/relay.mjs release            (end of an Actions agent run: PAYLOAD env)
 import { appendFileSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -241,6 +242,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify(payload) });
       } catch (e) {
+        if (isRateLimited(e)) {
+          for (const n of targets) await gh.removeLabel(n, L.running);
+          throw e;
+        }
         await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécrivez votre message dans quelques minutes ; si ça se répète, vérifiez que le workflow « Factory » est activé (onglet Actions).", String(e));
       }
       return;
@@ -503,6 +508,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     try {
       await gh.merge(prNumber, sha);
     } catch (e) {
+      if (isRateLimited(e)) throw e; // not a refused merge: the event is taken up again once the limit is over
       log(`merge failed: ${e}`);
       const state = (await gh.getPr(prNumber))?.mergeable_state;
       const head = sha || pr?.head?.sha;
@@ -717,9 +723,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
     const def = (await gh.getRepo())?.default_branch || 'main';
     const legacy = await gh.getBranch(PROD_BRANCH).catch(() => null);
-    await gh.resetRef(legacy ? PROD_BRANCH : def, release.from);
-    try { await gh.dispatch('pages.yml', legacy ? PROD_BRANCH : def, {}); } catch { /* no GitHub Pages workflow */ }
+    const ref = legacy ? PROD_BRANCH : def;
     const prs = release.prs || [];
+    // Main is only put back when it is still at the released commit: a delivery merged since would be erased.
+    const head = (await gh.getBranch(ref).catch(() => null))?.object?.sha;
+    if (head && sha && head !== sha) {
+      const body = [AGENT_MARKER,
+        `Après la mise en production${release.issue ? ` (#${release.issue})` : ''}, la version en ligne ne marchait plus : ${detail}${link}.`, '',
+        `La factory n'a pas remis la version d'avant en ligne : la branche \`${ref}\` a avancé depuis la mise en production (elle est à \`${head}\`, la mise en production était \`${sha}\`), et la remettre en arrière effacerait ce qui a été livré depuis. Répare directement la version en ligne.`, '',
+        `Les modifications parties sont : ${prs.map((n) => `#${n}`).join(', ') || 'aucune'} ; l'ancienne version en ligne était \`${release.from}\`. Trouve ce qui casse la version en ligne, corrige-le, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
+      const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
+      if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu remettre la version d'avant en ligne : d'autres livraisons sont passées depuis et seraient effacées. La demande #${bug?.number} répare directement le site. Rien à faire de votre côté pour l'instant.`));
+      if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
+      return log(`release broke the live site, but ${ref} moved on (${String(head).slice(0, 7)}): not rolled back`);
+    }
+    await gh.resetRef(ref, release.from);
+    try { await gh.dispatch('pages.yml', ref, {}); } catch { /* no GitHub Pages workflow */ }
     for (const n of prs) await gh.addLabels(n, [L.awaitingProd]);
     const titles = [];
     for (const n of prs) titles.push(`- ${(await gh.getPr(n).catch(() => null))?.title || 'Modification'} (#${n})`);
@@ -864,24 +883,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const found = await findRedo(prNumber);
     if (found && !names(found.labels).includes(L.noPick)) return log(`redo #${found.number} already started`);
     const def = (await gh.getRepo())?.default_branch || 'main';
-    if (!open) {
-      git(['fetch', 'origin', def]);
-      git(['checkout', '-B', branch, `origin/${def}`]);
-      git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
-      git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
-    }
-    // The undo PR is opened first: when GitHub refuses it (the repository does not let workflows open PRs, #231),
-    // nothing was undone, so no card may say it was. The redo card then starts at once as a normal urgent fix that
-    // repairs the live site directly, instead of waiting in no-pick for an undo that will never come (#227).
     const title = `Retirer « ${pr.title} » : la version en ligne ne marchait plus`;
     const why = `Retour à la version d'avant la PR #${prNumber} : après sa mise en ligne, ${detail}.`;
     const issueNumber = prIssue(pr);
     const facts = { prNumber, issueNumber, sha, url, detail, link };
-    let revert = open;
-    try {
-      revert ??= await gh.createPr(title, branch, def, [REVERT_MARKER, why].join('\n'));
-    } catch (e) {
-      const msg = String(e?.message || e);
+    // The undo is not possible (the revert conflicts, or GitHub refuses to open its PR): nothing was undone, so no card
+    // may say it was. The redo card starts at once as a normal urgent fix that repairs the live site directly.
+    const cannotUndo = async (msg, { gitFailed = false } = {}) => {
       const blockedBySetting = /not permitted to create or approve pull requests/i.test(msg);
       const reason = /"message"\s*:\s*"([^"]{1,160})/.exec(msg)?.[1] || '';
       const body = redoBody({ ...facts, undone: false });
@@ -890,12 +898,32 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.comment(prNumber, say([
         `Après cette mise en ligne, la version en ligne ne marchait plus : ${detail}${link}.`,
         '',
-        `**Je n'ai pas pu la retirer** : GitHub a refusé que la factory ouvre le retour en arrière${blockedBySetting || !reason ? '' : ` (« ${reason} »)`}. La correction urgente #${redo.number} démarre donc tout de suite pour réparer directement la version en ligne.`,
-        ...(blockedBySetting || !reason ? ['', `Pour que la factory puisse retirer une livraison la prochaine fois : dans [Settings → Actions → General](https://github.com/${repo}/settings/actions), cochez « Allow GitHub Actions to create and approve pull requests » puis « Save ».`] : []),
+        gitFailed
+          ? `**Je n'ai pas pu la retirer** : le retour en arrière automatique a échoué (sans doute un conflit avec ce qui a été livré depuis). La correction urgente #${redo.number} démarre donc tout de suite pour réparer directement la version en ligne.`
+          : `**Je n'ai pas pu la retirer** : GitHub a refusé que la factory ouvre le retour en arrière${blockedBySetting || !reason ? '' : ` (« ${reason} »)`}. La correction urgente #${redo.number} démarre donc tout de suite pour réparer directement la version en ligne.`,
+        ...(!gitFailed && (blockedBySetting || !reason) ? ['', `Pour que la factory puisse retirer une livraison la prochaine fois : dans [Settings → Actions → General](https://github.com/${repo}/settings/actions), cochez « Allow GitHub Actions to create and approve pull requests » puis « Save ».`] : []),
       ].join('\n')));
-      log(`live site broken after #${prNumber}: undo PR refused (${msg.slice(0, 120)}), redo #${redo.number} started`);
+      log(`live site broken after #${prNumber}: undo ${gitFailed ? 'failed' : 'PR refused'} (${msg.slice(0, 120)}), redo #${redo.number} started`);
       await startRedo(redo.number);
-      return;
+    };
+    if (!open) {
+      try {
+        git(['fetch', 'origin', def]);
+        git(['checkout', '-B', branch, `origin/${def}`]);
+        git(['-c', 'user.name=github-actions[bot]', '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com', 'revert', '--no-edit', sha]);
+        git(['push', '--force', 'origin', `HEAD:refs/heads/${branch}`]);
+      } catch (e) {
+        try { git(['revert', '--abort']); } catch { /* no revert in progress */ }
+        return cannotUndo(String(e?.message || e), { gitFailed: true });
+      }
+    }
+    // The undo PR is opened first: when GitHub refuses it (the repository does not let workflows open PRs, #231),
+    // nothing was undone, so no card may say it was (#227).
+    let revert = open;
+    try {
+      revert ??= await gh.createPr(title, branch, def, [REVERT_MARKER, why].join('\n'));
+    } catch (e) {
+      return cannotUndo(String(e?.message || e));
     }
     // A relaunch after an undo that was never opened reuses the card it left behind.
     const undoneBody = redoBody({ ...facts, undone: true, revert: revert.number });
@@ -1634,6 +1662,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         break;
       case 'outage-retry': {
         const pr = await gh.getPr(action.pr);
+        if (!pr) { log(`outage retry: PR #${action.pr} no longer exists`); break; }
         const issue = linkedIssue(pr.body) || branchIssue(pr);
         for (const k of new Set([n, action.pr, issue].filter(Boolean))) await gh.removeLabel(k, L.blocked);
         await gh.updateIssue(action.pr, { body: writeOutage(pr.body, null) }); // a fresh schedule if it fails again
@@ -1659,7 +1688,6 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await dequeue({ freed });
         break;
       }
-        break;
       default:
         break;
     }
@@ -1694,6 +1722,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // project's own machine was away (a check that only runs there).
   async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
     let pr = await gh.getPr(prNumber);
+    if (!pr) return log(`report: PR #${prNumber} no longer exists`);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
@@ -1898,10 +1927,13 @@ function readCheck() {
   try { return JSON.parse(fromJobOutput(process.env.CHECK) || '{}') || {}; } catch { return {}; }
 }
 
-function writeOutputs(outputs) {
+export function writeOutputs(outputs) {
   const file = process.env.GITHUB_OUTPUT;
   if (!file) return console.log(outputs);
-  for (const [k, v] of Object.entries(outputs)) appendFileSync(file, `${k}<<__EOF__\n${v}\n__EOF__\n`);
+  for (const [k, v] of Object.entries(outputs)) {
+    const eof = `ghadelim_${randomUUID()}`; // the value is raw input: a fixed delimiter could be written in it
+    appendFileSync(file, `${k}<<${eof}\n${v}\n${eof}\n`);
+  }
 }
 
 async function main() {
