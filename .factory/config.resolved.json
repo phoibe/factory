@@ -5,6 +5,7 @@
   "maxParallel": 5,
   "autoPick": true,
   "maxQuestions": 2,
+  "checksMinutes": 30,
   "stack": "JavaScript sans dépendance (modules Node.js et navigateur), tests intégrés node --test, GitHub Actions et GitHub Pages pour le panneau",
   "stages": {
     "grilling": true,
