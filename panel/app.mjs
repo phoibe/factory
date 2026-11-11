@@ -1418,7 +1418,8 @@ $('release-confirm').addEventListener('click', async () => {
   if (btn.disabled) return;
   // A versioned project: the number is always given, never deduced; checked here as the relay will.
   const log = $('release-version').hidden ? null : release.changelog;
-  const version = log ? $('release-version-input').value.trim() : null;
+  // A phone keyboard may only offer the comma: « 0,18,0 » reads as « 0.18.0 ».
+  const version = log ? $('release-version-input').value.trim().replace(/,/g, '.') : null;
   const problem = log ? (version ? versionProblem(log.text, version) : 'Indiquez le numéro de version.') : null;
   if (problem) {
     $('release-error').textContent = problem.charAt(0).toUpperCase() + problem.slice(1);
