@@ -2,7 +2,7 @@ name: Panneau
 on:
   push:
     branches: [main]
-    paths: ['panel/**', 'server/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', 'scripts/lib/ratelimit.mjs', 'scripts/lib/answer.mjs', 'scripts/lib/waits.mjs', '.github/workflows/pages.yml']
+    paths: ['panel/**', 'server/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', 'scripts/lib/ratelimit.mjs', 'scripts/lib/answer.mjs', 'scripts/lib/waits.mjs', 'scripts/lib/trust.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,7 +22,7 @@ jobs:
       - run: |
           mkdir -p _site
           cp -r panel/* _site/
-          cp packs/catalog.json defaults/factory.config.json scripts/lib/config-core.mjs scripts/lib/ratelimit.mjs scripts/lib/answer.mjs scripts/lib/waits.mjs _site/
+          cp packs/catalog.json defaults/factory.config.json scripts/lib/config-core.mjs scripts/lib/ratelimit.mjs scripts/lib/answer.mjs scripts/lib/waits.mjs scripts/lib/trust.mjs _site/
           # The open panels compare this with their own build and reload themselves when a new one is live.
           sed -i "s/__BUILD__/$GITHUB_SHA/" _site/index.html
           printf '{ "build": "%s" }\n' "$GITHUB_SHA" > _site/version.json

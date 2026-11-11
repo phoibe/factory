@@ -1,5 +1,6 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
 import { rateLimitDelay, RateLimited, MAX_PAUSE_MS } from './ratelimit.mjs';
+import { trustNotes } from './trust.mjs';
 const HTML = 'application/vnd.github.full+json';
 
 // GitHub answers 5xx now and then (503 « Service Unavailable », 500 on pushes…). One such answer used to kill a whole
@@ -69,6 +70,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return out;
   }
   const enc = encodeURIComponent;
+  const trusted = (list) => trustNotes(list, repo.split('/')[0]);
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
   const LOCK_REF = 'factory/lock';
@@ -149,7 +151,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     // The repository's latest issue events, all cards together (newest first).
     listRepoEvents: () => request('GET', '/repos/{repo}/issues/events?per_page=100'),
     // Comments updated at or after `since` (ISO time): only what moved, not the whole thread.
-    listCommentsSince: (n, since) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100&since=${encodeURIComponent(since)}`),
+    listCommentsSince: async (n, since) => trusted(await paginate(`/repos/{repo}/issues/${n}/comments?per_page=100&since=${encodeURIComponent(since)}`)),
     // Every PR (open, closed, merged) of one branch of this repository.
     pullsByHead: (branch) => request('GET', `/repos/{repo}/pulls?state=all&per_page=30&head=${enc(`${repo.split('/')[0]}:${branch}`)}`),
     listClosedPulls: () => request('GET', '/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=30'),
@@ -157,9 +159,10 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     listClosedPullsPage: (page) => request('GET', `/repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`),
     paginate,
     getRepo: () => request('GET', '/repos/{repo}'),
-    listComments: (n) => paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`),
+    // Only the owner's and the factory's own invisible notes count (issue #339): see trust.mjs.
+    listComments: async (n) => trusted(await paginate(`/repos/{repo}/issues/${n}/comments?per_page=100`)),
     listEvents: (n) => paginate(`/repos/{repo}/issues/${n}/events?per_page=100`),
-    listReviews: (n) => paginate(`/repos/{repo}/pulls/${n}/reviews?per_page=100`),
+    listReviews: async (n) => trusted(await paginate(`/repos/{repo}/pulls/${n}/reviews?per_page=100`)),
     react: (commentId, content) => request('POST', `/repos/{repo}/issues/comments/${commentId}/reactions`, { content }),
     dispatch: (workflow, ref, inputs) => request('POST', `/repos/{repo}/actions/workflows/${workflow}/dispatches`, { ref, inputs }),
     comment: (n, body) => request('POST', `/repos/{repo}/issues/${n}/comments`, { body }),
