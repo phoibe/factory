@@ -24,16 +24,18 @@ test('classifyFile: SKILL.md is the sheet, agents yaml is settings, docs are pag
   assert.equal(classifyFile('agents/openai.yaml'), 'settings');
   assert.equal(classifyFile('references/guide.md'), 'page');
   assert.equal(classifyFile('LICENSE.txt'), 'page');
+  assert.equal(classifyFile('scripts/engine-checksums.txt'), 'program');
+  assert.equal(classifyFile('requirements.txt'), 'program');
   assert.equal(classifyFile('scripts/run.sh'), 'program');
   assert.equal(classifyFile('scripts/data/fonts.json'), 'program');
   assert.equal(classifyFile('scripts/VERSION'), 'program');
 });
 
-test('parseNameStatus reads git diff --name-status lines under packs', () => {
-  const out = 'M\tpacks/alpha/tdd/SKILL.md\nA\tpacks/alpha/fresh-skill/SKILL.md\nM\tpacks/catalog.json\n';
+test('parseNameStatus reads NUL-separated git diff --name-status -z output, unquoted names included', () => {
+  const out = 'M\0packs/alpha/tdd/SKILL.md\0A\0packs/alpha/fresh-skill/café.sh\0M\0packs/catalog.json\0';
   assert.deepEqual(parseNameStatus(out), [
     { status: 'M', path: 'packs/alpha/tdd/SKILL.md' },
-    { status: 'A', path: 'packs/alpha/fresh-skill/SKILL.md' },
+    { status: 'A', path: 'packs/alpha/fresh-skill/café.sh' },
     { status: 'M', path: 'packs/catalog.json' },
   ]);
 });
@@ -104,4 +106,26 @@ test('up to 20 files the file-by-file detail is shown, beyond it is folded', () 
   assert.match(big, /<details><summary>Voir le détail des 21 fichiers<\/summary>/);
   assert.match(big.split('\n')[0], /21 programmes/);
   assert.match(big, /- Pack alpha : tdd \(programmes\)/);
+});
+
+test('a pack dropped from the sources is listed as removed', () => {
+  const body = skillsUpdateBody({ before, after: catalog([['alpha', 'a1', ['tdd', 'old-skill']], ['beta', 'b1', ['design']]]), changes: [] });
+  assert.match(body, /- Pack gamma : source retirée/);
+  assert.match(body, /### Retirés\n- Pack gamma : steady/);
+});
+
+test('a type change is shown as modified, never as a raw git letter', () => {
+  const body = skillsUpdateBody({ before, after, changes: [{ status: 'T', path: 'packs/alpha/tdd/scripts/link.sh' }] });
+  assert.ok(body.includes('- modifié : `scripts/link.sh` (Pack alpha : tdd)'));
+});
+
+test('more than 20 programs fold the programs list too', () => {
+  const many = Array.from({ length: 21 }, (_, i) => ({ status: 'A', path: `packs/alpha/tdd/scripts/f${i}.js` }));
+  const body = skillsUpdateBody({ before, after, changes: many });
+  assert.match(body, /<details><summary>Voir les 21 fichiers<\/summary>/);
+});
+
+test('exactly 20 files are shown unfolded', () => {
+  const twenty = Array.from({ length: 20 }, (_, i) => ({ status: 'A', path: `packs/alpha/tdd/scripts/f${i}.js` }));
+  assert.ok(!skillsUpdateBody({ before, after, changes: twenty }).includes('<details>'));
 });

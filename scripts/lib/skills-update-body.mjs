@@ -9,26 +9,23 @@ const KIND_LABELS = {
   settings: 'réglages pour un autre outil',
   program: 'programmes',
 };
-const STATUS_LABELS = { A: 'ajouté', M: 'modifié', D: 'retiré' };
+const STATUS_LABELS = { A: 'ajouté', M: 'modifié', T: 'modifié', D: 'retiré' };
 
 /** Kind of a file, given its path inside the skill folder. */
 export function classifyFile(rel) {
   const name = rel.split('/').pop();
   if (rel === 'SKILL.md') return 'sheet';
   if (/^agents\/[^/]+\.ya?ml$/.test(rel)) return 'settings';
-  if (/\.(md|txt)$/i.test(name) || /^LICENSE/i.test(name)) return 'page';
+  if (/\.md$/i.test(name) || /^LICENSE/i.test(name)) return 'page';
   return 'program';
 }
 
-/** Parses `git diff --name-status --no-renames` output. */
+/** Parses `git diff --name-status --no-renames -z` output (status and path NUL-separated, never quoted). */
 export function parseNameStatus(out) {
-  return out
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [status, path] = line.split('\t');
-      return { status: status[0], path };
-    });
+  const fields = out.split('\0').filter(Boolean);
+  const changes = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) changes.push({ status: fields[i][0], path: fields[i + 1] });
+  return changes;
 }
 
 export function skillsUpdateBody({ before, after, changes }) {
@@ -70,7 +67,7 @@ export function skillsUpdateBody({ before, after, changes }) {
 
   if (programs.length) {
     const n = programs.length;
-    lines.push(`> ⚠️ Cette mise à jour change ${n} programme${n > 1 ? 's' : ''} : regardez-les avant de fusionner.`, '');
+    lines.push(`> ⚠️ Cette mise à jour change ${n} programme${n > 1 ? "s" : ""} : regardez-${n > 1 ? "les" : "le"} avant de fusionner.`, '');
   }
   lines.push('Nouvelle version des skills de la factory.', '', '## Sources', '');
   const oldCommit = new Map(before.packs.map((p) => [p.id, p.commit]));
@@ -84,6 +81,8 @@ export function skillsUpdateBody({ before, after, changes }) {
       lines.push(`- ${p.name} : inchangé`);
     }
   }
+  const kept = new Set(after.packs.map((p) => p.id));
+  for (const p of before.packs) if (!kept.has(p.id)) lines.push(`- ${p.name} : source retirée`);
 
   lines.push('', '## Skills', '');
   const group = (title, items) => {
@@ -130,7 +129,7 @@ if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFile
   const body = skillsUpdateBody({
     before: JSON.parse(git('show', `${base}:packs/catalog.json`)),
     after: JSON.parse(git('show', 'HEAD:packs/catalog.json')),
-    changes: parseNameStatus(git('diff', '--name-status', '--no-renames', base, 'HEAD', '--', 'packs')),
+    changes: parseNameStatus(git('diff', '--name-status', '--no-renames', '-z', base, 'HEAD', '--', 'packs')),
   });
   process.stdout.write(body);
 }
