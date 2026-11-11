@@ -200,6 +200,22 @@ test('un projet versionné : la fenêtre demande le numéro de version, et la de
   });
 });
 
+test('sur téléphone, le champ ouvre le clavier ordinaire, et des virgules tapées valent des points', async () => {
+  await withPanel({ config: approval, awaiting: pending, files: changelog }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Mise en production (2)' }).click();
+    const dialog = page.getByRole('dialog');
+    const field = dialog.getByRole('textbox', { name: 'Numéro de version' });
+    await field.waitFor();
+    assert.equal(await field.getAttribute('inputmode'), null, 'pas de pavé numérique : il n\'a que la virgule');
+    await field.fill('0,18,0');
+    await dialog.getByRole('button', { name: 'Confirmer' }).click();
+    await page.getByText(/Mise en production lancée/).waitFor();
+    const sent = writes.find((w) => w.method === 'POST' && w.path === '/repos/o/r/issues');
+    assert.equal(sent.body.title, 'Mise en production : version 0.18.0');
+  });
+});
+
 test('un numéro absent ou inférieur à la dernière version n\'envoie rien, et la fenêtre dit pourquoi', async () => {
   await withPanel({ config: approval, awaiting: pending, files: changelog }, async ({ page, url, writes }) => {
     await page.goto(url);
