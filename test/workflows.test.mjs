@@ -8,7 +8,19 @@ const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, impo
 test('« Déclarer stable »: an unrelated new issue never cancels a waiting promotion (queue on the job, not the workflow)', () => {
   const yml = read('stable.yml');
   assert.doesNotMatch(yml, /^concurrency:/m, 'a workflow-level group lets every opened issue replace the pending release run');
-  assert.match(yml, /^  promote:\n[\s\S]*?^    concurrency:\n      group: factory-stable\n      cancel-in-progress: false/m);
+  assert.match(yml, /^  promote:\n[\s\S]*?^    concurrency:\n      group: .*'factory-stable'.*\n      cancel-in-progress: false/m);
+});
+
+test('« Déclarer stable »: the hourly run never takes the owner request\'s pending place (issue #344)', () => {
+  const yml = read('stable.yml');
+  assert.match(yml, /group: \$\{\{ github\.event_name == 'schedule' && 'factory-stable-hourly' \|\| 'factory-stable' \}\}/);
+  assert.match(yml, /if: github\.event_name != 'schedule'\n[\s\S]*?node scripts\/stable\.mjs wait\n\s*git fetch --quiet --tags --force origin main\n\s*git checkout --quiet --detach FETCH_HEAD/,
+    'an owner request waits for an hourly run under way, then takes main and the tags it may have published');
+  assert.ok(yml.indexOf('stable.mjs wait') < yml.indexOf('scripts/checks.mjs'), 'the wait comes before the tests');
+  assert.ok(yml.indexOf('stable.mjs yield') > yml.indexOf('scripts/checks.mjs'), 'the hourly run gives way after its tests');
+  assert.match(yml, /^  actions: read$/m, 'reading the workflow runs needs the actions scope');
+  assert.match(yml, /run: node scripts\/stable\.mjs yield/, 'the hourly run gives way just before promoting');
+  assert.match(yml, /if: github\.event_name != 'schedule' \|\| steps\.yield\.outputs\.ready == 'true'/);
 });
 
 test('the panel is published even when the chat server cannot be deployed', () => {

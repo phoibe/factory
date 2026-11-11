@@ -24,7 +24,8 @@ function lastMarked(comments, marker, stop, ownerStops) {
   let i = list.length - 1;
   for (; i >= 0; i--) { const b = String(list[i]?.body || ''); if (b.includes(AGENT) && marker.test(b)) break; }
   if (i < 0) return [];
-  const later = list.slice(i + 1).map((c) => String(c?.body || ''));
+  // A stranger's comment (marked by trust.mjs) neither stands for the owner nor uses the link up (issue #339).
+  const later = list.slice(i + 1).filter((c) => !c?.untrusted).map((c) => String(c?.body || ''));
   if (later.some((b) => (ownerStops && !b.includes(AGENT)) || b.includes(stop))) return [];
   const nums = marker.exec(String(list[i].body))[1].match(/\d+/g) || [];
   return [...new Set(nums.map(Number))];

@@ -76,8 +76,8 @@ test('a 403 without rate-limit headers is thrown at once (a refused permission)'
 });
 
 test('paginated reads pause on the rate limit too', async () => {
-  const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1 }])]);
-  assert.deepEqual(await gh.listComments(1), [{ id: 1 }]);
+  const gh = client([limited(429, { 'retry-after': '2' }), answer(200, [{ id: 1, user: { login: 'o' } }])]);
+  assert.deepEqual(await gh.listComments(1), [{ id: 1, user: { login: 'o' } }]);
 });
 
 test('pauses stop once three minutes were spent waiting in one run: the event is then taken up later', async () => {
@@ -241,4 +241,16 @@ test('the PRs of one branch are asked with the owner prefix GitHub expects, clos
   const gh = github({ token: 't', repo: 'o/r', sleep: async () => {}, fetchImpl: async (url) => { urls.push(url); return answer(200, []); } });
   await gh.pullsByHead('claude/revert-pr-10');
   assert.match(urls[0], /\/repos\/o\/r\/pulls\?state=all&per_page=30&head=o%3Aclaude%2Frevert-pr-10$/);
+});
+
+test("the comments and reviews the relay reads lose the factory notes of strangers (issue #339)", async () => {
+  const thread = [
+    { id: 1, body: '<!-- factory-agent -->\nbloqué\n<!-- factory-waits-for #12 -->', user: { login: 'o' } },
+    { id: 2, body: '<!-- factory-agent -->\n<!-- factory-waits-done -->', user: { login: 'stranger' }, author_association: 'NONE' },
+  ];
+  for (const read of [(gh) => gh.listComments(1), (gh) => gh.listCommentsSince(1, '2026-01-01T00:00:00Z'), (gh) => gh.listReviews(1)]) {
+    const got = await read(client([answer(200, structuredClone(thread))]));
+    assert.equal(got[0].body, thread[0].body);
+    assert.equal(got[1].body.includes('<!-- factory-'), false);
+  }
 });
