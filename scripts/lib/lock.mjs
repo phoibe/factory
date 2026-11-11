@@ -26,5 +26,9 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
     try { if (!(await store.refresh()) && !lost) { lost = true; log('queue lock: lost (taken over by another run)'); } } catch (e) { log(`queue lock: no sign of life sent (${e.message || e})`); }
   };
   const stop = store.refresh ? every(() => { if (!beating && !lost) beating = beat().finally(() => { beating = null; }); return beating; }, beatMs) : () => {};
-  try { return await fn(); } finally { stop(); await beating; await store.release(); }
+  try { return await fn(); } finally {
+    stop(); await beating;
+    // A failed release must not hide the work's result: the lock expires by itself (TTL).
+    try { await store.release(); } catch (e) { log(`queue lock: release failed, it will expire by itself (${e.message || e})`); }
+  }
 }

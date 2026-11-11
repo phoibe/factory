@@ -46,3 +46,13 @@ test('the checks may run as long as the project allows (checksMinutes, 30 by def
   assert.match(job, /timeout-minutes: \$\{\{ fromJSON\(needs\.decide\.outputs\.checksMinutes \|\| '30'\) \}\}/);
   assert.match(yml, /checksMinutes: \$\{\{ steps\.relay\.outputs\.checksMinutes \}\}/);
 });
+
+test('the stack sheet check starts from the PR\'s own base branch, not the default branch', () => {
+  const checks = job('checks');
+  const step = checks.slice(checks.indexOf('Merge base for the stack sheet check'));
+  assert.match(step, /pulls\/\$PR" --jq \.base\.ref/);
+  assert.doesNotMatch(step.slice(0, step.indexOf('uses: actions/checkout')), /\.default_branch/);
+  assert.match(step, /PR: \$\{\{ needs\.decide\.outputs\.pr \}\}/);
+  const run = step.slice(step.indexOf('run: |'), step.indexOf('uses: actions/checkout'));
+  assert.doesNotMatch(run, /\$\{\{/);
+});

@@ -12,6 +12,9 @@ import copy
 import json
 import os
 import random
+import re
+import shutil
+import tempfile
 import string
 import time
 from datetime import datetime, timezone
@@ -29,6 +32,9 @@ from core import (
 ATTACHMENTS = "factory-attachments"
 FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched again
 MAX_IMAGES = 4
+MAX_MESSAGE = 20000  # characters
+CLAUDE_TIMEOUT = 180  # seconds for one answer
+IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
 SAVE_PAUSE = 0.4  # seconds, grows with each try
 SAVE_TRIES = 5  # two saves that cross: the later one starts again from the latest version this many times
 BRANCH_README = "# Discussions\n\nConversations du chat du tableau de suivi avec l'agent. Ne pas fusionner.\n"
@@ -81,7 +87,11 @@ class GitHub:
         meta = await self.get(f"/repos/{{repo}}/contents/{path}", ref=BRANCH)
         if not meta:
             return default, None
-        return json.loads(base64.b64decode(meta["content"]).decode()), meta["sha"]
+        if meta.get("content"):
+            return json.loads(base64.b64decode(meta["content"]).decode()), meta["sha"]
+        # Over 1 MB the contents API sends no content: ask for the raw file instead.
+        raw = await self.get(f"/repos/{{repo}}/contents/{path}", raw=True, ref=BRANCH)
+        return json.loads(raw.decode()), meta["sha"]
 
     async def write_json(self, path, data, sha, message):
         body = {"message": message, "branch": BRANCH, "content": base64.b64encode((json.dumps(data, ensure_ascii=False, indent=1) + "\n").encode()).decode()}
@@ -101,6 +111,11 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
     @app.get("/health")
     async def health():
         return {"ok": True}
+
+    def claude_env():
+        """Only what claude needs: the server's other secrets never reach the agent."""
+        keep = ("PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN", "LANG")
+        return {k: os.environ[k] for k in keep if k in os.environ}
 
     async def run(*args, cwd=None):
         proc = await asyncio.create_subprocess_exec(*args, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -134,22 +149,40 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
     @app.post("/chat")
     async def chat(request: Request):
         token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
-        body = await request.json()
-        repo = str(body.get("repo") or "")
-        message = str(body.get("message") or "").strip()
-        images = [str(p) for p in body.get("images") or []][:MAX_IMAGES]
         if not token:
             return JSONResponse({"error": "Jeton manquant."}, 401)
+        try:
+            body = json.loads(await request.body())
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "Requête invalide."}, 400)
+        repo = str(body.get("repo") or "")
+        message = str(body.get("message") or "").strip()
+        images = [str(p) for p in body.get("images") or []][:MAX_IMAGES] if isinstance(body.get("images") or [], list) else []
+        if len(message) > MAX_MESSAGE:
+            return JSONResponse({"error": f"Message trop long (au plus {MAX_MESSAGE} caractères)."}, 413)
         if not message and not images:
             return JSONResponse({"error": "Message vide."}, 400)
-        if any(not p.startswith("attachments/") or ".." in p for p in images):
+        if any(not IMAGE_RE.fullmatch(p) for p in images):
             return JSONResponse({"error": "Image inconnue."}, 400)
         gh = GitHub(token, repo if "/" in repo else "x/x", github_api, transport)
         try:
-            me = await gh.get("/user")
-        except httpx.HTTPStatusError:
-            me = None
-        refused = check_access(owner, (me or {}).get("login"), repo)
+            try:
+                me = await gh.get("/user")
+            except httpx.HTTPStatusError as e:
+                r = e.response
+                limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers)
+                if r.status_code >= 500 or r.status_code == 429 or limited:
+                    raise httpx.TransportError("github") from e
+                if r.status_code == 401:
+                    await gh.close()
+                    return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
+                me = None
+            refused = check_access(owner, (me or {}).get("login"), repo)
+        except httpx.HTTPError:
+            await gh.close()
+            return JSONResponse({"error": "GitHub ne répond pas, réessayez dans un instant."}, 503)
         if refused:
             await gh.close()
             return JSONResponse({"error": refused}, 403)
@@ -160,6 +193,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
         proc = None
+        folder = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
             conv = None
@@ -167,11 +201,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 raise ValueError("Conversation inconnue.")
             if cid:
                 conv, _ = await gh.read_json(f"chats/{cid}.json", None)
-            conv = conv or new_conversation(new_id(), message, now_iso())
+            cid = str(cid) if cid else new_id()
+            conv = conv or new_conversation(cid, message, now_iso())
+            conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
             files = []
-            folder = os.path.join("/tmp/chat", conv["id"])
-            os.makedirs(folder, exist_ok=True)
+            # One folder per message: two messages of one conversation may run at once.
+            os.makedirs("/tmp/chat", exist_ok=True)
+            folder = tempfile.mkdtemp(prefix=f"{cid}-", dir="/tmp/chat")
             for p in images:
                 data = await gh.get(f"/repos/{{repo}}/contents/{p}", raw=True, ref=ATTACHMENTS)
                 if data:
@@ -188,10 +225,12 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 # tools inside the working directories (no /etc, no other project, no /proc with the agent's token)
                 # and dontAsk refuses anything else instead of waiting for an approval nobody can give.
                 "--model", model, "--tools", "Read,Grep,Glob", "--restricted", "--permission-mode", "dontAsk",
-                "--add-dir", folder, "--strict-mcp-config", "--no-session-persistence",
+                "--add-dir", folder, "--strict-mcp-config",
+                # Project and local settings (and their hooks) come from the copied repository: ignored.
+                "--setting-sources", "user", "--no-session-persistence",
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                limit=16 * 1024 * 1024)
+                env=claude_env(), limit=16 * 1024 * 1024)
             try:
                 proc.stdin.write(build_prompt(conv, message, files).encode())
                 await proc.stdin.drain()
@@ -199,7 +238,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except (BrokenPipeError, ConnectionResetError):
                 pass  # claude exited early: its own error is read below
             draft, shown, final, failed = "", "", None, False
-            async for raw in proc.stdout:
+            deadline = asyncio.get_running_loop().time() + CLAUDE_TIMEOUT
+            while True:
+                try:
+                    raw = await asyncio.wait_for(proc.stdout.readline(), max(deadline - asyncio.get_running_loop().time(), 0))
+                except asyncio.TimeoutError:
+                    raise RuntimeError("L'agent met trop de temps à répondre, réessayez.")
+                if not raw:
+                    break
                 for e in events_from_line(raw.decode(errors="replace")):
                     if e["type"] == "delta":
                         draft += e["text"]
@@ -246,7 +292,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             yield ev({"type": "status", "text": "Enregistre…"})
             try:
                 # Shielded: a phone that drops during the save must not leave the conversation half written.
-                conv = await asyncio.shield(save(gh, conv, mine, text, at, created))
+                conv = await asyncio.shield(save(gh, cid, conv, mine, text, at, created))
             except Exception:
                 saved = False
                 add_exchange(conv, mine, text, at, created)
@@ -265,19 +311,22 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except ProcessLookupError:
                 pass
             finally:
+                if folder:
+                    shutil.rmtree(folder, ignore_errors=True)
                 await gh.close()
 
-    async def save(gh, base, mine, text, at, created):
+    async def save(gh, cid, base, mine, text, at, created):
         """Adds the exchange to the latest stored conversation, never over an exchange saved meanwhile (another
         device, a second message sent before this answer came). Returns the conversation as saved."""
         await gh.ensure_branch(BRANCH, {"README.md": BRANCH_README, "vercel.json": VERCEL_OFF})
-        path = f"chats/{base['id']}.json"
+        path = f"chats/{cid}.json"
         for attempt in range(SAVE_TRIES):
             latest, sha = await gh.read_json(path, None)
             conv = add_exchange(latest or copy.deepcopy(base), mine, text, at, created)
+            conv["id"] = cid
             try:
                 # With the sha just read, GitHub refuses the write if another save landed in between.
-                await gh.write_json(path, conv, sha, f"chore(factory): chat {base['id']}")
+                await gh.write_json(path, conv, sha, f"chore(factory): chat {cid}")
                 break
             except httpx.HTTPStatusError as e:
                 if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:

@@ -32,6 +32,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Chat server
+        # A Modal outage must not block the panel itself: the chat then falls back to the agent's routine.
+        continue-on-error: true
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

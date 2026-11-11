@@ -7,8 +7,13 @@ import { github } from './lib/github.mjs';
 export async function ensureLabels(gh) {
   const existing = new Set(((await gh.request('GET', '/repos/{repo}/labels?per_page=100')) || []).map((l) => l.name));
   for (const [name, color, description] of LABEL_DEFS) {
-    if (existing.has(name)) await gh.request('PATCH', `/repos/{repo}/labels/${encodeURIComponent(name)}`, { color, description });
-    else await gh.request('POST', '/repos/{repo}/labels', { name, color, description });
+    const update = () => gh.request('PATCH', `/repos/{repo}/labels/${encodeURIComponent(name)}`, { color, description });
+    if (existing.has(name)) { await update(); continue; }
+    // Past the first 100 labels the list misses some: creating an existing one answers 422, so update it instead.
+    try { await gh.request('POST', '/repos/{repo}/labels', { name, color, description }); } catch (e) {
+      if (!/\b422\b/.test(String(e.message || e))) throw e;
+      await update();
+    }
   }
 }
 

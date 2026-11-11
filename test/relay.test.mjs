@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
-import { createRelay, eventFromPayload, linkedIssue, DELIVERY_MARKER } from '../scripts/relay.mjs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRelay, writeOutputs, eventFromPayload, linkedIssue, DELIVERY_MARKER } from '../scripts/relay.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER, UPDATE_BRANCH_MARKER } from '../scripts/lib/labels.mjs';
+import { RateLimited } from '../scripts/lib/ratelimit.mjs';
 import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
@@ -238,6 +242,24 @@ test('a failed merge sends the branch to update instead of stranding it', async 
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
   assert.equal(payloadOf(sent[0].init.body).stage, 'update-branch');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.fixing));
+});
+
+test('a rate limit during the merge is re-thrown: the issue is not blocked, the owner is not told to rewrite', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance], mergeable_state: 'blocked' }] });
+  gh.merge = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet })
+    .handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true }), (e) => e.rateLimited === true);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
+test('a rate limit when starting the agent is re-thrown: no « réécrivez votre message » comment, the lock is released', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
+  gh.dispatch = async () => { throw new RateLimited(90_000); };
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, runner: 'github-actions' }, env: {}, fetchImpl: fetchOk([]), log: quiet });
+  await assert.rejects(relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [], text: 'go', fromOwner: true }), (e) => e.rateLimited === true);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+  assert.ok(!(await gh.getIssue(3)).labels.some((l) => l.name === L.running));
 });
 
 test('releasing the lock replays the owner message written during the run', async () => {
@@ -1585,6 +1607,22 @@ test('an undo GitHub refuses to open is never announced as done: the owner is to
   assert.match(said, /Allow GitHub Actions to create and approve pull requests/);
 });
 
+test('a revert that conflicts is aborted and takes the « undo not possible » path: redo card, comment, repair started', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature], open: false }], prs: [{ number: 10, title: 'Créneaux communs', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x' } }] });
+  gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 20 }; };
+  gh.createPr = async () => { gh.calls.push(['createPr']); return { number: 21 }; };
+  const git = [];
+  const run = (a) => { git.push(a.join(' ')); if (a.includes('revert') && !a.includes('--abort')) throw new Error('CONFLICT (content): Merge conflict in app.js'); };
+  await createRelay({ gh, repo: 'o/r', config, env, fetchImpl: fetchOk([]), log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: '/ : la page est vide', git: run });
+  assert.ok(git.includes('revert --abort'));
+  assert.ok(!git.some((g) => g.startsWith('push')), 'nothing pushed after the failed revert');
+  assert.ok(!gh.calls.some((c) => c[0] === 'createPr'));
+  const [, , body, labels] = gh.calls.find((c) => c[0] === 'createIssue');
+  assert.doesNotMatch(body, /retire cette livraison/);
+  assert.ok(!labels.includes(L.noPick));
+  assert.match(gh.calls.filter((c) => c[0] === 'comment' && c[1] === 10).map((c) => c[2]).join('\n'), /pas pu la retirer/);
+});
+
 test('an undo refused for another reason gives the owner GitHub\'s short reason, not the raw request', async () => {
   const gh = fakeGh({ issues: [], prs: [{ number: 10, title: 'X', body: '', head: { sha: 'abc' } }] });
   gh.createPr = async () => { throw new Error('POST /repos/o/r/pulls -> 422 {"message":"Validation Failed","errors":[]}'); };
@@ -2332,6 +2370,18 @@ test('a release that breaks the live site puts main back where it was (preprod k
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 11 && c[2] === L.awaitingProd));
 });
 
+test('a release rollback does not rewrite history when main moved since the release: the owner is told, nothing is reset', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm3', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], open: false }] });
+  gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
+  gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 60 }; };
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'm2', result: 'failed', detail: 'la page répond 500', release: { from: 'm1', prs: [11], issue: 50 } });
+  assert.ok(!gh.calls.some((c) => c[0] === 'resetRef'), 'main is not force-moved');
+  assert.equal(gh.branches.main, 'm3');
+  assert.ok(gh.calls.some((c) => c[0] === 'createIssue' && c[3].includes(L.urgent)));
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /pas pu remettre|pas pu la retirer|n'ai pas touché/);
+});
+
 test('on approval, what lands on main directly (settings, syncs) is brought into preprod at each tick', async () => {
   const gh = fakeGh({ issues: [], prs: [] });
   gh.getBranch = async (name) => ({ main: { object: { sha: 'm1' } }, preprod: { object: { sha: 'p1' } } })[name] || null;
@@ -2826,4 +2876,18 @@ test('a GitHub hiccup while checking the install does not stop the agent', async
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} })
     .handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 5, labels: [L.feature, L.grilling], text: '1 oui', fromOwner: true, fromAgent: false }).catch(() => {});
   assert.equal(sent.length, 1);
+});
+
+test('writeOutputs: the multiline delimiter is random, so a value containing __EOF__ cannot inject an output', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'out-')), 'gh-output');
+  writeFileSync(file, '');
+  const old = process.env.GITHUB_OUTPUT;
+  process.env.GITHUB_OUTPUT = file;
+  try { writeOutputs({ payload: 'a\n__EOF__\nagent=true', pr: '7' }); } finally { if (old === undefined) delete process.env.GITHUB_OUTPUT; else process.env.GITHUB_OUTPUT = old; }
+  const text = readFileSync(file, 'utf8');
+  const [, d1] = /^payload<<(\S+)$/m.exec(text);
+  const [, d2] = /^pr<<(\S+)$/m.exec(text);
+  assert.notEqual(d1, '__EOF__');
+  assert.notEqual(d1, d2);
+  assert.ok(text.includes(`a\n__EOF__\nagent=true\n${d1}\n`));
 });

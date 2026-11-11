@@ -48,3 +48,9 @@ test('isTestCommand spots Python test runs', () => {
   assert.equal(isTestCommand('python -m unittest discover'), true);
   assert.equal(isTestCommand('python3 server/chat/service.py'), false);
 });
+
+test('a secret put before the test command never reaches the committed journal', () => {
+  const e = entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'DATABASE_URL=postgres://u:hunter2@db/x CHROMIUM_PATH=/opt/c npm test' }, tool_response: { stdout: '# fail 0' } }, now);
+  assert.doesNotMatch(e.cmd, /hunter2/);
+  assert.match(e.cmd, /DATABASE_URL=… CHROMIUM_PATH=… npm test/);
+});

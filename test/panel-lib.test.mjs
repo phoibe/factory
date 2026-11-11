@@ -246,3 +246,13 @@ test('the « Mise en production » button shows how many changes wait, and is gr
   assert.deepEqual(releaseButton([{}, {}, {}]), { text: 'Mise en production (3)', disabled: false, hint: '3 modifications en attente' });
   assert.deepEqual(releaseButton([{}]), { text: 'Mise en production (1)', disabled: false, hint: '1 modification en attente' });
 });
+
+import { siteLink } from '../panel/lib.mjs';
+
+test('siteLink only keeps http(s) addresses, a javascript: homepage counts as no site', () => {
+  assert.equal(siteLink('javascript:alert(1)', ''), '');
+  assert.equal(siteLink('', 'javascript:alert(1)'), '');
+  assert.equal(siteLink('https://a.fr', 'http://b.fr'), 'https://a.fr');
+  assert.equal(siteLink('javascript:alert(1)', 'https://b.fr'), 'https://b.fr');
+  assert.equal(siteLink(undefined, null), '');
+});

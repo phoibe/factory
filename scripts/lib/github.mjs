@@ -17,13 +17,14 @@ const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the qu
 export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
   const started = now();
   let paused = 0; // ms spent in rate-limit pauses by this client
-  // The network call with its retries; a network error (no answer at all) is retried like a 503.
+  // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
+  // (a POST may have been applied before the connection broke).
   async function send(method, url, init) {
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
       let res;
       try { res = await fetchImpl(url, { method, ...init }); } catch (e) {
-        if (attempt >= RETRY_DELAYS_MS.length) throw e;
+        if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw e;
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }

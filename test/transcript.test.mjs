@@ -41,3 +41,8 @@ test('a journal the hooks already wrote is kept as it is', () => {
   importTranscript(root, 'phoibe/factory', { projectsDir: projects });
   assert.equal(readFileSync(join(root, '.factory/journal/s1.jsonl'), 'utf8'), '{"kind":"run","stage":"build"}\n');
 });
+
+test('a secret put before a test command in the session never reaches the journal', () => {
+  const out = fromTranscript([prompt, use('s', 'Bash', { command: 'API_KEY=sk-123 npm test' })].map((o) => JSON.stringify(o)));
+  assert.equal(out.find((e) => e.kind === 'test').cmd, 'API_KEY=… npm test');
+});

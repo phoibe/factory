@@ -109,3 +109,12 @@ test('a sign of life still on its way is waited for before the lock is given bac
   await withLock(store, async () => { beat(); }, { every, sleep: async () => {}, now: () => 0 });
   assert.deepEqual(order, ['beat done', 'release']);
 });
+
+test('a failing release neither hides the work result nor throws', async () => {
+  const store = fakeStore();
+  store.release = async () => { throw new Error('release down'); };
+  const logs = [];
+  const out = await withLock(store, async () => 'result', { sleep: async () => {}, now: () => 0, log: (m) => logs.push(m) });
+  assert.equal(out, 'result');
+  assert.ok(logs.some((m) => /release down/.test(m)));
+});

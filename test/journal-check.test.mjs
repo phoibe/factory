@@ -33,3 +33,22 @@ test('the command line checks the latest run with its own stage', async () => {
   assert.deepEqual(runOptions(files, read), { stage: 'skills-fix', current: now });
   assert.deepEqual(runOptions(['x.js'], read), {});
 });
+
+test('branchFiles diffs against the closest of origin/preprod, origin/HEAD and origin/main', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'jc-'));
+  const g = (...args) => execFileSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...args], { cwd: dir, encoding: 'utf8' });
+  const commit = (f) => { writeFileSync(join(dir, f), f); g('add', '.'); g('commit', '-q', '-m', f); };
+  g('init', '-q', '-b', 'main');
+  commit('a.txt');
+  g('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  commit('preprod-only.txt');
+  g('update-ref', 'refs/remotes/origin/preprod', 'HEAD');
+  g('checkout', '-q', '-b', 'work');
+  commit('mine.txt');
+  const files = branchFiles((args) => g(...args));
+  assert.deepEqual(files, ['mine.txt']);
+});

@@ -4,7 +4,7 @@ export function machineLine({ status, hash, isPrivate, general, project }) {
   if (!isPrivate) return { text: 'Projet public : ses tâches tournent toujours sur les machines GitHub, gratuites pour lui.', tone: 'muted' };
   const wanted = project === 'default' ? general : project;
   if (wanted === 'github') return { text: 'Ses tâches tournent sur les machines GitHub, comme demandé.', tone: 'muted' };
-  if (!status) return { text: 'Serveur de dev : pas encore vérifié. Les tâches tournent sur les machines GitHub en attendant.', tone: 'muted' };
+  if (!status) return { text: 'Serveur de dev : pas encore vérifié, machines GitHub en attendant.', tone: 'muted' };
   const entry = status.projects?.[hash];
   // A key that worked before may have left the project on the server: without it, the factory can no longer move it.
   if (status.key !== 'ok' && (status.key === 'refused' || entry?.machine === 'dev-server')) {

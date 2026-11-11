@@ -95,7 +95,6 @@ test('passer un projet « sur mon accord » crée la branche « preprod » où l
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     await page.locator('#production-approval').check();
-    await page.getByText(/attendent sur «.preprod.».; le bouton les envoie sur «.main.»/).waitFor();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.').waitFor({ timeout: 5000 });
     const ref = writes.find((w) => w.path === '/repos/o/r/git/refs');
@@ -190,7 +189,7 @@ test('un projet versionné : la fenêtre demande le numéro de version, et la de
     const dialog = page.getByRole('dialog');
     const field = dialog.getByRole('textbox', { name: 'Numéro de version' });
     await field.waitFor();
-    await dialog.getByText('Dernière version : 0.17.0.', { exact: false }).waitFor();
+    await dialog.getByText('Dernière version : 0.17.0', { exact: true }).waitFor();
     await field.fill('0.18.0');
     await dialog.getByRole('button', { name: 'Confirmer' }).click();
     await page.getByText(/Mise en production lancée/).waitFor();

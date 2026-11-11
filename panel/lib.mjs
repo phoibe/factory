@@ -226,3 +226,6 @@ export function releaseButton(pending) {
   if (!n) return { text: 'Mise en production', disabled: true, hint: 'Rien en attente' };
   return { text: `Mise en production (${n})`, disabled: false, hint: `${n} modification${n > 1 ? 's' : ''} en attente` };
 }
+
+// The project's site address, only when it is a web link: a `javascript:` (or any other) address is no site.
+export const siteLink = (...candidates) => candidates.find((u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim()))?.trim() || '';

@@ -35,6 +35,12 @@ export function isProtected(status, location = '') {
 }
 
 // What went wrong on one page, in plain French, or null.
+// A page error counts only when its stack has no URL or mentions the site's own origin: a third-party script's error is not the site's fault.
+export function isOwnPageError(stack, origin) {
+  const s = String(stack || '');
+  return !/https?:\/\//.test(s) || s.includes(origin);
+}
+
 export function pageProblem({ status, errors = [], serverErrors = [], text = '' }) {
   if (status >= 400) return `la page répond ${status}`;
   if (serverErrors.length) return `le serveur répond une erreur (${serverErrors.slice(0, 3).join(', ')})`;
@@ -109,7 +115,7 @@ export async function smoke({ url, dir = '.', fetchImpl = fetch, log = console.e
       const page = await browser.newPage();
       const errors = [];
       const serverErrors = [];
-      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('pageerror', (e) => { if (isOwnPageError(e.stack, origin)) errors.push(e.message); });
       page.on('response', (r) => { if (r.status() >= 500 && r.url().startsWith(origin)) serverErrors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
       const target = routeUrl(route, url);
       let status = 0;

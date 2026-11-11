@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton } from './lib.mjs?v=23';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=24';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
@@ -79,12 +79,17 @@ function toast(msg) {
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
-// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
-function sessionExpired() {
-  if (!token) return;
+// Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
+function resetSession() {
   store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
+}
+
+// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
+function sessionExpired() {
+  if (!token) return;
+  resetSession();
   $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
   show('login');
 }
@@ -584,7 +589,7 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'modification' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
@@ -730,7 +735,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) owed
 // « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
   const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
-  if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
+  if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), ...(sub ? [el('p', { class: 'muted' }, sub)] : []), status);
   return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
     el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
     el('div', { class: 'tickets' }, yours.map((c) => card(c, 'yours', minutes, now, movedSet.has(c.number)))));
@@ -853,7 +858,7 @@ function drawBoard() {
   const headline = cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours'; // shown only when nothing waits
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
-    : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
+    : '';
   const sorted = ideasToShow(ideaItems(live.issues), sortingIdea());
   for (const n of sorted.settled) sortingIdea().delete(n);
   const ideas = sorted.shown;
@@ -944,7 +949,7 @@ function startLive() {
 }
 
 function drawSite() {
-  const url = current.config.siteUrl || current.repo.homepage || '';
+  const url = siteLink(current.config.siteUrl, current.repo.homepage);
   const a = $('site');
   if (url) {
     a.href = url;
@@ -1040,10 +1045,9 @@ function generalMachineFieldset() {
 }
 
 // A part of the settings: this project only, or every project.
-function rulesSection(id, title, intro, children) {
+function rulesSection(id, title, children) {
   return el('section', { class: 'rules-section', 'aria-labelledby': id },
     el('h2', { id, class: 'rules-section-title' }, title),
-    el('p', { class: 'rules-section-intro' }, intro),
     ...children);
 }
 
@@ -1082,8 +1086,6 @@ function renderRules() {
         if (v) next.siteUrl = v; else delete next.siteUrl;
         update(next);
       } }));
-  // On approval, one line says where validated changes wait; nothing to set up at the host any more.
-  const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, frenchSpaces('Les modifications validées attendent sur « preprod » ; le bouton les envoie sur « main ».'));
   // Never chosen: the stack sheet decides, and says so in one short line.
   const mode = effectiveProduction(c, current.delivery);
   const bySheet = !c.production && current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
@@ -1092,13 +1094,12 @@ function renderRules() {
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
       ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
       .map(([v, t]) => el('div', { class: 'row' },
-        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)),
-          ...(v === 'approval' && c.production === 'approval' ? { 'aria-describedby': 'production-hint' } : {}) }),
+        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
-    ...(c.production === 'approval' ? [hostHint] : []), ...bySheet);
+    ...bySheet);
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
-    ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
-      ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
+    ...[['claude-cloud', 'Cloud Claude (abonnement)'],
+      ['github-actions', 'GitHub Actions (vos minutes GitHub)']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
         el('label', { for: `runner-${v}` }, t))),
@@ -1153,8 +1154,8 @@ function renderRules() {
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   const name = current.repo.name;
   form.replaceChildren(
-    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
-    rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
+    rulesSection('rules-project', `Ce projet : ${name}`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
+    rulesSection('rules-all', 'Tous les projets', [generalMachineFieldset()]),
     bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
@@ -1182,7 +1183,6 @@ function extraChecksFieldset(c, update) {
         onchange: (e) => edit(i, { command: e.target.value.trim() }) }),
       el('button', { type: 'button', class: 'secondary', 'aria-label': `Retirer ${x.label || 'ce contrôle'}`, onclick: () => set(list.filter((_, j) => j !== i)) }, 'Retirer'))));
   return el('fieldset', {}, el('legend', {}, 'Contrôles supplémentaires'),
-    el('p', { class: 'muted small' }, 'Propres à ce projet, lancés à sa racine après les contrôles automatiques.'),
     ...items,
     el('button', { type: 'button', class: 'secondary', disabled: list.length >= MAX_EXTRA_CHECKS,
       onclick: () => { set([...list, { label: '', command: '', enabled: true }]); $(`extra-label-${list.length}`)?.focus(); } }, 'Ajouter un contrôle'));
@@ -1253,6 +1253,7 @@ function selectTab(name) {
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
 // reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
+let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
   if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -1260,7 +1261,11 @@ async function checkVersion() {
   // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
   const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
     || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
-  if (unsaved) return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  if (unsaved) {
+    if (toldBuild === live.build) return; // already told for this version
+    toldBuild = live.build;
+    return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
+  }
   location.reload();
 }
 let watching = false, retryTimer = null;
@@ -1292,8 +1297,7 @@ async function start() {
       retryTimer = setTimeout(() => start().catch(() => {}), 15_000);
       return;
     }
-    store.del(TOKEN_KEY);
-    token = null;
+    resetSession();
     $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
     return show('login');
   }
@@ -1409,7 +1413,7 @@ $('release').addEventListener('click', () => {
   const log = release.repo === current.repo.full_name ? release.changelog : null;
   $('release-version').hidden = !log;
   $('release-version-input').value = '';
-  $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}. Le CHANGELOG et le tag suivent ce numéro.` : 'Le CHANGELOG et le tag suivent ce numéro.';
+  $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}` : '';
   $('release-dialog').showModal();
 });
 $('release-cancel').addEventListener('click', () => $('release-dialog').close());
@@ -1513,9 +1517,7 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
-  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
-  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null }); // the next account never sees this board
+  resetSession();
   show('login');
 });
 function loadScript(src) {
@@ -1681,12 +1683,18 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null });
+  // A send still running belongs to the project the owner just left: it finishes without touching the screen.
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [] });
+  $('chat-send').disabled = false;
+  // A draft belongs to the project it was written for.
+  $('chat-input').value = '';
+  drawPendingImages();
+  autosize();
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   // The old project's « new answers » count goes with it.
@@ -2071,22 +2079,28 @@ async function sendChat(text, withImages = true) {
   if (chat.server) return sendToServer(text, files, withImages);
   const repo = chat.repo;
   const btn = $('chat-send');
+  const run = chat.run = {};
+  const gone = () => chat.run !== run; // the owner switched project: nothing below may touch the new one
   btn.disabled = true;
   chat.sending = true;
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    const open = chat.open, wasClosed = chat.issue?.state === 'closed';
     const paths = await uploadImages(repo, files);
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
-    if (typeof chat.open !== 'number') {
+    // Sent to the end even if the owner switched project meanwhile; only the screen updates below are skipped.
+    if (typeof open !== 'number') {
       const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
+      if (gone()) return;
       chat.open = issue.number;
       chat.issue = issue;
       chat.comments = [];
       markSeen(issue);
     } else {
-      if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
-      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+      if (wasClosed) await api(`/repos/${repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
+      await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
     }
+    if (gone()) return;
     if (withImages) {
       $('chat-input').value = '';
       chat.files = [];
@@ -2097,12 +2111,12 @@ async function sendChat(text, withImages = true) {
     chat.etags.clear();
     await refreshChat();
   } catch (e) {
+    if (gone()) return;
     chat.pending = null;
     drawChat();
     toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
   } finally {
-    chat.sending = false;
-    btn.disabled = false;
+    if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
 }
 
@@ -2111,10 +2125,14 @@ async function sendToServer(text, files, withImages) {
   if (chat.live) return;
   const repo = chat.repo;
   const btn = $('chat-send');
+  const run = chat.run = {};
+  // The owner switched project: the answer is still read to the end (the server stops the agent when the panel hangs
+  // up, and saves nothing), but nothing is shown or restored on the other project.
+  const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
+  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
@@ -2140,13 +2158,13 @@ async function sendToServer(text, files, withImages) {
       const { events, rest } = ndjson(buffer + decoder.decode(value, { stream: true }));
       buffer = rest;
       for (const e of events) {
-        if (e.type === 'status') chat.live.status = e.text;
-        else if (e.type === 'delta') { chat.live.text += e.text; chat.live.status = 'Écrit…'; }
-        else if (e.type === 'draft') chat.live.text = e.text;
-        else if (e.type === 'reset') chat.live.text = '';
+        if (e.type === 'status') live.status = e.text;
+        else if (e.type === 'delta') { live.text += e.text; live.status = 'Écrit…'; }
+        else if (e.type === 'draft') live.text = e.text;
+        else if (e.type === 'reset') live.text = '';
         else if (e.type === 'answer') answer = e;
         else if (e.type === 'error') throw new Error(e.message);
-        else if (e.type === 'done') {
+        else if (e.type === 'done' && !gone()) {
           const c = e.conversation;
           chat.conv = chat.conv || { id: c.id, title: c.title, messages: [] };
           chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
@@ -2162,20 +2180,23 @@ async function sendToServer(text, files, withImages) {
           }
         }
       }
-      drawLive();
+      if (!gone()) drawLive();
     }
     if (!answer) throw new Error('la réponse a été coupée');
   } catch (e) {
+    if (gone()) return;
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
     toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
   } finally {
-    chat.pending = null;
-    chat.live = null;
-    btn.disabled = false;
-    drawChat();
+    if (!gone()) {
+      chat.pending = null;
+      chat.live = null;
+      btn.disabled = false;
+      drawChat();
+    }
     if (answer?.issues?.length) renderBoard().catch(() => {});
   }
 }
@@ -2254,8 +2275,8 @@ $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
 start().catch((err) => toast(`Erreur : ${err.message}`));
 
-// Width diagnostic: shows by itself when something is wider than the screen (or with ?largeur),
-// listing the culprits, so the owner can send a screenshot from his phone.
+// Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
+// so the owner can send a screenshot from his phone.
 function widthReport() {
   const w = document.documentElement.clientWidth;
   const vv = window.visualViewport;
@@ -2278,7 +2299,7 @@ function showWidthReport(force) {
     el('pre', { style: 'margin:0;max-height:35vh;overflow:auto;white-space:pre-wrap' }, text),
     el('button', { type: 'button', style: 'margin-top:6px;background:#fff;color:#000;border:0', onclick: (e) => e.target.parentElement.remove() }, 'Fermer')));
 }
-setTimeout(() => showWidthReport(new URLSearchParams(location.search).has('largeur')), 4000);
+if (new URLSearchParams(location.search).has('largeur')) setTimeout(() => showWidthReport(true), 4000);
 
 // On a phone the secondary actions fold into « Plus »; on a computer they stay where they were.
 const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({ node, home: node.parentNode, next: node.nextSibling }));
