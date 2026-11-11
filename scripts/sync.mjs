@@ -57,7 +57,7 @@ const readJson = (p, fallback) => {
     return fallback;
   }
 };
-const safeId = (id) => typeof id === 'string' && /^[\w.-]+$/.test(id) && !id.includes('..');
+const safeId = (id) => typeof id === 'string' && /^[\w.-]+$/.test(id) && !/^\.+$/.test(id) && !id.includes('..');
 
 export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   const catalog = readJson(join(factoryDir, 'packs/catalog.json'));
@@ -78,7 +78,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
 
   const skillsDir = join(projectDir, '.claude/skills');
   const manifestPath = join(projectDir, '.factory/installed-skills.json');
-  const previous = readJson(manifestPath, { skills: [] }).skills.filter((id) => {
+  const previous = (readJson(manifestPath, { skills: [] }).skills || []).filter((id) => {
     if (safeId(id)) return true;
     console.warn(`sync: identifiant de skill ignoré dans ${manifestPath} : ${JSON.stringify(id)}`);
     return false;

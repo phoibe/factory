@@ -589,7 +589,7 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'livraison' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'modification' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
@@ -1688,9 +1688,13 @@ const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
-  // A send still running belongs to the project the owner just left: it stops touching the screen (the answer is saved on the server).
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false });
+  // A send still running belongs to the project the owner just left: it finishes without touching the screen.
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [] });
   $('chat-send').disabled = false;
+  // A draft belongs to the project it was written for.
+  $('chat-input').value = '';
+  drawPendingImages();
+  autosize();
   try { chat.seen = JSON.parse(store.get(`${SEEN_KEY}.${chat.repo}`) || '{}'); } catch { chat.seen = {}; }
   $('chat').classList.remove('viewing');
   // The old project's « new answers » count goes with it.
@@ -2081,10 +2085,11 @@ async function sendChat(text, withImages = true) {
   chat.sending = true;
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    const open = chat.open, wasClosed = chat.issue?.state === 'closed';
     const paths = await uploadImages(repo, files);
-    if (gone()) return;
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
-    if (typeof chat.open !== 'number') {
+    // Sent to the end even if the owner switched project meanwhile; only the screen updates below are skipped.
+    if (typeof open !== 'number') {
       const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
       if (gone()) return;
       chat.open = issue.number;
@@ -2092,8 +2097,8 @@ async function sendChat(text, withImages = true) {
       chat.comments = [];
       markSeen(issue);
     } else {
-      if (chat.issue?.state === 'closed') await api(`/repos/${repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
-      await api(`/repos/${repo}/issues/${chat.open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+      if (wasClosed) await api(`/repos/${repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
+      await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
     }
     if (gone()) return;
     if (withImages) {
@@ -2121,11 +2126,13 @@ async function sendToServer(text, files, withImages) {
   const repo = chat.repo;
   const btn = $('chat-send');
   const run = chat.run = {};
-  const gone = () => chat.run !== run; // the owner switched project: the answer is saved server-side, nothing to show or restore
+  // The owner switched project: the answer is still read to the end (the server stops the agent when the panel hangs
+  // up, and saves nothing), but nothing is shown or restored on the other project.
+  const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
+  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
@@ -2136,31 +2143,28 @@ async function sendToServer(text, files, withImages) {
   let answer = null;
   try {
     const paths = await uploadImages(repo, files);
-    if (gone()) return;
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
     });
-    if (gone()) { res.body?.cancel().catch(() => {}); return; }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     for (;;) {
       const { value, done } = await reader.read();
-      if (gone()) { reader.cancel().catch(() => {}); return; }
       if (done) break;
       const { events, rest } = ndjson(buffer + decoder.decode(value, { stream: true }));
       buffer = rest;
       for (const e of events) {
-        if (e.type === 'status') chat.live.status = e.text;
-        else if (e.type === 'delta') { chat.live.text += e.text; chat.live.status = 'Écrit…'; }
-        else if (e.type === 'draft') chat.live.text = e.text;
-        else if (e.type === 'reset') chat.live.text = '';
+        if (e.type === 'status') live.status = e.text;
+        else if (e.type === 'delta') { live.text += e.text; live.status = 'Écrit…'; }
+        else if (e.type === 'draft') live.text = e.text;
+        else if (e.type === 'reset') live.text = '';
         else if (e.type === 'answer') answer = e;
         else if (e.type === 'error') throw new Error(e.message);
-        else if (e.type === 'done') {
+        else if (e.type === 'done' && !gone()) {
           const c = e.conversation;
           chat.conv = chat.conv || { id: c.id, title: c.title, messages: [] };
           chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
@@ -2176,7 +2180,7 @@ async function sendToServer(text, files, withImages) {
           }
         }
       }
-      drawLive();
+      if (!gone()) drawLive();
     }
     if (!answer) throw new Error('la réponse a été coupée');
   } catch (e) {

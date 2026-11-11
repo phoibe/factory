@@ -331,6 +331,14 @@ class ServiceTest(unittest.TestCase):
         args, _ = self.args_and_env()
         self.assertFalse(os.path.exists(args[args.index("--add-dir") + 1]))
 
+    def test_two_messages_of_one_conversation_never_share_their_image_folder(self):
+        cid = self.start_conversation()
+        self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Un"})
+        first, _ = self.args_and_env()
+        self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Deux"})
+        second, _ = self.args_and_env()
+        self.assertNotEqual(first[first.index("--add-dir") + 1], second[second.index("--add-dir") + 1])
+
     def test_the_validated_id_names_the_folder_and_the_file(self):
         cid = self.start_conversation()
         conv = json.loads(self.gh.files[f"chats/{cid}.json"])
@@ -339,7 +347,7 @@ class ServiceTest(unittest.TestCase):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
         self.assertEqual(events[-1]["conversation"]["id"], cid, events)
         args, _ = self.args_and_env()
-        self.assertEqual(args[args.index("--add-dir") + 1].split("/")[-1], cid)
+        self.assertTrue(args[args.index("--add-dir") + 1].split("/")[-1].startswith(cid), args)
         self.assertNotIn("chats/../evil.json", self.gh.files)
         self.assertEqual(len(json.loads(self.gh.files[f"chats/{cid}.json"])["messages"]), 4)
 

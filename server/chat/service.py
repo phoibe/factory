@@ -14,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import tempfile
 import string
 import time
 from datetime import datetime, timezone
@@ -205,8 +206,9 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
             files = []
-            folder = os.path.join("/tmp/chat", cid)
-            os.makedirs(folder, exist_ok=True)
+            # One folder per message: two messages of one conversation may run at once.
+            os.makedirs("/tmp/chat", exist_ok=True)
+            folder = tempfile.mkdtemp(prefix=f"{cid}-", dir="/tmp/chat")
             for p in images:
                 data = await gh.get(f"/repos/{{repo}}/contents/{p}", raw=True, ref=ATTACHMENTS)
                 if data:

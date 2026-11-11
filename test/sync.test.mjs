@@ -161,3 +161,16 @@ test('manifest ids that could escape the skills folder are never removed', () =>
   try { sync({ projectDir: dir }); } finally { console.warn = orig; }
   assert.ok(existsSync(join(dir, 'victim/keep.txt')));
 });
+
+test('a manifest id « . » never empties the whole skills folder, and a manifest without a list is read as empty', () => {
+  const dir = project();
+  mkdirSync(join(dir, '.factory'), { recursive: true });
+  mkdirSync(join(dir, '.claude/skills/own-skill'), { recursive: true });
+  writeFileSync(join(dir, '.claude/skills/own-skill/SKILL.md'), 'x');
+  writeFileSync(join(dir, '.factory/installed-skills.json'), JSON.stringify({ skills: ['.'] }));
+  const orig = console.warn; console.warn = () => {};
+  try { sync({ projectDir: dir }); } finally { console.warn = orig; }
+  assert.ok(existsSync(join(dir, '.claude/skills/own-skill/SKILL.md')));
+  writeFileSync(join(dir, '.factory/installed-skills.json'), JSON.stringify({ version: 1 }));
+  sync({ projectDir: dir });
+});

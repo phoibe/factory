@@ -114,7 +114,7 @@ export async function checkRunners({ keyApi, store, topic, fetchImpl = fetch, no
           const code = status(e);
           if (code === 'network' || code === 'rate-limit' || Number(code) >= 500) {
             log(`${k}: runners unreadable (${code}), left as they were`);
-            if (prev?.projects?.[k]) next.projects[k] = { ...was, error: true };
+            if (prev?.projects?.[k]) next.projects[k] = { ...was, unread: true };
             continue;
           }
           log(`${k}: runners unreadable (${code}), counted offline`);

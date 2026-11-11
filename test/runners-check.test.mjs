@@ -261,7 +261,9 @@ test('a GitHub hiccup while reading the runners never cancels the work running o
   assert.equal(a.state.vars['pierre/app'], '["self-hosted"]');
   assert.deepEqual(a.calls, []);
   assert.equal(res.status.projects[key].machine, 'dev-server');
-  assert.equal(res.status.projects[key].error, true);
+  // Not a failed switch: the panel keeps saying « en ligne », and the next check does not redo a switch.
+  assert.equal(res.status.projects[key].error, undefined);
+  assert.equal(res.status.projects[key].unread, true);
 });
 
 test('the status branch unreadable for a moment stops the check instead of reading as « no setting »', async () => {
