@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
   issues: write
+  # Reads the workflow's own runs (who gives way to whom) and the test results of main.
+  actions: read
+  checks: read
 jobs:
   promote:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
@@ -36,7 +39,11 @@ jobs:
         if: github.event_name != 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/stable.mjs wait
+        # Then takes main and the tags afresh: the hourly run may just have published a version.
+        run: |
+          node scripts/stable.mjs wait
+          git fetch --quiet --tags --force origin main
+          git checkout --quiet --detach FETCH_HEAD
       - id: ready
         if: github.event_name == 'schedule'
         env:

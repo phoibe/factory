@@ -42,7 +42,7 @@ export const ownerRequestActive = (runs, selfId) => active(runs, selfId).some((r
 export const hourlyRunActive = (runs, selfId) => active(runs, selfId).some((r) => r.event === 'schedule');
 
 async function stableRuns() {
-  return (await api('/actions/workflows/stable.yml/runs?per_page=30')).workflow_runs || [];
+  return (await api('/actions/workflows/stable.yml/runs?per_page=100')).workflow_runs || [];
 }
 
 async function api(path) {
@@ -96,8 +96,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(waiting ? 'Pas de promotion : une demande « Déclarer stable » passe en premier' : 'Promotion automatique');
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `ready=${!waiting}\n`);
   } else if (cmd === 'wait') {
+    // Best effort: an unreachable API or a run that never ends must not cost the owner their request.
     const until = Date.now() + 20 * 60_000;
-    while (hourlyRunActive(await stableRuns(), Number(process.env.GITHUB_RUN_ID)) && Date.now() < until) {
+    for (;;) {
+      let busy;
+      try { busy = hourlyRunActive(await stableRuns(), Number(process.env.GITHUB_RUN_ID)); } catch (e) {
+        console.log(`Impossible de voir la promotion automatique (${e.message}) : votre demande passe`);
+        break;
+      }
+      if (!busy) break;
+      if (Date.now() >= until) { console.log('La promotion automatique dure trop : votre demande passe quand même'); break; }
       console.log('La promotion automatique en cours se termine, puis votre demande passe');
       await new Promise((r) => setTimeout(r, 20_000));
     }
