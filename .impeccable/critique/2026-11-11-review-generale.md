@@ -20,7 +20,7 @@ First critique 25/36 · re-check 28/36 (help n/a: screen-text rule).
 - [P1] Screen texts explaining how things work, removed: login how-to (« Choisissez « All repositories »… »), Paramètres section intros (« Ces réglages ne changent que… », « …s'appliquent à tous vos projets »), « Mise en production » preprod/main sentence, « Contrôles supplémentaires » sentence, release dialog « Le CHANGELOG et le tag suivent ce numéro », stack sheet intro paragraph, empty board « Lancez-vous avec… ». Machine labels shortened.
 - [P1] Phone « Plus » menu opened inline and pushed the board ~480 px down: now a floating menu.
 - [P1] Phone header: project meta line hidden (DESIGN.md: only the name, « Nouvelle fonctionnalité », « Plus »).
-- [P2] « PR #20 » on cards → « livraison #20 ». Site address field and chat input at 44 px.
+- [P2] « PR #20 » on cards → « modification #20 ». Site address field and chat input at 44 px.
 
 ## False positives
 - One Voice Rule: early `--accent` rules are overridden by the issue-123 layer (links, summaries, checkboxes, steps bar are ink).

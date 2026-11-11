@@ -78,7 +78,8 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
 
   const skillsDir = join(projectDir, '.claude/skills');
   const manifestPath = join(projectDir, '.factory/installed-skills.json');
-  const previous = (readJson(manifestPath, { skills: [] }).skills || []).filter((id) => {
+  const manifest = readJson(manifestPath, { skills: [] });
+  const previous = (Array.isArray(manifest?.skills) ? manifest.skills : []).filter((id) => {
     if (safeId(id)) return true;
     console.warn(`sync: identifiant de skill ignoré dans ${manifestPath} : ${JSON.stringify(id)}`);
     return false;
