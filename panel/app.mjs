@@ -5,6 +5,7 @@ import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } 
 import { noteClick, noteReturn, pendingNow } from './pending.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
 import { waitedFor } from './waits.mjs?v=1';
+import { trustNotes } from './trust.mjs';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -230,7 +231,7 @@ async function projectDotOf(repo) {
       const page = Math.max(1, Math.ceil(count / 100));
       const { data } = await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`);
       const before = page > 1 ? (await cachedGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`)).data : [];
-      waits.set(n, waitedFor([...before, ...data]));
+      waits.set(n, waitedFor(trustNotes([...before, ...data], repo.split('/')[0])));
     }
     return projectDot(issues, waits);
   } catch (err) {
@@ -341,7 +342,7 @@ function knownWaits(repo, issues) {
     const last = count && etags.get(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page}`);
     if (!last) continue;
     const before = page > 1 ? etags.get(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${page - 1}`)?.data || [] : [];
-    waits.set(n, waitedFor([...before, ...last.data]));
+    waits.set(n, waitedFor(trustNotes([...before, ...last.data], repo.split('/')[0])));
   }
   return waits;
 }
@@ -464,18 +465,20 @@ async function refresh() {
       live.read.set(c.number, cardSig(c));
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
-      const session = sessionFrom([...before.data, ...res.data]);
+      // Only the owner's and the factory's own invisible notes count (issue #339).
+      const thread = trustNotes([...before.data, ...res.data], repo.split('/')[0]);
+      const session = sessionFrom(thread);
       if (live.sessions.get(c.number) !== session) {
         live.sessions.set(c.number, session);
         previewsChanged = true;
       }
       // A blocked card that only waits for other requests' merge (issue #298).
-      const waits = c.labels.includes('factory:blocked') ? waitedFor([...before.data, ...res.data]) : [];
+      const waits = c.labels.includes('factory:blocked') ? waitedFor(thread) : [];
       if (JSON.stringify(live.waits.get(c.number) || []) !== JSON.stringify(waits)) {
         live.waits.set(c.number, waits);
         previewsChanged = true;
       }
-      const plan = parseEstimate([...before.data, ...res.data]);
+      const plan = parseEstimate(thread);
       if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
         live.plans.set(c.number, plan);
         previewsChanged = true;
@@ -1782,7 +1785,7 @@ async function refreshChat() {
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
       const pages = Math.max(1, Math.ceil((issue.comments || 0) / 100));
       const comments = [];
-      for (let p = 1; p <= pages; p++) comments.push(...await chatGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${p}`));
+      for (let p = 1; p <= pages; p++) comments.push(...trustNotes(await chatGet(`/repos/${repo}/issues/${n}/comments?per_page=100&page=${p}`), repo.split('/')[0]));
       if (chat.repo !== repo || chat.open !== n) return;
       chat.issue = issue;
       chat.comments = comments;
