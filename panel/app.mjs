@@ -2,7 +2,7 @@ import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSki
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
-import { noteClick, noteReturn, pendingNow } from './pending.mjs';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
 import { waitedFor } from './waits.mjs?v=2';
 import { trustNotes } from './trust.mjs';
@@ -315,12 +315,12 @@ async function loadFramed(project) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -478,6 +478,12 @@ async function refresh() {
         live.waits.set(c.number, waits);
         previewsChanged = true;
       }
+      // An answer of the owner the factory has not taken yet (GitHub late to start it): the card stays on hold.
+      const answered = untakenAnswer(res.data, repo.split('/')[0]);
+      if ((live.answered.get(c.number) ?? null) !== answered) {
+        if (answered == null) live.answered.delete(c.number); else live.answered.set(c.number, answered);
+        previewsChanged = true;
+      }
       const plan = parseEstimate(thread);
       if (JSON.stringify(live.plans.get(c.number) ?? null) !== JSON.stringify(plan)) {
         live.plans.set(c.number, plan);
@@ -562,6 +568,11 @@ const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [
 // The titles of the project's requests, open or done, to name the one a card waits for.
 const requestTitles = () => new Map([...(live.done || []).map((d) => [d.issue, d.title]), ...(live.issues || []).map((i) => [i.number, i.title])]);
 
+// « En attente de GitHub », or, once GitHub is late with an answer, a real warning (its minutes move in place).
+const holdStatus = (hold) => hold.late
+  ? el('p', { class: 'alert', 'data-time': '' }, hold.text)
+  : el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), hold.text);
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
@@ -579,7 +590,7 @@ function card(c, lane, minutes, now, moved) {
         running && live.sessions.get(c.number)
           ? el('a', { class: 'session', href: live.sessions.get(c.number), target: '_blank', rel: 'noopener' }, 'Voir ce qu\'il fait', el('span', { 'aria-hidden': 'true' }, ' ↗'))
           : null)
-      : lane === 'pending' ? el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), 'En attente de GitHub')
+      : lane === 'pending' ? holdStatus(holdLine(live.answered.get(c.number), now))
         : lane === 'queued' && c.waits?.length ? el('p', { class: 'doing waits' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', {}, waitsText(c.waits, requestTitles()))) : null;
   const waiting = lane === 'pending';
   const asks = waiting || lane === 'yours'; // the card carries its answer buttons
@@ -851,8 +862,9 @@ function drawBoard() {
   // Without an estimate from the agent, a building card falls back to the history of builds of the same size.
   minutes.bySize = buildingMinutes(live.events, now, sizes);
   const byLane = Object.fromEntries(LANES.map(([id]) => [id, cards.filter((c) => laneFor(c) === id)]));
-  const held = pendingNow(pendingState(), yoursList(cards), now);
-  savePending(held.state);
+  const clicked = pendingNow(pendingState(), yoursList(cards), now);
+  savePending(clicked.state);
+  const held = { pending: heldCards(yoursList(cards), clicked.pending, live.answered) };
   const heldSet = new Set(held.pending.map((c) => c.number));
   const yours = yoursList(cards).filter((c) => !heldSet.has(c.number));
   const n = yours.length;

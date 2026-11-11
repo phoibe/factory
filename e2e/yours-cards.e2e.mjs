@@ -180,3 +180,22 @@ test('le compte à rebours de « go » continue quand le tableau se redessine', 
     assert.deepEqual(sent(), ['go'], 'sent once');
   });
 });
+
+// The owner answered on GitHub, but GitHub did not start the factory yet: the card must not stay in « À vous de
+// jouer » as if nothing had been sent, and must say so plainly once GitHub is late.
+test('une réponse écrite sur GitHub et pas encore prise attend en « Prise en compte », avec une alerte après 10 min', async () => {
+  const visual = (n, title) => ({ ...issue(n, title, ['factory:feature', 'factory:visual-review'], { pull_request: { url: 'x' }, html_url: `https://github.com/o/r/pull/${n}` }), comments: 2 });
+  const asked = { id: 1, body: '<!-- factory-agent -->\nRépondez « ok » si cela vous convient.', user: { login: 'o' }, created_at: at(40) };
+  const reply = (id, minutesAgo) => ({ id, body: 'Les deux captures du calage ne sont pas comparables.', user: { login: 'o' }, created_at: at(minutesAgo) });
+  const comments = { 2: [asked, reply(2, 3)], 3: [asked, reply(3, 14)], 4: [asked, { ...asked, id: 4 }] };
+  await withPanel({ issues: [visual(2, 'Balance'), visual(3, 'Réglages'), visual(4, 'Wi-Fi')], comments }, async ({ page, url }) => {
+    await page.goto(url);
+    const held = page.locator('section.pending-zone');
+    await held.locator('.ticket[data-number="3"]').waitFor();
+    assert.deepEqual(await held.locator('.ticket').evaluateAll((n) => n.map((x) => x.dataset.number)), ['2', '3']);
+    assert.equal(await page.locator('section.lane-yours .ticket[data-number="4"]').count(), 1, 'a card still waiting for an answer stays yours');
+    assert.equal((await held.locator('.ticket[data-number="2"] .doing').textContent()).trim(), 'En attente de GitHub');
+    assert.equal(await held.locator('.ticket[data-number="2"] .alert').count(), 0, 'no warning before 10 min');
+    assert.match(await held.locator('.ticket[data-number="3"] .alert').textContent(), /^Réponse pas encore prise en compte · GitHub tarde depuis 14 min$/);
+  });
+});
