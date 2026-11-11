@@ -12,16 +12,21 @@ on:
 permissions:
   contents: write
   issues: write
+  # Reads the workflow's own runs (who gives way to whom) and the test results of main.
+  actions: read
+  checks: read
 jobs:
   promote:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (contains(github.event.issue.labels.*.name, 'factory:release') && github.event.sender.login == github.repository_owner)
     # On the job, not the workflow: a skipped run (any other new issue) never takes the queue's single pending place.
+    # The hourly run has a queue of its own: GitHub keeps one pending run per group and cancels the older one, so a
+    # shared queue let the hourly run displace the owner's waiting request. It gives way instead (scripts/stable.mjs).
     concurrency:
-      group: factory-stable
+      group: ${{ github.event_name == 'schedule' && 'factory-stable-hourly' || 'factory-stable' }}
       cancel-in-progress: false
     # Same image and same checks as test.yml: a release is refused only when the normal tests would be red too.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +35,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Wait for the hourly run under way
+        if: github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Then takes main and the tags afresh: the hourly run may just have published a version.
+        run: |
+          node scripts/stable.mjs wait
+          git fetch --quiet --tags --force origin main
+          git checkout --quiet --detach FETCH_HEAD
       - id: ready
         if: github.event_name == 'schedule'
         env:
@@ -39,9 +53,14 @@ jobs:
         if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
         # Installs the dependencies and Chromium, then runs the tests and the a11y checks (as test.yml does).
         run: node scripts/checks.mjs .
+      - id: yield
+        if: github.event_name == 'schedule' && steps.ready.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/stable.mjs yield
       - name: Promote
         id: promote
-        if: github.event_name != 'schedule' || steps.ready.outputs.ready == 'true'
+        if: github.event_name != 'schedule' || steps.yield.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
