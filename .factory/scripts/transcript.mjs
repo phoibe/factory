@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { FAILED_TEXT, agentEntry, isTestCommand, runFromPrompt } from './journal.mjs';
+import { FAILED_TEXT, agentEntry, isTestCommand, runFromPrompt, shownCommand } from './journal.mjs';
 
 const text = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (typeof b === 'string' ? b : b?.text || '')).join('\n') : '');
 
@@ -30,7 +30,7 @@ export function fromTranscript(lines) {
       } else if (b?.type === 'tool_use' && agentEntry({ tool_name: b.name })) {
         out.push({ t, ...agentEntry({ tool_name: b.name, tool_input: b.input }), id: b.id });
       } else if (b?.type === 'tool_use' && b.name === 'Bash' && isTestCommand(String(b.input?.command || ''))) {
-        const e = { t, kind: 'test', cmd: String(b.input.command).slice(0, 200), ok: false, id: b.id };
+        const e = { t, kind: 'test', cmd: shownCommand(b.input.command), ok: false, id: b.id };
         tests.set(b.id, e);
         out.push(e);
       } else if (b?.type === 'tool_result' && tests.has(b.tool_use_id)) {

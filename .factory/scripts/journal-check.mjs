@@ -15,9 +15,26 @@ const HOW = {
   impeccable: 'suis `.factory/stages/design-pass.md` (skill `impeccable`, commande `critique`, sur chaque écran modifié)',
 };
 
-// Files of this branch compared to main, committed or not.
+// The branch's starting point: of origin/preprod (approval mode), origin/HEAD (the default branch) and origin/main,
+// the merge base of those that exist with the fewest commits up to HEAD.
+function mergeBase(git) {
+  let best = null;
+  for (const ref of ['origin/preprod', 'origin/HEAD', 'origin/main']) {
+    try {
+      const base = git(['merge-base', 'HEAD', ref]).trim();
+      if (!base) continue;
+      let count = 0;
+      try { count = Number.parseInt(git(['rev-list', '--count', `${base}..HEAD`]), 10) || 0; } catch { /* keep 0 */ }
+      if (!best || count < best.count) best = { base, count };
+    } catch { /* this remote branch does not exist */ }
+  }
+  if (!best) throw new Error('no base branch found (origin/preprod, origin/HEAD, origin/main)');
+  return best.base;
+}
+
+// Files of this branch compared to its base branch, committed or not.
 export function branchFiles(git) {
-  const base = git(['merge-base', 'HEAD', 'origin/main']).trim();
+  const base = mergeBase(git);
   const lines = (out) => out.split('\n').map((l) => l.trim()).filter(Boolean);
   return [...new Set([...lines(git(['diff', '--name-only', base])), ...lines(git(['ls-files', '--others', '--exclude-standard']))])];
 }

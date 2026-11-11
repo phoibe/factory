@@ -11,6 +11,9 @@ const PREFIX = /^(?:cd\s+\S+|[A-Z_][A-Z0-9_]*=\S*|timeout\s+\S+|env|time|CI=\S+)
 
 // A Bash command runs the tests when one of its commands starts with a test runner. The text of a heredoc
 // (a file being written that merely mentions vitest) does not count.
+// The journal is committed: values set before a command (a database address, a key) are never copied.
+export const shownCommand = (cmd) => String(cmd).replace(/(^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=(?:'[^']*'|"[^"]*"|\S+)/g, '$1$2=…').slice(0, 200);
+
 export function isTestCommand(cmd = '') {
   const code = String(cmd).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '');
   return code.split(/&&|\|\||[;|\n()]/).some((part) => {
@@ -79,7 +82,7 @@ export function entryFor(input, now = new Date()) {
     const cmd = String(input.tool_input?.command || '');
     if (!isTestCommand(cmd)) return null;
     const ok = ev === 'PostToolUse' && !responseFailed(input.tool_response);
-    return { t, kind: 'test', cmd: cmd.slice(0, 200), ok };
+    return { t, kind: 'test', cmd: shownCommand(cmd), ok };
   }
   return null;
 }
