@@ -1,7 +1,5 @@
 # Stack technique
 
-La factory n'a pas d'application à installer : c'est un panneau web, un moteur qui tourne dans GitHub, et une discussion en direct.
-
 ## Interface
 - **Panneau** — la page web où vous suivez vos projets, sur ordinateur et téléphone
 - **HTML, CSS et JavaScript** — langages du panneau, exécutés par le navigateur ; **aucun framework**

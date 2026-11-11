@@ -352,11 +352,12 @@ button.go:focus-visible { outline-color: var(--text); }
   .more { display: block; flex: 1 1 0; min-width: 6.5rem; position: relative; }
   .more > summary { display: block; list-style: none; text-align: center; cursor: pointer; }
   .more > summary::-webkit-details-marker { display: none; }
-  .more-menu { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  /* A floating menu: opening it never pushes the board down (review #338). */
+  .more-menu { display: flex; flex-direction: column; gap: 8px; position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: min(320px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 1px 2px rgb(0 0 0 / .05); }
   .more-menu .button, .more-menu button { width: 100%; text-align: center; }
   .more-menu .site-line { flex-direction: column; align-items: stretch; }
   .actions #new-feature { flex: 3 1 0; white-space: nowrap; }
-  .more[open] { flex-basis: 100%; }
+  #project-sub { display: none; } /* phone: only the project's name above the buttons (DESIGN.md) */
 }
 
 /* Calm loading: grey card shapes, no animation. */
@@ -369,8 +370,6 @@ button.go:focus-visible { outline-color: var(--text); }
 button.go { min-width: 9.5em; font-variant-numeric: tabular-nums; }
 .chat-error { border-color: var(--line); }
 @media (max-width: 600px) {
-  .more[open] { flex-basis: 100%; }
-  .more-menu { position: relative; }
   .more-menu #logout { margin-top: 8px; border-top: 1px solid var(--line); }
 }
 .ticket:has(.main:focus-visible) { outline-color: var(--text); }
@@ -420,8 +419,7 @@ details summary { color: var(--text); }
 
 /* Settings split between this project and every project (PR #276). */
 .rules-section + .rules-section { margin-top: 48px; padding-top: 32px; border-top: 2px solid var(--text); }
-.rules-section-title { margin: 0; font-size: 1.375rem; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.rules-section-intro { margin: 4px 0 16px; color: var(--muted); }
+.rules-section-title { margin: 0 0 16px; font-size: 1.375rem; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 
 /* ---- Issue 269: « À vous de jouer » as cards, like the other lanes, tinted soft blue ---- */
 .you-card.lane-yours { display: block; background: none; border: 0; border-radius: 0; padding: 0; margin: 0 0 48px; }

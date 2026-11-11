@@ -15,7 +15,7 @@ test('a project set to GitHub says so, whatever the server', () => {
 });
 
 test('never checked yet', () => {
-  assert.equal(machineLine({ ...base, status: null }).text, 'Serveur de dev : pas encore vérifié. Les tâches tournent sur les machines GitHub en attendant.');
+  assert.equal(machineLine({ ...base, status: null }).text, 'Serveur de dev : pas encore vérifié, machines GitHub en attendant.');
 });
 
 test('without the key, the panel says the key is missing', () => {

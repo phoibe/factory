@@ -584,7 +584,7 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'PR' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'livraison' : 'demande'} #${c.number}`),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
@@ -730,7 +730,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) owed
 // « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
   const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
-  if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), el('p', { class: 'muted' }, sub), status);
+  if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), ...(sub ? [el('p', { class: 'muted' }, sub)] : []), status);
   return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
     el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
     el('div', { class: 'tickets' }, yours.map((c) => card(c, 'yours', minutes, now, movedSet.has(c.number)))));
@@ -853,7 +853,7 @@ function drawBoard() {
   const headline = cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours'; // shown only when nothing waits
   const sub = cards.length
     ? [byLane.working.length && `${byLane.working.length} en travail`, byLane.queued.length && `${byLane.queued.length} en file`].filter(Boolean).join(' · ') || 'Les agents attendent vos réponses.'
-    : 'Lancez-vous avec « Nouvelle fonctionnalité ».';
+    : '';
   const sorted = ideasToShow(ideaItems(live.issues), sortingIdea());
   for (const n of sorted.settled) sortingIdea().delete(n);
   const ideas = sorted.shown;
@@ -1040,10 +1040,9 @@ function generalMachineFieldset() {
 }
 
 // A part of the settings: this project only, or every project.
-function rulesSection(id, title, intro, children) {
+function rulesSection(id, title, children) {
   return el('section', { class: 'rules-section', 'aria-labelledby': id },
     el('h2', { id, class: 'rules-section-title' }, title),
-    el('p', { class: 'rules-section-intro' }, intro),
     ...children);
 }
 
@@ -1082,8 +1081,6 @@ function renderRules() {
         if (v) next.siteUrl = v; else delete next.siteUrl;
         update(next);
       } }));
-  // On approval, one line says where validated changes wait; nothing to set up at the host any more.
-  const hostHint = el('p', { id: 'production-hint', class: 'muted small' }, frenchSpaces('Les modifications validées attendent sur « preprod » ; le bouton les envoie sur « main ».'));
   // Never chosen: the stack sheet decides, and says so in one short line.
   const mode = effectiveProduction(c, current.delivery);
   const bySheet = !c.production && current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
@@ -1092,13 +1089,12 @@ function renderRules() {
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
       ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
       .map(([v, t]) => el('div', { class: 'row' },
-        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)),
-          ...(v === 'approval' && c.production === 'approval' ? { 'aria-describedby': 'production-hint' } : {}) }),
+        el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
-    ...(c.production === 'approval' ? [hostHint] : []), ...bySheet);
+    ...bySheet);
   const engine = el('fieldset', {}, el('legend', {}, 'Moteur des agents'),
-    ...[['claude-cloud', 'Cloud Claude, inclus dans votre abonnement'],
-      ['github-actions', 'GitHub Actions, sur vos minutes GitHub']]
+    ...[['claude-cloud', 'Cloud Claude (abonnement)'],
+      ['github-actions', 'GitHub Actions (vos minutes GitHub)']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
         el('label', { for: `runner-${v}` }, t))),
@@ -1153,8 +1149,8 @@ function renderRules() {
   const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   const name = current.repo.name;
   form.replaceChildren(
-    rulesSection('rules-project', `Ce projet : ${name}`, `Ces réglages ne changent que ${name}.`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
-    rulesSection('rules-all', 'Tous les projets', 'Ces réglages s\'appliquent à tous vos projets.', [generalMachineFieldset()]),
+    rulesSection('rules-project', `Ce projet : ${name}`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
+    rulesSection('rules-all', 'Tous les projets', [generalMachineFieldset()]),
     bar);
   for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
@@ -1182,7 +1178,6 @@ function extraChecksFieldset(c, update) {
         onchange: (e) => edit(i, { command: e.target.value.trim() }) }),
       el('button', { type: 'button', class: 'secondary', 'aria-label': `Retirer ${x.label || 'ce contrôle'}`, onclick: () => set(list.filter((_, j) => j !== i)) }, 'Retirer'))));
   return el('fieldset', {}, el('legend', {}, 'Contrôles supplémentaires'),
-    el('p', { class: 'muted small' }, 'Propres à ce projet, lancés à sa racine après les contrôles automatiques.'),
     ...items,
     el('button', { type: 'button', class: 'secondary', disabled: list.length >= MAX_EXTRA_CHECKS,
       onclick: () => { set([...list, { label: '', command: '', enabled: true }]); $(`extra-label-${list.length}`)?.focus(); } }, 'Ajouter un contrôle'));
@@ -1409,7 +1404,7 @@ $('release').addEventListener('click', () => {
   const log = release.repo === current.repo.full_name ? release.changelog : null;
   $('release-version').hidden = !log;
   $('release-version-input').value = '';
-  $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}. Le CHANGELOG et le tag suivent ce numéro.` : 'Le CHANGELOG et le tag suivent ce numéro.';
+  $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}` : '';
   $('release-dialog').showModal();
 });
 $('release-cancel').addEventListener('click', () => $('release-dialog').close());
