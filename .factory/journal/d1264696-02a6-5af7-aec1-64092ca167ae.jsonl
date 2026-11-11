@@ -23,3 +23,4 @@
 {"t":"2026-11-11T19:43:54.089Z","kind":"skill","name":"impeccable","id":"toolu_01XyC255KqGXxBGCZheAp6XZ"}
 {"t":"2026-11-11T19:44:40.881Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique A","id":"toolu_0143oTSrNj6gVA4NG6TwGUx1"}
 {"t":"2026-11-11T19:44:40.887Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique B detector","id":"toolu_018jREmQiX9Wfrb6AaRRXPRQ"}
+{"t":"2026-11-11T19:46:42.940Z","kind":"test","cmd":"S=… && git worktree remove --force $S/before; git merge -q origin/main 2>&1 | tail -2; npm test 2>&1 | grep -E \"^# (pass|fail)\"; node .factory/scripts/journal-check.mjs 2>&1 | tail -5","ok":true,"id":"toolu_01BWJayWnzyo1jHV2RwcYmDu"}
