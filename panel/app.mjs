@@ -106,6 +106,9 @@ async function api(path, init = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// A phone screen (the same width as the CSS's phone rules).
+const PHONE = '(max-width: 600px)';
+
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
   $('nav').hidden = id === 'login';
@@ -2319,7 +2322,7 @@ if (new URLSearchParams(location.search).has('largeur')) setTimeout(() => showWi
 
 // On a phone the secondary actions fold into « Plus »; on a computer they stay where they were.
 const menuItems = [...document.querySelectorAll('[data-menu]')].map((node) => ({ node, home: node.parentNode, next: node.nextSibling }));
-const phoneMq = matchMedia('(max-width: 600px)');
+const phoneMq = matchMedia(PHONE);
 function placeMenu() {
   const menu = $('more-menu');
   // The menu lives in the project view: with no project shown, the items stay in the header.
@@ -2334,8 +2337,12 @@ function placeMenu() {
 // « Nouvelle fonctionnalité » becomes the first line of « Plus » (issue #343).
 function placeNewFeature() {
   const node = $('new-feature');
+  const menu = $('more-menu');
   // Read the media query here: drawRelease may run before phoneMq is declared.
-  if (matchMedia('(max-width: 600px)').matches && !$('project-view').hidden && !$('release').hidden) $('more-menu').prepend(node);
+  if (matchMedia(PHONE).matches && !$('project-view').hidden && !$('release').hidden) {
+    // Moving a focused link blurs it: only move it when it is not already first (live refreshes call this).
+    if (menu.firstElementChild !== node) menu.prepend(node);
+  }
   else if (node.parentNode !== $('release').parentNode) $('release').before(node);
 }
 placeMenu();
