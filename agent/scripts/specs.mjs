@@ -31,7 +31,7 @@ export function latestSpec(comments) {
 // The spec's content only: no markers, version heading, signatures, glossary sentence, nor the closing request for
 // validation (or the « je lance la construction » sentence) and the prose lines of its paragraph. Works line by line so
 // lists, indentation and code blocks are kept as written.
-const CLOSING = /Répondez|^\s*Je lance la construction sans attendre/;
+const CLOSING = /(Répondez|Réponds)\s+(«|par\b|ici\b)|Dites « (go|ok)|Je lance la construction sans attendre|(je vous|je te) demande[^.]*valider/i;
 const STRUCTURE = /^\s*([-*+>|#]|\d+[.)]|```)/;
 
 export function cleanSpec(body) {
@@ -41,10 +41,13 @@ export function cleanSpec(body) {
   let lines = text.replace(/<!--[\s\S]*?-->/g, '').split('\n').map((l) => l.trimEnd())
     .filter((l) => !/^##\s+Spec\s*\(version[^)]*\)/i.test(l))
     .filter((l) => !/^(J['’]ai ajouté au glossaire|Décisions notées)/.test(l));
-  const close = lines.findLastIndex((l) => CLOSING.test(l));
-  if (close >= 0) {
-    let start = close;
+  // Peel the trailing prose paragraphs while they are the closing request (never a list, heading or code block).
+  for (;;) {
+    while (lines.length && !lines.at(-1).trim()) lines.pop();
+    if (!lines.length || STRUCTURE.test(lines.at(-1))) break;
+    let start = lines.length - 1;
     while (start > 0 && lines[start - 1].trim() && !STRUCTURE.test(lines[start - 1])) start--;
+    if (!CLOSING.test(lines.slice(start).join(' '))) break;
     lines = lines.slice(0, start);
   }
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\s+$/g, '');
@@ -63,10 +66,10 @@ export function parseSpec(text) {
   const h = /^# (\d+) · (.+)$/m.exec(t);
   const d = /^> Demande \[#\d+\]\([^)]*\) · (\S+)$/m.exec(t);
   const modifiedBy = [...t.matchAll(/^> Modifiée par la demande n° \[#(\d+)\]/gm)].map((m) => Number(m[1]));
-  const phrase = /\*\*En une phrase\s*:?\s*\*\*\s*:?\s*(.+)/.exec(t);
+  const phrase = /^\*\*(?:En une phrase|Ce que ça permet)\s*:?\s*\*\*\s*:?\s*(.+)$/im.exec(t);
   const firstPara = t.split(/\n{2,}/).map((p) => p.trim()).find((p) => p && !/^[#>]/.test(p)) || '';
   const summary = (phrase ? phrase[1] : (/^[^\n]*?[.!?](\s|$)/.exec(firstPara)?.[0] || firstPara.split('\n')[0])).trim();
-  return { n: h ? Number(h[1]) : null, title: h ? h[2].trim() : '', summary, date: d ? d[1] : '', modifiedBy };
+  return { n: h ? Number(h[1]) : null, title: h ? h[2].trim() : '', summary: summary.replace(/\*\*/g, ''), date: d ? d[1] : '', modifiedBy };
 }
 
 // Adds « Modifiée par la demande n° <newN> » under the header lines, once; the rest is untouched.
@@ -83,9 +86,9 @@ export function addModifiedBy(text, repo, newN) {
 const capitalize = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
 const cell = (s) => String(s || '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
 
-export function renderIndex(entries) {
+export function renderIndex(entries, repo = null) {
   const rows = [...entries].sort((a, b) => a.n - b.n).map((e) => {
-    const note = e.modifiedBy.length ? ` Modifiée par ${e.modifiedBy.map((m) => `#${m}`).join(', ')}.` : '';
+    const note = e.modifiedBy.length ? ` Modifiée par ${e.modifiedBy.map((m) => (repo ? `[#${m}](${issueUrl(repo, m)})` : `#${m}`)).join(', ')}.` : '';
     return `| ${e.n} | [${cell(e.title)}](${e.file}) | ${cell(capitalize(e.summary))}${note} | ${e.date} |`;
   });
   return ['# Sommaire des specs', '',
@@ -93,12 +96,12 @@ export function renderIndex(entries) {
     '', '| N° | Titre | En une phrase | Date |', '| --- | --- | --- | --- |', ...rows, ''].join('\n');
 }
 
-export function writeIndex(dir) {
+export function writeIndex(dir, repo = null) {
   const folder = join(dir, DIR);
   mkdirSync(folder, { recursive: true });
   const entries = readdirSync(folder).filter((f) => /^\d+(-.*)?\.md$/.test(f))
     .map((file) => ({ file, ...parseSpec(readFileSync(join(folder, file), 'utf8')) })).filter((e) => e.n !== null);
-  writeFileSync(join(folder, 'README.md'), renderIndex(entries));
+  writeFileSync(join(folder, 'README.md'), renderIndex(entries, repo));
 }
 
 const findSpecFile = (dir, n) => {
@@ -130,7 +133,7 @@ export async function saveSpec({ dir, repo, n, gh = defaultGh }) {
   const text = renderSpec({ repo, n, title: issue.title, body, date: String(spec.created_at).slice(0, 10), modifiedBy: keep });
   if (existing && existing !== file) rmSync(join(dir, DIR, existing)); // the title changed since
   writeFileSync(join(dir, DIR, file), text);
-  writeIndex(dir);
+  writeIndex(dir, repo);
   return `${DIR}/${file}`;
 }
 
@@ -139,7 +142,7 @@ export async function markModified({ dir, repo, old, by }) {
   if (!file) throw new Error(`la demande #${old} n'a pas de spec rangée dans ${DIR}`);
   const path = join(dir, DIR, file);
   writeFileSync(path, addModifiedBy(readFileSync(path, 'utf8'), repo, by));
-  writeIndex(dir);
+  writeIndex(dir, repo);
   return `${DIR}/${file}`;
 }
 
@@ -158,7 +161,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     if (cmd === 'save') console.log(`Spec rangée : ${await saveSpec({ dir, repo: repoFromRemote(git(['remote', 'get-url', 'origin'])), n: num(a) })} (sommaire à jour).`);
     else if (cmd === 'modified') console.log(`Renvoi ajouté : ${await markModified({ dir, repo: repoFromRemote(git(['remote', 'get-url', 'origin'])), old: num(a), by: num(b) })}.`);
-    else if (cmd === 'index') { writeIndex(dir); console.log(`Sommaire à jour : ${DIR}/README.md.`); }
+    else if (cmd === 'index') { writeIndex(dir, repoFromRemote(git(['remote', 'get-url', 'origin']))); console.log(`Sommaire à jour : ${DIR}/README.md.`); }
     else throw new Error('commande attendue : save <n> | modified <ancienne> <nouvelle> | index');
   } catch (e) {
     console.error(`Specs : ${e.message}`);

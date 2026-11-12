@@ -173,3 +173,25 @@ test('le dépôt se lit dans l\'adresse git, même avec un point dans son nom', 
   assert.equal(repoFromRemote('git@github.com:owner/app'), 'owner/app');
   assert.equal(repoFromRemote('http://127.0.0.1:1234/git/owner/site.fr'), 'owner/site.fr');
 });
+
+test('« Répondez » dans le contenu de la spec ne coupe rien : seule la dernière phrase de la spec est retirée', () => {
+  const body = '**En une phrase** : un sondage.\n\n### Parcours\n1. Je vois « Répondez au sondage ».\n2. Je réponds.\n\n### Critères\n- je vois le résultat\n\nDites « go » pour lancer.';
+  const out = cleanSpec(body);
+  assert.match(out, /2\. Je réponds\.\n\n### Critères\n- je vois le résultat/);
+  assert.match(cleanSpec('- Répondez avant vendredi\n- B'), /- Répondez avant vendredi\n- B$/);
+});
+
+test('la phrase qui explique pourquoi la validation est demandée est retirée avec la demande, et le tutoiement aussi', () => {
+  assert.equal(cleanSpec('Corps.\n\nCette spec touche aux paiements : je vous demande donc de la valider.\n\nRépondez « go » pour lancer la construction.'), 'Corps.');
+  assert.equal(cleanSpec('Corps.\n\nRéponds « go » pour lancer la construction.'), 'Corps.');
+});
+
+test('la phrase du sommaire se lit aussi sous « Ce que ça permet », sans gras', () => {
+  const text = renderSpec({ repo: REPO, n: 1, title: 'T', body: 'Merci pour la précision.\n\n**Ce que ça permet :** voir **vite** les choses. Et plus.', date: '2026-11-02' });
+  assert.equal(parseSpec(text).summary, 'voir vite les choses. Et plus.');
+});
+
+test('le renvoi du sommaire est un vrai lien', () => {
+  const index = renderIndex([{ file: '9-a.md', n: 9, title: 'A', summary: 'Un.', date: '2026-11-01', modifiedBy: [40] }], 'phoibe/demo');
+  assert.match(index, /Modifiée par \[#40\]\(https:\/\/github\.com\/phoibe\/demo\/issues\/40\)\./);
+});

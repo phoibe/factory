@@ -61,6 +61,8 @@ test('a build branch without its archived spec is told to save it', () => {
   const withSpec = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/42-reserver.md'], () => journal, stages, opts);
   assert.doesNotMatch(withSpec, /spec rangée/);
   const otherSpec = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/12-ancienne.md'], () => journal, stages, opts);
+  const deleted = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/42-reserver.md'], (f) => (f.endsWith('.jsonl') ? journal : null), stages, opts);
+  assert.match(deleted, /spec rangée/, 'a deleted spec does not count');
   assert.match(otherSpec, /spec rangée/, 'an older spec marked « Modifiée par » is not this request\'s spec');
   assert.doesNotMatch(report(['lib/x.ts', '.factory/journal/s1.jsonl'], () => journal, stages, { stage: 'bugfix', current: journal }), /spec rangée/);
 });
