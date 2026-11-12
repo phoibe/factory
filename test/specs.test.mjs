@@ -64,7 +64,7 @@ test('une ancienne spec reçoit une ligne « Modifiée par la demande » sans ê
   const once = addModifiedBy(old, REPO, 40);
   const twice = addModifiedBy(addModifiedBy(once, REPO, 40), REPO, 41);
   assert.match(once, /> Modifiée par la demande n° \[#40\]\(https:\/\/github\.com\/phoibe\/demo\/issues\/40\)/);
-  assert.equal(once.replace(/> Modifiée par.*\n/, ''), old);
+  assert.equal(once.replace(/>\n> Modifiée par.*\n/, ''), old);
   assert.equal((twice.match(/#40\]/g) || []).length, 1);
   assert.deepEqual(parseSpec(twice).modifiedBy, [40, 41]);
 });
@@ -115,4 +115,61 @@ test('markModified signale une demande sans spec rangée', async () => {
   mkdirSync(join(dir, 'docs/specs'), { recursive: true });
   writeFileSync(join(dir, 'docs/specs/README.md'), '');
   await assert.rejects(markModified({ dir, repo: REPO, old: 3, by: 4 }), /pas de spec rangée/);
+});
+
+test('la demande de validation collée sous la dernière liste ne fait pas disparaître les critères', () => {
+  const out = cleanSpec('<!-- factory-spec -->\n## Spec (version 1)\n\n**En une phrase** : x.\n\n### Critères d\'acceptation\n- je vois A\n- je vois B\nJe vous demande de valider. Répondez « go » pour lancer la construction.');
+  assert.match(out, /- je vois A\n- je vois B$/);
+  assert.doesNotMatch(out, /Répondez|Je vous demande/);
+});
+
+test('la phrase de lancement sans validation n\'est pas gardée, ni le glossaire avec une apostrophe courbe', () => {
+  const out = cleanSpec('## Spec (version 3) : Réserver\n\n**En une phrase** : x.\n\nJ’ai ajouté au glossaire : « A ».\n\nJe lance la construction sans attendre votre validation (réglage du projet). Si quelque chose ne va pas, écrivez-le ici : j\'en tiendrai compte.');
+  assert.equal(out, '**En une phrase** : x.');
+});
+
+test('le retrait des listes et des blocs de code est conservé', () => {
+  const out = cleanSpec('- point\n\n   détail indenté\n\n```\na\n\n    indent\n```');
+  assert.match(out, /\n   détail indenté\n/);
+  assert.match(out, /\n    indent\n/);
+});
+
+test('la phrase du sommaire se lit aussi avec les deux-points dans le gras', () => {
+  const text = renderSpec({ repo: REPO, n: 1, title: 'T', body: '**En une phrase :** les choses.', date: '2026-11-02' });
+  assert.equal(parseSpec(text).summary, 'les choses.');
+});
+
+test('les lettres liées françaises restent lisibles dans le nom du fichier', () => {
+  assert.equal(slug('Mettre en Œuvre le cœur'), 'mettre-en-oeuvre-le-coeur');
+});
+
+test('la ligne « Modifiée par » s\'affiche sur sa propre ligne', () => {
+  const text = addModifiedBy(renderSpec({ repo: REPO, n: 12, title: 'R', body: 'Corps.', date: '2026-11-02' }), REPO, 40);
+  assert.match(text, /· 2026-11-02\n>\n> Modifiée par/);
+  assert.match(addModifiedBy(text, REPO, 41), /\[#40\][^\n]*\n>\n> Modifiée par la demande n° \[#41\]/);
+});
+
+test('save refuse une spec vide une fois nettoyée', async () => {
+  const dir = project();
+  await assert.rejects(saveSpec({ dir, repo: REPO, n: 5, gh: fakeGh('X', [{ body: '<!-- factory-spec -->\n## Spec (version 1)\nRépondez « go ».', created_at: '2026-11-02T00:00:00Z' }]) }), /vide/);
+});
+
+test('une spec citée dans un commentaire n\'est pas prise pour la spec', () => {
+  assert.equal(latestSpec([{ body: 'le marqueur `<!-- factory-spec -->` sert à…', created_at: 'x' }]), null);
+});
+
+test('un titre changé renomme le fichier, et une image du dossier n\'est jamais touchée', async () => {
+  const dir = project();
+  mkdirSync(join(dir, 'docs/specs'), { recursive: true });
+  writeFileSync(join(dir, 'docs/specs/12-schema.png'), 'png');
+  await saveSpec({ dir, repo: REPO, n: 12, gh: fakeGh('Ancien titre', [{ body: SPEC, created_at: '2026-11-02T10:00:00Z' }]) });
+  await saveSpec({ dir, repo: REPO, n: 12, gh: fakeGh('Nouveau titre', [{ body: SPEC, created_at: '2026-11-02T10:00:00Z' }]) });
+  assert.deepEqual(readdirSync(join(dir, 'docs/specs')).sort(), ['12-nouveau-titre.md', '12-schema.png', 'README.md']);
+});
+
+test('le dépôt se lit dans l\'adresse git, même avec un point dans son nom', async () => {
+  const { repoFromRemote } = await import('../agent/scripts/specs.mjs');
+  assert.equal(repoFromRemote('https://github.com/owner/site.fr.git'), 'owner/site.fr');
+  assert.equal(repoFromRemote('git@github.com:owner/app'), 'owner/app');
+  assert.equal(repoFromRemote('http://127.0.0.1:1234/git/owner/site.fr'), 'owner/site.fr');
 });

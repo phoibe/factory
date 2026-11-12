@@ -11,3 +11,6 @@
 {"t":"2026-11-12T13:10:25.380Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Q6qBC6pv1Ns4vaSmbXp2BW"}
 {"t":"2026-11-12T13:12:07.261Z","kind":"test","cmd":"git remote get-url origin; grep -rn \"remote.*get-url\\|/git/\" agent/scripts/*.mjs scripts/*.mjs | head; npm test 2>&1 | tail -15","ok":true,"id":"toolu_01VFAhoNWjMdhJaaSyDQu6P6"}
 {"t":"2026-11-12T13:12:35.012Z","kind":"agent","model":"opus","effort":"high","label":"Final code review issue 359","id":"toolu_01GjE1xQoAc8XiFuyKvepa6d"}
+{"t":"2026-11-12T13:14:30.039Z","kind":"skill","name":"receiving-code-review","id":"toolu_012ELD3ZtetGvhPXkhbrk6WC"}
+{"t":"2026-11-12T13:15:38.855Z","kind":"test","cmd":"cat >> test/specs.test.mjs <<'EOF'\n\ntest('la demande de validation collée sous la dernière liste ne fait pas disparaître les critères', () => {\n  const out = cleanSpec('<!-- factory-spec -->\\n## Spec ","ok":false,"id":"toolu_01EJYyKwmxJp8vNpEeoGE9dN"}
+{"t":"2026-11-12T13:16:44.449Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\np=…\ns=…\ndef rep(old,new):\n    global s\n    assert old in s, old\n    s=…\n\nrep(\"return String(title || '').normalize('NFD')\", \"return String(title || '').replace(/œ/g, 'oe').","ok":true,"id":"toolu_016cfUiHGVghx4BK7FmX1Tx7"}
