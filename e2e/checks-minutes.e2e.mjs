@@ -12,6 +12,7 @@ test('dans Paramètres, la durée maximale des contrôles vaut 30 minutes, et je
   await withPanel({}, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     const field = page.getByLabel('Durée maximale des contrôles (minutes)');
     assert.equal(await field.inputValue(), '30');
     await field.fill('90');
@@ -26,6 +27,7 @@ test('une durée hors de 5 à 180 minutes est refusée et l\'ancienne valeur rev
   await withPanel({ config: { checksMinutes: 90 } }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     const field = page.getByLabel('Durée maximale des contrôles (minutes)');
     assert.equal(await field.inputValue(), '90');
     await field.fill('500');

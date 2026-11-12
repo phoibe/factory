@@ -514,3 +514,13 @@ dialog#projects-dialog { width: 100%; height: 100%; max-width: none; max-height:
 dialog#projects-dialog::backdrop { background: var(--list-bg); }
 .projects-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .projects-dialog-head h2 { margin: 0; padding: 0 4px; font-size: 1.125rem; }
+
+/* Issue 342: the technical settings folded under « Avancé », with a one-line summary while folded. */
+.machine-alert { margin: 0 0 16px; }
+details.advanced { margin: 8px 0 16px; border-top: 1px solid var(--line); }
+details.advanced > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 8px; padding: 14px 0; min-height: 44px; }
+.advanced-title { font-weight: 700; font-size: 1.0625rem; }
+.advanced-summary { color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
+details.advanced[open] > summary .advanced-summary { display: none; }
+.rules-all { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+.rules-all-title { margin: 0 0 16px; font-size: 1.125rem; }
