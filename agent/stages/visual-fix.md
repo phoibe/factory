@@ -6,6 +6,8 @@ Le propriétaire a commenté les captures de la PR sans les valider.
    issue (labels `factory:feature` et `factory:kept`) avec son idée, et dis-le lui ; ne l'ajoute pas à cette PR.
 2. Applique les retouches, revue rapide par un sous-agent neuf (`sonnet`, effort `medium`), vérifications locales, push. Pas de nouvelle
    passe design : elle a déjà eu lieu à la construction, et le propriétaire juge lui-même les nouvelles captures.
+2 bis. **Spec rangée** : si la retouche change une règle écrite dans la spec rangée de la PR (`docs/specs/<n>-….md`),
+   mets ce document à jour comme le dit l'étape 2 bis de `acceptance-fix.md`.
 3. Refais les captures (`screenshots.md`).
    - **Plus aucun écran ne diffère de la version en ligne** (la sortie de l'outil contient `<!-- factory-shots-unchanged -->`) :
      il n'y a plus rien à valider. Commente avec la sortie de l'outil (sa phrase d'information, sans question) et une phrase

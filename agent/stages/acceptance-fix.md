@@ -9,6 +9,10 @@ Le propriétaire a testé la preview et signale un problème.
    exacts pour l'hébergeur de la stack et ce dépôt. C'est une réponse sans code.
 2. Corrige (TDD si actif), revue par un sous-agent neuf (`sonnet`, effort `medium`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
+2 bis. **Spec rangée** : si ta correction change ce que la feature fait (pas une simple réparation) et que la PR
+   contient sa spec rangée (`docs/specs/<n>-….md`), complète ce document pour qu'il décrive ce qui est réellement
+   livré : modifie la règle concernée à sa place, sans historique des versions, en gardant les lignes d'en-tête.
+   Si la spec a été republiée en commentaire, relance plutôt `node .factory/scripts/specs.mjs save <n>`.
 3. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a
    changé et que les captures sont actives, refais les captures et mets `factory:visual-review` puis `factory:checks` (mais
    si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)) ; sinon mets

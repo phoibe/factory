@@ -65,6 +65,7 @@ test('installs the journal hook and keeps the project settings', () => {
   assert.ok(existsSync(join(dir, '.factory/scripts/gate.mjs')));
   assert.ok(existsSync(join(dir, '.factory/scripts/journal.mjs')));
   assert.ok(existsSync(join(dir, '.factory/scripts/journal-check.mjs')) && existsSync(join(dir, '.factory/scripts/fabrication.mjs')));
+  assert.ok(existsSync(join(dir, '.factory/scripts/specs.mjs')), 'the archived-specs tool is installed');
 });
 
 test('grill-with-docs and its domain-modeling helper are installed by default', () => {
