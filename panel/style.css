@@ -357,6 +357,11 @@ button.go:focus-visible { outline-color: var(--text); }
   .more-menu .button, .more-menu button { width: 100%; text-align: center; }
   .more-menu .site-line { flex-direction: column; align-items: stretch; }
   .actions #new-feature { flex: 3 1 0; white-space: nowrap; }
+  /* Issue #343: « Mise en production » takes the top line, « Nouvelle fonctionnalité » the first line of « Plus ». */
+  .actions #release { flex: 3 1 0; white-space: nowrap; } /* first on the line: the same weight as « Plus » next to it */
+  /* Its own line under the project name, whatever the count: the first card's « go » never moves. */
+  .actions:has(> #release:not([hidden])) { flex: 1 1 100%; }
+  .more-menu #new-feature { flex: none; }
   #project-sub { display: none; } /* phone: only the project's name above the buttons (DESIGN.md) */
 }
 
