@@ -46,7 +46,7 @@ test('sur un projet « sur mon accord » sans rien en attente, le bouton est à 
   });
 });
 
-test('sur téléphone, le bouton reste visible à côté de « Nouvelle fonctionnalité », pas dans « Plus »', async () => {
+test('sur téléphone, le bouton reste visible en haut à côté de « Plus », pas dans le menu', async () => {
   await withPanel({ config: approval, awaiting: pending, viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
     await page.goto(url);
     await button(page).waitFor();

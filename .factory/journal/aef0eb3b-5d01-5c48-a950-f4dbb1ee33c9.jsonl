@@ -1,0 +1,7 @@
+{"t":"2026-11-12T07:44:32.230Z","kind":"run","stage":"build","issue":343,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-12T07:45:00.064Z","kind":"skill","name":"test-driven-development","id":"toolu_01RuVUscMhZVs47f6un9Z1t4"}
+{"t":"2026-11-12T07:45:12.328Z","kind":"test","cmd":"cat > e2e/phone-release.e2e.mjs <<'EOF'\n// Journeys of issue #343: on a phone, « Mise en production » takes the top line and « Nouvelle fonctionnalité » moves into « Plus ».\nimport test from 'node:tes","ok":false,"id":"toolu_01JnZxv66NeKxSMikxSkmn3F"}
+{"t":"2026-11-12T07:45:16.494Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test --test-name-pattern=\"sans mise en production|ordinateur\" e2e/phone-release.e2e.mjs 2>&1 | grep -B3 -A15 \"not ok\" | head -60","ok":false,"id":"toolu_019pc7Mx6DuSd73JwkQkGW1i"}
+{"t":"2026-11-12T07:47:19.431Z","kind":"test","cmd":"npm ci >/dev/null 2>&1; echo $?; CHROMIUM_PATH=… timeout 300 npm run test:e2e -- --test-name-pattern=\"téléphone|Plus|go|ordinateur\" 2>&1 | grep -E \"^(not )?ok|# (pass|fail)\"","ok":false,"id":"toolu_01EYpAwepxsv1wvQpbZZRbA4"}
+{"t":"2026-11-12T07:49:44.201Z","kind":"test","cmd":"sed -n 170,180p e2e/release.e2e.mjs; CHROMIUM_PATH=… timeout 300 npm run test:e2e -- e2e/phone-release.e2e.mjs e2e/release.e2e.mjs 2>&1 | grep -E \"^(not )?ok|# (pass|fail)\" | tail -30","ok":true,"id":"toolu_01C14dLueTvxqts9mCFwB17V"}
+{"t":"2026-11-12T07:49:46.791Z","kind":"skill","name":"requesting-code-review","id":"toolu_01XGoy4HnFMLMEZD3MmCxaXV"}

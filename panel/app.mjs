@@ -1401,6 +1401,7 @@ function drawRelease() {
   const btn = $('release');
   const on = current?.config.production === 'approval';
   btn.hidden = !on;
+  placeNewFeature();
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];
   const b = releaseButton(pending);
@@ -2327,6 +2328,15 @@ function placeMenu() {
   if (phoneMq.matches && !$('project-view').hidden) [...menuItems.filter(ofProject), ...menuItems.filter((i) => !ofProject(i))].forEach(({ node }) => menu.append(node));
   else menuItems.slice().reverse().forEach(({ node, home, next }) => home.insertBefore(node, next && next.parentNode === home ? next : null));
   $('more').open = !(phoneMq.matches && !$('project-view').hidden);
+  placeNewFeature();
+}
+// On a phone, a project with « Mise en production » keeps that button on the top line and
+// « Nouvelle fonctionnalité » becomes the first line of « Plus » (issue #343).
+function placeNewFeature() {
+  const node = $('new-feature');
+  // Read the media query here: drawRelease may run before phoneMq is declared.
+  if (matchMedia('(max-width: 600px)').matches && !$('project-view').hidden && !$('release').hidden) $('more-menu').prepend(node);
+  else if (node.parentNode !== $('release').parentNode) $('release').before(node);
 }
 placeMenu();
 phoneMq.addEventListener('change', placeMenu);
