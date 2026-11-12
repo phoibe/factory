@@ -8,3 +8,7 @@
 {"t":"2026-11-12T09:40:19.734Z","kind":"test","cmd":"cat > docs/adr/0005-pas-de-bouton-de-cadrage-dans-le-menu.md <<'EOF'\n# Pas de bouton de cadrage dans le menu « Plus »\n\nDécidé par le propriétaire (#354, demandé dans #335) : le bouton « Cadrer le proj","ok":true,"id":"toolu_01F5Jwrmihw3a8ibn64RGV5P"}
 {"t":"2026-11-12T09:43:09.023Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":true,"id":"toolu_01WbFwfwiLXN4G6ct6RD5dW6"}
 {"t":"2026-11-12T09:43:10.073Z","kind":"skill","name":"requesting-code-review","id":"toolu_018XD5LGPbPxwsMWNXTQdXJR"}
+{"t":"2026-11-12T09:44:34.789Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/framing-button.e2e.mjs e2e/agent-tab.e2e.mjs e2e/project-switch.e2e.mjs 2>&1 | grep -E \"^not ok|^ok|^# (pass|fail)|error\" | head -30","ok":true,"id":"toolu_01GRgq6kFHc3ZpBtVPcZt6ke"}
+{"t":"2026-11-12T09:44:58.258Z","kind":"agent","model":"opus","effort":"high","label":"Review framing button removal","id":"toolu_01K6Fwnt4RBpTVCwSi4Ph5c7"}
+{"t":"2026-11-12T09:45:00.114Z","kind":"skill","name":"receiving-code-review","id":"toolu_013PyLE7gzm9M9nWak7NgwP8"}
+{"t":"2026-11-12T09:45:08.464Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\ns=… page.waitForTimeout(500); // the « already framed » answer has come in\",\"await page.waitForTimeout(500); // regression guard: no late relabel (the old « already framed »","ok":true,"id":"toolu_01WxFJ8gXdhYet5CLxnanbSi"}
