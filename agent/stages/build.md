@@ -55,7 +55,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    depuis le dossier du projet : il range la dernière spec validée de l'issue dans `docs/specs/<n>-<titre>.md`
    (lien vers la demande et date en tête, sans les signatures ni la demande de validation) et met à jour le sommaire
    `docs/specs/README.md` (ne l'écris jamais à la main). Relis le fichier : il garde le contenu de la spec, en français ;
-   retire seulement les phrases de conversation qui ne décrivent pas la feature (remerciements, « je passe à la spec »).
+   retire seulement les phrases de conversation qui ne décrivent pas la feature (remerciements, « je passe à la spec »),
+   puis relance `node .factory/scripts/specs.mjs index` pour que le sommaire suive.
    **Feature qui change une feature déjà rangée** : regarde le sommaire ; pour chaque ancienne spec que celle-ci
    modifie, lance `node .factory/scripts/specs.mjs modified <ancienne> <n>`. L'ancienne spec n'est jamais réécrite :
    elle reçoit seulement en tête la ligne « Modifiée par la demande n° … ».

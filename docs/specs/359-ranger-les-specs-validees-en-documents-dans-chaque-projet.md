@@ -4,7 +4,7 @@
 
 **En une phrase** : chaque spec validée d'une feature ou d'un bug devient un document rangé dans son projet, à côté du glossaire et des décisions, avec un sommaire qui les liste toutes.
 
-**L'arborescence.** Vous aviez raison de le rappeler : la méthode « avec documents » range le glossaire à la racine du projet et les décisions dans un dossier de documents, un fichier numéroté par décision. Elle ne prévoit pas de place pour les specs (sa variante sans GitHub les met dans un dossier de brouillons, qui n'est pas fait pour être gardé). Je range donc les specs **sur le même modèle que les décisions** : un dossier « specs » juste à côté du dossier des décisions (et de celui des plans), un fichier par demande, nommé de la même façon (numéro puis titre).
+**L'arborescence.** La méthode « avec documents » range le glossaire à la racine du projet et les décisions dans un dossier de documents, un fichier numéroté par décision. Elle ne prévoit pas de place pour les specs (sa variante sans GitHub les met dans un dossier de brouillons, qui n'est pas fait pour être gardé). Je range donc les specs **sur le même modèle que les décisions** : un dossier « specs » juste à côté du dossier des décisions (et de celui des plans), un fichier par demande, nommé de la même façon (numéro puis titre).
 
 ### Ce qui se passe, demande après demande
 1. **Les questions et la spec** se déroulent comme aujourd'hui, dans le fil de la demande.
