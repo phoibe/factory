@@ -76,7 +76,7 @@ test('je change le réglage général pour tous les projets', async () => {
   });
 });
 
-test('les réglages de ce projet et ceux de tous les projets sont dans deux parties séparées', async () => {
+test('« Tous les projets » reste une partie à part, avec son titre, à la fin de « Avancé »', async () => {
   await withPanel({}, async ({ page, url }) => {
     await open(page, url);
     const project = page.getByRole('region', { name: 'Ce projet : r' });
@@ -90,6 +90,7 @@ test('les réglages de ce projet et ceux de tous les projets sont dans deux part
     assert.equal(await all.getByRole('radio', { name: /Comme le réglage/ }).count(), 0);
     assert.equal(await all.getByRole('group', { name: 'Étapes' }).count(), 0);
     // Issue #342: « Tous les projets » now sits at the end of « Avancé », still its own part with its own title.
+    assert.equal(await page.locator('details.advanced > .rules-all:last-child').getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
     assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
     assert.equal(await page.locator('.rules-section .savebar').count(), 0, 'one save button, for both parts');
   });

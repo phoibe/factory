@@ -56,7 +56,6 @@ test('un projet sans contrôle supplémentaire n\'en garde aucune trace dans ses
   await withPanel({}, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
-    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     await page.locator('#stage-plan').click();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText('Paramètres enregistrés.', { exact: false }).waitFor({ timeout: 5000 });

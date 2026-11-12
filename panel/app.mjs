@@ -1180,7 +1180,9 @@ function renderRules() {
     checksOn: CHECKS.filter(([k]) => c.checks[k]).length, checksTotal: CHECKS.length,
     packsOn: catalog.packs.filter((p) => c.skills[p.id]?.enabled).length,
   });
-  const advanced = el('details', { class: 'advanced', open: store.get(ADVANCED_KEY) === 'open',
+  // Kept open across re-renders from the page itself, so a blocked storage never folds it under the finger.
+  const wasOpen = form.querySelector('details.advanced')?.open;
+  const advanced = el('details', { class: 'advanced', open: wasOpen ?? store.get(ADVANCED_KEY) === 'open',
     ontoggle: (e) => { if (e.target.open) store.set(ADVANCED_KEY, 'open'); else store.del(ADVANCED_KEY); } },
     el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
     machineFieldset(update, line), engine, checks, extras, ...packs,

@@ -88,7 +88,35 @@ test('quand tout va bien, aucune alerte de machine au-dessus de « Avancé »', 
   const H = await repoKey(1);
   await withPanel({ factoryFiles: { 'status.json': { key: 'ok', projects: { [H]: { reason: 'online' } } } } }, async ({ page, url }) => {
     await openSettings(page, url);
-    await advanced(page).waitFor();
+    await page.getByText('Serveur de dev : en ligne.').waitFor({ state: 'attached' }); // the status is really loaded
     assert.equal(await page.locator('.machine-alert').count(), 0);
+  });
+});
+
+test('la ligne « Avancé » porte une flèche qui montre qu\'elle s\'ouvre, et qui tourne une fois ouverte', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openSettings(page, url);
+    const arrow = () => advanced(page).locator(':scope > summary').evaluate((s) => {
+      const b = getComputedStyle(s, '::before');
+      return { content: b.content, transform: b.transform };
+    });
+    const closed = await arrow();
+    assert.notEqual(closed.content, 'none');
+    assert.notEqual(closed.content, 'normal');
+    await page.getByText('Avancé', { exact: true }).click();
+    assert.notEqual((await arrow()).transform, closed.transform);
+  });
+});
+
+test('même si le navigateur ne garde rien en mémoire, « Avancé » reste ouvert pendant que je change un réglage', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await page.addInitScript(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === 'factory.advanced') throw new Error('blocked'); return set.call(this, k, v); };
+    });
+    await openSettings(page, url);
+    await page.getByText('Avancé', { exact: true }).click();
+    await page.locator('#check-lint').click();
+    assert.equal(await advanced(page).evaluate((d) => d.open), true);
   });
 });
