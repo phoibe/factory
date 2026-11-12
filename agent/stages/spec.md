@@ -4,7 +4,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
 
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
 2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
-   - ce que la feature permet, en une phrase ;
+   - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
+     specs rangées la reprend) ;
    - les parcours, écran par écran, en langage simple ;
    - les règles et cas limites décidés ;
    - ce qui est hors périmètre ;

@@ -1,0 +1,3 @@
+{"t":"2026-11-12T13:39:38.143Z","kind":"run","stage":"fix-checks","issue":359,"pr":361,"repo":"phoibe/factory"}
+{"t":"2026-11-12T13:41:56.335Z","kind":"test","cmd":"git merge -q origin/main 2>&1 | tail -2; git status --short | head; for i in 1 2 3; do CHROMIUM_PATH=… timeout 300 node --test e2e/advanced-settings.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)\"; done; npm ","ok":true,"id":"toolu_019QwQrZwFqpz8ebAL7TSksT"}
+{"t":"2026-11-12T13:44:24.173Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 400 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01JY5u3Tf9RJacvYPZiX4Nqu"}

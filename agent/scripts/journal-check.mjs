@@ -73,8 +73,21 @@ export function runOptions(files, readFile) {
   return best ? { stage: best.run.stage, current: best.text } : {};
 }
 
+// A feature build ships its validated spec as a document (docs/specs/<n>-….md, see stages/build.md). A reminder,
+// not a lock: a request without a spec comment must still be able to open its PR.
+export function specReminder(files, { stage = null, current = null } = {}, readFile = () => '') {
+  if (stage !== 'build') return null;
+  const run = String(current || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter((e) => e?.kind === 'run').at(-1);
+  const own = run?.issue ? new RegExp(`^docs/specs/${run.issue}(-[^/]*)?\\.md$`) : /^docs\/specs\/\d+[^/]*\.md$/;
+  if (files.some((f) => own.test(f) && readFile(f) !== null)) return null; // a deleted spec does not count
+  return `spec rangée : lance \`node .factory/scripts/specs.mjs save ${run?.issue ?? '<n>'}\` pour ranger la spec validée dans le projet`;
+}
+
 export function report(files, readFile, stages, opts) {
   const list = problems(files, readFile, stages, opts);
+  const spec = specReminder(files, opts, readFile);
+  if (spec) list.push(spec);
   if (!list.length) return 'Journal : rien ne manque ✅';
   return ['Journal : ces étapes ne sont pas encore faites, fais-les maintenant puis relance ce contrôle :', ...list.map((l) => `- ${l}`)].join('\n');
 }

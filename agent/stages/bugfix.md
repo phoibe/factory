@@ -15,6 +15,8 @@ Un bug signalé dans l'issue. Pas de grilling.
    passe design (`design-pass.md`). Puis vérifications locales.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 3 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
+3 ter. **Spec rangée** : seulement si l'issue contient une spec validée (commentaire `<!-- factory-spec -->`) :
+   `node .factory/scripts/specs.mjs save <n>`, comme à l'étape 6 ter de `build.md`.
 4. PR avec résumé en français et `Closes #<n>`. Si l'interface change : captures
    (`screenshots.md`) puis `factory:visual-review` et `factory:checks` (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)) ;
    sinon `factory:checks`. La factory fusionne seule quand

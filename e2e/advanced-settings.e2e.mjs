@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withPanel } from './fixture.mjs';
 import { repoKey } from '../panel/machine.mjs';
+import { ADVANCED_KEY } from '../panel/settings.mjs';
 
 const openSettings = async (page, url) => {
   await page.goto(url);
@@ -66,6 +67,8 @@ test('je laisse « Avancé » ouvert, je recharge la page : il est toujours ouve
   await withPanel({}, async ({ page, url }) => {
     await openSettings(page, url);
     await page.getByText('Avancé', { exact: true }).click();
+    // The browser fires « toggle » (which saves the state) in a later task: wait for it, as a person would.
+    await page.waitForFunction((key) => localStorage.getItem(key) === 'open', ADVANCED_KEY);
     await page.reload();
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     await page.getByRole('group', { name: 'Moteur des agents' }).waitFor();

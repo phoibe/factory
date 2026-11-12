@@ -52,3 +52,17 @@ test('branchFiles diffs against the closest of origin/preprod, origin/HEAD and o
   const files = branchFiles((args) => g(...args));
   assert.deepEqual(files, ['mine.txt']);
 });
+
+test('a build branch without its archived spec is told to save it', () => {
+  const journal = j({ t: '1', kind: 'run', stage: 'build', issue: 42 }, ...['writing-plans', 'test-driven-development', 'requesting-code-review'].map((name, i) => ({ t: `${i + 2}`, kind: 'skill', name })));
+  const opts = { stage: 'build', current: journal };
+  const without = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/README.md'], () => journal, stages, opts);
+  assert.match(without, /spec rangée : lance `node \.factory\/scripts\/specs\.mjs save 42`/);
+  const withSpec = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/42-reserver.md'], () => journal, stages, opts);
+  assert.doesNotMatch(withSpec, /spec rangée/);
+  const otherSpec = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/12-ancienne.md'], () => journal, stages, opts);
+  const deleted = report(['lib/x.ts', '.factory/journal/s1.jsonl', 'docs/specs/42-reserver.md'], (f) => (f.endsWith('.jsonl') ? journal : null), stages, opts);
+  assert.match(deleted, /spec rangée/, 'a deleted spec does not count');
+  assert.match(otherSpec, /spec rangée/, 'an older spec marked « Modifiée par » is not this request\'s spec');
+  assert.doesNotMatch(report(['lib/x.ts', '.factory/journal/s1.jsonl'], () => journal, stages, { stage: 'bugfix', current: journal }), /spec rangée/);
+});

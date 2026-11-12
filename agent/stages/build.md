@@ -50,6 +50,19 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
    « Textes à l'écran » de `design-pass.md`.
 6 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
+6 ter. **Spec rangée** : la spec validée devient un document du projet, dans cette PR (elle arrive dans le projet à
+   la fusion ; une demande abandonnée n'en laisse donc aucune). Lance `node .factory/scripts/specs.mjs save <n>`
+   depuis le dossier du projet : il range la dernière spec validée de l'issue dans `docs/specs/<n>-<titre>.md`
+   (lien vers la demande et date en tête, sans les signatures ni la demande de validation) et met à jour le sommaire
+   `docs/specs/README.md` (ne l'écris jamais à la main). Relis le fichier : il garde le contenu de la spec, en français ;
+   retire seulement les phrases de conversation qui ne décrivent pas la feature (remerciements, « je passe à la spec »),
+   puis relance `node .factory/scripts/specs.mjs index` pour que le sommaire suive.
+   **Feature qui change une feature déjà rangée** : regarde le sommaire ; pour chaque ancienne spec que celle-ci
+   modifie, lance `node .factory/scripts/specs.mjs modified <ancienne> <n>`. L'ancienne spec n'est jamais réécrite :
+   elle reçoit seulement en tête la ligne « Modifiée par la demande n° … ».
+   Pas de spec rangée pour un cadrage (`factory:project`) ni une revue générale (`factory:audit`) ; les demandes livrées
+   avant cette règle ne se rattrapent pas. Si `save` répond que l'issue n'a aucune spec validée, il n'y a rien à ranger :
+   ignore la ligne « spec rangée » du contrôle du journal.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
