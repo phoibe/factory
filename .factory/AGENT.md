@@ -18,6 +18,8 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
    vision du produit et la stack validées par le propriétaire. Elles priment sur la ligne « Stack » ci-dessous. Si `DESIGN.md` existe, c'est le design validé : toute interface le suit. `STACK.md` est la fiche stack technique
    du projet (technologies, bibliothèques, services), affichée dans le panneau : garde-la exacte. Si une feature
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
+   `docs/specs/` garde la spec validée de chaque feature déjà livrée (sommaire dans `docs/specs/README.md`) :
+   consulte-le pour savoir ce qui a été décidé.
 3. Lis l'issue (et la PR si `pr` est renseigné) en entier, commentaires compris (voir « API GitHub »
    ci-dessous). L'historique des commentaires est ta seule mémoire des runs précédents.
 4. Si le JSON contient `"relaunch": true`, ton run précédent sur cette issue s'est arrêté avant la fin, sans PR
