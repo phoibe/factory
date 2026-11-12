@@ -292,7 +292,6 @@ async function openProject(fullName) {
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
-  $('new-project').href = `${base}/issues/new?template=project.yml`;
   $('issues-link').href = issuesUrl(base);
   $('issues-link').textContent = issuesLinkText(null);
   // Everything under the name starts over at once, before any request (issue #319); the board's grey cards come with renderBoard.
@@ -303,17 +302,8 @@ async function openProject(fullName) {
   drawRelease();
   refreshRelease().catch(() => {});
   loadDelivery(current).catch(() => {});
-  loadFramed(current).catch(() => {});
   await renderBoard();
   if (!live.tick) startLive();
-}
-
-// An already framed project gets « Revoir le cadrage »: the agent then updates the brief, never the foundations.
-async function loadFramed(project) {
-  const r = project.repo.full_name;
-  const framed = (await Promise.all(['PRODUCT.md', 'docs/PRODUCT.md'].map((f) => api(`/repos/${r}/contents/${f}`).catch(() => null)))).some(Boolean);
-  if (current !== project) return;
-  $('new-project').textContent = framed ? 'Revoir le cadrage' : 'Cadrer le projet';
 }
 
 // ---- Live board -------------------------------------------------------------------------------

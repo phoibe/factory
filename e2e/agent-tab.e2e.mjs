@@ -12,7 +12,7 @@ test('en ouvrant le menu « Plus » du tableau de suivi, je ne vois plus « Disc
     await page.locator('#more summary').click();
     await page.getByRole('button', { name: 'Review générale' }).waitFor();
     const items = (await page.locator('#more-menu > a, #more-menu > button:not([hidden])').allTextContents()).map((t) => t.trim());
-    assert.deepEqual(items.slice(0, 4), ['Signaler un bug', 'Cadrer le projet', 'Review générale', 'Stack technique']);
+    assert.deepEqual(items.slice(0, 3), ['Signaler un bug', 'Review générale', 'Stack technique']);
     assert.equal(await page.getByText('Discuter avec l\'agent').count(), 0);
   });
 });
