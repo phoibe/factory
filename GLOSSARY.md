@@ -43,3 +43,13 @@ _À éviter_ : menu déroulant, sélecteur
 **Point d'état** :
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
+
+## Documents d'un projet
+
+**Spec rangée** :
+Le document, enregistré dans le projet, qui garde la spec validée d'une feature ou d'un bug telle qu'elle a été livrée ; c'est la trace de ce qui a été décidé à ce moment-là, qu'une demande plus récente ne réécrit pas mais signale par un renvoi.
+_À éviter_ : cahier des charges, PRD
+
+**Sommaire des specs** :
+La liste, en tête du dossier des specs rangées, de toutes les specs d'un projet (numéro, titre, une phrase, date), tenue à jour à chaque nouvelle spec.
+_À éviter_ : index, table des matières
