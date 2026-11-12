@@ -519,3 +519,21 @@ dialog#projects-dialog { width: 100%; height: 100%; max-width: none; max-height:
 dialog#projects-dialog::backdrop { background: var(--list-bg); }
 .projects-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .projects-dialog-head h2 { margin: 0; padding: 0 4px; font-size: 1.125rem; }
+
+/* Issue 342: the technical settings folded under « Avancé », with a one-line summary while folded. */
+.machine-alert { margin: 0 0 16px; }
+details.advanced { margin: 8px 0 24px; border-top: 1px solid var(--line); }
+details.advanced > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 8px; padding: 14px 0; min-height: 44px; list-style: none; }
+details.advanced > summary::-webkit-details-marker { display: none; }
+/* The arrow says it opens (the native one is lost with flex), and turns once open. */
+details.advanced > summary::before { content: '▸'; display: inline-block; width: 1rem; font-size: 1rem; line-height: 1; color: var(--text); transition: transform .15s ease-out; }
+details.advanced[open] > summary::before { transform: rotate(90deg); }
+details.advanced > summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+.advanced-title { font-weight: 600; font-size: 1.125rem; }
+.advanced-summary { flex-basis: 100%; padding-left: calc(1rem + 8px); color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+details.advanced[open] > summary .advanced-summary { display: none; }
+/* Open, its group titles a touch lighter than the bold default. */
+details.advanced fieldset > legend { font-weight: 600; }
+.rules-all { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.rules-all-title { margin: 0 0 16px; font-size: 1.125rem; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { details.advanced > summary::before { transition: none; } }

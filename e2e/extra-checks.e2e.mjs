@@ -12,6 +12,7 @@ test('j\'ajoute un contrôle supplémentaire avec son nom et sa commande, et il 
   await withPanel({}, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     await page.getByRole('button', { name: 'Ajouter un contrôle' }).click();
     await page.locator('#extra-label-0').fill('Scan des secrets');
     await page.locator('#extra-label-0').press('Tab');
@@ -28,6 +29,7 @@ test('je coupe ou je retire un contrôle supplémentaire depuis le panneau', asy
   await withPanel({ config }, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     await page.getByRole('checkbox', { name: 'Activer Images' }).uncheck();
     await page.getByRole('button', { name: 'Retirer Failles Python' }).click();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
@@ -40,6 +42,7 @@ test('un contrôle sans commande n\'est pas enregistré, et le panneau dit pourq
   await withPanel({}, async ({ page, url, writes }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click(); // issue #342: technical settings are folded
     await page.getByRole('button', { name: 'Ajouter un contrôle' }).click();
     await page.locator('#extra-label-0').fill('Sans commande');
     await page.locator('#extra-label-0').press('Tab');

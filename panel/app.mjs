@@ -15,6 +15,7 @@ import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
+import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
 
 const API = 'https://api.github.com';
@@ -1044,14 +1045,16 @@ const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => 
   el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, onchange: () => onpick(v) }),
   el('label', { for: `${name}-${v}` }, t)));
 
-// This project's machine, with the dev server's state for it.
-function machineFieldset(update) {
+// The « Machine des tâches » line for this project, with the dev server's state for it.
+const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default' });
+
+// This project's machine. A warning is shown above « Avancé » instead (issue #342), never twice.
+function machineFieldset(update, line) {
   const c = current.config;
   const general = machine.general;
-  const line = machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general, project: c.machine || 'default' });
   const generalName = MACHINE_CHOICES.find(([v]) => v === general)[1].toLowerCase();
   return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
-    el('p', { class: `machine-status ${line.tone}`, role: 'status' }, line.text),
+    ...(line.tone === 'warn' ? [] : [el('p', { class: `machine-status ${line.tone}`, role: 'status' }, line.text)]),
     el('div', { role: 'radiogroup', 'aria-label': 'Machine des tâches de ce projet' },
       ...machineRadios('machine-project', [['default', `Comme le réglage de tous les projets (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))));
 }
@@ -1120,7 +1123,8 @@ function renderRules() {
       ['github-actions', 'GitHub Actions (vos minutes GitHub)']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'runner', id: `runner-${v}`, checked: c.runner === v, onchange: () => update(setPath(c, 'runner', v)) }),
-        el('label', { for: `runner-${v}` }, t))),
+        el('label', { for: `runner-${v}` }, t))));
+  const parallel = el('fieldset', {}, el('legend', {}, 'Demandes en parallèle'),
     el('div', { class: 'row' },
       el('div', {}, el('label', { for: 'maxParallel' }, 'Fonctionnalités construites en même temps'),
         el('input', { type: 'number', id: 'maxParallel', min: '1', max: '10', value: String(c.maxParallel),
@@ -1169,13 +1173,29 @@ function renderRules() {
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
-  const open = new Set([...form.querySelectorAll('details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
+  const open = new Set([...form.querySelectorAll('fieldset > details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
   const name = current.repo.name;
+  // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
+  const line = currentMachineLine();
+  const alert = line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
+  const summary = advancedSummary({
+    machine: effectiveMachine({ isPrivate: current.repo.private, project: c.machine, general: machine.general }),
+    checksOn: CHECKS.filter(([k]) => c.checks[k]).length, checksTotal: CHECKS.length,
+    packsOn: catalog.packs.filter((p) => c.skills[p.id]?.enabled).length,
+  });
+  // Kept open across re-renders from the page itself, so a blocked storage never folds it under the finger.
+  const wasOpen = form.querySelector('details.advanced')?.open;
+  const advanced = el('details', { class: 'advanced', open: wasOpen ?? store.get(ADVANCED_KEY) === 'open',
+    ontoggle: (e) => { if (e.target.open) store.set(ADVANCED_KEY, 'open'); else store.del(ADVANCED_KEY); } },
+    el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
+    machineFieldset(update, line), engine, checks, extras, ...packs,
+    el('section', { class: 'rules-all', 'aria-labelledby': 'rules-all' },
+      el('h3', { id: 'rules-all', class: 'rules-all-title' }, 'Tous les projets'),
+      generalMachineFieldset()));
   form.replaceChildren(
-    rulesSection('rules-project', `Ce projet : ${name}`, [site, production, machineFieldset(update), engine, stages, checks, extras, ...packs]),
-    rulesSection('rules-all', 'Tous les projets', [generalMachineFieldset()]),
+    rulesSection('rules-project', `Ce projet : ${name}`, [production, site, stages, parallel, ...alert, advanced]),
     bar);
-  for (const d of form.querySelectorAll('details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
+  for (const d of form.querySelectorAll('fieldset > details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
 }
 
 let savingRules = false;

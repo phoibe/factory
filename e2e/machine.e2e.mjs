@@ -8,6 +8,7 @@ const H = await repoKey(1);
 const open = async (page, url) => {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Paramètres' }).click();
+  await page.getByText('Avancé', { exact: true }).click(); // issue #342: the machine is under « Avancé »
   await page.getByRole('group', { name: 'Machine des tâches', exact: true }).waitFor();
 };
 const decode = (w) => JSON.parse(Buffer.from(w.body.content, 'base64').toString('utf8'));
@@ -75,7 +76,7 @@ test('je change le réglage général pour tous les projets', async () => {
   });
 });
 
-test('les réglages de ce projet et ceux de tous les projets sont dans deux parties séparées', async () => {
+test('« Tous les projets » reste une partie à part, avec son titre, à la fin de « Avancé »', async () => {
   await withPanel({}, async ({ page, url }) => {
     await open(page, url);
     const project = page.getByRole('region', { name: 'Ce projet : r' });
@@ -84,11 +85,13 @@ test('les réglages de ce projet et ceux de tous les projets sont dans deux part
     await project.getByRole('group', { name: 'Étapes' }).waitFor();
     await project.getByRole('group', { name: 'Moteur des agents' }).waitFor();
     await project.getByRole('radio', { name: /Comme le réglage de tous les projets/ }).waitFor();
-    await page.getByRole('heading', { name: 'Tous les projets', level: 2 }).waitFor();
+    await page.getByRole('heading', { name: 'Tous les projets', level: 3 }).waitFor();
     assert.equal(await all.getByRole('group', { name: 'Machine des tâches par défaut' }).getByRole('radio').count(), 2);
     assert.equal(await all.getByRole('radio', { name: /Comme le réglage/ }).count(), 0);
     assert.equal(await all.getByRole('group', { name: 'Étapes' }).count(), 0);
-    assert.equal(await project.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 0);
+    // Issue #342: « Tous les projets » now sits at the end of « Avancé », still its own part with its own title.
+    assert.equal(await page.locator('details.advanced > .rules-all:last-child').getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
+    assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
     assert.equal(await page.locator('.rules-section .savebar').count(), 0, 'one save button, for both parts');
   });
 });
