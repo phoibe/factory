@@ -555,6 +555,7 @@ function drawStatus() {
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
+  s.classList.toggle('pending', !down && !live.last); // never read yet: no green « tout va bien » dot
   s.querySelector('.live-text').textContent = liveText();
 }
 
@@ -813,7 +814,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) owed
 // « À vous de jouer »: everything that waits for an answer, oldest first, as cards like the other lanes; only their
 // « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, liveText()));
+  const status = el('p', { class: live.last || live.failures ? 'live' : 'live pending' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, liveText()));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), ...(sub ? [el('p', { class: 'muted' }, sub)] : []), status);
   return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
     el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
@@ -1312,6 +1313,8 @@ async function writeRules() {
   renderRules();
   drawSite();
   drawSub();
+  // A new production mode: the line read for the former one hides at once and is read again (issue #397).
+  if (wasMode !== effectiveProduction(current.config, current.delivery)) { drawGap(); refreshGap(true).catch(() => {}); }
   toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {

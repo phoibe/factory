@@ -33,3 +33,7 @@
 {"t":"2026-11-13T21:24:41.516Z","kind":"agent","model":"opus","effort":"high","label":"Review final gap tweak","id":"toolu_01EcBc1TTGZytcEo3zSsjEWp"}
 {"t":"2026-11-13T21:24:42.603Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-13T21:24:44.266Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Amk5Vwu5LNfKyuieUC8MNU"}
+{"t":"2026-11-13T21:27:09.665Z","kind":"test","cmd":"npm test 2>&1 | tail -12; timeout 300 node --test e2e/switch-state.e2e.mjs 2>&1 | tail -20","ok":true,"id":"toolu_01LtjWJgPAA5SgAqUv3KV7fp"}
+{"t":"2026-11-13T21:27:31.553Z","kind":"test","cmd":"f=… -l \"prod-gap\\|live-text\\|Connexion à GitHub perdue\\|Mise en production externe\" e2e/*.e2e.mjs | grep -v switch-state); echo $f; timeout 580 node --test $f 2>&1 | grep -E \"^# (tests|pass|fail)|^not","ok":true,"id":"toolu_01VVQMJATjkqvYugtqV7g8sR"}
+{"t":"2026-11-13T21:28:40.699Z","kind":"test","cmd":"f=… -l \"project-item\" e2e/*.e2e.mjs | grep -v switch-state); echo $f; timeout 590 node --test $f 2>&1 | grep -E \"^# (tests|pass|fail)|^not ok\" ","ok":true,"id":"toolu_01JvyHjWgjW9CxhiLUZH3fHs"}
+{"t":"2026-11-13T21:33:28.929Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\ndef rep(p,a,b):\n    s=… assert s.count(a)==1,(p,a); open(p,'w').write(s.replace(a,b))\np=…\nrep(p,\"\"\"  renderRules();\n  drawSite();\n  drawSub();\n  toast(released\"\"\",\"\"\"  rend","ok":true,"id":"toolu_01BPjTay9iMKNmGwV566TKtj"}

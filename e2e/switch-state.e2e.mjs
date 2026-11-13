@@ -39,6 +39,7 @@ test('j\'ouvre un projet lent juste après un autre : il ne dit pas « à jour �
     await pick(page, 'alpha');
     await page.locator('.ticket', { hasText: 'Carte alpha' }).waitFor();
     assert.equal(await status(page).textContent(), 'En direct · mise à jour…');
+    assert.equal(await page.locator('.live.pending').count(), 1, 'a grey dot, not the green one, until it is read');
     await status(page).filter({ hasText: "à jour à l'instant" }).waitFor({ timeout: 10000 });
   });
 });
@@ -47,9 +48,10 @@ test('j\'ouvre un projet pendant que la ligne « En ligne » de l\'autre se lit 
   const deploy = { deployments: [{ id: 1, sha: 'a', environment: 'Production' }], statuses: { 1: [{ state: 'success' }] }, compare: { commits: [] }, pulls: [] };
   await withPanel({ ...alpha, homepages: { 'o/r': 'https://r.example' }, deploy, slowReads: [[/\/repos\/o\/alpha\/deployments/, 8000]] }, async ({ page, url }) => {
     await page.addInitScript(() => localStorage.setItem('factory.project', 'o/alpha'));
+    const started = page.waitForRequest(/\/repos\/o\/alpha\/deployments/);
     await page.goto(url);
     await page.locator('#project-name', { hasText: 'alpha' }).waitFor();
-    await page.waitForTimeout(300);
+    await started;
     await pick(page, 'r');
     // Far before the next refresh (8 s): the read of the project left must not swallow this one's.
     await page.locator('#prod-gap', { hasText: 'En ligne : à jour' }).waitFor({ timeout: 4000 });
