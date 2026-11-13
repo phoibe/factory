@@ -71,12 +71,14 @@ test('ideas to sort: listed apart from the cards, kept or dropped in one click',
     assert.equal(await page.locator('.you-card', { hasText: 'Codes à 4 chiffres' }).count(), 0, 'an idea never waits in « À vous »');
     await page.getByRole('button', { name: /Garder l'idée #36/ }).click();
     await page.waitForFunction(() => document.querySelector('.lane-ideas .count')?.textContent === '2');
-    for (let i = 0; i < 20 && writes.length < 1; i++) await page.waitForTimeout(100); // the card leaves before GitHub is told
-    assert.deepEqual(writes[0], ['POST', '/repos/o/r/issues/36/labels', { labels: ['factory:kept'] }]);
+    // Keeping an idea with automatic pick on also wakes the factory (issue #406): only the issue writes are checked here.
+    const issueWrites = () => writes.filter(([, path]) => path.includes('/issues/'));
+    for (let i = 0; i < 20 && issueWrites().length < 1; i++) await page.waitForTimeout(100); // the card leaves before GitHub is told
+    assert.deepEqual(issueWrites()[0], ['POST', '/repos/o/r/issues/36/labels', { labels: ['factory:kept'] }]);
     await page.getByRole('button', { name: /Jeter l'idée #44/ }).click();
     await page.waitForFunction(() => document.querySelector('.lane-ideas .count')?.textContent === '1');
-    for (let i = 0; i < 20 && writes.length < 2; i++) await page.waitForTimeout(100);
-    assert.deepEqual(writes[1], ['PATCH', '/repos/o/r/issues/44', { state: 'closed', state_reason: 'not_planned' }]);
+    for (let i = 0; i < 20 && issueWrites().length < 2; i++) await page.waitForTimeout(100);
+    assert.deepEqual(issueWrites()[1], ['PATCH', '/repos/o/r/issues/44', { state: 'closed', state_reason: 'not_planned' }]);
     // The remaining buttons can be reached and pressed with the keyboard.
     await page.getByRole('button', { name: /Garder l'idée #41/ }).focus();
     await page.keyboard.press('Enter');

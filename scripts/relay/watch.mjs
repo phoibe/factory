@@ -3,6 +3,7 @@
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, UPDATE_BRANCH_MARKER, buildStage } from '../lib/labels.mjs';
 import { PREPROD_BRANCH } from '../lib/config-core.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
+import { readWatch, writeWatch, watchStep } from '../lib/watch.mjs';
 import { syncFingerprint } from '../lib/fingerprint.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from '../lib/notify.mjs';
 import { readOutage, writeOutage, syncStep, OUTAGE_GIVE_UP_MS } from '../lib/outage.mjs';
@@ -31,6 +32,8 @@ export function watchPart(ctx) {
   const lastRunningAt = (...a) => ctx.lastRunningAt(...a);
   const handle = (...a) => ctx.handle(...a);
   const report = (...a) => ctx.report(...a);
+  const previewUrl = (...a) => ctx.previewUrl(...a);
+  const prodReport = (...a) => ctx.prodReport(...a);
 
   // GitHub runs no pull_request workflow for a PR in conflict with main: a PR waiting for its checks would
   // wait forever. Checked right after every merge (that is when a PR falls into conflict) and on every event.
@@ -167,6 +170,7 @@ export function watchPart(ctx) {
     await reportLost();
     await closeAsked(ownerLogin);
     await retryOutages();
+    await retryLostChecks();
     await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
     await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
@@ -193,6 +197,63 @@ export function watchPart(ctx) {
       await gh.rerunFailed(run.id);
       log(`guard: run ${run.id} stopped by the rate limit, re-run`);
     }
+  }
+
+  // Issue #396: a preview or live-site check started by the factory whose report never came (its run stopped on a
+  // GitHub limit, a time limit, a lost runner) left the card « en contrôle » until the owner wrote. The tick starts it
+  // again, a few times, then goes on without it: the recette with whatever preview is known, or a release that ends as
+  // live but unchecked. Never while an agent works on the PR, once it is blocked or in recette, nor on changed code.
+  // Ended by the factory: closed, and its live-check note cleared by endRelease.
+  async function releaseOver(n) {
+    const issue = await gh.getIssue(n).catch(() => null);
+    return issue?.state === 'closed' && !readWatch(issue.body);
+  }
+  async function noteWatch(n, state, body) {
+    if (!gh.updateIssue) return;
+    const current = body ?? (await gh.getIssue(n))?.body;
+    await gh.updateIssue(n, { body: writeWatch(current, state) });
+  }
+  async function retryLostChecks() {
+    // One card that fails every time must not stop the rest of the guard: logged, tried again at the next tick.
+    const each = async (n, fn) => { try { await fn(); } catch (e) { if (isRateLimited(e)) throw e; log(`guard: lost check of #${n}: ${e.message}`); } };
+    for (const p of (await gh.listPulls?.().catch(() => null)) || []) await each(p.number, async () => {
+      const st = readWatch(p.body);
+      if (st?.kind !== 'preview') return;
+      const step = watchStep(st, now());
+      if (step === 'wait') return;
+      // Still waiting for its preview: in its checks, or with no label at all after « ok » on the captures (the report
+      // is then made without factory:checks). Not while an agent works, nor once blocked or in recette.
+      const labels = await liveLabels(p.number);
+      if ([L.running, L.blocked, L.acceptance].some((l) => labels.includes(l)) || (labels.includes(L.fixing) && !labels.includes(L.checks))) return;
+      const pr = await gh.getPr(p.number);
+      if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) return;
+      if (step === 'retry') {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: p.number, sha: st.sha } }) });
+        await noteWatch(p.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, pr.body);
+        log(`guard: preview check of #${p.number} never reported, started again (try ${(st.tries || 0) + 1})`);
+        return;
+      }
+      log(`guard: preview check of #${p.number} never reported after ${st.tries} tries: the recette goes on without it`);
+      const url = await previewUrl(st.sha, p.number, { attempts: 1 });
+      await report({ result: 'success', pr: p.number, sha: st.sha, preview: { result: 'skipped', detail: "la vérification de la preview n'a pas pu aller au bout", url } });
+    });
+    for (const issue of (await gh.listIssues({ labels: L.production }).catch(() => null)) || []) await each(issue.number, async () => {
+      if (issue.pull_request) return;
+      const st = readWatch(issue.body);
+      if (st?.kind !== 'production' || !st.check?.release) return;
+      const step = watchStep(st, now());
+      if (step === 'wait') return;
+      if (step === 'retry') {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: st.check }) });
+        await noteWatch(issue.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, issue.body);
+        log(`guard: live check of release #${issue.number} never reported, started again (try ${(st.tries || 0) + 1})`);
+        return;
+      }
+      log(`guard: live check of release #${issue.number} never reported after ${st.tries} tries: ended as unchecked`);
+      await prodReport({ pr: st.check.pr, sha: st.check.sha, result: 'skipped', detail: "la vérification du site en ligne n'a pas pu aller au bout", release: st.check.release });
+    });
   }
 
   // Checks that failed on an outage (issue #213): the retries due now start here, one per PR, never while an agent
@@ -424,5 +485,5 @@ export function watchPart(ctx) {
   }
 
 
-  return { unstickConflicts, dropCard, closeAsked, reopenCard, heal, retryRateLimited, retryOutages, syncIfBehind, outageBlockedPr, reportLost, KNOWN, meant, repairLabels, closeMerged, relaunchIdle, releaseStaleLocks, deferredMessage, notifyWaiting };
+  return { unstickConflicts, dropCard, closeAsked, reopenCard, heal, retryRateLimited, releaseOver, noteWatch, retryLostChecks, retryOutages, syncIfBehind, outageBlockedPr, reportLost, KNOWN, meant, repairLabels, closeMerged, relaunchIdle, releaseStaleLocks, deferredMessage, notifyWaiting };
 }

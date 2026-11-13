@@ -1,0 +1,2 @@
+{"t":"2026-11-13T21:29:49.962Z","kind":"run","stage":"fix-checks","issue":406,"pr":409,"repo":"phoibe/factory"}
+{"t":"2026-11-13T21:30:45.524Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"    for (let i = 0; i < 20 && writes.length < 1; i++) await page.waitForTimeout(100); // the card leaves before GitHub is told\n    assert.deepEqual(writes[0], ['POST', ","ok":true,"id":"toolu_01EaLgPj7TRnv2LBdUHkkNka"}

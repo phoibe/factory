@@ -495,7 +495,7 @@ dialog#release-dialog, dialog#gap-dialog { max-width: 420px; width: calc(100% - 
 dialog#release-dialog::backdrop, dialog#gap-dialog::backdrop { background: rgb(0 0 0 / .45); }
 #release-title { margin: 0 0 8px; font-size: 1.125rem; text-wrap: balance; }
 #release-confirm.ink { background: var(--text); border-color: var(--text); color: var(--bg); }
-.release-error { margin: 12px 0 0; color: var(--text); font-weight: 500; }
+.release-error { margin: 12px 0 0; color: var(--danger); font-weight: 500; }
 .release-list { margin: 8px 0 0; padding-left: 20px; max-height: 40dvh; overflow: auto; }
 .release-list li { padding: 4px 0; overflow-wrap: anywhere; }
 /* The production gap under the project's name (issue #369): a quiet text button, red with its words on a failed publication. */

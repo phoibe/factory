@@ -78,7 +78,7 @@ test('a merge that GitHub refuses sends the branch to be updated instead of stra
 });
 
 test('on approval, a merged change waits for « Mise en production » and no live check starts', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, title: 'Mode sombre', body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments: [{ id: 1, environment: 'Production' }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, title: 'Mode sombre', body: 'Closes #1', labels: [L.checks], head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments: [{ id: 1, environment: 'Production' }] });
   const branches = { main: 'm1', production: 'm0' };
   gh.getBranch = async (name) => (branches[name] ? { object: { sha: branches[name] } } : null);
   gh.listAwaiting = async () => [];
@@ -91,7 +91,7 @@ test('on approval, a merged change waits for « Mise en production » and no liv
 });
 
 test('after a merge on a deployed project, the live check is asked for the merged commit', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments: [{ id: 1, environment: 'Production' }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', labels: [L.checks], head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments: [{ id: 1, environment: 'Production' }] });
   const { relay } = make(gh);
   await relay.report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'u' } });
   await relay.handle(okOn10);

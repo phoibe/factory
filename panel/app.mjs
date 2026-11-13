@@ -12,17 +12,20 @@ import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } 
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
 const PROJECT_KEY = 'factory.project';
+// The project list of the last visit, with what is known of each repository's settings file (issue #399).
+const PROJECTS_KEY = 'factory.projects';
 const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
@@ -61,6 +64,10 @@ if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
 let dots = new Map();
+// What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
+let known = new Map(), accountTag = null;
+// Settings saves from this tab, so that a check of the project list started before one does not undo it.
+let saves = 0;
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -85,7 +92,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -103,9 +110,9 @@ async function api(path, init = {}) {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
   });
-  if (res.status === 404) return null;
+  if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`), { status: res.status });
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
   return res.status === 204 ? null : res.json();
 }
 
@@ -125,35 +132,99 @@ function show(id) {
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
 // a project). Repositories are checked a few at a time: firing one request per repository at once can trip
 // GitHub's anti-abuse limit, and the refused ones then silently vanished from the list.
+// A repository with nothing pushed since the last visit is not read again (its settings file cannot have changed),
+// and one read again carries its last ETag (an unchanged file is a free 304, see projects.mjs).
 async function loadProjects() {
+  const session = token;
   const repos = [];
   for (let page = 1; page <= 5; page++) {
-    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`);
+    // Never the browser's copy (kept a minute): a stale push date would skip a file changed meanwhile.
+    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`, { cache: 'no-store' });
     repos.push(...batch);
     if (batch.length < 100) break;
   }
   const failed = [];
+  const seen = new Map();
   const configOf = async (r) => {
+    const check = configCheck(r, known);
+    if (check.skip) { seen.set(r.full_name, known.get(r.full_name)); return check.file; }
     for (let attempt = 0; ; attempt++) {
       try {
-        return await api(`/repos/${r.full_name}/contents/factory.config.json`);
+        const res = await fetch(`${API}/repos/${r.full_name}/contents/factory.config.json`, {
+          cache: 'no-store',
+          headers: { authorization: `Bearer ${session}`, accept: 'application/vnd.github+json', ...(check.etag ? { 'if-none-match': check.etag } : {}) },
+        });
+        if (res.status === 401) sessionExpired();
+        let file = null, etag = null;
+        if (res.status === 304) ({ file, etag } = check);
+        else if (res.ok) { file = await res.json(); etag = res.headers.get('etag'); }
+        else if (res.status !== 404) throw Object.assign(new Error(`${res.status}`), { status: res.status });
+        seen.set(r.full_name, { pushed: r.pushed_at, etag, file });
+        return file;
       } catch (err) {
         if (err.status === 401) throw err;
-        if (attempt >= 2) { failed.push(r.name); return null; }
+        if (attempt >= 2) {
+          // GitHub did not answer: the last known file stays, and is read again next time.
+          if (known.has(r.full_name)) { seen.set(r.full_name, { ...known.get(r.full_name), pushed: null }); return check.file; }
+          failed.push(r.name);
+          return null;
+        }
         await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
       }
     }
   };
-  const found = await mapLimit(projectCandidates(repos), 4, async (r) => {
+  const found = (await mapLimit(projectCandidates(repos), 4, async (r) => {
     const file = await configOf(r);
     return file ? { repo: r, file } : null;
-  });
+  })).filter(Boolean);
+  if (token !== session) return found; // logged out meanwhile: nothing of it is remembered
+  known = seen;
   if (failed.length) {
     toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
     setTimeout(() => reloadProjects().catch(() => {}), 30_000);
   }
-  return found.filter(Boolean);
+  rememberProjects(found);
+  return found;
 }
+
+function rememberProjects(list = projects) {
+  if (accountTag) store.set(PROJECTS_KEY, writeProjectsCache(accountTag, list, known));
+}
+
+// The list of the last visit shows at once; GitHub's answer then replaces it (issue #399). The open project
+// stays the same object; it is opened again only when its settings file changed and nothing typed would be lost.
+async function checkProjects() {
+  const session = token, saved = saves;
+  let fresh;
+  try {
+    fresh = await loadProjects();
+  } catch (err) {
+    if (err.status !== 401 && token === session) setTimeout(() => checkProjects().catch(() => {}), 30_000);
+    return;
+  }
+  if (!token || token !== session) return; // logged out meanwhile: this list belongs to the previous account
+  const was = current;
+  const namesOf = (list) => JSON.stringify(list.map((p) => p.repo.full_name).sort());
+  const before = namesOf(projects);
+  const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
+  projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
+  if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
+  if (!projects.length) {
+    current = null;
+    clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+    return show('empty');
+  }
+  if (!mine) { await openProject(store.get(PROJECT_KEY)); return refreshDots(); }
+  // Saved here during the check: this device's file is the newest one.
+  if (saves !== saved) { known.set(was.repo.full_name, { pushed: null, etag: null, file: was.file }); rememberProjects(); }
+  else if (mine.file?.sha !== was.file?.sha && !hasUnsaved()) { was.file = mine.file; await openProject(was.repo.full_name); }
+  else renderProjectList();
+  refreshDots();
+}
+
+// Something typed or in flight that reopening the project, or reloading the panel, would lose.
+const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
+  || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -206,7 +277,7 @@ function renderProjectList() {
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
   if (current && current.repo.full_name === fullName) return;
-  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); renderProjectList(); });
+  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
 
 function setDot(repo, dot) {
@@ -377,7 +448,7 @@ async function cachedGet(path, cache = etags) {
   }
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
@@ -737,7 +808,7 @@ async function sendGo(c, btn, repo, key) {
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
-    toast(`Envoi impossible : ${e.message}`);
+    toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
     if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
@@ -874,7 +945,8 @@ function leaveIdea(n, keep) {
   }, 200);
 }
 async function sortIdea(i, keep, pick) {
-  const repo = current.repo.full_name;
+  const target = current.repo; // the owner may switch project before GitHub answers
+  const repo = target.full_name;
   refusedIdea(repo).delete(i.number);
   sortingIdea(repo).set(i.number, 'sending');
   leaveIdea(i.number, keep);
@@ -885,6 +957,9 @@ async function sortIdea(i, keep, pick) {
     if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
     else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
     sortingIdea(repo).set(i.number, 'sent');
+    // Kept with automatic pick on: it may take a free place now. Older project workflows ignore the kept label,
+    // so the board wakes the factory itself (issue #406).
+    if (keep && pick) wakeFactory(target);
     if (live.repo === repo) refresh();
   } catch (e) {
     console.warn(`Idea #${i.number} not sorted`, e);
@@ -1311,7 +1386,7 @@ async function writeRules() {
 }
 async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
-  if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
+  if (!fresh) throw saidError('Les paramètres de ce projet ont disparu de GitHub\u00a0: rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
@@ -1326,12 +1401,19 @@ async function writeProjectRules() {
   const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
+  // The next visit opens with these settings, and reads the file again (its push date is not known yet).
+  saves++;
+  known.set(current.repo.full_name, { pushed: null, etag: null, file: current.file });
+  rememberProjects();
   // More places: ask the factory to look at the queue now instead of at its next regular check.
-  if (current.config.maxParallel > (before || 0)) {
-    api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
-      method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
-    }).catch(() => {});
-  }
+  if (current.config.maxParallel > (before || 0)) wakeFactory(current.repo);
+}
+
+// Asks the factory to look at its free places now rather than at its next regular check (« tick »).
+function wakeFactory(repo) {
+  api(`/repos/${repo.full_name}/actions/workflows/factory.yml/dispatches`, {
+    method: 'POST', body: JSON.stringify({ ref: repo.default_branch, inputs: { payload: '{"tick":true}' } }),
+  }).catch(() => {});
 }
 
 function selectTab(name) {
@@ -1353,9 +1435,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
-  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
-    || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
-  if (unsaved) {
+  if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;
     return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
@@ -1382,7 +1462,22 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
-    projects = await loadProjects();
+    // No digest on a plain-http address (no crypto.subtle): the panel then works without the memory.
+    accountTag = await tokenTag(token).catch(() => null);
+    const remembered = readProjectsCache(store.get(PROJECTS_KEY), accountTag);
+    known = remembered?.known || new Map();
+    if (remembered?.projects.length && !projects.length) {
+      projects = remembered.projects;
+      refreshStable().catch(() => {});
+      refreshRuns();
+      await openProject(store.get(PROJECT_KEY));
+      refreshDots();
+      return checkProjects();
+    }
+    const session = token;
+    const fresh = await loadProjects();
+    if (token !== session) return; // logged out meanwhile: this list belongs to the previous account
+    projects = fresh;
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
@@ -1392,7 +1487,7 @@ async function start() {
       return;
     }
     resetSession();
-    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
+    $('login-error').textContent = 'GitHub a refusé le jeton. Vérifiez-le ou créez-en un nouveau.';
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -1476,7 +1571,7 @@ async function readGap(force) {
     // External production or a silent host: the site's version tag (issue #372), kept by the relay in refs/factory/live.
     const byTag = tagged({ mode, hasSite, deployments });
     const tagSha = byTag ? await cachedGet(`/repos/${repo}/git/ref/factory/live`)
-      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.message === '404') return null; throw e; }) : null;
+      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.status === 404) return null; throw e; }) : null;
     const liveSha = byTag ? tagSha : deploymentState(live, statusesById).liveSha;
     let aheadShas = new Set();
     let pulls = [];
@@ -1637,9 +1732,9 @@ $('release-confirm').addEventListener('click', async () => {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
     toast('Mise en production lancée : suivez-la dans l\'onglet Suivi.');
-  } catch {
+  } catch (e) {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
-    $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';
+    $('release-error').textContent = `L'envoi a échoué. ${errorText(e)}`;
     $('release-error').hidden = false;
   } finally {
     btn.disabled = false;
@@ -1664,7 +1759,7 @@ async function productionModeChanged(was, now) {
     return 0;
   }
   // Read afresh: the board's copy may not be loaded yet, and a change left labelled would have no button any more.
-  const fresh = await api(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).catch(() => null);
+  const fresh = await cachedGet(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).then((r) => r.data, () => null);
   const waiting = awaitingOf(repo, fresh || (release.repo === repo ? release.pending : []));
   let sent = 0;
   if (waiting.length) {
@@ -1699,7 +1794,7 @@ $('stable').addEventListener('click', async () => {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     btn.hidden = true;
   } catch (e) {
-    toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
+    toast(`Impossible de déclarer stable. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1737,7 +1832,7 @@ $('site').addEventListener('click', (e) => {
   selectTab('rules');
   $('site-url')?.focus();
 });
-$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
+$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(errorText(err))));
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project-switch').addEventListener('click', () => {
   $('projects-dialog-list').replaceChildren(...projectItems());
@@ -1842,7 +1937,7 @@ async function askStack(repo, btn) {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Établir la fiche';
-    toast("La demande n'est pas partie. Réessayez.");
+    toast(`La demande n'est pas partie. ${errorText(e)}`);
   }
 }
 
@@ -1861,7 +1956,7 @@ async function startGeneralReview() {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review : ${e.message}`);
+    toast(`Impossible de lancer la review. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1923,7 +2018,7 @@ async function chatGet(path) {
   });
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
@@ -1945,7 +2040,7 @@ async function branchJson(path) {
     cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   return res.json();
 }
 
@@ -1991,7 +2086,7 @@ async function refreshChat() {
     drawChat();
   } catch (err) {
     if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
-    else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+    else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
     scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
@@ -2310,7 +2405,7 @@ async function sendChat(text, withImages = true) {
     if (gone()) return;
     chat.pending = null;
     drawChat();
-    toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
+    toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -2344,7 +2439,7 @@ async function sendToServer(text, files, withImages) {
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
+    if (!res.ok) throw saidError((await res.json().catch(() => ({}))).error || `Le serveur de l'agent a répondu ${res.status}.`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -2378,14 +2473,14 @@ async function sendToServer(text, files, withImages) {
       }
       if (!gone()) drawLive();
     }
-    if (!answer) throw new Error('la réponse a été coupée');
+    if (!answer) throw saidError('La réponse a été coupée.');
   } catch (e) {
     if (gone()) return;
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
-    toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
+    toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
   } finally {
     if (!gone()) {
       chat.pending = null;
@@ -2413,7 +2508,7 @@ async function closeConversation() {
       $('chat').classList.remove('viewing');
       await refreshChat();
     } catch (e) {
-      toast(`Impossible de terminer la conversation : ${e.message}`);
+      toast(`Impossible de terminer la conversation. ${errorText(e)}`);
     }
     return;
   }
@@ -2425,7 +2520,7 @@ async function closeConversation() {
     $('chat').classList.remove('viewing');
     await refreshChat();
   } catch (e) {
-    toast(`Impossible de terminer la conversation : ${e.message}`);
+    toast(`Impossible de terminer la conversation. ${errorText(e)}`);
   }
 }
 
@@ -2468,8 +2563,8 @@ watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
-$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
-start().catch((err) => toast(`Erreur : ${err.message}`));
+$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
+start().catch((err) => toast(errorText(err)));
 
 // Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
 // so the owner can send a screenshot from his phone.

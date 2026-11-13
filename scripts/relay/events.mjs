@@ -6,6 +6,7 @@ import { isRateLimited } from '../lib/ratelimit.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from '../lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD } from '../lib/outage.mjs';
 import { toJobOutput } from '../lib/job-output.mjs';
+import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
 import { markdownTable, brokenShotRows } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, CHECKS_TIMEOUT_MS, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
@@ -70,6 +71,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
 export function eventsPart(ctx) {
   const { gh, repo, config, now, log, sleep, outputs } = ctx;
   const liveLabels = (...a) => ctx.liveLabels(...a);
+  const noteWatch = (...a) => ctx.noteWatch(...a);
   const postedCaptures = (...a) => ctx.postedCaptures(...a);
   const inFlight = (...a) => ctx.inFlight(...a);
   const lockFresh = (...a) => ctx.lockFresh(...a);
@@ -429,6 +431,14 @@ export function eventsPart(ctx) {
     // The agent hands the PR back with factory:checks when it is done: from then on a report counts again.
     const live = await liveLabels(prNumber);
     if (live.includes(L.fixing) && !live.includes(L.checks)) return log('stale report: an agent is changing the PR, its own checks will report');
+    // A preview report for a PR no longer waiting for it (closed, or past its checks with no check noted) comes late:
+    // the slow first run of a check the tick started again, or a duplicate. It must not move the card twice (#396).
+    if (preview && (pr.state === 'closed' || (!readWatch(pr.body) && !live.includes(L.checks)))) return log('stale preview report: the PR no longer waits for it');
+    // A report answers the preview check the PR waited for, or starts its cycle again: the note is cleared (issue #396).
+    if (readWatch(pr.body)) {
+      pr = { ...pr, body: writeWatch(pr.body, null) };
+      await gh.updateIssue(prNumber, { body: pr.body });
+    }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
     if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
@@ -486,6 +496,8 @@ export function eventsPart(ctx) {
     if (previews && !preview) {
       const url = await previewUrl(pr.head.sha, prNumber, { attempts: 1 });
       const ref = (await gh.getRepo())?.default_branch || 'main';
+      // Noted first: a check whose run dies before reporting is started again by the tick (issue #396).
+      await noteWatch(prNumber, { kind: 'preview', sha: pr.head.sha, at: now(), tries: 0 }, pr.body);
       await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, ...(url ? { url } : {}) } }) });
       log(url ? `preview check started on ${url}` : 'preview check started: it waits for the preview');
       return;

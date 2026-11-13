@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ function runRelay(command, event) {
     encoding: 'utf8', timeout: 60_000,
     env: { PATH: process.env.PATH, GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o', GITHUB_TOKEN: 't', GITHUB_EVENT_NAME: 'schedule', GITHUB_EVENT_PATH: join(dir, 'event.json'), GITHUB_OUTPUT: out },
   });
-  return { ...r, outputs: readFileSync(out, 'utf8') };
+  try { return { ...r, outputs: readFileSync(out, 'utf8') }; } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
 test('the command line « decide » still handles an event from start to end', () => {
