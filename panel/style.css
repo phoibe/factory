@@ -76,6 +76,8 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); position: relative; flex: none; }
 .live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ok); animation: ping 2s cubic-bezier(.16, 1, .3, 1) infinite; }
 .live.down .live-dot { background: var(--danger); }
+.live.pending .live-dot { background: var(--muted); }
+.live.pending .live-dot::after { display: none; }
 .live.down .live-dot::after { display: none; }
 .live.down { color: var(--danger); }
 .lane { margin: 0 0 32px; }
@@ -88,6 +90,16 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .finished.closed { color: var(--muted); font-weight: 400; }
 .finished.closed .reason { color: var(--text); font-weight: 650; }
 .finished .when { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Issue #370: a release outcome in « Terminé ». A failed or undone one reads red, like a blocked card. */
+.finished.broken { color: var(--danger); }
+.ticket.done.closed:has(.finished.broken) { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.release-changes { margin: 8px 0 0; padding-left: 18px; color: var(--text); font-size: .8125rem; }
+.release-changes li { margin: 2px 0; }
+.release-changes li::marker { color: var(--muted); }
+.release-meta { margin: 8px 0 0; color: var(--muted); font-size: .8125rem; }
+/* Links keep the page's ink-underlined style (never the signal blue), with a 44px touch target like .quiet-link. */
+.release-site, .release-fix { display: inline-block; margin-top: 4px; padding: 10px 0; font-size: .8125rem; font-weight: 500; text-underline-offset: 3px; }
+.release-why { margin: 8px 0 0; color: var(--text); font-size: .8125rem; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .done-more { color: var(--muted); font-size: .8125rem; margin: 10px 2px 0; }
 .tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
@@ -105,6 +117,9 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .ticket h3 { margin: 0; font-size: 1.02rem; font-weight: 650; line-height: 1.35; text-wrap: balance; }
 .ticket p { margin: 0; }
 .ticket-top { display: flex; justify-content: space-between; gap: 8px; font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ticket-top .since { flex-shrink: 0; white-space: nowrap; }
+.ticket-top .size-tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--track); color: var(--text); font-weight: 600; white-space: nowrap; }
+.ticket.yours .size-tag { background: var(--surface); box-shadow: inset 0 0 0 1px var(--you-line); }
 .cta { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--you); }
 .ticket.blocked .cta { color: var(--danger); }
 .cta .arrow { transition: transform .15s cubic-bezier(.16, 1, .3, 1); }
@@ -149,10 +164,10 @@ dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
 .stack-head { padding: 24px 24px 12px; border-bottom: 1px solid var(--line); }
 .stack-head h2 { margin: 0 0 2px; }
 .stack-body { padding: 8px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
-.stack-body h3 { font-size: 1.0625rem; font-weight: 700; margin: 24px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
-.stack-body h3:first-of-type { margin-top: 12px; }
+.stack-body h3 { font-size: 1.125rem; font-weight: 700; margin: 24px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.stack-body h3:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
 .stack-intro { color: var(--muted); }
-.stack-body h4 { font-size: .875rem; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+.stack-body h4 { font-size: .8125rem; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
 .stack-body ul { margin: 0; padding-left: 1.1em; }
 .stack-body li { margin: 4px 0; max-width: 65ch; }
 .stack-body p { margin: 8px 0; max-width: 65ch; }
@@ -168,7 +183,7 @@ dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
 @media (max-width: 600px) { .site-line .sep { display: none; } }
 #site { font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
-.quiet-link { font-size: .8125rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; }
+.quiet-link { font-size: .8125rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; min-height: 44px; box-sizing: border-box; }
 #site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; min-height: 44px; }
 
 /* ---- No sideways scroll on phones: long words, links and titles wrap ---- */
@@ -206,7 +221,7 @@ html { touch-action: manipulation; }
 .conv.fresh .conv-title { font-weight: 700; }
 .conv.fresh .conv-meta { color: var(--text); font-weight: 600; }
 .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--work); animation: blink 1.2s ease-in-out infinite; }
-.chat-sep { margin: 12px 10px 4px; font-size: .8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.chat-sep { margin: 12px 10px 4px; font-size: .8125rem; font-weight: 700; color: var(--muted); }
 .chat-empty { padding: 10px; }
 .chat-thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -338,6 +353,7 @@ a.button { text-decoration: none; }
 .brand, .ticket .main { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
+a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
 #chat-send { background: var(--text); border-color: var(--text); color: var(--bg); }
 .row input[type=checkbox], .row input[type=radio] { accent-color: var(--text); }
@@ -370,7 +386,7 @@ button.go:focus-visible { outline-color: var(--text); }
   /* Its own line under the project name, whatever the count: the first card's « go » never moves. */
   .actions:has(> #release:not([hidden])) { flex: 1 1 100%; }
   .more-menu #new-feature { flex: none; }
-  #project-sub { display: none; } /* phone: only the project's name above the buttons (DESIGN.md) */
+  #project-sub, #prod-gap-sep { display: none; } /* phone: the project's name and the live site's state above the buttons (DESIGN.md) */
 }
 
 /* Calm loading: grey card shapes, no animation. */
@@ -395,6 +411,8 @@ details summary { color: var(--text); }
 .ticket.pending:hover { transform: none; border-color: var(--line); }
 .ticket.pending.blocked, .ticket.pending.blocked:hover { border-color: var(--danger); }
 .ticket.pending .doing { color: var(--muted); }
+/* Issue #383: a launch that waits for its relaunch is quieter than an agent at work. */
+.doing.relaunch { color: var(--muted); font-weight: 400; }
 /* Issue 176: a waiting card keeps its buttons: small, quiet and side by side (blue stays for what waits for an answer). */
 .ticket.pending .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 10px; margin: 2px 0 4px; }
 .ticket.pending .card-actions .button, .ticket.pending .card-actions button {
@@ -431,8 +449,8 @@ details summary { color: var(--text); }
 .machine-status.muted { color: var(--muted); font-weight: 400; }
 
 /* Settings split between this project and every project (PR #276). */
-.rules-section + .rules-section { margin-top: 48px; padding-top: 32px; border-top: 2px solid var(--text); }
-.rules-section-title { margin: 0 0 16px; font-size: 1.375rem; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.rules-section + .rules-section { margin-top: 48px; padding-top: 32px; border-top: 1px solid var(--line); }
+.rules-section-title { margin: 0 0 16px; font-size: 1.125rem; overflow-wrap: anywhere; }
 
 /* ---- Issue 269: « À vous de jouer » as cards, like the other lanes, tinted soft blue ---- */
 .you-card.lane-yours { display: block; background: none; border: 0; border-radius: 0; padding: 0; margin: 0 0 48px; }
@@ -483,13 +501,20 @@ details summary { color: var(--text); }
 
 /* ---- « Mise en production » (issue #294) ---- */
 .button[aria-disabled=true] { opacity: .55; cursor: not-allowed; }
-dialog#release-dialog { max-width: 420px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
-dialog#release-dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog#release-dialog, dialog#gap-dialog { max-width: 420px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
+dialog#release-dialog::backdrop, dialog#gap-dialog::backdrop { background: rgb(0 0 0 / .45); }
 #release-title { margin: 0 0 8px; font-size: 1.125rem; text-wrap: balance; }
 #release-confirm.ink { background: var(--text); border-color: var(--text); color: var(--bg); }
-.release-error { margin: 12px 0 0; color: var(--text); font-weight: 500; }
+.release-error { margin: 12px 0 0; color: var(--danger); font-weight: 500; }
 .release-list { margin: 8px 0 0; padding-left: 20px; max-height: 40dvh; overflow: auto; }
 .release-list li { padding: 4px 0; overflow-wrap: anywhere; }
+/* The production gap under the project's name (issue #369): a quiet text button, red with its words on a failed publication. */
+.project-sub-line { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+.project-sub-line .sep { color: var(--muted); }
+.prod-gap { min-height: 44px; padding: 0; border: none; background: none; color: inherit; font: inherit; font-weight: 400; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.prod-gap:hover { color: var(--text); }
+.prod-gap.failed { color: var(--danger); }
+.gap-list .gap-date { color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
 #release-version-input { width: 100%; font: inherit; font-size: 16px; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 44px; }
 #release-version-hint { margin-top: 6px; }
 

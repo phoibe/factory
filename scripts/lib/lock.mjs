@@ -16,8 +16,8 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
   const start = now();
   while (!(await store.acquire())) {
     const age = await store.ageMs();
-    if (age !== null && age > ttlMs) { await store.takeOver(); continue; }
     if (now() - start > waitMs) throw new Error('queue lock: waited too long');
+    if (age !== null && age > ttlMs) { await store.takeOver(); if (await store.acquire()) break; } // one immediate try, then the usual wait
     await sleep(pollMs + Math.floor(Math.random() * 500));
   }
   let beating = null; // the sign of life on its way, waited for before the lock is given back

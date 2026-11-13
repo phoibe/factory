@@ -135,3 +135,22 @@ test('si GitHub refuse la dernière idée, la section revient avec son nombre', 
     assert.equal(await page.locator('.lane-ideas .count').textContent(), '1');
   });
 });
+
+test('« Garder » réveille la factory quand elle prend les demandes seule, pour qu’une place libre serve aussitôt (issue #406)', async () => {
+  await withPanel({ issues: IDEAS(), config: { autoPick: true } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
+    const tick = () => writes.find((w) => w.method === 'POST' && w.path.endsWith('/actions/workflows/factory.yml/dispatches'));
+    for (let i = 0; i < 30 && !tick(); i++) await page.waitForTimeout(100);
+    assert.deepEqual(tick()?.body?.inputs, { payload: '{"tick":true}' });
+  });
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
+    for (let i = 0; i < 20 && !writes.some((w) => w.path.endsWith('/issues/5/labels')); i++) await page.waitForTimeout(100);
+    await page.waitForTimeout(300);
+    assert.ok(!writes.some((w) => w.path.includes('/dispatches')), 'without automatic pick the idea waits for a message: nothing to wake');
+  });
+});

@@ -8,9 +8,10 @@ export const COLUMNS = [
   { id: 'checks', title: 'Contrôles', label: 'factory:checks' },
   { id: 'acceptance', title: 'Recette', label: 'factory:acceptance', yours: true },
   { id: 'blocked', title: 'Bloqué', label: 'factory:blocked', yours: true },
+  { id: 'release', title: 'Mise en production', label: 'factory:production' }, // issue #370: a release request on the board
   { id: 'done', title: 'Terminé' }, // no label: a merged item has left the pipeline, see doneItems
 ];
-const PRIORITY = ['blocked', 'acceptance', 'visual', 'checks', 'spec', 'grilling', 'queued', 'building'];
+const PRIORITY = ['blocked', 'acceptance', 'visual', 'checks', 'spec', 'grilling', 'queued', 'building', 'release'];
 
 // The single board column for an issue or PR, from its labels. Null when it is not a factory item.
 export function columnFor(labels) {
@@ -61,8 +62,28 @@ export function doneItems(pulls, issues = []) {
   const closedByAgent = (issues || [])
     .filter((i) => !i.pull_request && i.closed_at && reasonOf(i.labels))
     .map((i) => ({ number: i.number, issue: i.number, title: i.title, mergedAt: i.closed_at, reason: reasonOf(i.labels), url: i.html_url }));
-  return [...merged, ...closedByAgent]
+  // Issue #370: a finished « Mise en production » request sits in « Terminé » among the other finished items.
+  const releases = (issues || [])
+    .filter((i) => !i.pull_request && i.closed_at && (i.labels || []).some((l) => (typeof l === 'string' ? l : l.name) === 'factory:production'))
+    .map((i) => ({ number: i.number, issue: i.number, title: i.title, mergedAt: i.closed_at, reason: null, release: true, changes: releaseList(i.body), url: i.html_url }));
+  return [...merged, ...closedByAgent, ...releases]
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt));
+}
+
+// Issue #370: the changes a « Mise en production » request lists in its body (« - Title (#n) »).
+export const releaseList = (body) => [...String(body || '').matchAll(/^- (.+?) \(#(\d+)\)$/gm)].map((m) => ({ number: Number(m[2]), title: m[1] }));
+
+// Where a « Mise en production » stands and how it ended, read from the relay's hidden note on the request (the latest
+// trusted comment that carries one). Falls back to the old « En production ✅ » text for releases made before the note
+// existed. Only the factory's own bot or the owner may write it, so a note planted on a public project is ignored.
+export function releaseOutcome(comments) {
+  for (const c of [...(comments || [])].reverse()) {
+    if (!fromOwnerOrFactory(c)) continue;
+    const m = /<!-- factory-release (\{.*?\}) -->/.exec(c.body || '');
+    if (m) { try { return JSON.parse(m[1]); } catch { /* malformed note: ignore */ } }
+  }
+  if ((comments || []).some((c) => fromOwnerOrFactory(c) && /En production ✅/.test(c.body || ''))) return { state: 'live', legacy: true };
+  return null;
 }
 
 // The items to display (the newest `limit`) and how many older ones stay hidden.
@@ -225,8 +246,10 @@ export function ideasToShow(ideas, sorting) {
 }
 
 // The « Mise en production » button of a project whose production waits for the owner (issue #294).
-export function releaseButton(pending) {
+export function releaseButton(pending, running = false) {
   const n = (pending || []).length;
+  // Issue #370: only one release at a time — greyed while one is on its way, until the live site is checked.
+  if (running) return { text: 'Mise en production', disabled: true, hint: 'Mise en production en cours' };
   if (!n) return { text: 'Mise en production', disabled: true, hint: 'Rien en attente' };
   return { text: `Mise en production (${n})`, disabled: false, hint: `${n} modification${n > 1 ? 's' : ''} en attente` };
 }

@@ -1,6 +1,11 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
-import { COLUMNS, columnFor } from './lib.mjs?v=25';
+import { COLUMNS, columnFor } from './lib.mjs?v=26';
 import { humanMinutes, rangeText } from './eta.mjs';
+import { readRelaunch } from './relaunch.mjs?v=1';
+
+// Issue #383: the card's launch failed for a moment and the factory starts it again by itself. An answered blocked card
+// counts too; only a launch given up after 3 hours (or refused by a setting) waits for the owner.
+export const relaunchWaits = (item) => (item.labels || []).includes('factory:relaunch') && !readRelaunch(item.body)?.blocked;
 
 const STEPS = [
   { id: 'grilling', name: 'Questions' },
@@ -38,7 +43,10 @@ export function progress(item) {
 // it starts again by itself, nothing is asked of the owner.
 export function laneFor(item) {
   if (item.column === 'queued') return 'queued';
+  if (item.column === 'release') return 'working'; // issue #370: a release in progress sits with the agents' work
   if (item.labels.includes('factory:running')) return 'working';
+  // Issue #383: its launch failed for a moment, the factory relaunches it alone (until blocked after 3 hours).
+  if (relaunchWaits(item)) return 'working';
   if (item.column === 'blocked' && item.waits?.length) return 'queued';
   return COLUMNS.find((c) => c.id === item.column)?.yours ? 'yours' : 'working';
 }
@@ -77,11 +85,10 @@ export function agoText(ms) {
 }
 
 // Text of the « En direct » line. It must never be empty: the line changes height when its text arrives,
-// which pushes every card down after they were measured for the slide animation.
+// which pushes every card down after they were measured for the slide animation. `ms` null: the project was never read yet.
 export function statusText(failures, ms) {
-  return failures > 0
-    ? 'Connexion à GitHub perdue · nouvel essai automatique'
-    : `En direct · à jour ${agoText(ms)}`;
+  if (failures > 0) return 'Connexion à GitHub perdue · nouvel essai automatique';
+  return ms == null ? 'En direct · mise à jour…' : `En direct · à jour ${agoText(ms)}`;
 }
 
 // Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.

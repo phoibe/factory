@@ -1,6 +1,6 @@
 // Time estimates for the board (pure, tested in test/panel-eta.test.mjs).
 // Only agent and machine time is estimated: the owner's own answer time is never guessed.
-import { COLUMNS } from './lib.mjs?v=25';
+import { COLUMNS } from './lib.mjs?v=26';
 
 const MIN = 60_000;
 const RUNNING = 'factory:running';
@@ -175,10 +175,11 @@ export function rangeText(low, high) {
 }
 
 // Short French text for a duration in minutes.
-export function humanMinutes(m) {
-  if (m < 60) return `${Math.max(1, Math.round(m))} min`;
+export function humanMinutes(minutes) {
+  const m = Math.round(minutes);
+  if (m < 60) return `${Math.max(1, m)} min`;
   const h = Math.floor(m / 60);
-  const r = Math.round(m % 60);
+  const r = m % 60;
   return r ? `${h} h ${String(r).padStart(2, '0')}` : `${h} h`;
 }
 
@@ -189,4 +190,19 @@ export function etaText(e) {
   if (e.status === 'yours') return `Attend votre réponse${since} · ensuite ~${humanMinutes(e.total)} de travail jusqu'à la fin`;
   if (e.overrun) return "Plus long que prévu · nouvelle estimation en cours (hors vos réponses)";
   return `${rangeText(e.nextLow, e.nextHigh)} avant l'étape suivante (hors vos réponses)`;
+}
+
+// The card's first line, e.g. « Fonctionnalité · petite demande #12 » (issue #381). The size comes from the agent's
+// estimate (see parseEstimate); a PR carries none of its own, and a general review keeps its own route (no size).
+const SIZE_WORDS = { small: 'petite demande', medium: 'demande moyenne', large: 'grande demande' };
+const SIZED = ['Fonctionnalité', 'Bug'];
+export function kindText(kind, isPr, number, size) {
+  return kindParts(kind, isPr, number, size).map((p) => (typeof p === 'string' ? p : p.size)).join('');
+}
+
+// The same line in pieces, the size apart ({ size }) so the card shows it as a tag that stands out (issue #381:
+// in plain grey text the owner could not spot it).
+export function kindParts(kind, isPr, number, size) {
+  const sized = !isPr && SIZED.includes(kind) && SIZE_WORDS[size];
+  return sized ? [`${kind} · `, { size: sized }, ` #${number}`] : [`${kind} · ${isPr ? 'modification' : 'demande'} #${number}`];
 }

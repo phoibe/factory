@@ -1,26 +1,31 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=25';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
 import { waitedFor } from './waits.mjs?v=2';
+import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
+import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
 const PROJECT_KEY = 'factory.project';
+// The project list of the last visit, with what is known of each repository's settings file (issue #399).
+const PROJECTS_KEY = 'factory.projects';
 const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
@@ -64,6 +69,10 @@ if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
 let dots = new Map();
+// What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
+let known = new Map(), accountTag = null;
+// Settings saves from this tab, so that a check of the project list started before one does not undo it.
+let saves = 0;
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -88,7 +97,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -106,9 +115,9 @@ async function api(path, init = {}) {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
   });
-  if (res.status === 404) return null;
+  if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`), { status: res.status });
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
   return res.status === 204 ? null : res.json();
 }
 
@@ -128,35 +137,99 @@ function show(id) {
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
 // a project). Repositories are checked a few at a time: firing one request per repository at once can trip
 // GitHub's anti-abuse limit, and the refused ones then silently vanished from the list.
+// A repository with nothing pushed since the last visit is not read again (its settings file cannot have changed),
+// and one read again carries its last ETag (an unchanged file is a free 304, see projects.mjs).
 async function loadProjects() {
+  const session = token;
   const repos = [];
   for (let page = 1; page <= 5; page++) {
-    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`);
+    // Never the browser's copy (kept a minute): a stale push date would skip a file changed meanwhile.
+    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`, { cache: 'no-store' });
     repos.push(...batch);
     if (batch.length < 100) break;
   }
   const failed = [];
+  const seen = new Map();
   const configOf = async (r) => {
+    const check = configCheck(r, known);
+    if (check.skip) { seen.set(r.full_name, known.get(r.full_name)); return check.file; }
     for (let attempt = 0; ; attempt++) {
       try {
-        return await api(`/repos/${r.full_name}/contents/factory.config.json`);
+        const res = await fetch(`${API}/repos/${r.full_name}/contents/factory.config.json`, {
+          cache: 'no-store',
+          headers: { authorization: `Bearer ${session}`, accept: 'application/vnd.github+json', ...(check.etag ? { 'if-none-match': check.etag } : {}) },
+        });
+        if (res.status === 401) sessionExpired();
+        let file = null, etag = null;
+        if (res.status === 304) ({ file, etag } = check);
+        else if (res.ok) { file = await res.json(); etag = res.headers.get('etag'); }
+        else if (res.status !== 404) throw Object.assign(new Error(`${res.status}`), { status: res.status });
+        seen.set(r.full_name, { pushed: r.pushed_at, etag, file });
+        return file;
       } catch (err) {
         if (err.status === 401) throw err;
-        if (attempt >= 2) { failed.push(r.name); return null; }
+        if (attempt >= 2) {
+          // GitHub did not answer: the last known file stays, and is read again next time.
+          if (known.has(r.full_name)) { seen.set(r.full_name, { ...known.get(r.full_name), pushed: null }); return check.file; }
+          failed.push(r.name);
+          return null;
+        }
         await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
       }
     }
   };
-  const found = await mapLimit(projectCandidates(repos), 4, async (r) => {
+  const found = (await mapLimit(projectCandidates(repos), 4, async (r) => {
     const file = await configOf(r);
     return file ? { repo: r, file } : null;
-  });
+  })).filter(Boolean);
+  if (token !== session) return found; // logged out meanwhile: nothing of it is remembered
+  known = seen;
   if (failed.length) {
     toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
     setTimeout(() => reloadProjects().catch(() => {}), 30_000);
   }
-  return found.filter(Boolean);
+  rememberProjects(found);
+  return found;
 }
+
+function rememberProjects(list = projects) {
+  if (accountTag) store.set(PROJECTS_KEY, writeProjectsCache(accountTag, list, known));
+}
+
+// The list of the last visit shows at once; GitHub's answer then replaces it (issue #399). The open project
+// stays the same object; it is opened again only when its settings file changed and nothing typed would be lost.
+async function checkProjects() {
+  const session = token, saved = saves;
+  let fresh;
+  try {
+    fresh = await loadProjects();
+  } catch (err) {
+    if (err.status !== 401 && token === session) setTimeout(() => checkProjects().catch(() => {}), 30_000);
+    return;
+  }
+  if (!token || token !== session) return; // logged out meanwhile: this list belongs to the previous account
+  const was = current;
+  const namesOf = (list) => JSON.stringify(list.map((p) => p.repo.full_name).sort());
+  const before = namesOf(projects);
+  const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
+  projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
+  if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
+  if (!projects.length) {
+    current = null;
+    clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+    return show('empty');
+  }
+  if (!mine) { await openProject(store.get(PROJECT_KEY)); return refreshDots(); }
+  // Saved here during the check: this device's file is the newest one.
+  if (saves !== saved) { known.set(was.repo.full_name, { pushed: null, etag: null, file: was.file }); rememberProjects(); }
+  else if (mine.file?.sha !== was.file?.sha && !hasUnsaved()) { was.file = mine.file; await openProject(was.repo.full_name); }
+  else renderProjectList();
+  refreshDots();
+}
+
+// Something typed or in flight that reopening the project, or reloading the panel, would lose.
+const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
+  || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -209,7 +282,7 @@ function renderProjectList() {
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
   if (current && current.repo.full_name === fullName) return;
-  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); renderProjectList(); });
+  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
 
 function setDot(repo, dot) {
@@ -292,8 +365,11 @@ async function openProject(fullName) {
   for (const w of warnings) console.warn(w);
   $('project-name').textContent = current.repo.name;
   $('project-switch-name').textContent = current.repo.name;
-  current.delivery = null;
+  // The stack sheet read at the last visit stays until it is read again: the mode shows at once (issue #397).
+  current.delivery ??= null;
   drawSub();
+  drawGap();
+  refreshGap(true).catch(() => {});
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -314,12 +390,12 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -353,7 +429,9 @@ function enterBoard(repo) {
   const known = boards.get(repo) || { issues, waits: knownWaits(repo, issues) };
   // `synced`: the first answers since coming back are always drawn, even « unchanged » ones (the ETags are shared
   // with the project list, which may have fetched a change this board has not drawn yet).
-  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false });
+  // `last` comes with the board (when it was read), `failures` starts over: the line under « À vous de jouer » never
+  // shows the left project's lost connection or « à jour à l'instant » (issue #397).
+  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false, failures: 0 });
 }
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
@@ -378,7 +456,7 @@ async function cachedGet(path, cache = etags) {
   }
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
@@ -425,8 +503,8 @@ async function refresh() {
     // More than a page of events while away: the older pages are read again, so that no step is missing.
     if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
-    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
-    live.doneTried = true;
+    // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
+    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // The cards show now; their details (preview, session, estimate) come in below, in their place.
@@ -488,14 +566,34 @@ async function refresh() {
         live.plans.set(c.number, plan);
         previewsChanged = true;
       }
+      // Issue #370: where a « Mise en production » stands, read from the relay's hidden note on its comments.
+      if (c.column === 'release') {
+        const outcome = releaseOutcome([...before.data, ...res.data]);
+        if (JSON.stringify(live.releases.get(c.number) ?? null) !== JSON.stringify(outcome)) {
+          live.releases.set(c.number, outcome);
+          previewsChanged = true;
+        }
+      }
       if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
         live.previews.set(c.number, url);
         live.targets.set(c.number, target);
         previewsChanged = true;
       }
     });
+    // Issue #370: a finished « Mise en production » shows its outcome in « Terminé ». Its note lives in its comments,
+    // which the done list does not carry; read it once for each release not already cached (while it was on the board).
+    const doneReleases = async () => {
+      const need = (live.done || []).filter((d) => d.release && !live.releases.has(d.number));
+      await mapLimit(need, 6, async (d) => {
+        if (!same()) return;
+        const res = await cachedGet(`/repos/${repo}/issues/${d.number}/comments?per_page=100`).catch(quiet);
+        if (!res || !same()) return;
+        live.releases.set(d.number, releaseOutcome(res.data));
+        previewsChanged = true;
+      });
+    };
     const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
-    const [eventsChanged] = await Promise.all([deepEvents(), comments, release]);
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneReleases(), refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
@@ -526,12 +624,15 @@ function schedule() {
   live.timer = setTimeout(refresh, delay);
 }
 
+// Never read yet (a first open): no « à jour » taken from another project.
+const liveText = () => statusText(live.failures, live.last ? Date.now() - live.last : null);
 function drawStatus() {
   const s = document.querySelector('.live');
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
-  s.querySelector('.live-text').textContent = statusText(live.failures, Date.now() - live.last);
+  s.classList.toggle('pending', !down && !live.last); // never read yet: no green « tout va bien » dot
+  s.querySelector('.live-text').textContent = liveText();
 }
 
 function stepTrack(c) {
@@ -572,17 +673,56 @@ const holdStatus = (hold) => hold.late
   ? el('p', { class: 'alert', 'data-time': '' }, hold.text)
   : el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), hold.text);
 
+// Issue #370: a « Mise en production » card. While it runs it shows its step and the changes going live; the change
+// list comes from the relay's note once it lands, else from the request body.
+const releaseStep = (c) => (c.labels.includes('factory:release-checking') ? 'Vérification du site en ligne' : 'Mise en ligne en cours');
+const releaseChanges = (c) => (live.releases.get(c.number)?.prs?.length ? live.releases.get(c.number).prs : releaseList(c.body));
+const changeList = (changes) => (changes.length ? el('ul', { class: 'release-changes' }, changes.map((p) => el('li', {}, p.title))) : null);
+
+// Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
+// headline and whether the card is red; everything the owner needs is on the card, the title still opens GitHub.
+function releaseDoneCard(d, now) {
+  const o = live.releases.get(d.number) || { state: 'unknown' };
+  const changes = (o.prs?.length ? o.prs : d.changes) || [];
+  const red = ['failed', 'undone', 'broken', 'unpublished'].includes(o.state);
+  const when = el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`);
+  const head = (sym, text, cls = '') => el('p', { class: `finished${cls ? ` ${cls}` : ''}` }, sym ? el('span', { 'aria-hidden': 'true' }, `${sym} `) : null, text, when);
+  const body = [];
+  if (o.state === 'nothing') body.push(head('✓', 'Rien à mettre en ligne : le site est déjà à jour', 'closed'));
+  else if (o.state === 'undone') body.push(head('–', 'Annulée : le site en ligne ne marchait plus, la version d\'avant est revenue', 'broken'));
+  else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
+  else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
+  else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
+  else if (o.state === 'live') body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  else body.push(head('✓', 'Terminée')); // closed on the way (« deploying »…): never a false « En ligne »
+  if (!red && changes.length) body.push(changeList(changes));
+  if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
+  const site = o.state === 'live' && siteLink(o.site);
+  if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  if (red && (o.reason || o.todo)) body.push(el('p', { class: 'release-why' }, [o.reason, o.todo].filter(Boolean).join(' ')));
+  if (Number(o.fix) > 0) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${Number(o.fix)}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${Number(o.fix)})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  return el('article', { class: `ticket done${red ? ' closed' : ''}` },
+    el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, 'Mise en production')),
+    ...body);
+}
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
+  // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
+  const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
-  const blocked = c.column === 'blocked' && !running && !c.waits?.length;
+  const blocked = c.column === 'blocked' && !running && !c.waits?.length && !relaunch;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
+    : c.column === 'release'
+      ? el('p', { class: 'doing' }, el('span', { class: 'dot on', 'aria-hidden': 'true' }), releaseStep(c))
+    : lane === 'working' && relaunch
+      ? el('p', { class: 'doing relaunch' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), relaunch)
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
@@ -602,15 +742,17 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'modification' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, ...kindParts(kind, Boolean(c.pull_request), c.number, plan?.size).map((p) => (typeof p === 'string' ? p : el('span', { class: 'size-tag' }, p.size)))),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview && !asks ? null : status,
+    c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
-    stepTrack(c),
-    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
+    c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    c.column === 'release' ? null : stepTrack(c),
+    // No agent works on a card whose launch waits: no estimate of its work until it starts.
+    c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.
@@ -643,7 +785,8 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 const pendingGo = new Map();
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
 // Both are keyed by project and number: #12 of one project is not #12 of another.
-const goKey = (c) => `${current.repo.full_name}#${c.number}`;
+// The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
+const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
 function cancelPendingGos() {
   if (!pendingGo.size) return;
   const words = new Set([...pendingGo.values()].map((h) => h.word));
@@ -676,7 +819,7 @@ async function sendGo(c, btn, repo, key) {
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
-    toast(`Envoi impossible : ${e.message}`);
+    toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
     if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
@@ -747,7 +890,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) owed
 // « À vous de jouer »: everything that waits for an answer, oldest first, as cards like the other lanes; only their
 // « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
+  const status = el('p', { class: live.last || live.failures ? 'live' : 'live pending' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, liveText()));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), ...(sub ? [el('p', { class: 'muted' }, sub)] : []), status);
   return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
     el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
@@ -813,7 +956,8 @@ function leaveIdea(n, keep) {
   }, 200);
 }
 async function sortIdea(i, keep, pick) {
-  const repo = current.repo.full_name;
+  const target = current.repo; // the owner may switch project before GitHub answers
+  const repo = target.full_name;
   refusedIdea(repo).delete(i.number);
   sortingIdea(repo).set(i.number, 'sending');
   leaveIdea(i.number, keep);
@@ -824,6 +968,9 @@ async function sortIdea(i, keep, pick) {
     if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
     else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
     sortingIdea(repo).set(i.number, 'sent');
+    // Kept with automatic pick on: it may take a free place now. Older project workflows ignore the kept label,
+    // so the board wakes the factory itself (issue #406).
+    if (keep && pick) wakeFactory(target);
     if (live.repo === repo) refresh();
   } catch (e) {
     console.warn(`Idea #${i.number} not sorted`, e);
@@ -849,7 +996,7 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}`).join('|') : null;
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}${d.release ? `:${JSON.stringify(live.releases.get(d.number) ?? null)}` : ''}`).join('|') : null;
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
@@ -892,7 +1039,7 @@ function drawBoard() {
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
-        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
+        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
             ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
@@ -1108,7 +1255,7 @@ function renderRules() {
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
-      ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
+      ['external', 'Externe, faite hors de la factory']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
@@ -1246,11 +1393,13 @@ async function writeRules() {
   renderRules();
   drawSite();
   drawSub();
+  // A new production mode: the line read for the former one hides at once and is read again (issue #397).
+  if (wasMode !== effectiveProduction(current.config, current.delivery)) { drawGap(); refreshGap(true).catch(() => {}); }
   toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
-  if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
+  if (!fresh) throw saidError('Les paramètres de ce projet ont disparu de GitHub\u00a0: rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
@@ -1265,12 +1414,19 @@ async function writeProjectRules() {
   const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
+  // The next visit opens with these settings, and reads the file again (its push date is not known yet).
+  saves++;
+  known.set(current.repo.full_name, { pushed: null, etag: null, file: current.file });
+  rememberProjects();
   // More places: ask the factory to look at the queue now instead of at its next regular check.
-  if (current.config.maxParallel > (before || 0)) {
-    api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
-      method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
-    }).catch(() => {});
-  }
+  if (current.config.maxParallel > (before || 0)) wakeFactory(current.repo);
+}
+
+// Asks the factory to look at its free places now rather than at its next regular check (« tick »).
+function wakeFactory(repo) {
+  api(`/repos/${repo.full_name}/actions/workflows/factory.yml/dispatches`, {
+    method: 'POST', body: JSON.stringify({ ref: repo.default_branch, inputs: { payload: '{"tick":true}' } }),
+  }).catch(() => {});
 }
 
 function selectTab(name) {
@@ -1292,9 +1448,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
-  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
-    || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
-  if (unsaved) {
+  if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;
     return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
@@ -1321,7 +1475,22 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
-    projects = await loadProjects();
+    // No digest on a plain-http address (no crypto.subtle): the panel then works without the memory.
+    accountTag = await tokenTag(token).catch(() => null);
+    const remembered = readProjectsCache(store.get(PROJECTS_KEY), accountTag);
+    known = remembered?.known || new Map();
+    if (remembered?.projects.length && !projects.length) {
+      projects = remembered.projects;
+      refreshStable().catch(() => {});
+      refreshRuns();
+      await openProject(store.get(PROJECT_KEY));
+      refreshDots();
+      return checkProjects();
+    }
+    const session = token;
+    const fresh = await loadProjects();
+    if (token !== session) return; // logged out meanwhile: this list belongs to the previous account
+    projects = fresh;
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
@@ -1331,7 +1500,7 @@ async function start() {
       return;
     }
     resetSession();
-    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
+    $('login-error').textContent = 'GitHub a refusé le jeton. Vérifiez-le ou créez-en un nouveau.';
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -1352,7 +1521,7 @@ async function refreshRuns() {
     const counts = await mapLimit(projects, 2, async (p) => {
       const events = [];
       for (let page = 1; page <= 5; page++) {
-        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        const batch = (await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`)) || [];
         events.push(...batch);
         if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
       }
@@ -1372,15 +1541,133 @@ function drawSub() {
   $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
 }
 async function loadDelivery(project) {
-  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);
-  if (current !== project) return;
+  // A failed read keeps the mode known from the last visit; only a missing sheet (404, null) forgets it.
+  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => undefined);
+  if (current !== project || file === undefined) return;
   const delivery = file?.content ? deliveryOf(fromBase64(file.content)) : null;
   if (JSON.stringify(delivery) === JSON.stringify(current.delivery)) return;
   current.delivery = delivery;
   drawSub();
+  drawGap(); // a line read for the former mode is hidden at once
   drawRelease();
+  refreshGap(true).catch(() => {});
   if (!$('rules').contains(document.activeElement)) renderRules();
 }
+
+// ---- Écart de production (issue #369) ---------------------------------------------------------------------------
+// Under the project's name: is the live site up to date with the validated changes? A version is live only once its
+// host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
+const GAP_MS = 60_000;
+// Kept per project while this tab stays open (issue #397): `views` its last line with the mode it was read for, `at`
+// when it was read, `busy` the read going and `again` the forced read waiting for it.
+const gap = { at: new Map(), busy: new Map(), again: new Map(), views: new Map() };
+function refreshGap(force = false) {
+  const project = current;
+  const repo = project.repo.full_name;
+  // One read at a time per project: opening a project and its first refresh must not fire the same requests twice.
+  // A forced read (its production mode just read) waits for the one going, never lost behind it. A read of another
+  // project never holds this one up.
+  const busy = gap.busy.get(repo);
+  if (busy) {
+    if (!force) return busy;
+    if (!gap.again.has(repo)) {
+      const next = busy.catch(() => {}).then(() => { if (gap.again.get(repo) === next) gap.again.delete(repo); return current === project ? refreshGap(true) : null; });
+      gap.again.set(repo, next);
+    }
+    return gap.again.get(repo);
+  }
+  const run = readGap(force).finally(() => { if (gap.busy.get(repo) === run) gap.busy.delete(repo); });
+  gap.busy.set(repo, run);
+  return run;
+}
+const gapMode = (project) => effectiveProduction(project.config, project.delivery);
+async function readGap(force) {
+  const project = current;
+  const repo = project.repo.full_name;
+  if (!force && Date.now() - (gap.at.get(repo) || 0) < GAP_MS) return;
+  gap.at.set(repo, Date.now());
+  const mode = effectiveProduction(project.config, project.delivery);
+  const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
+  let view;
+  try {
+    // A preview deployment is created on every push: read a wide page, or the live ones may all be pushed out of it.
+    const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=100`)).data || [];
+    const statusesById = {};
+    const live = deployments.filter((d) => isLiveEnv(d.environment))
+      .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 10);
+    for (const d of live) {
+      statusesById[d.id] = (await cachedGet(`/repos/${repo}/deployments/${d.id}/statuses?per_page=20`)).data || [];
+      if (statusesById[d.id].some((x) => x.state === 'success')) break;
+    }
+    // External production or a silent host: the site's version tag (issue #372), kept by the relay in refs/factory/live.
+    const byTag = tagged({ mode, hasSite, deployments });
+    const tagSha = byTag ? await cachedGet(`/repos/${repo}/git/ref/factory/live`)
+      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.status === 404) return null; throw e; }) : null;
+    const liveSha = byTag ? tagSha : deploymentState(live, statusesById).liveSha;
+    let aheadShas = new Set();
+    let pulls = [];
+    let truncated = false;
+    if (liveSha) {
+      const preprod = mode === 'approval' && await cachedGet(`/repos/${repo}/git/ref/heads/preprod`).catch((e) => { if (e?.rateLimited) throw e; return null; });
+      const branch = preprod ? 'preprod' : project.repo.default_branch || 'main';
+      const [cmp, prs] = await Promise.all([
+        cachedGet(`/repos/${repo}/compare/${liveSha}...${encodeURIComponent(branch)}`),
+        cachedGet(`/repos/${repo}/pulls?state=closed&base=${encodeURIComponent(branch)}&sort=updated&direction=desc&per_page=50`),
+      ]);
+      aheadShas = new Set((cmp.data?.commits || []).map((c) => c.sha));
+      // GitHub stops the comparison at 250 commits, the oldest ones: the newest merges would look live.
+      truncated = Number(cmp.data?.total_commits || 0) > aheadShas.size;
+      pulls = Array.isArray(prs.data) ? prs.data : [];
+      // A PR the factory undid may have left the 50 most recently updated: read it alone, so it still comes back.
+      for (const r of pulls) {
+        const undone = Number(/^claude\/revert-pr-(\d+)$/.exec(r.head?.ref || '')?.[1]);
+        // Only a revert that is live hides a change; one still waiting changes nothing to read.
+        if (undone && r.merged_at && !aheadShas.has(r.merge_commit_sha) && !pulls.some((p) => p.number === undone)) {
+          const original = (await cachedGet(`/repos/${repo}/pulls/${undone}`).catch((e) => { if (e?.rateLimited) throw e; return null; }))?.data;
+          if (original?.number) pulls = [...pulls, original];
+        }
+      }
+    }
+    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, truncated, tagSha });
+  } catch (err) {
+    // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
+    if (err?.rateLimited) throw err;
+    // A project that was showing something keeps a line (« version inconnue »), it does not vanish on one failure.
+    const shown = gap.views.get(repo)?.view?.kind && gap.views.get(repo).view.kind !== 'none';
+    view = gapView({ mode, hasSite: hasSite || shown, error: true });
+  }
+  // A line read for another project, or before its stack sheet changed its mode, is never shown (issue #397).
+  if (current !== project || gapMode(project) !== mode) return;
+  gap.views.set(repo, { mode, view });
+  drawGap();
+}
+function drawGap() {
+  const kept = current && gap.views.get(current.repo.full_name);
+  const view = kept && kept.mode === gapMode(current) ? kept.view : null;
+  const on = Boolean(view && view.kind !== 'none');
+  $('prod-gap').hidden = !on;
+  $('prod-gap-sep').hidden = !on;
+  if (!on) return;
+  $('prod-gap').textContent = view.text;
+  $('prod-gap').classList.toggle('failed', view.kind === 'failed');
+}
+const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+$('prod-gap').addEventListener('click', () => {
+  const view = gap.views.get(current.repo.full_name)?.view;
+  if (!view) return;
+  const base = current.repo.html_url;
+  // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
+  const why = view.why || (view.items.length ? '' : view.kind === 'deploying' ? 'Publication en cours.' : 'Tout est en ligne.');
+  $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : view.kind === 'deploying' ? 'Publication en cours' : 'Site en ligne';
+  $('gap-why').textContent = why;
+  $('gap-why').hidden = !why;
+  $('gap-list').hidden = !view.items.length;
+  $('gap-list').replaceChildren(...view.items.map((i) => el('li', {},
+    el('a', { href: `${base}/issues/${i.issue}`, target: '_blank', rel: 'noopener' }, i.title), ' ',
+    el('span', { class: 'gap-date' }, `validée le ${gapDate(i.mergedAt)}`))));
+  $('gap-dialog').showModal();
+});
+$('gap-close').addEventListener('click', () => $('gap-dialog').close());
 
 // ---- « Mise en production » (issue #294) ----------------------------------------------------------------------
 // On a project set to « sur mon accord », validated changes are merged but wait (label factory:awaiting-production on
@@ -1422,7 +1709,9 @@ function drawRelease() {
   placeNewFeature();
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];
-  const b = releaseButton(pending);
+  // Issue #370: a release is on its way while its request is still open on the board (one at a time).
+  const running = (live.issues || []).some((i) => i.labels.includes('factory:production'));
+  const b = releaseButton(pending, running);
   // The count in the mono face (Mono Numbers Rule).
   const m = /^(.*) \((\d+)\)$/.exec(b.text);
   btn.replaceChildren(...(m ? [`${m[1]} `, el('span', { class: 'num' }, `(${m[2]})`)] : [b.text]));
@@ -1439,7 +1728,7 @@ async function sendRelease(pending, version) {
   drawRelease();
 }
 $('release').addEventListener('click', () => {
-  if ($('release').getAttribute('aria-disabled') === 'true') return toast('Rien en attente');
+  if ($('release').getAttribute('aria-disabled') === 'true') return toast($('release').title || 'Rien en attente');
   const n = release.pending.length;
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;
@@ -1474,10 +1763,10 @@ $('release-confirm').addEventListener('click', async () => {
   try {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
-    toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
-  } catch {
+    toast('Mise en production lancée : suivez-la dans l\'onglet Suivi.');
+  } catch (e) {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
-    $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';
+    $('release-error').textContent = `L'envoi a échoué. ${errorText(e)}`;
     $('release-error').hidden = false;
   } finally {
     btn.disabled = false;
@@ -1502,7 +1791,7 @@ async function productionModeChanged(was, now) {
     return 0;
   }
   // Read afresh: the board's copy may not be loaded yet, and a change left labelled would have no button any more.
-  const fresh = await api(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).catch(() => null);
+  const fresh = await cachedGet(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).then((r) => r.data, () => null);
   const waiting = awaitingOf(repo, fresh || (release.repo === repo ? release.pending : []));
   let sent = 0;
   if (waiting.length) {
@@ -1537,7 +1826,7 @@ $('stable').addEventListener('click', async () => {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     btn.hidden = true;
   } catch (e) {
-    toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
+    toast(`Impossible de déclarer stable. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1575,7 +1864,7 @@ $('site').addEventListener('click', (e) => {
   selectTab('rules');
   $('site-url')?.focus();
 });
-$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
+$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(errorText(err))));
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project-switch').addEventListener('click', () => {
   $('projects-dialog-list').replaceChildren(...projectItems());
@@ -1680,7 +1969,7 @@ async function askStack(repo, btn) {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Établir la fiche';
-    toast("La demande n'est pas partie. Réessayez.");
+    toast(`La demande n'est pas partie. ${errorText(e)}`);
   }
 }
 
@@ -1699,7 +1988,7 @@ async function startGeneralReview() {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review : ${e.message}`);
+    toast(`Impossible de lancer la review. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1761,7 +2050,7 @@ async function chatGet(path) {
   });
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
@@ -1849,7 +2138,7 @@ async function branchJson(path) {
     cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   return res.json();
 }
 
@@ -1896,7 +2185,7 @@ async function refreshChat() {
     drawChat();
   } catch (err) {
     if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
-    else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+    else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
     scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
@@ -2046,9 +2335,9 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
       : status === 'late'
-        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
     announceAnswers(chat.issue.number, messages);
@@ -2215,7 +2504,7 @@ async function sendChat(text, withImages = true) {
     if (gone()) return;
     chat.pending = null;
     drawChat();
-    toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
+    toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -2253,9 +2542,9 @@ async function sendToServer(text, files, withImages) {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      if (res.status === 401) throw Object.assign(new Error('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
-      if (body.code === 'writable') throw Object.assign(new Error(WRITABLE_TOKEN), { readToken: true });
-      throw new Error(body.error || `le serveur a répondu ${res.status}`);
+      if (res.status === 401) throw Object.assign(saidError('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
+      if (body.code === 'writable') throw Object.assign(saidError(WRITABLE_TOKEN), { readToken: true });
+      throw saidError(body.error || `Le serveur de l'agent a répondu ${res.status}.`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -2271,11 +2560,11 @@ async function sendToServer(text, files, withImages) {
         else if (e.type === 'draft') live.text = e.text;
         else if (e.type === 'reset') live.text = '';
         else if (e.type === 'answer') answer = e;
-        else if (e.type === 'error') throw new Error(e.message);
+        else if (e.type === 'error') throw saidError(e.message);
       }
       if (!gone()) drawLive();
     }
-    if (!answer) throw new Error('la réponse a été coupée');
+    if (!answer) throw saidError('La réponse a été coupée.');
     // The answer is complete: from here on nothing may make the owner resend it (the issues would be made twice).
     live.status = 'Enregistre…';
     if (!gone()) drawLive();
@@ -2302,7 +2591,7 @@ async function sendToServer(text, files, withImages) {
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
-    toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
+    toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
   } finally {
     if (!gone()) {
       chat.pending = null;
@@ -2410,7 +2699,7 @@ async function closeConversation() {
       $('chat').classList.remove('viewing');
       await refreshChat();
     } catch (e) {
-      toast(`Impossible de terminer la conversation : ${e.message}`);
+      toast(`Impossible de terminer la conversation. ${errorText(e)}`);
     }
     return;
   }
@@ -2422,7 +2711,7 @@ async function closeConversation() {
     $('chat').classList.remove('viewing');
     await refreshChat();
   } catch (e) {
-    toast(`Impossible de terminer la conversation : ${e.message}`);
+    toast(`Impossible de terminer la conversation. ${errorText(e)}`);
   }
 }
 
@@ -2465,8 +2754,8 @@ watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
-$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
-start().catch((err) => toast(`Erreur : ${err.message}`));
+$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
+start().catch((err) => toast(errorText(err)));
 
 // Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
 // so the owner can send a screenshot from his phone.

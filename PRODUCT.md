@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Code JavaScript sans dépendance d'exécution (modules Node.js et JS du navigateur), tests intégrés (`node --test`), GitHub Actions pour les contrôles, la fusion et la file d'attente, GitHub Pages pour le panneau. Le jeton GitHub reste dans le navigateur. Seuls outils de développement : Playwright et axe-core pour le contrôle d'accessibilité. La discussion en direct du panneau passe par un petit serveur en Python hébergé sur Modal (offre gratuite), qui lit le code en lecture seule et ne reçoit qu'un second jeton GitHub, limité à la lecture.
+Code JavaScript sans dépendance d'exécution (modules Node.js et JS du navigateur), tests intégrés (`node --test`), GitHub Actions pour les contrôles, la fusion et la file d'attente, GitHub Pages pour le panneau. Le jeton GitHub est gardé dans le navigateur ; la discussion en direct n'envoie au serveur de discussion qu'un second jeton, limité à la lecture. Seuls outils de développement : Playwright et axe-core pour le contrôle d'accessibilité. La discussion en direct du panneau passe par un petit serveur en Python hébergé sur Modal (offre gratuite), qui lit le code sans jamais le modifier.
 
 ## Users
 

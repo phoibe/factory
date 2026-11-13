@@ -29,9 +29,14 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
 // `homepages`: full name → the project's « website » field on GitHub.
+// `deploy`: the live site's publications (issue #369): { deployments, statuses: { id: [...] }, compare: { commits }, pulls },
+// and `liveRef`, the commit the site's version tag names (issue #372).
+// `pushed`: full name → the date of the last push GitHub gives in the repository list (`repos` is read at each request:
+// a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received.
+// `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, readToken = Boolean(chatServer) }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, readToken = Boolean(chatServer) }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -41,6 +46,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
   }).listen(0);
   const browser = await launchBrowser(server);
   const writes = [];
+  const reads = [];
   try {
     const context = await browser.newContext();
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
@@ -83,6 +89,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (slow && req.method() === 'GET') await new Promise((r) => setTimeout(r, slowRepos[slow]));
       const lag = slowReads.find(([pattern]) => pattern.test(req.url()))?.[1];
       if (lag && req.method() === 'GET') await new Promise((r) => setTimeout(r, lag));
+      if (req.method() === 'GET') reads.push(path);
       const auth = req.headers().authorization;
       if (path === '/user') {
         const login = { 'Bearer test': 'o', 'Bearer lecture': 'o', 'Bearer ecriture': 'o', 'Bearer autre': 'x' }[auth];
@@ -118,9 +125,12 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
         if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403);
+        // `missing`: GitHub answers 404 to a write the token may not do (issue #398). `offline`: the network drops.
+        if (missing && missing.has(path)) return json({ message: 'Not Found' }, 404);
+        if (offline && offline.has(path)) return route.abort('internetdisconnected');
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '' })));
+      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '', ...(pushed[full] ? { pushed_at: pushed[full] } : {}) })));
       // The factory's own branch files (dev server status and general setting, issue #271).
       const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
       if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);
@@ -134,7 +144,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
           body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), encoding: 'base64', sha: `s${JSON.stringify(data).length}` }) });
       }
       if (chatServer && path === '/repos/o/r/branches/factory-chat') return json({ name: 'factory-chat' });
-      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
+      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: configMeta.sha });
       if (path.endsWith('/contents/PRODUCT.md')) return framedRepos.some((r) => path === `/repos/${r}/contents/PRODUCT.md`) ? json({ content: '', encoding: 'base64', sha: 'p' }) : json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
       const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];
@@ -149,12 +159,26 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const one = /^\/repos\/o\/r\/issues\/(\d+)$/.exec(path)?.[1];
       if (one && issues.some((i) => String(i.number) === one)) return json(issues.find((i) => String(i.number) === one));
       if (path === '/repos/o/r/issues/events') return json(new URL(req.url()).searchParams.get('page') === '1' ? events : []);
+      // refs/factory/live: the commit the site's version tag names (issue #372), kept by the relay.
+      if (path === '/repos/o/r/git/ref/factory/live') return deploy?.liveRef ? json({ object: { sha: deploy.liveRef } }) : json({ message: 'Not Found' }, 404);
       const ref = /^\/repos\/o\/r\/git\/ref\/heads\/(.+)$/.exec(path)?.[1];
       if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
       const q = new URL(req.url()).searchParams;
+      if (deploy && path === '/repos/o/r/deployments') return json(deploy.deployments || []);
+      // compare and pulls answer for one ref only: a journey pins the branch the panel must read.
+      const statusOf = /^\/repos\/o\/r\/deployments\/(\d+)\/statuses$/.exec(path)?.[1];
+      if (deploy && statusOf) return json(deploy.statuses?.[statusOf] || []);
+      const cmp = deploy && /^\/repos\/o\/r\/compare\/[^.]+\.\.\.(.+)$/.exec(path)?.[1];
+      if (cmp) return cmp === (deploy.branch || 'main') ? json(deploy.compare || { commits: [] }) : json({ message: 'Not Found' }, 404);
+      const onePull = deploy && /^\/repos\/o\/r\/pulls\/(\d+)$/.exec(path)?.[1];
+      if (onePull) {
+        const found = (deploy.otherPulls || []).find((p) => String(p.number) === onePull);
+        return found ? json(found) : json({ message: 'Not Found' }, 404);
+      }
+      if (deploy && path === '/repos/o/r/pulls') return q.get('base') === (deploy.branch || 'main') ? json(deploy.pulls || []) : json([]);
       // Merged PRs waiting for « Mise en production » (issue #294).
       if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
-      if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);
+      if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? closed : issues);
       // The other projects' open requests (project list dots, issue #314).
       const otherThread = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(path);
       if (otherThread && repoComments[otherThread[1]]?.[otherThread[2]]) return json(repoComments[otherThread[1]][otherThread[2]]);
@@ -164,7 +188,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
-    await journey({ page, writes, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
+    await journey({ page, writes, reads, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
   } finally {
     await browser.close();
     server.close();

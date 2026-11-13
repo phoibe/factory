@@ -1,0 +1,2 @@
+{"t":"2026-11-13T15:22:16.363Z","kind":"run","stage":"update-branch","issue":381,"pr":390,"repo":"phoibe/factory"}
+{"t":"2026-11-13T15:23:44.944Z","kind":"test","cmd":"(npm run -s typecheck && npm run -s lint && npm test 2>&1 | tail -8 && npm run -s build) 2>&1 | tail -15","ok":true,"id":"toolu_01CUtkM3CTAaTms6CQfd4Reh"}
