@@ -103,11 +103,23 @@ install_into_existing() {
   fi
   git -C "$work/repo" -c user.name="$OWNER_LOGIN" -c user.email="$OWNER_LOGIN@users.noreply.github.com" \
     commit --quiet -m "chore: install the software factory"
-  if ! git -C "$work/repo" push --quiet origin "HEAD:$branch" 2>/dev/null; then
+  local err
+  if ! err=$(git -C "$work/repo" push --quiet origin "HEAD:$branch" 2>&1); then
     rm -rf "$work"
-    die "GitHub a refusé l'envoi des fichiers de la factory sur la branche $branch (elle est sans doute protégée).
-   Rien n'a été modifié. Sur https://github.com/$REPO/settings/branches (Settings → Branches),
-   autorisez un instant les envois directs sur $branch, relancez l'outil, puis remettez la protection."
+    case "$err" in
+      *GH006*|*[Pp]rotected\ branch*)
+        die "GitHub a refusé l'envoi : la branche $branch de $REPO est protégée. Rien n'a été modifié.
+   Sur https://github.com/$REPO/settings/branches (Settings → Branches), modifiez la règle de $branch :
+   décochez un instant « Require a pull request before merging », relancez l'outil, puis recochez-la." ;;
+      *GH013*|*[Rr]ule\ violation*|*[Rr]uleset*)
+        die "GitHub a refusé l'envoi : une règle protège la branche $branch de $REPO. Rien n'a été modifié.
+   Sur https://github.com/$REPO/settings/rules (Settings → Rules → Rulesets), mettez la règle de $branch
+   en pause (« Disabled ») un instant, relancez l'outil, puis réactivez-la (« Active »)." ;;
+      *)
+        die "L'envoi des fichiers de la factory vers GitHub a échoué. Rien n'a été modifié.
+   Vérifiez votre connexion internet et que vous avez bien le droit de modifier $REPO, puis relancez l'outil.
+   (Détail technique : $err)" ;;
+    esac
   fi
   rm -rf "$work"
   ok "Fichiers de la factory ajoutés sur la branche $branch (votre code n'est pas modifié)"

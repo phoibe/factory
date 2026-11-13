@@ -18,8 +18,11 @@ case "$1 $2" in
       git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm factory
     fi
     # FAKE_PUSH_REJECTED: the default branch is protected, GitHub refuses the push.
+    # FAKE_PUSH_REJECTED=other: refused for another reason (rights, network…).
     if [ -n "${FAKE_PUSH_REJECTED:-}" ]; then
-      printf '#!/bin/sh\necho "remote: error: GH006: Protected branch update failed for refs/heads/main." >&2\nexit 1\n' > "$FAKE_REMOTE/hooks/pre-receive"
+      msg="remote: error: GH006: Protected branch update failed for refs/heads/main."
+      [ "$FAKE_PUSH_REJECTED" = other ] && msg="remote: Permission to phoibe/mon-appli.git denied to phoibe."
+      printf '#!/bin/sh\necho "%s" >&2\nexit 1\n' "$msg" > "$FAKE_REMOTE/hooks/pre-receive"
       chmod +x "$FAKE_REMOTE/hooks/pre-receive"
     fi ;;
   "api user/installations") echo "${FAKE_INSTALLATIONS:-42 all}" ;;
