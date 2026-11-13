@@ -2,7 +2,8 @@
 
 Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`). Construis-la jusqu'à une PR.
 
-0. **Estimation de durée.** Avant de commencer, évalue honnêtement la taille de la feature (`small`, `medium` ou `large`)
+0. **Estimation de durée.** Avant de commencer, évalue honnêtement la taille de la feature (`small`, `medium` ou `large`,
+   voir « Taille d'une demande » dans AGENT.md : si le propriétaire l'a donnée ou corrigée dans l'issue, reprends la sienne)
    et le temps de travail réaliste qu'il te reste, en minutes, sous forme de fourchette (ni marge de sécurité excessive, ni
    vœu pieux ; le haut ne dépasse pas 2,5 fois le bas). Publie-la en commentaire sur l'issue, avec en 2e ligne le marqueur
    `<!-- factory-estimate size=<taille> min=<bas> max=<haut> -->` et une phrase en français pour le propriétaire
@@ -15,13 +16,19 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `PRODUCT.md` (sans fiche produit, choisis-la avec les critères de `.factory/stages/framing.md`), avec dès le
    départ les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
-3. **Plan** (si l'étape plan est active), **seulement pour une feature moyenne ou grande** (ton estimation de
-   l'étape 0) : skill `writing-plans`, plan enregistré dans `docs/plans/issue-<n>.md`. Pas de validation humaine
-   du plan : exécute-le toi-même (`executing-plans` ou `subagent-driven-development`, chaque tâche confiée à un
-   sous-agent sur `sonnet` effort `medium`, ou sur `opus` effort `high` pour une tâche d'architecture : grille
-   « Modèle et effort des sous-agents » d'AGENT.md). Une petite feature se code
-   directement, sans plan écrit ; si elle touche finalement plus de 3 fichiers de code, le verrou te demandera
-   le plan avant la PR.
+3. **Parcours selon la taille** (ton estimation de l'étape 0). Pas de validation humaine du plan. Dans tous les cas,
+   une seule relecture finale (étape 5) par un sous-agent `opus` effort `high`, et les mêmes tests, contrôles,
+   passe design et captures :
+   - **petite** : pas de plan écrit, code-la toi-même d'une traite. Si elle touche finalement plus de 3 fichiers de
+     code, elle devient moyenne : écris le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
+     `size=medium` (même format), sans déranger le propriétaire ;
+   - **moyenne** (si l'étape plan est active) : skill `writing-plans`, plan court enregistré dans
+     `docs/plans/issue-<n>.md`, puis exécute-le **toi-même, d'une traite** (skill `executing-plans`), sans confier
+     chaque tâche à un sous-agent ni la faire relire séparément ;
+   - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
+     `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
+     effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+   Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
    lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD).
 4 bis. **Parcours rejoués à chaque livraison** : chaque critère d'acceptation de la spec que l'on peut vérifier

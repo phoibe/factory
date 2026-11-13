@@ -11,6 +11,9 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    - ce qui est hors périmètre ;
    - les critères d'acceptation, sous forme de vérifications qu'il pourra faire lui-même sur la preview.
    Si les questions ont produit des documents (voir `.factory/stages/docs.md`), ajoute la phrase de résumé en français.
+   **Petite demande** (voir « Taille d'une demande » dans AGENT.md) : spec courte, quelques lignes seulement :
+   `**En une phrase** :`, « Ce qui change » et « Comment vérifier » (sans parcours écran par écran ni hors périmètre).
+   Elle suit ensuite la même règle de validation (étape 4) : une petite spec sensible se fait toujours valider.
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
    titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
 4. **Faut-il la faire valider ?** Oui si l'étape « validation de chaque spec » est active (voir AGENT.md).

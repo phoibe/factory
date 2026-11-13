@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseJournal, summarize, uiChanged, FABRICATION_MARKER } from '../scripts/lib/fabrication.mjs';
+import { parseJournal, summarize, routeLine, uiChanged, FABRICATION_MARKER } from '../scripts/lib/fabrication.mjs';
 
 const j = (...entries) => entries.map((e) => JSON.stringify(e)).join('\n');
 const stages = { plan: true, tdd: true, review: true, designPass: true };
@@ -69,4 +69,32 @@ test('a small change (3 source files or fewer) needs no written plan; a bigger o
   assert.ok(!skills(true).includes('writing-plans'));
   assert.ok(skills(false).includes('writing-plans'));
   assert.ok(skills(true).includes('test-driven-development'));
+});
+
+// Issue #381: the PR shows the route the request followed, from the journal (not declared by the agent).
+const buildRun = (...skills) => parseJournal([j(
+  { t: '2026-11-13T10:00', kind: 'run', stage: 'build' },
+  ...skills.map((name, i) => ({ t: `2026-11-13T10:0${i + 1}`, kind: 'skill', name })),
+)]);
+
+test('a small build shows the light route', () => {
+  const runs = buildRun('superpowers:writing-plans', 'test-driven-development');
+  assert.equal(routeLine(runs, { small: true }), "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale");
+  assert.match(summarize(runs, { stages, small: true }).body, /\*\*Parcours\*\* : petite demande/);
+});
+
+test('a medium build shows its plan executed in one go', () => {
+  const runs = buildRun('writing-plans', 'executing-plans');
+  assert.equal(routeLine(runs, { small: false }), "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale");
+});
+
+test('a large build shows its plan executed task by task', () => {
+  const runs = buildRun('writing-plans', 'superpowers:subagent-driven-development');
+  assert.equal(routeLine(runs, { small: false }), '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue');
+});
+
+test('a PR without a build run has no route line', () => {
+  const runs = parseJournal([j({ t: '2026-11-13T10:00', kind: 'run', stage: 'fix-checks' })]);
+  assert.equal(routeLine(runs, { small: true }), null);
+  assert.doesNotMatch(summarize(runs, { stages, small: true }).body, /Parcours/);
 });

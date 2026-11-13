@@ -2,10 +2,18 @@
 
 But : comprendre la feature demandée dans l'issue jusqu'à une compréhension partagée, avant toute spec.
 
-0. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
+0. **Taille de la demande.** Dès ta première lecture (s'il n'y a pas encore d'estimation de ta part sur l'issue, ou si
+   le propriétaire a donné une taille depuis), classe la demande en petite, moyenne ou grande (voir « Taille d'une
+   demande » dans AGENT.md) et publie l'estimation au format de l'étape 0 de `.factory/stages/build.md` (marqueur
+   `<!-- factory-estimate … -->`, fourchette pour la construction), dans le message de ce run ou seule. Le tableau
+   l'affiche dès maintenant.
+0 bis. **Petite demande claire ?** Si elle est petite et dit déjà exactement quoi faire (« renommer l'onglet X en Y »,
+   « retirer le bouton Z »), ne pose aucune question : passe directement à `.factory/stages/spec.md` (spec courte)
+   dans ce même run. Au moindre doute sur ce qu'il veut, pose tes questions comme d'habitude.
+0 ter. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle
    comme spec (`.factory/stages/spec.md`, sans redécouper), et elle démarre seule sauf si elle est sensible.
-0 bis. **Sujet purement technique ?** Si la demande ne change rien à ce que l'utilisateur voit ou fait (tests, robustesse,
+0 quater. **Sujet purement technique ?** Si la demande ne change rien à ce que l'utilisateur voit ou fait (tests, robustesse,
    nettoyage du code, performances invisibles, outillage) et dit déjà ce qu'il faut faire, ne pose aucune question :
    passe directement à `.factory/stages/spec.md` dans ce même run. Une telle spec n'est pas sensible, sauf si elle
    touche aux données ou à la sécurité : la construction démarrera seule.

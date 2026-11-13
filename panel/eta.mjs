@@ -190,3 +190,10 @@ export function etaText(e) {
   if (e.overrun) return "Plus long que prévu · nouvelle estimation en cours (hors vos réponses)";
   return `${rangeText(e.nextLow, e.nextHigh)} avant l'étape suivante (hors vos réponses)`;
 }
+
+// The card's first line, e.g. « Fonctionnalité · petite demande #12 » (issue #381). The size comes from the agent's
+// estimate (see parseEstimate); a PR carries none of its own.
+const SIZE_WORDS = { small: 'petite demande', medium: 'demande moyenne', large: 'grande demande' };
+export function kindText(kind, isPr, number, size) {
+  return `${kind} · ${isPr ? 'modification' : SIZE_WORDS[size] || 'demande'} #${number}`;
+}

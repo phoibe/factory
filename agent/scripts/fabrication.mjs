@@ -112,6 +112,15 @@ export function agentsLine(runs) {
   return `**Sous-agents** : ${parts.join(', ')}`;
 }
 
+// Issue #381: the route a build followed, read from the journal. A small change is built without a plan; a plan
+// executed by one sub-agent per task (subagent-driven-development) is the large route; any other plan, the medium one.
+export function routeLine(runs, { small = false } = {}) {
+  if (!runs.some((r) => r.stage === 'build')) return null;
+  if (small) return "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale";
+  if (runs.some((r) => used(r, 'subagent-driven-development'))) return '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue';
+  return "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale";
+}
+
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
@@ -138,6 +147,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
     ? null : "_Pas de journal de construction dans cette PR : les skills utilisés n'ont pas pu être vérifiés._";
   const tdd = runs.filter((r) => expectations(r.stage, stages, ui).some((e) => e.tdd));
   const proof = tdd.length && tdd.every(redThenGreen) ? 'oui ✅ (un test a d\'abord échoué, puis est passé)' : tdd.length ? 'non ⚠️' : '—';
+  const route = routeLine(runs, { small });
   const body = [
     FABRICATION_MARKER,
     '## Fabrication',
@@ -146,6 +156,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
     '',
     ...lines.map((l) => `- ${l}`),
     '',
+    ...(route ? [route, ''] : []),
     `**Preuve TDD** : ${proof}`,
     '',
     agentsLine(runs),
