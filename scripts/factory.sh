@@ -109,8 +109,8 @@ install_into_existing() {
     case "$err" in
       *GH006*|*[Pp]rotected\ branch*)
         die "GitHub a refusé l'envoi : la branche $branch de $REPO est protégée. Rien n'a été modifié.
-   Sur https://github.com/$REPO/settings/branches (Settings → Branches), modifiez la règle de $branch :
-   décochez un instant « Require a pull request before merging », relancez l'outil, puis recochez-la." ;;
+   Sur https://github.com/$REPO/settings/branches (Settings → Branches), supprimez un instant la règle de $branch
+   (ou décochez « Require a pull request before merging »), relancez l'outil, puis remettez la règle." ;;
       *GH013*|*[Rr]ule\ violation*|*[Rr]uleset*)
         die "GitHub a refusé l'envoi : une règle protège la branche $branch de $REPO. Rien n'a été modifié.
    Sur https://github.com/$REPO/settings/rules (Settings → Rules → Rulesets), mettez la règle de $branch

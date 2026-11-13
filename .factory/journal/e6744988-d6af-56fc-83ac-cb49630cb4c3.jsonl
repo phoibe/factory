@@ -11,3 +11,4 @@
 {"t":"2026-11-13T20:59:09.480Z","kind":"agent","model":"opus","effort":"high","label":"Review adopter bugfix","id":"toolu_01LXui9Z3fcW4rZaKyckHr8Z"}
 {"t":"2026-11-13T20:59:35.251Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… { stdout: out, stderr }))\",\"fail(Object.assign(err, { stdout: out, stderr, remote }))\")\nold=…\"  const files = execFileSync('git', ['--git-dir', err.remote, 'ls-tree', '-r","ok":true,"id":"toolu_01K6Rga9uWzRyrPBJ6BqsJJm"}
 {"t":"2026-11-13T21:00:17.629Z","kind":"test","cmd":"git diff 1e13dfd -- scripts/factory.sh | head -60; npm test 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01NiDeLNAjLsanuuP8t4WL2b"}
+{"t":"2026-11-13T21:00:34.231Z","kind":"test","cmd":"git diff a6d0185..c68512b -- scripts test; node --test test/factory-sh.test.mjs 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01UE5WKbRGdH3hD9d6nH3d78"}
