@@ -25,9 +25,10 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
 // `homepages`: full name → the project's « website » field on GitHub.
+// `deploy`: the live site's publications (issue #369): { deployments, statuses: { id: [...] }, compare: { commits }, pulls }.
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, deploy = null }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -114,6 +115,18 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const ref = /^\/repos\/o\/r\/git\/ref\/heads\/(.+)$/.exec(path)?.[1];
       if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
       const q = new URL(req.url()).searchParams;
+      if (deploy && path === '/repos/o/r/deployments') return json(deploy.deployments || []);
+      // compare and pulls answer for one ref only: a journey pins the branch the panel must read.
+      const statusOf = /^\/repos\/o\/r\/deployments\/(\d+)\/statuses$/.exec(path)?.[1];
+      if (deploy && statusOf) return json(deploy.statuses?.[statusOf] || []);
+      const cmp = deploy && /^\/repos\/o\/r\/compare\/[^.]+\.\.\.(.+)$/.exec(path)?.[1];
+      if (cmp) return cmp === (deploy.branch || 'main') ? json(deploy.compare || { commits: [] }) : json({ message: 'Not Found' }, 404);
+      const onePull = deploy && /^\/repos\/o\/r\/pulls\/(\d+)$/.exec(path)?.[1];
+      if (onePull) {
+        const found = (deploy.otherPulls || []).find((p) => String(p.number) === onePull);
+        return found ? json(found) : json({ message: 'Not Found' }, 404);
+      }
+      if (deploy && path === '/repos/o/r/pulls') return q.get('base') === (deploy.branch || 'main') ? json(deploy.pulls || []) : json([]);
       // Merged PRs waiting for « Mise en production » (issue #294).
       if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
       if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);
