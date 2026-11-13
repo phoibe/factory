@@ -1403,14 +1403,22 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
   // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
   // reached GitHub as broken links after leaving the agent's environment. Posted once per folder.
+  // Never throws but on a rate limit, so that the relay run is retried (a missed post is caught up when checks end).
   async function postCaptures(n) {
+    try { await postLatestCaptures(n); } catch (e) {
+      if (isRateLimited(e)) throw e;
+      log(`captures: ${e.message}`);
+    }
+  }
+  async function postLatestCaptures(n) {
     if (!gh.getContent) return;
     const runs = await gh.getContent(`pr-${n}`, SHOTS_BRANCH).catch(() => null);
     const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
     if (!latest) return;
     const dir = `pr-${n}/${latest}`;
     const mark = `<!-- factory-shots-posted: ${dir} -->`;
-    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark))) return;
+    // Also skipped when a table of this folder is already there (posted by an agent not yet given this rule).
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || (postedCaptures(c) && c.body.includes(`/${dir}/compare/`)))) return;
     const images = await gh.getContent(`${dir}/compare`, SHOTS_BRANCH).catch(() => null);
     const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
     if (!files.length) return;
@@ -1673,7 +1681,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first.
     if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && ev.labels.includes(L.visualReview)) {
-      await postCaptures(ev.number).catch((e) => log(`captures: ${e.message}`));
+      await postCaptures(ev.number);
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
@@ -1890,6 +1898,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const catchUp = reverting ? [] : (missing || []).filter((s) => CATCH_UP.includes(s));
     // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
     if (result === 'success' && ui && config.stages.screenshots !== false && !reverting) {
+      // Captures pushed but whose table was never posted (a missed event): posted now rather than redone.
+      if (live.includes(L.visualReview)) await postCaptures(prNumber);
       const shown = ((await gh.listComments(prNumber)) || []).some(postedCaptures);
       if (!shown) catchUp.push('screenshots');
     }
