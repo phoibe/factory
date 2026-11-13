@@ -1169,7 +1169,7 @@ function renderRules() {
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
-      ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
+      ['external', 'Externe, faite hors de la factory']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
