@@ -13,3 +13,5 @@
 {"t":"2026-11-13T15:10:44.500Z","kind":"skill","name":"receiving-code-review","id":"toolu_018FkE2WM7kBLLni63qptC9p"}
 {"t":"2026-11-13T15:10:58.227Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"test('a merge at the end of the checks starts the queued card only once', async () => {\n  const gh = fakeGh({\"\"\"\nnew=…\"test('a merge at the end of the checks looks at t","ok":false,"id":"toolu_017jzS74Aze66W5nSedzXyBs"}
 {"t":"2026-11-13T15:11:49.844Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"    if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true' || needs.d","ok":true,"id":"toolu_01XnsQwhPWdKkqVpAdDW4jwy"}
+{"t":"2026-11-13T15:12:29.071Z","kind":"test","cmd":"node --test test/relay.test.mjs test/relay-workflow.test.mjs test/workflows.test.mjs 2>&1 | tail -15","ok":true,"id":"toolu_01WKq9yKGTyUvBinUgZ2wLne"}
+{"t":"2026-11-13T15:13:59.897Z","kind":"agent","model":"opus","effort":"high","label":"Re-review #384 fixes","id":"toolu_012SbKA446PNyRy5utRvYyVV"}
