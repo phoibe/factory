@@ -27,6 +27,19 @@ test('the spec lists the choices made for the owner and says when the questions 
   assert.match(spec, /Pas de questions : la demande était claire\./);
 });
 
-test('a spec reached by skipping the questions starts the build on its own unless it is sensible', () => {
-  assert.match(spec, /questions\s+sautées/);
+test('a spec reached by skipping the questions still asks for validation if a sensitive point shows up', () => {
+  assert.match(spec, /questions\s+sautées\s+n'est\s+en\s+principe\s+pas\s+sensible/);
+  assert.match(spec, /découvres\s+un\s+point\s+sensible,\s+demande\s+quand\s+même\s+la\s+validation/);
+});
+
+test('the questions are skipped only before any round was published', () => {
+  assert.match(grilling, /aucun round de questions n'a encore été publié/);
+});
+
+test('a request that is not small always gets at least one round, even when everything is obvious', () => {
+  assert.match(grilling, /n'est pas petite[^]*au moins un round/);
+});
+
+test('the « decided for you » list only comes from the questions left out during grilling', () => {
+  assert.match(spec, /étapes 0 ter et 3 ter de `grilling\.md`/);
 });

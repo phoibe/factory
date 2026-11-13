@@ -4,12 +4,12 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
 
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
 2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
-   - si tu as fait des choix à sa place (les évidences que tu n'as pas posées en questions), une courte partie
-     `### Ce que j'ai décidé pour vous` en tête de spec, juste après la phrase « En une phrase » : une ligne par choix,
-     concrète (« le bouton s'appellera Archiver », « il apparaît aussi sur téléphone »), pour qu'il réagisse d'un coup
-     d'œil ;
    - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
      specs rangées la reprend) ;
+   - si le grilling a laissé des évidences sans les poser en questions (étapes 0 ter et 3 ter de `grilling.md`), une
+     courte partie `### Ce que j'ai décidé pour vous` juste après la phrase « En une phrase » : une ligne par choix,
+     concrète (« le bouton s'appellera Archiver », « il apparaît aussi sur téléphone »), pour qu'il réagisse d'un coup
+     d'œil. Pas de cette partie quand l'étape des questions est désactivée ou pour un sujet purement technique ;
    - les parcours, écran par écran, en langage simple ;
    - les règles et cas limites décidés ;
    - ce qui est hors périmètre ;
@@ -23,10 +23,10 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    Sinon, oui seulement si la spec est **sensible** : elle peut faire perdre ou effacer des données, touche à
    l'argent, à la sécurité, aux comptes ou au partage de données personnelles, change la vision ou le design
    validés, ou repose sur une hypothèse importante que le grilling n'a pas confirmée.
+   Une spec écrite avec les questions sautées n'est en principe pas sensible (sinon les questions auraient été posées) ;
+   si en l'écrivant tu découvres un point sensible, demande quand même la validation.
    - **À valider** : termine par « Répondez « go » pour lancer la construction, ou dites-moi ce qu'il faut
      changer. » (et, si la validation est désactivée, dis en une phrase pourquoi tu demandes quand même).
-   Une spec écrite avec les questions sautées n'est pas sensible par définition (sinon les questions auraient été
-   posées) : elle n'est à valider que si l'étape « validation de chaque spec » est active.
    - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
      projet). Si quelque chose ne va pas, écrivez-le ici : j'en tiendrai compte. »
 4 bis. **Feature trop grosse pour une seule construction ?** (plusieurs écrans indépendants, ou plus d'une demi-journée

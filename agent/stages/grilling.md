@@ -9,11 +9,13 @@ But : comprendre la feature demandée dans l'issue jusqu'à une compréhension p
    nettoyage du code, performances invisibles, outillage) et dit déjà ce qu'il faut faire, ne pose aucune question :
    passe directement à `.factory/stages/spec.md` dans ce même run. Une telle spec n'est pas sensible, sauf si elle
    touche aux données ou à la sécurité : la construction démarrera seule.
-0 ter. **Demande petite et claire ?** Cherche d'abord les faits dans le code, puis fais la liste des questions que tu
+0 ter. **Demande petite et claire ?** Seulement si aucun round de questions n'a encore été publié sur l'issue
+   (ensuite, suis les étapes 1 à 5 et la règle de la frontière vide). Cherche d'abord les faits dans le code, puis fais la liste des questions que tu
    poserais. Si **toutes** les questions sont des évidences (tu es sûr qu'il répondrait « oui » à ta recommandation)
    **et** que la demande est petite (pas de nouvel écran, pas de gros changement d'apparence, faisable en une seule
    construction), ne pose aucune question : passe directement à `.factory/stages/spec.md` dans ce même run, avec ces
-   évidences dans la partie « Ce que j'ai décidé pour vous ». La construction démarrera seule.
+   évidences dans la partie « Ce que j'ai décidé pour vous ». La construction démarrera seule (sauf si l'étape
+   « validation de chaque spec » est active).
    Une demande **sensible** garde toujours ses questions, même claire : elle peut faire perdre ou effacer des données,
    touche à l'argent, à la sécurité, aux comptes ou au partage de données personnelles, ou change la vision
    (`PRODUCT.md`) ou le design (`DESIGN.md`) validés. Au moindre doute, pose les questions.
@@ -33,7 +35,9 @@ But : comprendre la feature demandée dans l'issue jusqu'à une compréhension p
    évidences ne se posent pas : note-les pour la partie « Ce que j'ai décidé pour vous » de la spec (rappelle-les en
    une ligne dans le round, par exemple « Je décide aussi pour vous : … », pour qu'il puisse réagir). Un round compte
    alors souvent une ou deux questions. Pour une demande sensible, pose aussi les choix qui touchent à ce qui la rend
-   sensible, même si ta recommandation te semble évidente.
+   sensible, même si ta recommandation te semble évidente. Une demande qui n'est pas petite (au sens de 0 ter) reçoit
+   toujours au moins un round, même si tout te semble évident : pose-lui alors les un ou deux choix principaux à
+   confirmer, avec la ligne « Je décide aussi pour vous : … ».
 4. Publie le round : questions numérotées, chacune formulée pour qu'un « oui » accepte ta recommandation,
    avec ta recommandation (➡️). Maximum 8 questions par round. Termine par :
    « Répondez par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ». »

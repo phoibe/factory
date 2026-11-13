@@ -8,3 +8,6 @@
 {"t":"2026-11-13T15:08:25.310Z","kind":"test","cmd":"ls .factory/; diff -r agent/stages .factory/stages 2>&1 | head -20; node --test test/skip-questions.test.mjs 2>&1 | tail -12","ok":true,"id":"toolu_01L9aNNRHsPMMG4mnzpvbCMQ"}
 {"t":"2026-11-13T15:09:07.425Z","kind":"test","cmd":"git log --oneline -8 origin/main -- .factory/stages | head; git log --oneline -5 origin/main -- agent/stages/spec.md; npm test 2>&1 | tail -8","ok":true,"id":"toolu_01BiiEmiEEZEJV4orJEJRueh"}
 {"t":"2026-11-13T15:09:30.431Z","kind":"agent","model":"opus","effort":"high","label":"Final code review of diff","id":"toolu_01KLHUcYak8WntW8g7uTSQ9i"}
+{"t":"2026-11-13T15:09:50.176Z","kind":"skill","name":"receiving-code-review","id":"toolu_01D4qTWwfc25si47E5zvjKV7"}
+{"t":"2026-11-13T15:09:58.102Z","kind":"test","cmd":"cat >> test/skip-questions.test.mjs <<'EOF'\n\ntest('the questions are skipped only before any round was published', () => {\n  assert.match(grilling, /aucun round de questions n'a encore été publié/);\n}","ok":false,"id":"toolu_018ky7QMwG72ngdojpGhr5uB"}
+{"t":"2026-11-13T15:10:48.528Z","kind":"test","cmd":"python3 - <<'EOF'\ndef rep(p, pairs):\n    s=…\n    for a,b in pairs:\n        assert a in s, a; s=…\n    open(p,'w').write(s)\nrep('agent/stages/grilling.md', [\n(\"\"\"0 ter. **Demande petite et claire ?** Ch","ok":true,"id":"toolu_01Mu22LMBjfaVtinBR8Z9BRp"}
