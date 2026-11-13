@@ -19,6 +19,8 @@ colors:
   line-dark: "#2a2c30"
   signal-blue-dark: "#6c93ff"
   signal-blue-soft-dark: "#16213f"
+  ok-green-dark: "#6fcf97"
+  danger-red-dark: "#ff8a80"
 typography:
   display:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
@@ -109,7 +111,7 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 
 ### Status
 - **Voile** (`rgb(0 0 0 / .45)`) : derrière une fenêtre (code QR) et sur les vignettes d'images, pour détacher ce qui est devant.
-- **Vert** (`#1a7f4b`) : terminé. **Rouge** (`#c62828`) : échec. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
+- **Vert** (`#1a7f4b`, nuit `#6fcf97`) : terminé. **Rouge** (`#c62828`, nuit `#ff8a80`) : échec. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
 
 **The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. Dans la section « À vous de jouer », c'est un bouton bleu par carte (« go » pour une spec, « Ok » pour des captures ou une recette), les autres boutons de la carte restent discrets. S'il n'y a rien à répondre, il n'y a pas de bleu. Seule exception : le point d'état bleu de la liste des projets, qui signale lui aussi une réponse attendue.
 
@@ -139,7 +141,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ## 7. Components
 
-- **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px bleu avec 2 px de marge.
+- **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px encre avec 2 px de marge (le bleu reste réservé à ce qui attend une réponse) ; liens et cartes ont le même anneau.
 - **Bouton discret** : surface, filet, texte encre ; pour toutes les autres actions.
 - **Carte** : surface, filet d'un pixel, coins 14 px, marge intérieure 24 px.
 - **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », 5 s pour annuler), toujours en premier, seul sur sa ligne, suivi des boutons discrets « Voir… » côte à côte ; tous ces boutons ont la petite taille des boutons des cartes « Prise en compte en cours… » (32 px visibles, 44 px sous le doigt). Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
