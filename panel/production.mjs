@@ -7,18 +7,23 @@ export const isLiveEnv = (env) => /^(production(\s+[–—-]\s+\S.*)?|github-pag
 
 const PENDING = new Set(['pending', 'queued', 'in_progress']);
 const FAILED = new Set(['failure', 'error']);
+// « inactive »: the host took that deployment down. It is not live any more, and nothing says what is.
+const GONE = 'inactive';
 
 // `statusesById`: id → the deployment's statuses, newest first (as GitHub lists them); a missing id was not read.
 // liveSha: the newest live deployment that ever succeeded. latest: how the newest live deployment ended.
 export function deploymentState(deployments, statusesById) {
   const live = (deployments || []).filter((d) => isLiveEnv(d.environment)).sort((a, b) => Number(b.id) - Number(a.id));
   let liveSha = null;
+  // An older deployment marked « inactive » is only one a newer one replaced: its success still counts.
   for (const d of live) {
     if ((statusesById[d.id] || []).some((s) => s.state === 'success')) { liveSha = d.sha; break; }
   }
   const newest = live[0] ? statusesById[live[0].id] : undefined;
   const state = newest?.[0]?.state;
-  const latest = !live.length ? null : !state || PENDING.has(state) ? 'pending' : FAILED.has(state) ? 'failure' : 'success';
+  const latest = !live.length ? null
+    : state === GONE ? 'gone'
+      : !state || PENDING.has(state) ? 'pending' : FAILED.has(state) ? 'failure' : 'success';
   return { liveSha, latest };
 }
 
@@ -47,14 +52,17 @@ const unknown = (why) => ({ kind: 'unknown', text: 'En ligne : version inconnue'
 
 // What the line under the project's name says. `mode`: 'auto' | 'approval' | 'external'. `hasSite`: the project
 // has a site address. `aheadShas`: Set (see gapItems). `error`: GitHub could not be read.
-export function gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, error }) {
+export function gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, error, truncated }) {
   const live = (deployments || []).some((d) => isLiveEnv(d.environment));
   if (mode === 'external') return !hasSite && !live ? { kind: 'none', text: '', items: [] } : unknown('La mise en ligne de ce projet se fait hors de la factory : elle ne voit pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.');
   if (error) return hasSite || live ? unknown('GitHub ne répond pas pour le moment : la version en ligne n\'a pas pu être lue.') : { kind: 'none', text: '', items: [] };
   if (!live) return hasSite ? unknown('L\'hébergeur de ce site ne prévient pas GitHub quand il publie : la factory ne sait pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.') : { kind: 'none', text: '', items: [] };
   const { liveSha, latest } = deploymentState(deployments, statusesById || {});
+  if (latest === 'gone') return unknown('L\'hébergeur a retiré la dernière publication : on ne sait plus quelle version est en ligne.');
   if (latest === 'pending') return { kind: 'deploying', text: 'En ligne : publication en cours…', items: liveSha ? gapItems(pulls, aheadShas || new Set()) : [] };
-  if (!liveSha) return unknown('Aucune publication réussie n\'est encore visible chez l\'hébergeur.');
+  if (!liveSha) return unknown('Aucune publication réussie récente n\'est visible chez l\'hébergeur.');
+  // The compare stops at 250 commits: the newest ones are then missing, and « à jour » would be a lie.
+  if (truncated) return unknown('Le site en ligne est en retard de trop de modifications pour les compter : l\'écart exact n\'est pas connu.');
   const items = gapItems(pulls, aheadShas || new Set());
   if (!items.length) return { kind: 'ok', text: 'En ligne : à jour', items };
   if (latest === 'failure') return { kind: 'failed', text: `En ligne : ${count(items.length)} · la dernière publication a échoué`, items };

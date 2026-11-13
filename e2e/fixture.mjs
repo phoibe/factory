@@ -116,10 +116,17 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
       const q = new URL(req.url()).searchParams;
       if (deploy && path === '/repos/o/r/deployments') return json(deploy.deployments || []);
+      // compare and pulls answer for one ref only: a journey pins the branch the panel must read.
       const statusOf = /^\/repos\/o\/r\/deployments\/(\d+)\/statuses$/.exec(path)?.[1];
       if (deploy && statusOf) return json(deploy.statuses?.[statusOf] || []);
-      if (deploy && path.startsWith('/repos/o/r/compare/')) return json(deploy.compare || { commits: [] });
-      if (deploy && path === '/repos/o/r/pulls') return json(deploy.pulls || []);
+      const cmp = deploy && /^\/repos\/o\/r\/compare\/[^.]+\.\.\.(.+)$/.exec(path)?.[1];
+      if (cmp) return cmp === (deploy.branch || 'main') ? json(deploy.compare || { commits: [] }) : json({ message: 'Not Found' }, 404);
+      const onePull = deploy && /^\/repos\/o\/r\/pulls\/(\d+)$/.exec(path)?.[1];
+      if (onePull) {
+        const found = (deploy.otherPulls || []).find((p) => String(p.number) === onePull);
+        return found ? json(found) : json({ message: 'Not Found' }, 404);
+      }
+      if (deploy && path === '/repos/o/r/pulls') return q.get('base') === (deploy.branch || 'main') ? json(deploy.pulls || []) : json([]);
       // Merged PRs waiting for « Mise en production » (issue #294).
       if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
       if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);

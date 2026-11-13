@@ -29,7 +29,8 @@ test('juste après une validation, on voit « publication en cours… » pendant
 
 test('sur un projet « sur accord » avec 2 modifications en attente, le texte dit « 2 modifications d\'écart » et la liste montre titres, dates et liens', async () => {
   const awaiting = [issue(111, 'Ajout du mode sombre', ['factory:awaiting-production'], { state: 'closed', pull_request: { merged_at: '2026-11-08T10:00:00Z' } })];
-  await withPanel({ ...site, config: { production: 'approval' }, awaiting, branches: { preprod: 'p' }, deploy: { ...live(), compare: { commits: [{ sha: 's1' }, { sha: 's2' }, { sha: 'chore' }] } } }, async ({ page, url }) => {
+  // The fake GitHub answers for « preprod » only: a panel that read « main » would see nothing.
+  await withPanel({ ...site, config: { production: 'approval' }, awaiting, branches: { preprod: 'p' }, deploy: { ...live(), branch: 'preprod', compare: { commits: [{ sha: 's1' }, { sha: 's2' }, { sha: 'chore' }] } } }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#prod-gap', { hasText: 'En ligne : 2 modifications d\'écart' }).click();
     const dialog = page.getByRole('dialog', { name: 'Pas encore en ligne' });
@@ -73,5 +74,23 @@ test('sur téléphone, l\'écart reste visible sous le nom du projet', async () 
   await withPanel({ ...site, viewport: { width: 390, height: 844 }, deploy: { ...live(), compare: { commits: [] } } }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#prod-gap', { hasText: 'En ligne : à jour' }).waitFor({ state: 'visible' });
+  });
+});
+
+test('une modification annulée par la factory revient dans l\'écart, même si elle a quitté les dernières demandes', async () => {
+  const revert = { number: 120, title: 'Annulation', merge_commit_sha: 'r', merged_at: '2026-11-09T10:00:00Z', head: { ref: 'claude/revert-pr-111' }, body: '<!-- factory-revert -->\n<!-- factory-revert-redo #30 -->' };
+  const deploy = { ...live(), pulls: [revert], otherPulls: [pr(111, 'Ajout du mode sombre', 's1', '2026-11-08T10:00:00Z', 11)], compare: { commits: [] } };
+  await withPanel({ ...site, deploy }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#prod-gap', { hasText: 'En ligne : 1 modification d\'écart' }).click();
+    await page.getByRole('dialog').getByText('Ajout du mode sombre').waitFor();
+  });
+});
+
+test('quand le site est trop en retard pour compter, on ne dit pas « à jour »', async () => {
+  const deploy = { ...live(), compare: { commits: [{ sha: 'x' }], total_commits: 400 } };
+  await withPanel({ ...site, deploy }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#prod-gap', { hasText: 'En ligne : version inconnue' }).waitFor();
   });
 });

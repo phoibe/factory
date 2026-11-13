@@ -362,7 +362,7 @@ button.go:focus-visible { outline-color: var(--text); }
   /* Its own line under the project name, whatever the count: the first card's « go » never moves. */
   .actions:has(> #release:not([hidden])) { flex: 1 1 100%; }
   .more-menu #new-feature { flex: none; }
-  #project-sub, #prod-gap-sep { display: none; } /* phone: only the project's name (and the production gap) above the buttons (DESIGN.md) */
+  #project-sub, #prod-gap-sep { display: none; } /* phone: the project's name and the live site's state above the buttons (DESIGN.md) */
 }
 
 /* Calm loading: grey card shapes, no animation. */

@@ -1385,8 +1385,14 @@ async function loadDelivery(project) {
 // Under the project's name: is the live site up to date with the validated changes? A version is live only once its
 // host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
 const GAP_MS = 60_000;
-const gap = { repo: null, at: 0, view: null };
-async function refreshGap(force = false) {
+const gap = { repo: null, at: 0, view: null, busy: null };
+function refreshGap(force = false) {
+  // One read at a time: opening a project and its first refresh must not fire the same requests twice.
+  if (gap.busy) return gap.busy;
+  gap.busy = readGap(force).finally(() => { gap.busy = null; });
+  return gap.busy;
+}
+async function readGap(force) {
   const project = current;
   const repo = project.repo.full_name;
   if (!force && gap.repo === repo && Date.now() - gap.at < GAP_MS) return;
@@ -1395,7 +1401,8 @@ async function refreshGap(force = false) {
   const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
   let view;
   try {
-    const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=30`)).data || [];
+    // A preview deployment is created on every push: read a wide page, or the live ones may all be pushed out of it.
+    const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=100`)).data || [];
     const statusesById = {};
     const live = deployments.filter((d) => isLiveEnv(d.environment))
       .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 10);
@@ -1406,6 +1413,7 @@ async function refreshGap(force = false) {
     const { liveSha } = deploymentState(live, statusesById);
     let aheadShas = new Set();
     let pulls = [];
+    let truncated = false;
     if (liveSha) {
       const preprod = mode === 'approval' && await cachedGet(`/repos/${repo}/git/ref/heads/preprod`).catch((e) => { if (e?.rateLimited) throw e; return null; });
       const branch = preprod ? 'preprod' : project.repo.default_branch || 'main';
@@ -1414,21 +1422,26 @@ async function refreshGap(force = false) {
         cachedGet(`/repos/${repo}/pulls?state=closed&base=${encodeURIComponent(branch)}&sort=updated&direction=desc&per_page=50`),
       ]);
       aheadShas = new Set((cmp.data?.commits || []).map((c) => c.sha));
+      // GitHub stops the comparison at 250 commits, the oldest ones: the newest merges would look live.
+      truncated = Number(cmp.data?.total_commits || 0) > aheadShas.size;
       pulls = Array.isArray(prs.data) ? prs.data : [];
       // A PR the factory undid may have left the 50 most recently updated: read it alone, so it still comes back.
       for (const r of pulls) {
         const undone = Number(/^claude\/revert-pr-(\d+)$/.exec(r.head?.ref || '')?.[1]);
-        if (undone && r.merged_at && !pulls.some((p) => p.number === undone)) {
+        // Only a revert that is live hides a change; one still waiting changes nothing to read.
+        if (undone && r.merged_at && !aheadShas.has(r.merge_commit_sha) && !pulls.some((p) => p.number === undone)) {
           const original = (await cachedGet(`/repos/${repo}/pulls/${undone}`).catch((e) => { if (e?.rateLimited) throw e; return null; }))?.data;
           if (original?.number) pulls = [...pulls, original];
         }
       }
     }
-    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls });
+    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, truncated });
   } catch (err) {
     // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
     if (err?.rateLimited) throw err;
-    view = gapView({ mode, hasSite, error: true });
+    // A project that was showing something keeps a line (« version inconnue »), it does not vanish on one failure.
+    const shown = gap.repo === repo && gap.view && gap.view.kind !== 'none';
+    view = gapView({ mode, hasSite: hasSite || shown, error: true });
   }
   if (current !== project) return;
   gap.repo = repo;
@@ -1451,7 +1464,7 @@ $('prod-gap').addEventListener('click', () => {
   const base = current.repo.html_url;
   // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
   const why = view.why || (view.items.length ? '' : view.kind === 'deploying' ? 'Publication en cours.' : 'Tout est en ligne.');
-  $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : 'Site en ligne';
+  $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : view.kind === 'deploying' ? 'Publication en cours' : 'Site en ligne';
   $('gap-why').textContent = why;
   $('gap-why').hidden = !why;
   $('gap-list').hidden = !view.items.length;

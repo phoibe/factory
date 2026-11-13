@@ -96,3 +96,21 @@ test('GitHub not answering gives « version inconnue », never a stale « à jou
 test('an external project without any site (a tool, a library) shows nothing', () => {
   assert.equal(gapView({ ...base, mode: 'external', hasSite: false, deployments: [] }).kind, 'none');
 });
+
+test('a truncated compare never says « à jour »: the newest merges may be missing', () => {
+  const v = gapView({ ...base, truncated: true });
+  assert.equal(v.kind, 'unknown');
+  assert.match(v.why, /trop de modifications/);
+});
+
+test('a deployment the host deactivated is no longer the live version', () => {
+  const v = gapView({ ...base, statusesById: { 1: st('inactive', 'success') } });
+  assert.equal(v.kind, 'unknown');
+});
+
+test('the live environments are read with the same rule as the factory itself', async () => {
+  const relay = await import('../scripts/relay.mjs');
+  for (const env of ['Production', 'Production – app-skyk', 'github-pages', 'Preview', 'staging', '', null]) {
+    assert.equal(isLiveEnv(env), relay.isLiveEnv(env), `${env}`);
+  }
+});
