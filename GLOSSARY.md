@@ -34,6 +34,14 @@ _À éviter_ : release manuelle, déploiement manuel
 Les modifications validées et intégrées d'un projet « sur accord » qui ne sont pas encore en ligne ; leur nombre s'affiche sur le bouton « Mise en production ».
 _À éviter_ : backlog, file de déploiement
 
+**Écart de production** :
+Les modifications validées d'un projet qui ne sont pas encore sur son site en ligne, quel que soit le mode de mise en production ; les modifications en attente d'un projet « sur accord » en sont un cas particulier.
+_À éviter_ : retard de déploiement, diff de prod
+
+**Étiquette de version** :
+La petite indication, invisible pour les visiteurs, qu'un site publie avec lui-même pour dire quelle modification il contient ; le tableau de bord la lit quand l'hébergeur ne prévient pas de la fin de ses publications.
+_À éviter_ : version endpoint, fichier de version
+
 ## Tableau de bord
 
 **Liste des projets** :
