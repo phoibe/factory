@@ -7,3 +7,5 @@
 {"t":"2026-11-13T17:39:34.561Z","kind":"agent","model":"sonnet","effort":"medium","label":"Code review: panel code","id":"toolu_014aKgk5pmeLken17JLVKfic"}
 {"t":"2026-11-13T17:39:34.571Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector + browser","id":"toolu_01Lhhy7jnm43Qxut3wTug8zF"}
 {"t":"2026-11-13T17:39:37.388Z","kind":"test","cmd":"timeout 600 npm test > /tmp/claude-0/s/test-base.log 2>&1; tail -12 /tmp/claude-0/s/test-base.log","ok":true,"id":"toolu_01JKtVfCZXBHV6ZNPCwfSLRH"}
+{"t":"2026-11-13T17:40:32.660Z","kind":"test","cmd":"cd /home/user/factory; cat scripts/lib/decide.mjs scripts/lib/notify.mjs scripts/lib/outage.mjs; (node --test test/ 2>&1 | tail -15)","ok":false,"id":"toolu_019HpwpkrknkanJ4fixF35LS"}
+{"t":"2026-11-13T17:40:43.567Z","kind":"test","cmd":"(node --test test/gate.test.mjs test/specs.test.mjs test/journal-check.test.mjs test/stable.test.mjs test/shots.test.mjs test/checks.test.mjs 2>&1 | tail -12); (cd server/chat && python3 -m unittest 2","ok":true,"id":"toolu_01Rzr2UatCxvXUXnh1wq14YD"}

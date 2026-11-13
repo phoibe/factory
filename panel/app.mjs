@@ -2139,9 +2139,9 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
       : status === 'late'
-        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
     announceAnswers(chat.issue.number, messages);
