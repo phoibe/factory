@@ -400,6 +400,8 @@ details summary { color: var(--text); }
 .ticket.pending:hover { transform: none; border-color: var(--line); }
 .ticket.pending.blocked, .ticket.pending.blocked:hover { border-color: var(--danger); }
 .ticket.pending .doing { color: var(--muted); }
+/* Issue #383: a launch that waits for its relaunch is quieter than an agent at work. */
+.doing.relaunch { color: var(--muted); font-weight: 400; }
 /* Issue 176: a waiting card keeps its buttons: small, quiet and side by side (blue stays for what waits for an answer). */
 .ticket.pending .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 10px; margin: 2px 0 4px; }
 .ticket.pending .card-actions .button, .ticket.pending .card-actions button {

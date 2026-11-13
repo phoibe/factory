@@ -17,6 +17,16 @@ Un bug signalé dans l'issue. Pas de grilling.
 3 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
 3 ter. **Spec rangée** : seulement si l'issue contient une spec validée (commentaire `<!-- factory-spec -->`) :
    `node .factory/scripts/specs.mjs save <n>`, comme à l'étape 6 ter de `build.md`.
+3 quater. **Essai en conditions réelles**, en lecture seule, comme à l'étape 7 bis de `build.md` : rejoue le bug
+   sur les vraies données du projet (vrai GitHub, vrai site en ligne, vrai message publié) : vérifie d'abord que le
+   bug s'y voit vraiment, puis que le code corrigé, nourri de ces mêmes données réelles (ou la page de la branche
+   face au vrai site), ne le montre plus. Le tout sans rien créer, modifier, envoyer ni supprimer de réel. Le résumé de la PR contient une ligne
+   « Essayé en vrai : … » et, pour ce qui ne peut pas être essayé en lecture seule, « Pas vérifié en vrai : … ».
+3 quinquies. **Correction d'une livraison récente** (le bug vient d'une demande fusionnée ces derniers jours :
+   regarde l'historique des fichiers touchés, `git log`, et les demandes citées dans l'issue) : ajoute au résumé
+   une phrase **« Pourquoi ça n'avait pas été vu : … »** (ce que les tests de la livraison ne regardaient pas, en
+   langage simple), et un test qui aurait attrapé le problème dès la première livraison (le test qui reproduit
+   le bug, nourri autant que possible de données réelles relevées pendant l'essai), cité dans le résumé.
 4. PR avec résumé en français et `Closes #<n>`. Si l'interface change : captures
    (`screenshots.md`) puis `factory:visual-review` et `factory:checks` (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)) ;
    sinon `factory:checks`. La factory fusionne seule quand

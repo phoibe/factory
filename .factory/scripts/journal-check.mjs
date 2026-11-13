@@ -40,7 +40,7 @@ export function branchFiles(git) {
 }
 
 const JOURNAL = /^\.factory\/journal\/[^/]+\.jsonl$/;
-const GATED = ['build', 'bugfix', 'foundation', 'audit'];
+export const GATED = ['build', 'bugfix', 'foundation', 'audit'];
 
 // What this branch still lacks, as lines « étape : comment la faire ». `stage` is the current run's stage:
 // a build, bugfix or foundation run must show every step; a catch-up run only the ones it is there for;

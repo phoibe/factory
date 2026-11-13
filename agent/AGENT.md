@@ -96,6 +96,11 @@ une phrase dans ton message de fin et publie une estimation `size=medium`.
   _Généré par [Claude Code](https://claude.ai/code) · software factory_
   ```
 - Écris tes commentaires dans un fichier puis publie-les avec `-F body=@fichier` (voir « API GitHub »).
+- **Après chaque publication, relis ce qui est réellement arrivé**, pas ce que tu as envoyé : relis le commentaire,
+  ou la description de PR publiés dans leur version affichée par GitHub (`gh api <url du message>
+  -H 'Accept: application/vnd.github.full+json' --jq .body_html`) et vérifie images, liens et tableaux. GitHub peut
+  transformer un message après l'envoi (issue #378). Si quelque chose est cassé, corrige-le aussitôt en modifiant
+  ton message.
 - Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Répondez « go » pour lancer la
   construction », « Répondez « ok » si les captures vous conviennent »).
 

@@ -40,6 +40,7 @@ jobs:
       productionSha: ${{ steps.relay.outputs.productionSha }}
       releaseIssue: ${{ steps.relay.outputs.releaseIssue }}
       checksMinutes: ${{ steps.relay.outputs.checksMinutes }}
+      relaunchInMs: ${{ steps.relay.outputs.relaunchInMs }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +61,29 @@ jobs:
       - name: 'Rate limited: retried at the next tick'
         if: steps.relay.outputs.ratelimited == 'true'
         run: exit 1
+
+  # The agent's launch failed for a passing reason (saturated service): its first relaunch, 2 minutes later, in its own
+  # job so that nothing else waits behind it. The next ones are made by the tick (scripts/relay.mjs retryLaunches).
+  relaunch-soon:
+    needs: decide
+    if: needs.decide.outputs.relaunchInMs != ''
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .factory-src/scripts/relay.mjs relaunch-soon --ms "$MS"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MS: ${{ needs.decide.outputs.relaunchInMs }}
 
   # Fallback runner (runner: "github-actions" in factory.config.json). Runs in a workflow_dispatch run started by the relay.
   agent:
