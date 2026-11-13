@@ -241,6 +241,7 @@ html { touch-action: manipulation; }
 #chat.needs-token > .chat-list, #chat.needs-token > .chat-thread { display: none; }
 .chat-setup p { margin: 0 0 16px; }
 .chat-setup .error { margin: 8px 0 0; }
+.chat-setup .error:empty { min-height: 0; margin: 0; }
 #read-token-save { margin-top: 8px; }
 .nowrap { white-space: nowrap; }
 .chat-intro { margin: auto; max-width: 520px; text-align: center; display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
