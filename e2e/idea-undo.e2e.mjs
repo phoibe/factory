@@ -104,3 +104,17 @@ test('après un refus de GitHub, retoucher « Jeter » enlève la ligne rouge to
     assert.match(await page.locator('[data-key="drop-5"]').textContent(), /Annuler \(5\ss\)/);
   });
 });
+
+test('se déconnecter pendant le décompte l\'annule, sans erreur ni idée fermée', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.locator('#logout').click();
+    await page.waitForTimeout(5500);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(closes(writes, 5), []);
+  });
+});

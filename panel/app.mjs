@@ -92,6 +92,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
+  dropCountdowns();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -210,6 +211,7 @@ async function checkProjects() {
   projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
   if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
   if (!projects.length) {
+    dropCountdowns();
     current = null;
     clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
     return show('empty');
@@ -782,12 +784,16 @@ const sentGo = new Set(); // « go » already posted this session: the card show
 // Both are keyed by project and number: #12 of one project is not #12 of another.
 // The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
 const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
-function cancelPendingGos() {
-  if (!pendingGo.size && !pendingDrop.size) return;
-  const words = new Set([...pendingGo.values(), ...pendingDrop.values()].map((h) => h.word));
+// Signed out, or no project left: the countdowns stop quietly, nothing is sent.
+function dropCountdowns() {
   for (const h of [...pendingGo.values(), ...pendingDrop.values()]) h.cancel();
   pendingGo.clear();
   pendingDrop.clear();
+}
+function cancelPendingGos() {
+  if (!pendingGo.size && !pendingDrop.size) return;
+  const words = new Set([...pendingGo.values(), ...pendingDrop.values()].map((h) => h.word));
+  dropCountdowns();
   toast(`${words.size === 1 ? `« ${[...words][0]} » annulé` : 'Envoi annulé'} : vous avez changé de projet.`);
 }
 // What the toast says once the answer has left, by the column it answers.
@@ -952,7 +958,7 @@ function dropIdea(i, pick, btn) {
     seconds: 5,
     tick: (n) => { const h = pendingDrop.get(key); if (h) { h.left = n; showDrop(i, btn); } },
     // Gone from « Idées à trier » meanwhile (kept elsewhere, closed, signed out): nothing to close any more.
-    done: () => { pendingDrop.delete(key); if (current && $('board').querySelector(`.ticket.idea[data-idea="${i.number}"]`)) sortIdea(i, false, pick); },
+    done: () => { pendingDrop.delete(key); if (current && dropKey(i) === key && $('board').querySelector(`.ticket.idea[data-idea="${i.number}"]`)) sortIdea(i, false, pick); },
   });
   handle.left = 5;
   handle.word = 'Jeter';
