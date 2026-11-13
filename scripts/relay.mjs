@@ -402,8 +402,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
-      // Its agent was started but the run stopped before the labels changed (rate limit): never a second agent.
-      if (await lockFresh(issue.number, labels)) continue;
+      // Its agent was started but the run stopped before the labels changed (rate limit): never a second agent, and
+      // the handover is finished so that the card holds its place and leaves the queue.
+      if (await lockFresh(issue.number, labels)) {
+        await gh.removeLabel(issue.number, L.queued);
+        await gh.removeLabel(issue.number, L.resumeQueued);
+        await gh.addLabels(issue.number, [L.building]);
+        free -= 1;
+        continue;
+      }
       const resumed = labels.includes(L.resumeQueued);
       // Queued by wakeWaiters once its awaited requests were merged (issue #298), not by an owner's answer.
       const merged = resumed ? mergedWaits((await gh.listComments(issue.number)) || []) : [];
@@ -2065,8 +2072,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
   }
 
-  // Issue #384: the factory's own steps (a report that merges or blocks a card, the end of an agent run that kept its
-  // lock, a live check) write with the workflow's token, which raises no event: nothing else would fill the place they
+  // Issue #384: the factory's own steps (a report that merges or blocks a card, a live check) write with the workflow's token, which raises no event: nothing else would fill the place they
   // free before the rare scheduled tick. Each fills it before returning, unless the step already did.
   const refilling = (step) => async (...args) => {
     const before = dequeues;
@@ -2077,7 +2083,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return result;
   };
 
-  return { handle, report: refilling(report), retrySoon, dequeue, release: refilling(release), fabrication, notifyWaiting, prodReport: refilling(prodReport), deployFailed: refilling(deployFailed), releaseChecking, liveUrl, previewWait, outputs };
+  // The queue check after a step that ran outside the lock (release): never throws, like the one in refilling.
+  const refill = () => dequeue().catch((e) => log(`queue check: ${e.message}`));
+
+  return { handle, report: refilling(report), retrySoon, dequeue, refill, release, fabrication, notifyWaiting, prodReport: refilling(prodReport), deployFailed: refilling(deployFailed), releaseChecking, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -2124,8 +2133,10 @@ async function main() {
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
-    // Releasing may free a place that is filled at once (issue #384): same lock as the decisions.
-    await withLock(gh.queueLock, () => relay.release(JSON.parse(process.env.PAYLOAD || '{}')));
+    // The lock and the replay need no queue lock: done first, they never wait behind it. Then the place the run may
+    // have freed is filled at once (issue #384), under the same lock as the decisions.
+    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
+    await withLock(gh.queueLock, () => relay.refill()).catch((e) => console.log(`queue check after the run: ${e.message}`));
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
     const check = readCheck();

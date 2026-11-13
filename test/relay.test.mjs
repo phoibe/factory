@@ -3262,7 +3262,9 @@ test('the factory blocking a card after red checks starts the queued card in the
 test('the end of an agent run that kept its lock starts the queued card', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.building, L.blocked, L.running] }, { number: 5, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }], prs: [] });
   const sent = [];
-  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).release({ issue: 3, pr: null });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.release({ issue: 3, pr: null });
+  await relay.refill();
   assert.ok(startedBuild(gh, 4));
 });
 
@@ -3273,6 +3275,7 @@ test('a refill after a factory step never starts a queued card while the factory
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
   await relay.report({ result: 'failure', pr: 10 });
   await relay.release({ issue: 3, pr: null });
+  await relay.refill();
   assert.ok(!startedBuild(gh, 4));
   assert.ok(state.issues[3].labels.includes(L.queued));
 });
@@ -3291,12 +3294,32 @@ test('a merge at the end of the checks looks at the queue only once', async () =
   assert.equal(queueReads, 1);
 });
 
-test('a queued card already started (its agent running) is never started a second time', async () => {
-  const gh = fakeGh({ issues: [{ number: 4, labels: [L.feature, L.queued, L.running] }], prs: [],
-    events: { 4: [{ event: 'labeled', label: { name: L.running }, created_at: new Date(Date.now() - 2 * 60_000).toISOString() }] } });
+const runningSince = (minutes) => [{ event: 'labeled', label: { name: L.running }, created_at: new Date(Date.now() - minutes * 60_000).toISOString() }];
+
+test('a queued card already started (its agent running) is never started a second time, and holds its place', async () => {
+  const state = { issues: [{ number: 4, labels: [L.feature, L.queued, L.running] }, { number: 5, labels: [L.feature, L.building] }, { number: 6, labels: [L.feature, L.queued] }], prs: [], events: { 4: runningSince(2) } };
+  const gh = fakeGh(state);
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+  assert.ok(!state.issues[0].labels.includes(L.queued) && state.issues[0].labels.includes(L.building));
+  await gh.removeLabel(4, L.running); // its agent ends
+  await relay.dequeue();
+  assert.equal(sent.length, 0);
+});
+
+test('a queued card whose lock is stale (over 150 minutes) is started', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.feature, L.queued, L.running] }], prs: [], events: { 4: runningSince(200) } });
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
-  assert.equal(sent.length, 0);
+  assert.equal(payloadOf(sent[0].init.body).issue, 4);
+});
+
+test('a live check that ends a delivery fills a free place', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm1' }, issues: [{ number: 4, labels: [L.feature, L.queued] }] });
+  await relay().prodReport({ pr: 10, sha: 'm1', url: 'https://site', result: 'passed' });
+  assert.ok(startedBuild(gh, 4));
 });
 
 test('a failed deploy report fills a free place', async () => {
