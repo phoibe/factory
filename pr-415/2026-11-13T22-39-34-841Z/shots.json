@@ -1,0 +1,18 @@
+{
+  "files": [
+    "agent--desktop--sombre.png",
+    "agent--desktop.png",
+    "agent--mobile--sombre.png",
+    "agent--mobile.png"
+  ],
+  "unchanged": [
+    "accueil--desktop--sombre.png",
+    "accueil--desktop.png",
+    "accueil--mobile--sombre.png",
+    "accueil--mobile.png",
+    "tableau--desktop--sombre.png",
+    "tableau--desktop.png",
+    "tableau--mobile--sombre.png",
+    "tableau--mobile.png"
+  ]
+}
