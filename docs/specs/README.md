@@ -5,3 +5,4 @@ Chaque spec validée d'une feature ou d'un bug, telle qu'elle a été livrée. C
 | N° | Titre | En une phrase | Date |
 | --- | --- | --- | --- |
 | 359 | [Ranger les specs validées en documents dans chaque projet](359-ranger-les-specs-validees-en-documents-dans-chaque-projet.md) | Chaque spec validée d'une feature ou d'un bug devient un document rangé dans son projet, à côté du glossaire et des décisions, avec un sommaire qui les liste toutes. | 2026-11-12 |
+| 399 | [Panneau plus économe en lectures GitHub](399-panneau-plus-econome-en-lectures-github.md) | Le panneau s'ouvre plus vite et consomme moins de lectures GitHub, en se souvenant de la liste de vos projets au lieu de relire la configuration de chaque dépôt à chaque ouverture. | 2026-11-13 |

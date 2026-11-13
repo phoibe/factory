@@ -27,9 +27,10 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `homepages`: full name → the project's « website » field on GitHub.
 // `pushed`: full name → the date of the last push GitHub gives in the repository list (`repos` is read at each request:
 // a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received.
+// `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, pushed = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, pushed = {}, configMeta = { sha: 's' } }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -100,7 +101,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         const data = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index);
         return data ? json(data) : json({ message: 'Not Found' }, 404);
       }
-      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
+      if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: configMeta.sha });
       if (path.endsWith('/contents/PRODUCT.md')) return framedRepos.some((r) => path === `/repos/${r}/contents/PRODUCT.md`) ? json({ content: '', encoding: 'base64', sha: 'p' }) : json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
       const file = /^\/repos\/o\/r\/contents\/(.+)$/.exec(path)?.[1];

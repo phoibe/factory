@@ -63,6 +63,8 @@ let catalog, defaults, projects = [], current = null;
 let dots = new Map();
 // What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
 let known = new Map(), accountTag = null;
+// Settings saves from this tab, so that a check of the project list started before one does not undo it.
+let saves = 0;
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -133,7 +135,8 @@ async function loadProjects() {
   const session = token;
   const repos = [];
   for (let page = 1; page <= 5; page++) {
-    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`);
+    // Never the browser's copy (kept a minute): a stale push date would skip a file changed meanwhile.
+    const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`, { cache: 'no-store' });
     repos.push(...batch);
     if (batch.length < 100) break;
   }
@@ -146,7 +149,7 @@ async function loadProjects() {
       try {
         const res = await fetch(`${API}/repos/${r.full_name}/contents/factory.config.json`, {
           cache: 'no-store',
-          headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(check.etag ? { 'if-none-match': check.etag } : {}) },
+          headers: { authorization: `Bearer ${session}`, accept: 'application/vnd.github+json', ...(check.etag ? { 'if-none-match': check.etag } : {}) },
         });
         if (res.status === 401) sessionExpired();
         let file = null, etag = null;
@@ -188,23 +191,36 @@ function rememberProjects(list = projects) {
 // The list of the last visit shows at once; GitHub's answer then replaces it (issue #399). The open project
 // stays the same object; it is opened again only when its settings file changed and nothing typed would be lost.
 async function checkProjects() {
+  const session = token, saved = saves;
   let fresh;
   try {
     fresh = await loadProjects();
   } catch (err) {
-    if (err.status !== 401 && token) setTimeout(() => checkProjects().catch(() => {}), 30_000);
+    if (err.status !== 401 && token === session) setTimeout(() => checkProjects().catch(() => {}), 30_000);
     return;
   }
-  if (!token) return;
+  if (!token || token !== session) return; // logged out meanwhile: this list belongs to the previous account
   const was = current;
+  const before = JSON.stringify(projects.map((p) => p.repo.full_name));
   const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
   projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
-  if (!projects.length) return show('empty');
+  if (JSON.stringify(projects.map((p) => p.repo.full_name)) !== before) refreshRuns();
+  if (!projects.length) {
+    current = null;
+    clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+    return show('empty');
+  }
   if (!mine) { await openProject(store.get(PROJECT_KEY)); return refreshDots(); }
-  if (mine.file?.sha !== was.file?.sha && JSON.stringify(was.config) === was.saved) { was.file = mine.file; await openProject(was.repo.full_name); }
+  // Saved here during the check: this device's file is the newest one.
+  if (saves !== saved) rememberProjects();
+  else if (mine.file?.sha !== was.file?.sha && !hasUnsaved()) { was.file = mine.file; await openProject(was.repo.full_name); }
   else renderProjectList();
   refreshDots();
 }
+
+// Something typed or in flight that reopening the project, or reloading the panel, would lose.
+const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
+  || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -1313,7 +1329,10 @@ async function writeProjectRules() {
   const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
-  rememberProjects(); // the next visit opens with these settings
+  // The next visit opens with these settings, and reads the file again (its push date is not known yet).
+  saves++;
+  known.set(current.repo.full_name, { pushed: null, etag: null, file: current.file });
+  rememberProjects();
   // More places: ask the factory to look at the queue now instead of at its next regular check.
   if (current.config.maxParallel > (before || 0)) {
     api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
@@ -1341,9 +1360,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
-  const unsaved = (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
-    || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
-  if (unsaved) {
+  if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;
     return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
@@ -1370,7 +1387,8 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
-    accountTag = await tokenTag(token);
+    // No digest on a plain-http address (no crypto.subtle): the panel then works without the memory.
+    accountTag = await tokenTag(token).catch(() => null);
     const remembered = readProjectsCache(store.get(PROJECTS_KEY), accountTag);
     known = remembered?.known || new Map();
     if (remembered?.projects.length && !projects.length) {

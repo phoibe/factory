@@ -55,3 +55,30 @@ test('un projet supprimé depuis la dernière visite disparaît de la liste, san
     assert.deepEqual(await names(page), ['r']);
   });
 });
+
+test('des réglages changés ailleurs depuis la dernière visite n\'effacent pas le message en cours d\'écriture', async () => {
+  const config = {}, configMeta = { sha: 's' }, slowReads = [], times = { ...pushed };
+  await withPanel({ repos: ['o/r', 'o/alpha'], pushed: times, config, configMeta, slowReads, viewport: desk }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#projects .project-item', { hasText: 'alpha' }).waitFor();
+    // Meanwhile, the settings were changed from another device.
+    config.maxParallel = 4; configMeta.sha = 's2';
+    times['o/r'] = times['o/alpha'] = '2026-11-02T10:00:00Z';
+    slowReads.push([/\/user\/repos/, 1500]);
+    await page.reload();
+    await page.locator('#tab-chat').click();
+    await page.locator('#chat-input').fill('Mon brouillon');
+    await new Promise((r) => setTimeout(r, 3000));
+    assert.equal(await page.locator('#chat-input').inputValue(), 'Mon brouillon');
+  });
+});
+
+test('se déconnecter efface la liste des projets gardée sur l\'appareil', async () => {
+  await withPanel({ repos: ['o/r', 'o/alpha'], pushed, viewport: desk }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#projects .project-item', { hasText: 'alpha' }).waitFor();
+    await page.waitForFunction(() => localStorage.getItem('factory.projects'));
+    await page.evaluate(() => document.getElementById('logout').click());
+    assert.equal(await page.evaluate(() => localStorage.getItem('factory.projects')), null);
+  });
+});
