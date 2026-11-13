@@ -2391,7 +2391,7 @@ test('« Mise en production » blocked by a conflict on the project files names 
 });
 
 test('a release that breaks the live site puts main back where it was (preprod keeps the changes)', async () => {
-  const { gh, relay } = prodGh({ branches: { main: 'm2', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], open: false }] });
+  const { gh, relay } = prodGh({ branches: { main: 'm2', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
   gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
   gh.createIssue = async () => ({ number: 60 });
   gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
@@ -2484,7 +2484,7 @@ test('the live check after a release carries what was live before and the releas
 });
 
 test('a release that breaks the live site puts the previous version back, keeps the changes waiting and opens a correction', async () => {
-  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production], open: false }] });
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production] }] });
   gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
   gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 60 }; };
   gh.getPr = async (n) => ({ number: n, title: n === 11 ? 'Ajout du mode sombre' : 'Correction du menu', body: 'Closes #1' });
@@ -3471,11 +3471,15 @@ test('#396: a late preview report (the PR already left its checks) moves nothing
 
 test('#396: a late live-check report for a release already ended moves nothing', async () => {
   const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW, tries: 1 });
+  // The factory ended it: closed, its note cleared. The live branch is still at the released commit.
   issue.open = false;
-  gh.branches.main = 'm0'; gh.branches.production = 'm0'; // the first report already put the old version back
+  issue.body = 'Demandé.';
+  gh.resetRef = async (name, sha) => gh.calls.push(['resetRef', name, sha]);
+  gh.createIssue = async (...a) => { gh.calls.push(['createIssue', ...a]); return { number: 60 }; };
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
   await relay().prodReport({ ...releaseCheck, result: 'failed', detail: 'boom' });
-  await relay().deployFailed({ ...releaseCheck, detail: 'refused' });
-  assert.ok(!gh.calls.some((c) => ['comment', 'updateRef', 'close'].includes(c[0])), JSON.stringify(gh.calls));
+  await relay().deployFailed({ ...releaseCheck, detail: 'refused', runId: 9 });
+  assert.ok(!gh.calls.some((c) => ['comment', 'resetRef', 'createIssue', 'rerun', 'close', 'dispatch'].includes(c[0])), JSON.stringify(gh.calls));
 });
 
 test('#396: one lost check that fails every time does not stop the others', async () => {
@@ -3486,4 +3490,33 @@ test('#396: one lost check that fails every time does not stop the others', asyn
   gh.listIssues = async ({ labels }) => (labels === L.production ? [issue] : []);
   await relay().handle(tick).catch(() => {});
   assert.ok(gh.calls.some((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')));
+});
+
+test('#396: two live checks of one release, passed then failed: the second never rolls back what was declared live', async () => {
+  const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW, tries: 1 });
+  gh.getIssue = async (n) => (n === 50 ? { ...issue, state: issue.open === false ? 'closed' : 'open', labels: issue.labels.map((name) => ({ name })) } : null);
+  gh.closeIssue = async (n) => { gh.calls.push(['close', n]); if (n === 50) issue.open = false; };
+  gh.resetRef = async (name, sha) => gh.calls.push(['resetRef', name, sha]);
+  gh.createIssue = async (...a) => { gh.calls.push(['createIssue', ...a]); return { number: 60 }; };
+  await relay().prodReport({ ...releaseCheck, url: 'https://site.example', result: 'passed' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  assert.equal(watchOf(issue.body), null, 'the note goes with the end of the release');
+  const before = gh.calls.length;
+  await relay().prodReport({ ...releaseCheck, result: 'failed', detail: 'boom' });
+  assert.equal(gh.calls.length, before);
+});
+
+test('#396: a release request closed by hand while its check runs: a broken live site is still put back', async () => {
+  const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW, tries: 0 });
+  issue.open = false; // closed by the owner, the note still there
+  gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
+  gh.createIssue = async () => ({ number: 60 });
+  await relay().prodReport({ ...releaseCheck, result: 'failed', detail: 'la page répond 500' });
+  assert.ok(gh.calls.some((c) => c[0] === 'resetRef' && c[2] === 'm0'));
+});
+
+test('#396: after « ok » on the captures, a preview check that never reported is started again too', async () => {
+  const { gh, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, []);
+  await relay().handle(tick);
+  assert.deepEqual(previewChecks(gh), [{ pr: 10, sha: 'abc' }]);
 });

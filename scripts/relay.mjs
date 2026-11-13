@@ -1016,6 +1016,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function endRelease(issueNumber, text, note, { checking = false } = {}) {
     if (!issueNumber) return;
     await gh.comment(issueNumber, say(`${text}\n\n${releaseNote(note)}`));
+    // Ended by the factory: its live-check note goes, so a late report of that check is known as late (issue #396).
+    const body = (await gh.getIssue(issueNumber).catch(() => null))?.body;
+    if (readWatch(body)) await gh.updateIssue(issueNumber, { body: writeWatch(body, null) }).catch((e) => log(`release watch: ${e.message}`));
     if (checking) await gh.removeLabel(issueNumber, L.releaseChecking).catch(() => {});
     await gh.closeIssue(issueNumber).catch(() => {});
   }
@@ -1163,7 +1166,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The host did not publish the new version: the old one still runs, nothing is broken. The publication is run
   // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
   async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false, release = null }) {
-    if (release?.issue && await releaseEnded(release.issue)) return log(`publication of release #${release.issue} reported late: already ended`);
+    if (release?.issue && await releaseOver(release.issue)) return log(`publication of release #${release.issue} reported late: already ended`);
     const def = (await gh.getRepo())?.default_branch || 'main';
     // After a « Mise en production » on a project of the first version (its host publishes the production branch),
     // main may already be further ahead: the production branch is the one to compare with. Otherwise main is.
@@ -1200,9 +1203,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
   async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null, release = null }) {
     if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
-    // A release already ended (a check the tick started again, reporting after the first one): nothing more (#396).
-    // Except a broken site still at the released commit (the request closed by hand): it is put back as usual.
-    if (release?.issue && await releaseEnded(release.issue) && !(result === 'failed' && await liveAt(sha))) return log(`live check of release #${release.issue} reported late: already ended`);
+    // A release the factory already ended (a check the tick started again, reporting after the first one): nothing
+    // more (#396). A request closed by hand still has its note: its live site is still looked after.
+    if (release?.issue && await releaseOver(release.issue)) return log(`live check of release #${release.issue} reported late: already ended`);
     if (result !== 'failed' && release?.issue) return releaseLive({ release, url, result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
     if (release?.from) return rollbackRelease({ release, sha, detail, runId });
@@ -1621,13 +1624,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // Issue #396: a preview or live-site check started by the factory whose report never came (its run stopped on a
   // GitHub limit, a time limit, a lost runner) left the card « en contrôle » until the owner wrote. The tick starts it
   // again, a few times, then goes on without it: the recette with whatever preview is known, or a release that ends as
-  // live but unchecked. Never while an agent works on the PR, nor once the PR left its checks or changed code.
-  async function liveAt(sha) {
-    const ref = (await gh.getBranch?.(PROD_BRANCH).catch(() => null)) ? PROD_BRANCH : ((await gh.getRepo())?.default_branch || 'main');
-    return Boolean(sha) && (await gh.getBranch?.(ref).catch(() => null))?.object?.sha === sha;
-  }
-  async function releaseEnded(n) {
-    return (await gh.getIssue(n).catch(() => null))?.state === 'closed';
+  // live but unchecked. Never while an agent works on the PR, once it is blocked or in recette, nor on changed code.
+  // Ended by the factory: closed, and its live-check note cleared by endRelease.
+  async function releaseOver(n) {
+    const issue = await gh.getIssue(n).catch(() => null);
+    return issue?.state === 'closed' && !readWatch(issue.body);
   }
   async function noteWatch(n, state, body) {
     if (!gh.updateIssue) return;
@@ -1642,14 +1643,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (st?.kind !== 'preview') return;
       const step = watchStep(st, now());
       if (step === 'wait') return;
+      // Still waiting for its preview: in its checks, or with no label at all after « ok » on the captures (the report
+      // is then made without factory:checks). Not while an agent works, nor once blocked or in recette.
       const labels = await liveLabels(p.number);
-      if (!labels.includes(L.checks) || labels.includes(L.running)) return;
+      if ([L.running, L.blocked, L.acceptance].some((l) => labels.includes(l)) || (labels.includes(L.fixing) && !labels.includes(L.checks))) return;
       const pr = await gh.getPr(p.number);
       if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) return;
       if (step === 'retry') {
-        await noteWatch(p.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, pr.body);
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: p.number, sha: st.sha } }) });
+        await noteWatch(p.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, pr.body);
         log(`guard: preview check of #${p.number} never reported, started again (try ${(st.tries || 0) + 1})`);
         return;
       }
@@ -1664,9 +1667,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const step = watchStep(st, now());
       if (step === 'wait') return;
       if (step === 'retry') {
-        await noteWatch(issue.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, issue.body);
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: st.check }) });
+        await noteWatch(issue.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, issue.body);
         log(`guard: live check of release #${issue.number} never reported, started again (try ${(st.tries || 0) + 1})`);
         return;
       }
