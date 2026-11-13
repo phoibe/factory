@@ -3238,3 +3238,9 @@ test('an agent table whose dark rows arrived broken does not stop the factory fr
   await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
 });
+
+test('a rate limit while reading the captures folder is not swallowed either (#378)', async () => {
+  const gh = shotsGh();
+  gh.getContent = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
+});
