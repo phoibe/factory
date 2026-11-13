@@ -368,6 +368,31 @@ jobs:
           retention-days: 1
           overwrite: true
 
+  # The new version is online: the release card moves to « Vérification du site en ligne » while the smoke check runs
+  # (issue #370). Runs only the factory's own script, never the project's code.
+  production-step:
+    needs: [decide, production-open]
+    if: always() && needs.decide.outputs.production != '' && needs.production-open.outputs.url != ''
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Move the release card to the live-site check
+        run: node .factory-src/scripts/relay.mjs release-step
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECK: ${{ needs.decide.outputs.production }}
+
   production:
     needs: [decide, production-open]
     if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true')

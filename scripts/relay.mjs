@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage } from './lib/labels.mjs';
+import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage, releaseNote } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from './lib/config-core.mjs';
@@ -669,8 +669,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const ref = (await gh.getRepo())?.default_branch || 'main';
     if (!pending.length) {
       if (issueNumber) {
-        await gh.comment(issueNumber, say("Rien n'attendait d'être mis en production : le site en ligne est déjà à jour."));
-        await gh.closeIssue(issueNumber).catch(() => {});
+        await endRelease(issueNumber, "Rien n'attendait d'être mis en production : le site en ligne est déjà à jour.", { state: 'nothing' });
       }
       return;
     }
@@ -680,8 +679,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (version) {
       const refused = await cutChangelog(version, ref);
       if (refused) {
-        await gh.comment(issueNumber, say(`Je n'ai pas mis en production : ${refused} Rien n'a changé ; recliquez sur « Mise en production » avec un autre numéro.`));
-        await gh.closeIssue(issueNumber).catch(() => {});
+        const todo = 'Recliquez sur « Mise en production » avec un autre numéro.';
+        await endRelease(issueNumber, `Je n'ai pas mis en production : ${refused} Rien n'a changé ; ${todo.charAt(0).toLowerCase()}${todo.slice(1)}`, { state: 'failed', reason: `${refused.charAt(0).toUpperCase()}${refused.slice(1)}`, todo });
         return;
       }
     }
@@ -702,24 +701,59 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       }
     } catch (e) {
       if (issueNumber && e instanceof MergeConflict) {
-        await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production : ${PREPROD_BRANCH} et ${ref} ont modifié les mêmes fichiers, et je ne règle seul que les miens. Fichiers en conflit : ${e.files.slice(0, 10).map((f) => `\`${f}\``).join(', ')}${e.files.length > 10 ? ` (et ${e.files.length - 10} autres)` : ''}. Rien n'a changé en ligne ; il faut régler ce conflit avant de recliquer sur « Mise en production ».`));
+        await endRelease(issueNumber, `Je n'ai pas pu mettre en production : ${PREPROD_BRANCH} et ${ref} ont modifié les mêmes fichiers, et je ne règle seul que les miens. Fichiers en conflit : ${e.files.slice(0, 10).map((f) => `\`${f}\``).join(', ')}${e.files.length > 10 ? ` (et ${e.files.length - 10} autres)` : ''}. Rien n'a changé en ligne ; il faut régler ce conflit avant de recliquer sur « Mise en production ».`,
+          { state: 'failed', reason: 'Des modifications en attente touchent les mêmes fichiers que la version en ligne.', todo: 'Ce conflit doit être réglé avant de recliquer sur « Mise en production ».' });
         throw e;
       }
-      if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
+      if (issueNumber) {
+        await endRelease(issueNumber, `Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`,
+          { state: 'failed', reason: 'GitHub n\'a pas répondu comme prévu.', todo: 'Recliquez sur « Mise en production » dans quelques minutes.' });
+      }
       throw e;
     }
     try { await gh.dispatch('pages.yml', ref, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
     const tagged = version ? await tagRelease(version, head, ref) : null;
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
-    const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null };
-    await checkLive(pending.at(-1).number, head, { release }).catch((e) => log(`live check not started: ${e.message}`));
+    const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null, ...(version ? { version } : {}) };
+    const checking = await checkLive(pending.at(-1).number, head, { release }).catch((e) => { log(`live check not started: ${e.message}`); return false; });
     const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
     const n = pending.length;
-    const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.${tagged ? `\n\n${tagged}` : ''}`;
-    if (issueNumber) {
-      await gh.comment(issueNumber, say(text));
-      await gh.closeIssue(issueNumber).catch(() => {});
+    const prs = pending.map((p) => ({ number: p.number, title: p.title }));
+    const extra = { ...(version ? { version } : {}) };
+    if (!issueNumber) return;
+    // The request stays open (the board's card « en cours ») until the live site is checked: prodReport ends it.
+    if (checking) {
+      await gh.comment(issueNumber, say(`${n === 1 ? 'Cette modification part' : `Ces ${n} modifications partent`} en ligne :\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite, et je vous dis ici quand c'est fait.${tagged ? `\n\n${tagged}` : ''}\n\n${releaseNote({ state: 'deploying', prs, ...extra })}`));
+      return;
     }
+    // Nothing tells when the new version is online (no deployment, no site address): it cannot be checked.
+    await endRelease(issueNumber, `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nJe ne peux pas vérifier le site en ligne : l'hébergeur ne dit pas quand la nouvelle version est publiée.${tagged ? `\n\n${tagged}` : ''}`,
+      { state: 'live', prs, ...extra, unchecked: true });
+  }
+
+  // The end of a « Mise en production »: the owner's message, with the outcome the board reads, then the request closes.
+  // `checking`: the request may carry the second step's label (after the new version went online).
+  async function endRelease(issueNumber, text, note, { checking = false } = {}) {
+    if (!issueNumber) return;
+    await gh.comment(issueNumber, say(`${text}\n\n${releaseNote(note)}`));
+    if (checking) await gh.removeLabel(issueNumber, L.releaseChecking).catch(() => {});
+    await gh.closeIssue(issueNumber).catch(() => {});
+  }
+
+  // The new version of a release is online: its card moves on to « Vérification du site en ligne » (production-step job).
+  async function releaseChecking(check) {
+    const n = Number(check?.release?.issue);
+    if (n) await gh.addLabels(n, [L.releaseChecking]);
+  }
+
+  // The live site works (or could not be opened) after a release: « En production ✅ », only now.
+  async function releaseLive({ release, url, result, detail }) {
+    const prs = [];
+    for (const n of release.prs || []) prs.push({ number: n, title: (await gh.getPr(n).catch(() => null))?.title || 'Modification' });
+    const list = prs.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+    const checked = result === 'passed';
+    const text = `En production ✅ : ${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\n${checked ? 'J\'ai vérifié le site en ligne : il marche.' : `Je n'ai pas pu vérifier le site en ligne (${detail || 'vérification sautée'}).`}${url ? ` [Voir le site en ligne](${url})` : ''}`;
+    await endRelease(release.issue, text, { state: 'live', prs, ...(release.version ? { version: release.version } : {}), ...(url ? { site: url } : {}), ...(checked ? {} : { unchecked: true }) }, { checking: true });
   }
 
   // The live site broke after a « Mise en production »: main goes back to what was live before (preprod keeps the
@@ -738,7 +772,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         `La factory n'a pas remis la version d'avant en ligne : la branche \`${ref}\` a avancé depuis la mise en production (elle est à \`${head}\`, la mise en production était \`${sha}\`), et la remettre en arrière effacerait ce qui a été livré depuis. Répare directement la version en ligne.`, '',
         `Les modifications parties sont : ${prs.map((n) => `#${n}`).join(', ') || 'aucune'} ; l'ancienne version en ligne était \`${release.from}\`. Trouve ce qui casse la version en ligne, corrige-le, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
       const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
-      if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu remettre la version d'avant en ligne : d'autres livraisons sont passées depuis et seraient effacées. La demande #${bug?.number} répare directement le site. Rien à faire de votre côté pour l'instant.`));
+      await endRelease(release.issue, `Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu remettre la version d'avant en ligne : d'autres livraisons sont passées depuis et seraient effacées. La demande #${bug?.number} répare directement le site. Rien à faire de votre côté pour l'instant.`,
+        { state: 'broken', fix: bug?.number || null, reason: detail }, { checking: true });
       if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
       return log(`release broke the live site, but ${ref} moved on (${String(head).slice(0, 7)}): not rolled back`);
     }
@@ -752,7 +787,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       "La factory a remis en ligne la version d'avant. Les modifications parties attendent de nouveau :", '', ...titles, '',
       `Trouve laquelle casse la version en ligne (commit \`${sha}\`, l'ancienne version en ligne est \`${release.from}\`), corrige-la, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
     const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
-    if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJ'ai remis la version d'avant en ligne. Les modifications attendent de nouveau (le bouton « Mise en production » les compte), et la demande #${bug?.number} les corrige. Rien à faire de votre côté pour l'instant.`));
+    await endRelease(release.issue, `Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJ'ai remis la version d'avant en ligne. Les modifications attendent de nouveau (le bouton « Mise en production » les compte), et la demande #${bug?.number} les corrige. Rien à faire de votre côté pour l'instant.`,
+      { state: 'undone', fix: bug?.number || null, reason: detail }, { checking: true });
     if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
     log(`release broke the live site: production back to ${String(release.from).slice(0, 7)}`);
   }
@@ -770,15 +806,16 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const hosted = envs.some((e) => e && e !== 'github-pages') || ((await gh.listComments(prNumber).catch(() => [])) || []).some((c) => c.user?.login === 'vercel[bot]');
       if (!site || !hosted) {
         log(`live check: no live deployment${envs.length ? ` (seen: ${[...new Set(envs)].join(', ')})` : ''}${site ? '' : ', no site address'}`);
-        return;
+        return false;
       }
       url = site;
     }
     const sha = releasedSha || (await gh.getPr(prNumber))?.merge_commit_sha;
-    if (!sha) return;
+    if (!sha) return false;
     const ref = (await gh.getRepo())?.default_branch || 'main';
     await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}), ...extra } }) });
     log(`live check started for #${prNumber} (${sha.slice(0, 7)})${url ? ` on ${url}` : ''}`);
+    return true;
   }
 
   // The factory undid a broken delivery (prodReport): once the undo is live, the issue that redoes it can start.
@@ -863,6 +900,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
     const said = detail ? ` Son message : « ${detail} ».` : '';
     await gh.comment(prNumber, say(`Cette version n'a pas été mise en ligne : l'hébergeur refuse de la publier${retried ? ', même après une nouvelle tentative' : ''}.${said} ${newest ? "L'ancienne version reste en ligne et marche : je ne retire rien." : 'Je ne retire rien : une livraison plus récente, qui la contient, est en cours de publication et la mettra en ligne si elle passe.'}`));
+    if (release?.issue) {
+      await endRelease(release.issue, `Cette mise en production n'a pas été publiée : l'hébergeur refuse de publier la nouvelle version${retried ? ', même après une nouvelle tentative' : ''}.${said} ${newest ? "L'ancienne version reste en ligne et marche." : 'Une livraison plus récente, qui la contient, est en cours de publication.'}`,
+        { state: 'unpublished', reason: `L'hébergeur refuse de publier la nouvelle version${detail ? ` (« ${detail} »)` : ''}.`, todo: newest ? "L'ancienne version reste en ligne et marche." : 'Une livraison plus récente, qui la contient, est en cours de publication.' }, { checking: true });
+    }
     log(`live deploy of #${prNumber} failed, reported`);
   }
 
@@ -870,6 +911,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
   async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null, release = null }) {
     if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
+    if (result !== 'failed' && release?.issue) return releaseLive({ release, url, result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
     if (release?.from) return rollbackRelease({ release, sha, detail, runId });
     const pr = await gh.getPr(prNumber);
@@ -1920,7 +1962,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
   }
 
-  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, deployFailed, liveUrl, previewWait, outputs };
+  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, deployFailed, releaseChecking, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1979,6 +2021,10 @@ async function main() {
     // The preview job waits for the preview here, without the queue lock: minutes that block no decision.
     const url = await relay.previewWait(readCheck());
     writeOutputs({ url: toJobOutput(url) });
+    return;
+  } else if (command === 'release-step') {
+    // The new version of a release is online: move its card to « Vérification du site en ligne » (issue #370).
+    await relay.releaseChecking(readCheck());
     return;
   } else if (command === 'live-url') {
     const check = readCheck();
