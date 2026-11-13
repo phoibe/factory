@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=25';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote } from './chat.mjs?v=16';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId } from './chat.mjs?v=16';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
@@ -2271,7 +2271,7 @@ async function sendToServer(text, files, withImages) {
     // The answer is complete: from here on nothing may make the owner resend it (the issues would be made twice).
     live.status = 'Enregistre…';
     if (!gone()) drawLive();
-    const id = answer.conversation?.id || (isNew ? null : chat.open);
+    const id = conversationId(answer.conversation?.id, isNew ? null : chat.open);
     const { conv, saved, created } = await finishExchange(repo, id, { text, images: paths }, answer);
     answer.issues = created;
     if (!gone()) {
@@ -2311,7 +2311,7 @@ const SAVE_TRIES = 5;
 
 // After an answer: the panel creates the issues the agent proposed, then saves the exchange on `factory-chat`, with
 // the full token (the chat server never writes). Never throws: a failure is said under the answer or in a toast.
-async function finishExchange(repo, id, mine, answer) {
+async function finishExchange(repo, cid, mine, answer) {
   const created = [];
   let refused = 0;
   for (const wanted of answer.issues || []) {
@@ -2324,7 +2324,6 @@ async function finishExchange(repo, id, mine, answer) {
   }
   const text = (answer.text || '') + notCreatedNote(refused);
   const at = stamp();
-  const cid = id || `${at.replace(/\D/g, '').slice(0, 8)}-${at.replace(/\D/g, '').slice(8, 14)}-${Math.random().toString(36).slice(2, 7)}`;
   const base = newConversation(cid, mine.text || answer.conversation?.title || '', at);
   try {
     return { conv: await saveExchange(repo, cid, base, mine, text, at, created), saved: true, created };

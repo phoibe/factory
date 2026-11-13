@@ -94,3 +94,12 @@ test('la fiche produit dit que le serveur de discussion ne reçoit qu\'un jeton 
   const product = await readFile(new URL('../PRODUCT.md', import.meta.url), 'utf8');
   assert.match(product, /serveur de discussion ne reçoit qu'un jeton de lecture seule/);
 });
+
+test('a conversation id from the chat server is used only when it is a plain id (never a path for the full token)', async () => {
+  const { conversationId } = await import('../panel/chat.mjs');
+  assert.equal(conversationId('20261113-101010-abcde', null), '20261113-101010-abcde');
+  assert.equal(conversationId('../../pulls/42/merge#', 'c1'), 'c1'); // the id the panel already had
+  assert.match(conversationId('../../collaborators/x#', null), /^\d{8}-\d{6}-[a-z0-9]{5}$/); // a new one of its own
+  assert.match(conversationId(undefined, null, new Date('2026-11-13T10:11:12Z')), /^20261113-101112-[a-z0-9]{5}$/);
+  assert.equal(conversationId('x'.repeat(65), 'c1'), 'c1');
+});

@@ -264,3 +264,13 @@ export function issueRequest({ kind, title, body }) {
 export const notCreatedNote = (n) => (!n ? '' : n === 1
   ? '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._'
   : `\n\n_${n} demandes n'ont pas pu être créées sur GitHub : redemandez dans un moment._`);
+
+// The conversation id that names `chats/<id>.json`, written with the full token: never taken unchecked from the chat
+// server (a path there would aim the owner's full token at another GitHub endpoint). Same rule as the server's.
+const CID = /^[A-Za-z0-9_-]{1,64}$/;
+export function conversationId(fromServer, current, now = new Date()) {
+  if (CID.test(String(current ?? ''))) return current;
+  if (CID.test(String(fromServer ?? ''))) return fromServer;
+  const at = now.toISOString().replace(/\D/g, '');
+  return `${at.slice(0, 8)}-${at.slice(8, 14)}-${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`;
+}
