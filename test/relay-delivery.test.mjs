@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRelay, eventFromPayload } from '../scripts/relay.mjs';
-import { L, AGENT_MARKER, CHECKS_FAILED_MARKER } from '../scripts/lib/labels.mjs';
+import { createRelay } from '../scripts/relay.mjs';
+import { L } from '../scripts/lib/labels.mjs';
 
 const MIN = 60_000;
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
