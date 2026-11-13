@@ -25,12 +25,16 @@ export const tagConcerned = ({ mode, site, liveEnvs }) => Boolean(site) && (mode
 
 // The commit id the site gives, or null: no answer, an error, a timeout, or no tag at all. Never an old value.
 export async function readSiteTag(site, fetchImpl = fetch) {
+  // undefined: the site did not answer (an error, a timeout); null: it answered without a tag.
   const read = async (url) => {
     try {
       const res = await fetchImpl(url, { redirect: 'follow', headers: { 'cache-control': 'no-cache' }, signal: AbortSignal.timeout(READ_MS) });
       return res?.ok ? parseVersionTag((await res.text()).slice(0, 2_000_000)) : null;
-    } catch { return null; }
+    } catch { return undefined; }
   };
   const base = String(site);
-  return (await read(base)) || read(new URL('factory-version.txt', base.endsWith('/') ? base : `${base}/`).href);
+  const home = await read(base);
+  // A site that does not answer is not asked again on the same tick: the tick holds the project's queue lock.
+  if (home !== null) return home || null;
+  return (await read(new URL('factory-version.txt', base.endsWith('/') ? base : `${base}/`).href)) || null;
 }

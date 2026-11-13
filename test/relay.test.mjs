@@ -2937,7 +2937,7 @@ function tagWorld({ html = '', deployments = [], live = null, state = null, file
   gh.getState = async (name) => (name === 'version-tag' ? state : null);
   gh.setState = async (name, value) => { gh.calls.push(['state', name, value]); };
   gh.createIssue = async (title, body, labels) => { world.issues.push({ number: 60, title, body, labels: [...labels] }); gh.calls.push(['create', title, body, labels]); return { number: 60 }; };
-  const fetchImpl = async (url, init) => (String(url).startsWith('https://p.example') ? { ok: true, text: async () => html } : fetchOk([])(url, init));
+  const fetchImpl = async (url, init) => (/^https?:\/\/p\.example/.test(String(url)) ? { ok: true, text: async () => html } : fetchOk([])(url, init));
   const tick = () => createRelay({ gh, repo: 'r', config: { ...config, production }, env, fetchImpl, log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   return { gh, tick };
 }
@@ -2995,4 +2995,18 @@ test('no tag card before the project is framed, nor while its framing is under w
     await world.tick();
     assert.ok(!world.gh.calls.some((c) => c[0] === 'create'));
   }
+});
+
+test('the tag card is remembered before it is opened: a failure after opening it never opens a second one', async () => {
+  const { gh, tick } = tagWorld({ html: '<html></html>' });
+  await tick();
+  const order = gh.calls.filter((c) => (c[0] === 'state' && c[1] === 'version-tag') || c[0] === 'create').map((c) => c[0]);
+  assert.equal(order[0], 'state');
+  assert.ok(order.includes('create'));
+});
+
+test('a site address the panel accepts (http, spaces around it) is read by the tick too', async () => {
+  const { gh, tick } = tagWorld({ homepage: ' http://p.example ', html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
 });

@@ -28,6 +28,7 @@ import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from './lib/version-tag.mjs';
+import { siteLink } from '../panel/lib.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -1119,7 +1120,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function syncVersionTag() {
     if (!gh.setLiveRef || !gh.getRepo) return;
     const repoInfo = await gh.getRepo();
-    const site = config.siteUrl || (/^https:\/\/\S+$/.test(repoInfo?.homepage || '') ? repoInfo.homepage : null);
+    // The same rule as the panel's: a project it shows a line for is one the tick reads.
+    const site = siteLink(config.siteUrl, repoInfo?.homepage);
     if (!site) return;
     const mode = effectiveProduction(config, config.production ? null : await readDelivery());
     const liveEnvs = mode === 'external' ? [] : ((await gh.liveDeployments()) || []).map((d) => d.environment);
@@ -1144,12 +1146,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       'Le tableau de la factory affiche sous le nom du projet si le site en ligne est à jour (« En ligne : à jour ») ou combien de modifications validées n\'y sont pas encore. Pour ce projet, l\'hébergeur ne le dit pas à GitHub : le site doit le dire lui-même, avec une **étiquette de version** invisible pour les visiteurs.', '',
       'Rien à régler de votre côté : ni serveur, ni clé d\'accès.', '',
       '### For the agent',
-      '- The site publishes the commit it was built from, filled in automatically at each publication (never by hand): `<meta name="factory-version" content="<commit sha>">` in the `<head>` of the page at the site address, or, when that address serves no HTML page, a `factory-version.txt` file at the site root containing only the sha (full, or its first 7 characters or more).',
+      '- The site publishes the commit it was built from, filled in automatically at each publication (never by hand): `<meta name="factory-version" content="<commit sha>">` in the `<head>` of the page at the site address, in the HTML as the server sends it (not added later by JavaScript), or, when that address serves no HTML page, a `factory-version.txt` file at the site root containing only the sha (full, or its first 7 characters or more).',
       '- Use what the host or the build gives (for example `VERCEL_GIT_COMMIT_SHA`, `git rev-parse HEAD` at build time). A tag that would be wrong is worse than none.',
       '- The factory reads it every 5 minutes from GitHub Actions (server side, no CORS needed) and points `refs/factory/live` at that commit.',
       '- Acceptance: after the next publication, the board shows « En ligne : à jour » under the project name.'].join('\n');
+    // Remembered first: a failure once the card exists must never open another one at each tick.
+    await gh.setState('version-tag', { card: 'opening' });
     const card = await gh.createIssue('Ajouter l\'étiquette de version au site', body, [L.feature, L.kept]);
-    await gh.setState('version-tag', { card: card.number });
+    await gh.setState('version-tag', { card: card.number }).catch((e) => log(`version tag: ${e.message}`));
     log(`version tag: card #${card.number} opened`);
     const labels = await liveLabels(card.number);
     await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });

@@ -42,3 +42,9 @@ test('a site that is down, refuses, or hangs gives no tag (never a stale one)', 
   await readSiteTag('https://p.example', async (url, init) => { signal = init.signal; return page(''); });
   assert.ok(signal, 'the read is bounded by a timeout');
 });
+
+test('a site that does not answer is not asked a second time (factory-version.txt) on the same tick', async () => {
+  const urls = [];
+  assert.equal(await readSiteTag('https://p.example', async (url) => { urls.push(url); throw new Error('timeout'); }), null);
+  assert.equal(urls.length, 1);
+});

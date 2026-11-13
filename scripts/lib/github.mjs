@@ -223,7 +223,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
     // A wide page: a preview deployment is made on every push, and could push the live ones out of a short one.
     liveDeployments: () => request('GET', '/repos/{repo}/deployments?per_page=100'),
-    // The commit a site's version tag names (issue #372): a short id is resolved, an unknown one is null (404).
+    // The commit a site's version tag names (issue #372): a short id is resolved, an unknown one is null (GitHub
+    // answers 422, or 404).
     resolveCommit: async (ref) => {
       try { return await request('GET', `/repos/{repo}/commits/${enc(ref)}`); } catch (e) { if (/-> 422/.test(String(e))) return null; throw e; }
     },
