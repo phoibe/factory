@@ -3196,8 +3196,9 @@ test('the same captures are never posted twice, and nothing is posted outside th
 });
 
 test('a table the agent already posted for the same captures is not posted again by the factory (#378, transition)', async () => {
-  const url = 'https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/ecran--desktop.png?raw=true';
-  const gh = shotsGh({ comments: [{ body: `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n| ecran · desktop | ![avant · après](${url}) |`, user: { login: 'phoibe' } }] });
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const body = `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |\n| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`;
+  const gh = shotsGh({ comments: [{ body, user: { login: 'phoibe' } }] });
   await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
   assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
 });
@@ -3226,4 +3227,14 @@ test('green checks with captures waiting on the assets branch post them instead 
   await createRelay({ gh, repo: 'phoibe/factory', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('ecran--desktop--sombre.png')), 'captures posted');
   assert.ok(!sent.some((s) => /"stage":"skills-fix"/.test(JSON.parse(s.init.body).text)), 'no catch-up run');
+});
+
+test('an agent table whose dark rows arrived broken does not stop the factory from posting the right one (#378)', async () => {
+  const at = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const broken = [AGENT_MARKER, '<!-- shots: claude/factory-assets -->', '| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |',
+    `| ecran · desktop | ![avant · après](${at('ecran--desktop.png')}) |`,
+    `| ecran · desktop · sombre | [avant · après](\` ${at('ecran--desktop--sombre.png')} \`) |`].join('\n');
+  const gh = shotsGh({ comments: [{ body: broken, user: { login: 'phoibe' } }] });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
 });

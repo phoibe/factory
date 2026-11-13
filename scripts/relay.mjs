@@ -27,7 +27,7 @@ import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
-import { markdownTable } from '../agent/scripts/shots.mjs';
+import { markdownTable, brokenShotRows } from '../agent/scripts/shots.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from './lib/version-tag.mjs';
 import { siteLink } from '../panel/lib.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
@@ -1412,21 +1412,24 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
   async function postLatestCaptures(n) {
     if (!gh.getContent) return;
-    const runs = await gh.getContent(`pr-${n}`, SHOTS_BRANCH).catch(() => null);
+    // A missing folder reads as nothing; a rate limit goes up, so that the run is retried.
+    const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; return null; });
+    const runs = await soft(gh.getContent(`pr-${n}`, SHOTS_BRANCH));
     const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
     if (!latest) return;
     const dir = `pr-${n}/${latest}`;
     const mark = `<!-- factory-shots-posted: ${dir} -->`;
-    // Also skipped when a table of this folder is already there (posted by an agent not yet given this rule).
-    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || (postedCaptures(c) && c.body.includes(`/${dir}/compare/`)))) return;
-    const images = await gh.getContent(`${dir}/compare`, SHOTS_BRANCH).catch(() => null);
+    const images = await soft(gh.getContent(`${dir}/compare`, SHOTS_BRANCH));
     const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
     if (!files.length) return;
+    // Also skipped when a whole, unbroken table of this folder is already there (posted by an agent not yet given this
+    // rule). A table whose dark rows arrived broken (#373) does not count: the factory posts the right one.
+    const link = (f) => `![avant · après](https://github.com/${repo}/blob/${SHOTS_BRANCH}/${dir}/compare/${f}?raw=true)`;
+    const whole = (c) => postedCaptures(c) && files.every((f) => c.body.includes(link(f))) && !brokenShotRows(c.body).length;
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return;
+    const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
     let unchanged = [];
-    try {
-      const meta = await gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH);
-      unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || [];
-    } catch { /* an older tool wrote no list: the identical screens are just not named */ }
+    try { unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || []; } catch { /* an older tool wrote no list: the identical screens are just not named */ }
     const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)) });
     await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
     log(`captures of #${n} posted from ${dir}`);

@@ -32,7 +32,7 @@
    il attend sans doute que le temps passe ; dis-le aussi dans le commentaire.
 5. `node .factory/scripts/shots.mjs publish --pr <numéro> --before /tmp/shots/before --after /tmp/shots/after > /tmp/shots.md`
    (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
-   après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
+   après à droite), la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
    **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
    poussées, dès que la PR porte `factory:visual-review` (un tableau envoyé depuis ta session peut arriver abîmé sur
