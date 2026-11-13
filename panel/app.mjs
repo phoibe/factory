@@ -16,11 +16,13 @@ import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FIL
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS } from './projects.mjs?v=2';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
 const PROJECT_KEY = 'factory.project';
+// The project list of the last visit, with what is known of each repository's settings file (issue #399).
+const PROJECTS_KEY = 'factory.projects';
 const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
@@ -59,6 +61,8 @@ if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
 let dots = new Map();
+// What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
+let known = new Map(), accountTag = null;
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -83,7 +87,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -123,7 +127,10 @@ function show(id) {
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
 // a project). Repositories are checked a few at a time: firing one request per repository at once can trip
 // GitHub's anti-abuse limit, and the refused ones then silently vanished from the list.
+// A repository with nothing pushed since the last visit is not read again (its settings file cannot have changed),
+// and one read again carries its last ETag (an unchanged file is a free 304, see projects.mjs).
 async function loadProjects() {
+  const session = token;
   const repos = [];
   for (let page = 1; page <= 5; page++) {
     const batch = await api(`/user/repos?affiliation=owner&sort=pushed&per_page=100&page=${page}`);
@@ -131,26 +138,72 @@ async function loadProjects() {
     if (batch.length < 100) break;
   }
   const failed = [];
+  const seen = new Map();
   const configOf = async (r) => {
+    const check = configCheck(r, known);
+    if (check.skip) { seen.set(r.full_name, known.get(r.full_name)); return check.file; }
     for (let attempt = 0; ; attempt++) {
       try {
-        return await api(`/repos/${r.full_name}/contents/factory.config.json`);
+        const res = await fetch(`${API}/repos/${r.full_name}/contents/factory.config.json`, {
+          cache: 'no-store',
+          headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(check.etag ? { 'if-none-match': check.etag } : {}) },
+        });
+        if (res.status === 401) sessionExpired();
+        let file = null, etag = null;
+        if (res.status === 304) ({ file, etag } = check);
+        else if (res.ok) { file = await res.json(); etag = res.headers.get('etag'); }
+        else if (res.status !== 404) throw Object.assign(new Error(`${res.status}`), { status: res.status });
+        seen.set(r.full_name, { pushed: r.pushed_at, etag, file });
+        return file;
       } catch (err) {
         if (err.status === 401) throw err;
-        if (attempt >= 2) { failed.push(r.name); return null; }
+        if (attempt >= 2) {
+          // GitHub did not answer: the last known file stays, and is read again next time.
+          if (known.has(r.full_name)) { seen.set(r.full_name, { ...known.get(r.full_name), pushed: null }); return check.file; }
+          failed.push(r.name);
+          return null;
+        }
         await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
       }
     }
   };
-  const found = await mapLimit(projectCandidates(repos), 4, async (r) => {
+  const found = (await mapLimit(projectCandidates(repos), 4, async (r) => {
     const file = await configOf(r);
     return file ? { repo: r, file } : null;
-  });
+  })).filter(Boolean);
+  if (token !== session) return found; // logged out meanwhile: nothing of it is remembered
+  known = seen;
   if (failed.length) {
     toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
     setTimeout(() => reloadProjects().catch(() => {}), 30_000);
   }
-  return found.filter(Boolean);
+  rememberProjects(found);
+  return found;
+}
+
+function rememberProjects(list = projects) {
+  if (accountTag) store.set(PROJECTS_KEY, writeProjectsCache(accountTag, list, known));
+}
+
+// The list of the last visit shows at once; GitHub's answer then replaces it (issue #399). The open project
+// stays the same object; it is opened again only when its settings file changed and nothing typed would be lost.
+async function checkProjects() {
+  let fresh;
+  try {
+    fresh = await loadProjects();
+  } catch (err) {
+    if (err.status !== 401 && token) setTimeout(() => checkProjects().catch(() => {}), 30_000);
+    return;
+  }
+  if (!token) return;
+  const was = current;
+  const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
+  projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
+  if (!projects.length) return show('empty');
+  if (!mine) { await openProject(store.get(PROJECT_KEY)); return refreshDots(); }
+  if (mine.file?.sha !== was.file?.sha && JSON.stringify(was.config) === was.saved) { was.file = mine.file; await openProject(was.repo.full_name); }
+  else renderProjectList();
+  refreshDots();
 }
 
 async function mapLimit(items, limit, fn) {
@@ -1260,6 +1313,7 @@ async function writeProjectRules() {
   const before = JSON.parse(current.saved || '{}').maxParallel;
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
+  rememberProjects(); // the next visit opens with these settings
   // More places: ask the factory to look at the queue now instead of at its next regular check.
   if (current.config.maxParallel > (before || 0)) {
     api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
@@ -1316,6 +1370,17 @@ async function start() {
       chat.server = chatServerUrl(server?.url);
     }
     if (!token) return show('login');
+    accountTag = await tokenTag(token);
+    const remembered = readProjectsCache(store.get(PROJECTS_KEY), accountTag);
+    known = remembered?.known || new Map();
+    if (remembered?.projects.length && !projects.length) {
+      projects = remembered.projects;
+      refreshStable().catch(() => {});
+      refreshRuns();
+      await openProject(store.get(PROJECT_KEY));
+      refreshDots();
+      return checkProjects();
+    }
     projects = await loadProjects();
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
@@ -1497,7 +1562,7 @@ async function productionModeChanged(was, now) {
     return 0;
   }
   // Read afresh: the board's copy may not be loaded yet, and a change left labelled would have no button any more.
-  const fresh = await api(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).catch(() => null);
+  const fresh = await cachedGet(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`).then((r) => r.data, () => null);
   const waiting = awaitingOf(repo, fresh || (release.repo === repo ? release.pending : []));
   let sent = 0;
   if (waiting.length) {

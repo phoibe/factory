@@ -25,9 +25,11 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
 // `homepages`: full name → the project's « website » field on GitHub.
+// `pushed`: full name → the date of the last push GitHub gives in the repository list (`repos` is read at each request:
+// a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received.
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, pushed = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -37,6 +39,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
   }).listen(0);
   const browser = await launchBrowser(server);
   const writes = [];
+  const reads = [];
   try {
     const context = await browser.newContext();
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
@@ -81,13 +84,14 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (slow && req.method() === 'GET') await new Promise((r) => setTimeout(r, slowRepos[slow]));
       const lag = slowReads.find(([pattern]) => pattern.test(req.url()))?.[1];
       if (lag && req.method() === 'GET') await new Promise((r) => setTimeout(r, lag));
+      if (req.method() === 'GET') reads.push(path);
       if (req.method() !== 'GET') {
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
         if (forbidden && forbidden.has(path)) return json({ message: 'Resource not accessible by personal access token' }, 403);
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '' })));
+      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '', ...(pushed[full] ? { pushed_at: pushed[full] } : {}) })));
       // The factory's own branch files (dev server status and general setting, issue #271).
       const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
       if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);
@@ -126,7 +130,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
-    await journey({ page, writes, url: `http://localhost:${server.address().port}/` });
+    await journey({ page, writes, reads, url: `http://localhost:${server.address().port}/` });
   } finally {
     await browser.close();
     server.close();
