@@ -304,3 +304,7 @@ test('doneItems lists a closed « Mise en production » request as a release ite
   assert.deepEqual(rel.changes, [{ number: 11, title: 'Mode sombre' }]);
   assert.equal(rel.mergedAt, '2026-11-09T10:00:00Z');
 });
+
+test('releaseOutcome returns null for an old release with neither a note nor « En production ✅ »', () => {
+  assert.equal(releaseOutcome([relComment("Je n'ai pas pu mettre en production (conflit).")]), null);
+});

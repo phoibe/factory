@@ -485,7 +485,7 @@ async function refresh() {
       }
       // Issue #370: where a « Mise en production » stands, read from the relay's hidden note on its comments.
       if (c.column === 'release') {
-        const outcome = releaseOutcome(res.data);
+        const outcome = releaseOutcome([...before.data, ...res.data]);
         if (JSON.stringify(live.releases.get(c.number) ?? null) !== JSON.stringify(outcome)) {
           live.releases.set(c.number, outcome);
           previewsChanged = true;
@@ -596,7 +596,7 @@ const changeList = (changes) => (changes.length ? el('ul', { class: 'release-cha
 // Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
 // headline and whether the card is red; everything the owner needs is on the card, the title still opens GitHub.
 function releaseDoneCard(d, now) {
-  const o = live.releases.get(d.number) || { state: 'live', legacy: true };
+  const o = live.releases.get(d.number) || { state: 'unknown' };
   const changes = (o.prs?.length ? o.prs : d.changes) || [];
   const red = ['failed', 'undone', 'broken', 'unpublished'].includes(o.state);
   const when = el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`);
@@ -606,10 +606,12 @@ function releaseDoneCard(d, now) {
   else if (o.state === 'undone') body.push(head('–', 'Annulée : le site en ligne ne marchait plus, la version d\'avant est revenue', 'broken'));
   else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
   else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
+  else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
   else body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
   if (!red && changes.length) body.push(changeList(changes));
   if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
-  if (o.state === 'live' && o.site) body.push(el('a', { class: 'release-site', href: o.site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  const site = o.state === 'live' && siteLink(o.site);
+  if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
   if (red && (o.reason || o.todo)) body.push(el('p', { class: 'release-why' }, [o.reason, o.todo].filter(Boolean).join(' ')));
   if (o.fix) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${o.fix}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${o.fix})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
   return el('article', { class: `ticket done${red ? ' closed' : ''}` },
@@ -1489,7 +1491,7 @@ async function sendRelease(pending, version) {
   drawRelease();
 }
 $('release').addEventListener('click', () => {
-  if ($('release').getAttribute('aria-disabled') === 'true') return toast('Rien en attente');
+  if ($('release').getAttribute('aria-disabled') === 'true') return toast($('release').title || 'Rien en attente');
   const n = release.pending.length;
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;

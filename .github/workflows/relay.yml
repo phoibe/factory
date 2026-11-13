@@ -38,6 +38,7 @@ jobs:
       production: ${{ steps.relay.outputs.production }}
       previewSha: ${{ steps.relay.outputs.previewSha }}
       productionSha: ${{ steps.relay.outputs.productionSha }}
+      releaseIssue: ${{ steps.relay.outputs.releaseIssue }}
       checksMinutes: ${{ steps.relay.outputs.checksMinutes }}
     steps:
       - uses: actions/checkout@v4
@@ -314,8 +315,8 @@ jobs:
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
 
-  # After a merge: once the host has deployed it, the live site is opened the same way (read-only job, as for the
-  # preview). If it does not work, the delivery is undone at once and an urgent bug redoes it properly
+  # After a merge: wait for the host to deploy the new version (read-only, no project code). The live site is then
+  # opened in production-smoke; if it does not work, the delivery is undone and an urgent bug redoes it
   # (relay.mjs prodReport).
   production-open:
     needs: decide
@@ -345,22 +346,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.production }}
+
+  # The new version is online: open the live site (checked again for ~5 min before a failure counts, #227). This is
+  # the only production job that runs the project's code, in its own checkout.
+  production-smoke:
+    needs: [decide, production-open]
+    if: always() && needs.decide.outputs.production != '' && needs.production-open.outputs.url != ''
+    runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
       - uses: actions/checkout@v4
-        if: steps.live.outputs.url != ''
+        with:
+          repository: phoibe/factory
+          ref: ${{ inputs.factory_ref }}
+          path: .factory-src
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.decide.outputs.productionSha }}
           path: project
           persist-credentials: false
-      # Checked again for about 5 minutes before a failure counts: a site still being published answers 404 (#227).
       - name: Open the live site
-        if: steps.live.outputs.url != ''
         continue-on-error: true
         timeout-minutes: 20
         env:
-          URL: ${{ steps.live.outputs.url }}
+          URL: ${{ needs.production-open.outputs.url }}
         run: node .factory-src/scripts/smoke.mjs --url "$URL" --dir project --out "$RUNNER_TEMP/smoke/smoke.json" --retry-minutes 5
       - uses: actions/upload-artifact@v4
-        if: always() && steps.live.outputs.url != ''
+        if: always()
         with:
           name: smoke-production
           path: ${{ runner.temp }}/smoke/
@@ -368,11 +386,11 @@ jobs:
           retention-days: 1
           overwrite: true
 
-  # The new version is online: the release card moves to « Vérification du site en ligne » while the smoke check runs
-  # (issue #370). Runs only the factory's own script, never the project's code.
+  # The new version is online: the release card moves to « Vérification du site en ligne » while production-smoke runs
+  # (issue #370). Runs only the factory's own script, never the project's code. Only for a « Mise en production ».
   production-step:
     needs: [decide, production-open]
-    if: always() && needs.decide.outputs.production != '' && needs.production-open.outputs.url != ''
+    if: always() && needs.decide.outputs.releaseIssue != '' && needs.production-open.outputs.url != ''
     runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 10
     permissions:
@@ -393,9 +411,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CHECK: ${{ needs.decide.outputs.production }}
 
+  # A « Mise en production » (releaseIssue) always reaches this job, even when no deployment was ever observed, so the
+  # request is ended (as live-but-unchecked) instead of staying open and greying the button forever (issue #370).
   production:
-    needs: [decide, production-open]
-    if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true')
+    needs: [decide, production-open, production-smoke]
+    if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true' || needs.decide.outputs.releaseIssue != '')
     runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
     timeout-minutes: 10
     permissions:

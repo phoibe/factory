@@ -3032,3 +3032,13 @@ test('once the new version is online, the release request moves to « Vérificat
   await none.relay().releaseChecking({ pr: 12, sha: 'a2' });
   assert.ok(!none.gh.calls.some((c) => c[0] === 'add'));
 });
+
+test('a release that reached production with no deployment observed is ended as live-but-unchecked', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'a2', result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: { from: 'm0', prs: [11], issue: 50 } });
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'live');
+  assert.equal(note.unchecked, true);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});

@@ -1566,6 +1566,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const which = ev.kind === 'preview-check' ? 'preview' : 'production';
       outputs[which] = toJobOutput(JSON.stringify(ev.check));
       outputs[`${which}Sha`] = String(ev.check?.sha || '');
+      // Issue #370: a « Mise en production » always reaches the production job, so it is closed even when no
+      // deployment is ever observed (the button would otherwise stay greyed forever).
+      if (ev.kind === 'prod-check' && ev.check?.release?.issue) outputs.releaseIssue = String(ev.check.release.issue);
       return { action: { type: ev.kind }, outputs };
     }
     const ctx = { inFlight: 0, lockFresh: false };
@@ -2046,6 +2049,12 @@ async function main() {
       await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried), release: check.release || null }));
       return;
     }
+    // Issue #370: a release reached the production job without any deployment ever observed (no site opened, no
+    // failure). End it as live-but-unchecked so the request closes and the button is freed, instead of staying open.
+    if (!fromJobOutput(arg('url')) && check.release?.issue) {
+      await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: check.release }));
+      return;
+    }
     const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
@@ -2055,7 +2064,7 @@ async function main() {
   } else {
     throw new Error(`unknown command ${command}`);
   }
-  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
+  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', releaseIssue: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
