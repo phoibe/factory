@@ -93,14 +93,22 @@ install_into_existing() {
   elif ! grep -q '.factory/AGENT.md' "$work/repo/CLAUDE.md"; then
     { printf '\n'; gh api -H 'Accept: application/vnd.github.raw' "repos/$TEMPLATE/contents/CLAUDE.md" | sed '1d'; } >> "$work/repo/CLAUDE.md"
   fi
-  (
-    cd "$work/repo"
-    git add -A
-    if git diff --cached --quiet; then echo "  (la factory était déjà installée)"; exit 0; fi
-    git -c user.name="$OWNER_LOGIN" -c user.email="$OWNER_LOGIN@users.noreply.github.com" \
-      commit --quiet -m "chore: install the software factory"
-    git push --quiet origin "HEAD:$branch"
-  )
+  # Decide here, not inside a subshell: an `exit` there would only leave the subshell, and the
+  # « ajoutés » line below would still be printed after « déjà installée ».
+  git -C "$work/repo" add -A
+  if git -C "$work/repo" diff --cached --quiet; then
+    rm -rf "$work"
+    ok "La factory était déjà installée sur la branche $branch : rien à ajouter"
+    return
+  fi
+  git -C "$work/repo" -c user.name="$OWNER_LOGIN" -c user.email="$OWNER_LOGIN@users.noreply.github.com" \
+    commit --quiet -m "chore: install the software factory"
+  if ! git -C "$work/repo" push --quiet origin "HEAD:$branch" 2>/dev/null; then
+    rm -rf "$work"
+    die "GitHub a refusé l'envoi des fichiers de la factory sur la branche $branch (elle est sans doute protégée).
+   Rien n'a été modifié. Sur https://github.com/$REPO/settings/branches (Settings → Branches),
+   autorisez un instant les envois directs sur $branch, relancez l'outil, puis remettez la protection."
+  fi
   rm -rf "$work"
   ok "Fichiers de la factory ajoutés sur la branche $branch (votre code n'est pas modifié)"
 }

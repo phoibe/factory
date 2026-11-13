@@ -45,6 +45,22 @@ test('adopter installs the factory files, secrets, sync and framing issue', asyn
   assert.match(readFileSync(join(cfg, 'factory/routines/phoibe_mon-appli'), 'utf8'), /FACTORY_ROUTINE_TOKEN=sk-secret/);
 });
 
+test('adopting a project that already has the factory says so once, never « ajoutés »', async () => {
+  const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_ALREADY_INSTALLED: '1' });
+  assert.match(out, /La factory était déjà installée/);
+  assert.doesNotMatch(out, /Fichiers de la factory ajoutés/);
+  assert.match(out, /C'est prêt/);
+});
+
+test('when GitHub refuses the push (protected branch), it explains in French what to do and stops', async () => {
+  const err = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_PUSH_REJECTED: '1' }).then(() => null, (e) => e);
+  assert.ok(err, 'the install must stop');
+  const out = err.stdout + err.stderr;
+  assert.match(out, /GitHub a refusé/);
+  assert.match(out, /Settings → Branches/);
+  assert.doesNotMatch(out, /Fichiers de la factory ajoutés|C'est prêt/);
+});
+
 test('nouveau creates the repository from the template', async () => {
   const { log } = await run(['nouveau', 'nouveau-projet'], ['', '', 'o', 'https://example.test/fire', 'tok', '', 'Une appli de recettes']);
   assert.match(log, /repo create phoibe\/nouveau-projet --private --template phoibe\/factory-template/);

@@ -8,7 +8,20 @@ case "$1 $2" in
     if [ "${3:-}" = phoibe/nouveau-projet ] && [ ! -f "$FAKE_GH_LOG.created" ]; then exit 1; fi
     case " $* " in *defaultBranchRef*) echo main ;; esac ;;
   "repo create") touch "$FAKE_GH_LOG.created" ;;
-  "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE" ;;
+  "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE"
+    # FAKE_ALREADY_INSTALLED: the repository already holds every factory file, as the template serves them.
+    if [ -n "${FAKE_ALREADY_INSTALLED:-}" ]; then
+      for f in .github/workflows/factory.yml .github/workflows/factory-sync.yml .github/ISSUE_TEMPLATE/feature.yml .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/project.yml .github/ISSUE_TEMPLATE/question.yml .github/ISSUE_TEMPLATE/config.yml; do
+        mkdir -p "$4/$(dirname "$f")"; "$0" api -H 'Accept: application/vnd.github.raw' "repos/phoibe/factory-template/contents/$f" > "$4/$f"
+      done
+      printf '{}' > "$4/factory.config.json"; printf 'Read .factory/AGENT.md first.\n' > "$4/CLAUDE.md"
+      git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm factory
+    fi
+    # FAKE_PUSH_REJECTED: the default branch is protected, GitHub refuses the push.
+    if [ -n "${FAKE_PUSH_REJECTED:-}" ]; then
+      printf '#!/bin/sh\necho "remote: error: GH006: Protected branch update failed for refs/heads/main." >&2\nexit 1\n' > "$FAKE_REMOTE/hooks/pre-receive"
+      chmod +x "$FAKE_REMOTE/hooks/pre-receive"
+    fi ;;
   "api user/installations") echo "${FAKE_INSTALLATIONS:-42 all}" ;;
   "secret set") cat > /dev/null ;;
   "repo archive") [ -n "${FAKE_ARCHIVE_FAILS:-}" ] && exit 1; exit 0 ;;
