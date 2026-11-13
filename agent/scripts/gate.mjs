@@ -18,16 +18,16 @@ const HEREDOC = /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g;
 // A command continued with a backslash is one line for the shell: join it before matching.
 const commandOf = (input) => String(input?.command || '').replace(HEREDOC, '').replace(/\\\r?\n/g, ' ');
 
-// Does this tool call open a PR? A read of the pull requests (-X GET with -f filters) does not.
+// Does this tool call open a PR? A read of the pull requests does not: -X GET with -f filters, or a query string
+// (`/pulls?head=…`, often inside $(…) to find the PR number) that a POST opening a PR never carries.
 export function opensPr(tool, input = {}) {
   if (/create_pull_request$/.test(tool || '')) return true;
   if (tool !== 'Bash') return false;
   const cmd = commandOf(input);
   if (/\bgh\s+pr\s+create\b/.test(cmd)) return true;
-  const posts = /(\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b|-X\s*POST|--method\s+POST|--request\s+POST)/;
-  const reads = /(-X\s*|--method\s+|--request\s+)GET\b/;
-  // Each command of the line on its own: a read of /pulls chained with `;` or `&&` to a label call is still a read.
-  return cmd.split(/\n|;|&&|\|\|/).some((l) => /(gh\s+api|curl)\b[^\n]*\/pulls(?=$|[\s'"?])/.test(l) && posts.test(l) && !reads.test(l));
+  const posts = /(\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b|-X\s*POST|--method[\s=]+POST|--request[\s=]+POST)/;
+  const reads = /(-X\s*|--method[\s=]+|--request[\s=]+)GET\b/;
+  return cmd.split('\n').some((l) => /(gh\s+api|curl)\b.*\/pulls(?=$|[\s'"])/.test(l) && posts.test(l) && !reads.test(l));
 }
 
 // Does this tool call open a PR, or hand it to the next step?
@@ -63,8 +63,10 @@ export function shotsRefusal(tool, input, io) {
 
 // Issue #385: the PR a building run opens says what was tried in the project's real conditions, or what was not.
 // Accents are optional (« Pas verifie en vrai » counts), whatever their Unicode form.
-const REAL_CHECK = /essaye en vrai|pas verifie en vrai/i;
-const plain = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// Also « Essayée », « **Essayé** en vrai », a non-breaking space, and a JSON body with \u00e9 escapes.
+const REAL_CHECK = /essayee?s?\W+en\W+vrai|pas\W+verifiee?s?\W+en\W+vrai/i;
+const plain = (t) => t.replace(/\\u([0-9a-f]{4})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)))
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 export function realCheckRefusal(tool, input, io) {
   if (!opensPr(tool, input)) return null;
   if (postedTexts(tool, input, io).some((t) => REAL_CHECK.test(plain(t)))) return null;
@@ -95,8 +97,10 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
       const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
       return real ? { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: real } } } : null;
     }
+    // Everything at once: each refusal spends one of the run's MAX_DENIALS.
+    const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
     const reason = ['Verrou de la factory : la PR ne peut pas avancer, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
-      'Fais-les (avec l\'outil Skill), commit, puis réessaie.'].join('\n');
+      'Fais-les (avec l\'outil Skill), commit, puis réessaie.', ...(real ? ['', real] : [])].join('\n');
     return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } };
   }
   if (ev === 'Stop') {

@@ -36,9 +36,31 @@ test('reading the real pull requests is never taken for opening one', () => {
   assert.equal(decide(bash("n=$(gh api 'repos/o/r/pulls?head=o:b' --jq '.[0].number'); gh api repos/o/r/issues/$n/labels -f 'labels[]=factory:checks'"), env('build')), null);
 });
 
+test('a PR opened with a « ; » in its title or flags before the address is still checked', () => {
+  const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+  for (const c of [`curl -s -X POST -H "Authorization: token $T" -d '{"title":"Corrige A ; B"}' https://api.github.com/repos/o/r/pulls`,
+    "gh api -f title='A ; B' -f head=b -F body=@pr.md repos/o/r/pulls", "gh api -X POST -f title='A ; B' repos/o/r/pulls -f head=b",
+    "gh api repos/o/r/pulls -H 'X: a;b' -f title=x"]) assert.ok(decide(bash(c), env('build')), c);
+});
+
+test('fetching the PR number inside the hand-over command is not taken for opening a PR', () => {
+  const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+  assert.equal(decide(bash("gh api repos/o/r/issues/$(gh api 'repos/o/r/pulls?head=o:b' --jq '.[0].number')/labels -f 'labels[]=factory:checks'"), env('build')), null);
+  assert.equal(decide(bash('gh api --method=GET repos/o/r/pulls -f state=closed'), env('build')), null);
+});
+
+test('a missing step and a missing real-conditions line are told at once', () => {
+  const sessionText = j({ t: '1', kind: 'run', stage: 'audit' });
+  const res = decide(open(), { files: ['lib/x.mjs', '.factory/journal/s.jsonl'], read: () => sessionText, stages, sessionText, readFile: () => 'Résumé.', cwd: '/w' });
+  assert.match(reason(res), /revue de code[\s\S]*Essayé en vrai/);
+});
+
 test('a summary written without accents still counts', () => {
   assert.equal(decide(open(), env('build', { '/w/pr.md': 'Pas verifie en vrai : la mise en ligne.' })), null);
   assert.equal(decide(open(), env('build', { '/w/pr.md': 'Essaye en vrai : la page.'.normalize('NFD') })), null);
+  for (const body of ['Essayée en vrai : la page.', '**Essayé** en vrai : la page.', 'Pas vérifiée\u00a0en vrai : la mise en ligne.', '{"body":"Essay\\u00e9 en vrai : la page."}']) {
+    assert.equal(decide(open(), env('build', { '/w/pr.md': body })), null, body);
+  }
 });
 
 test('a PR body sent from a file the lock cannot read is told how to send it', () => {

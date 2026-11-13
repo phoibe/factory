@@ -73,7 +73,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    déjà publié, le vrai fichier de configuration. Fais tourner ton code sur ces données réelles (par exemple ta
    fonction appliquée à la vraie réponse de l'API, la page de la branche contre le vrai site) et compare avec ce
    que la spec attend. Si ton code écrit quelque part, donne-lui seulement les vraies réponses déjà lues : ne le
-   laisse jamais appeler lui-même le vrai service. **Lecture seule stricte** : ne crée, ne modifie, n'envoie ni ne supprime rien de réel pour
+   laisse jamais appeler lui-même le vrai service. Ne démarre jamais l'appli ni une migration avec les réglages de
+   production (vraie base de données, vraies clés) : lis seulement ce que la production montre. **Lecture seule stricte** : ne crée, ne modifie, n'envoie ni ne supprime rien de réel pour
    « essayer » (pas de message de test, pas de label posé pour voir, pas d'écriture en production, pas de
    formulaire envoyé). Si l'essai montre un problème, corrige-le (avec un test qui échoue d'abord) comme un test
    rouge, avant la PR.
