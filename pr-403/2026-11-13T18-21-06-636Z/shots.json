@@ -1,0 +1,30 @@
+{
+  "files": [
+    "parametres--desktop--sombre.png",
+    "parametres--desktop.png",
+    "parametres--mobile--sombre.png",
+    "parametres--mobile.png",
+    "stack--desktop--sombre.png",
+    "stack--desktop.png",
+    "stack--mobile--sombre.png",
+    "stack--mobile.png"
+  ],
+  "unchanged": [
+    "agent--desktop--sombre.png",
+    "agent--desktop.png",
+    "agent--mobile--sombre.png",
+    "agent--mobile.png",
+    "connexion--desktop--sombre.png",
+    "connexion--desktop.png",
+    "connexion--mobile--sombre.png",
+    "connexion--mobile.png",
+    "mise-en-production--desktop--sombre.png",
+    "mise-en-production--desktop.png",
+    "mise-en-production--mobile--sombre.png",
+    "mise-en-production--mobile.png",
+    "suivi--desktop--sombre.png",
+    "suivi--desktop.png",
+    "suivi--mobile--sombre.png",
+    "suivi--mobile.png"
+  ]
+}
