@@ -1,0 +1,86 @@
+// Issue #395: the chat server only receives a read-only token; the panel writes with the full one.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { tokenFromHash, readTokenFromHash, phoneLink } from '../panel/lib.mjs';
+import { newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, readTokenProblem, probeSaysWritable, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
+
+test('le lien du téléphone emporte les deux jetons', () => {
+  const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_FULL_1', 'github_pat_READ_2');
+  assert.equal(link, 'https://phoibe.github.io/factory/#jeton=github_pat_FULL_1&lecture=github_pat_READ_2');
+  const { hash } = new URL(link);
+  assert.equal(tokenFromHash(hash), 'github_pat_FULL_1');
+  assert.equal(readTokenFromHash(hash), 'github_pat_READ_2');
+});
+
+test('un ancien lien sans jeton de lecture connecte toujours, sans jeton de lecture', () => {
+  assert.equal(phoneLink('https://x.io/', 'github_pat_A'), 'https://x.io/#jeton=github_pat_A');
+  assert.equal(tokenFromHash('#jeton=github_pat_A'), 'github_pat_A');
+  assert.equal(readTokenFromHash('#jeton=github_pat_A'), null);
+  assert.equal(readTokenFromHash('#lecture=<script>'), null);
+});
+
+test('the create link asks GitHub for a one-year, read-only (contents) token', () => {
+  const u = new URL(READ_TOKEN_URL);
+  assert.equal(u.origin + u.pathname, 'https://github.com/settings/personal-access-tokens/new');
+  assert.equal(u.searchParams.get('expires_in'), '365');
+  assert.equal(u.searchParams.get('contents'), 'read');
+  for (const p of ['issues', 'pull_requests', 'administration', 'workflows']) assert.equal(u.searchParams.get(p), null);
+});
+
+test('a write probe means « can write » unless GitHub refused it', () => {
+  assert.equal(probeSaysWritable(403), false);
+  assert.equal(probeSaysWritable(404), false);
+  assert.equal(probeSaysWritable(401), false);
+  assert.equal(probeSaysWritable(422), true);
+  assert.equal(probeSaysWritable(409), true);
+  assert.equal(probeSaysWritable(200), true);
+});
+
+test('coller mon jeton complet est refusé avec un message clair', () => {
+  assert.equal(WRITABLE_TOKEN, 'Ce jeton peut modifier vos projets : créez-en un en lecture seule avec le bouton ci-dessus.');
+  const ok = { same: false, status: 200, login: 'Phoibe', owner: 'phoibe', readable: true, writable: false };
+  assert.equal(readTokenProblem(ok), null);
+  assert.equal(readTokenProblem({ ...ok, same: true }), WRITABLE_TOKEN);
+  assert.equal(readTokenProblem({ ...ok, writable: true }), WRITABLE_TOKEN);
+  assert.match(readTokenProblem({ ...ok, status: 401 }), /GitHub ne reconnaît pas ce jeton/);
+  assert.match(readTokenProblem({ ...ok, login: 'intrus' }), /autre compte/);
+  assert.match(readTokenProblem({ ...ok, readable: false }), /ne peut pas lire ce projet/);
+});
+
+test('a conversation is stored as the server stored it', () => {
+  const conv = newConversation('c1', 'Je peux exporter ?\nsuite', '2026-11-13T10:00:00Z');
+  assert.deepEqual(conv, { id: 'c1', title: 'Je peux exporter ?', state: 'open', created: '2026-11-13T10:00:00Z', updated: '2026-11-13T10:00:00Z', messages: [] });
+  assert.equal(newConversation('c2', '', 'x').title, 'Image envoyée');
+  addExchange(conv, { text: 'Je peux exporter ?', images: ['attachments/chat/1-a.png'] }, 'Non.', '2026-11-13T10:01:00Z',
+    [{ title: 'Exporter', url: 'https://github.com/o/r/issues/7', kind: 'feature', number: 7, body: 'x' }]);
+  assert.deepEqual(conv.messages, [
+    { who: 'me', text: 'Je peux exporter ?', images: ['attachments/chat/1-a.png'], at: '2026-11-13T10:01:00Z' },
+    { who: 'agent', text: 'Non.', at: '2026-11-13T10:01:00Z', issues: [{ title: 'Exporter', url: 'https://github.com/o/r/issues/7', kind: 'feature' }] },
+  ]);
+  assert.equal(conv.updated, '2026-11-13T10:01:00Z');
+  conv.state = 'closed';
+  addExchange(conv, { text: 'Encore' }, 'Oui.', '2026-11-13T10:02:00Z');
+  assert.equal(conv.state, 'open'); // a new message reopens it
+  assert.equal(conv.messages.at(-1).issues, undefined);
+});
+
+test('the index keeps one entry per conversation, most recent first', () => {
+  const conv = { id: 'c1', title: 'Export', updated: '2026-11-13T10:00:00Z', state: 'open', messages: [] };
+  const index = upsertIndex([{ id: 'old', title: 'x', updated: '2026-11-01T00:00:00Z', state: 'closed' }, { id: 'c1', title: 'avant', updated: '2026-11-02T00:00:00Z', state: 'closed' }], conv);
+  assert.deepEqual(index, [{ id: 'c1', title: 'Export', updated: '2026-11-13T10:00:00Z', state: 'open' }, { id: 'old', title: 'x', updated: '2026-11-01T00:00:00Z', state: 'closed' }]);
+  assert.deepEqual(upsertIndex(null, conv).map((c) => c.id), ['c1']);
+});
+
+test('the issues the agent proposes are created as the server created them', () => {
+  assert.deepEqual(issueRequest({ kind: 'bug', title: 'Plante', body: 'Quand…' }),
+    { title: 'Plante', labels: ['factory:bug'], body: 'Quand…\n\n_Demandé depuis le chat du tableau de suivi._' });
+  // A feature the owner asked for is kept, and the agent marker leaves it to the queue instead of starting it at once.
+  assert.deepEqual(issueRequest({ kind: 'feature', title: 'Exporter', body: 'Il veut.' }),
+    { title: 'Exporter', labels: ['factory:feature', 'factory:kept'], body: '<!-- factory-agent -->\nIl veut.\n\n_Demandé depuis le chat du tableau de suivi._' });
+});
+
+test('a request GitHub refused is said under the answer', () => {
+  assert.equal(notCreatedNote(0), '');
+  assert.equal(notCreatedNote(1), '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._');
+  assert.equal(notCreatedNote(2), '\n\n_2 demandes n\'ont pas pu être créées sur GitHub : redemandez dans un moment._');
+});

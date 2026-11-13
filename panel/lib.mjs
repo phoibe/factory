@@ -113,13 +113,17 @@ export function toBase64(text) {
 export const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
 
 // Token carried by a phone link (#jeton=…). The fragment never reaches a server.
+const HASH = /^#jeton=([A-Za-z0-9_]+)(?:&lecture=([A-Za-z0-9_]+))?$/;
 export function tokenFromHash(hash) {
-  const m = /^#jeton=([A-Za-z0-9_]+)$/.exec(hash || '');
-  return m ? m[1] : null;
+  return HASH.exec(hash || '')?.[1] || null;
+}
+// The chat's read-only token (issue #395), carried by the same link.
+export function readTokenFromHash(hash) {
+  return HASH.exec(hash || '')?.[2] || null;
 }
 
-// Link that signs a phone in with the same token.
-export const phoneLink = (pageUrl, token) => `${pageUrl.split('#')[0]}#jeton=${token}`;
+// Link that signs a phone in with the same tokens.
+export const phoneLink = (pageUrl, token, read) => `${pageUrl.split('#')[0]}#jeton=${token}${read ? `&lecture=${read}` : ''}`;
 
 // Preview link of a PR, from its comments (oldest first): the Vercel bot's latest "[Preview](…)"
 // or "[Visit Preview](…)" link, else the factory's « … tester la nouvelle version ici : https://… » message.
