@@ -28,3 +28,5 @@
 {"t":"2026-11-13T15:29:36.106Z","kind":"skill","name":"impeccable","id":"toolu_016hguxJ1KfiSh8Yfx6nSqx5"}
 {"t":"2026-11-13T15:30:08.250Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique A (review)","id":"toolu_017u2LEJFCdsrH7733cUv98P"}
 {"t":"2026-11-13T15:30:08.252Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique B (detector)","id":"toolu_01CsjNH3av3aPtrJou3dJcqc"}
+{"t":"2026-11-13T15:30:43.985Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=…  assert.equal(relaunchLine({ next }, 'Europe/Paris'), 'Relance prévue à 16:12');\"\"\",\"\"\"  assert.equal(relaunchLine({ next }, 'Europe/Paris', next - 60_000), 'Relance prév","ok":false,"id":"toolu_01UP746VCFpdwvKMqAW9XA5e"}
+{"t":"2026-11-13T15:30:52.729Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\na=…\"export function relaunchLine(state, timeZone) {\n  if (!state?.next) return null;\n\"\"\"\nassert a in s\ns=… Once its time has passed (the tick runs late), the relaunch is immi","ok":true,"id":"toolu_01VD8kMNFNe1HUMkfVfrB8g3"}

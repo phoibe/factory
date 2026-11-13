@@ -18,8 +18,10 @@ export function writeRelaunch(body, state) {
   return `${clean}\n\n${RELAUNCH_MARKER} ${json} -->`;
 }
 
-export function relaunchLine(state, timeZone) {
+// Once its time has passed (the tick runs late), the relaunch is imminent: a time in the past would read as forgotten.
+export function relaunchLine(state, timeZone, now = Date.now()) {
   if (!state?.next) return null;
+  if (now >= state.next) return 'Relance imminente';
   const time = new Date(state.next).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {}) });
   return `Relance prévue à ${time}`;
 }

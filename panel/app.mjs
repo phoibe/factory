@@ -630,7 +630,7 @@ function card(c, lane, minutes, now, moved) {
   const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
-  const relaunch = !running && c.labels.includes('factory:relaunch') ? relaunchLine(readRelaunch(c.body)) : null;
+  const relaunch = !running && c.labels.includes('factory:relaunch') ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running && !c.waits?.length;
   const status = lane === 'yours'
@@ -668,7 +668,8 @@ function card(c, lane, minutes, now, moved) {
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
     c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     c.column === 'release' ? null : stepTrack(c),
-    c.column === 'release' ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
+    // No agent works on a card whose launch waits: no estimate of its work until it starts.
+    c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.

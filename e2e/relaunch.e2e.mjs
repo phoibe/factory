@@ -16,6 +16,7 @@ test('une carte dont le lancement a échoué affiche « Relance prévue à … �
     await c.locator('.relaunch').waitFor();
     assert.equal(await c.locator('.relaunch').textContent(), relaunchLine({ next }));
     assert.equal(await page.locator('section.lane-yours .ticket[data-number="3"]').count(), 0, 'nothing for the owner to do');
+    assert.doesNotMatch(await c.textContent(), /de travail des agents/, 'no agent works on it until then');
   });
 });
 

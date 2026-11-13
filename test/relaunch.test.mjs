@@ -18,7 +18,8 @@ test('the relaunch marker survives a launch whose follow-up holds an HTML commen
 
 test('the card line names the time of the next relaunch', () => {
   const next = Date.UTC(2026, 10, 13, 15, 12);
-  assert.equal(relaunchLine({ next }, 'Europe/Paris'), 'Relance prévue à 16:12');
+  assert.equal(relaunchLine({ next }, 'Europe/Paris', next - 60_000), 'Relance prévue à 16:12');
+  assert.equal(relaunchLine({ next }, 'Europe/Paris', next + 1), 'Relance imminente', 'a time already past is not shown');
   assert.equal(relaunchLine({}), null);
   assert.equal(relaunchLine(null), null);
 });
