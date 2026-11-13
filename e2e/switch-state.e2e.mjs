@@ -34,7 +34,7 @@ test('j\'ouvre un projet lent juste après un autre : il ne dit pas « à jour �
     await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
     await page.goto(url);
     await page.locator('#projects .project-item[data-repo="o/alpha"] [class*="pdot-"]').waitFor({ timeout: 15000 });
-    slowRepos['o/alpha'] = 3000;
+    slowRepos['o/alpha'] = 5000;
     await status(page).filter({ hasText: "à jour à l'instant" }).waitFor({ timeout: 10000 });
     await pick(page, 'alpha');
     await page.locator('.ticket', { hasText: 'Carte alpha' }).waitFor();
@@ -45,14 +45,14 @@ test('j\'ouvre un projet lent juste après un autre : il ne dit pas « à jour �
 
 test('j\'ouvre un projet pendant que la ligne « En ligne » de l\'autre se lit encore : la sienne arrive tout de suite', async () => {
   const deploy = { deployments: [{ id: 1, sha: 'a', environment: 'Production' }], statuses: { 1: [{ state: 'success' }] }, compare: { commits: [] }, pulls: [] };
-  await withPanel({ ...alpha, homepages: { 'o/r': 'https://r.example' }, deploy, slowReads: [[/\/repos\/o\/alpha\/deployments/, 4000]] }, async ({ page, url }) => {
+  await withPanel({ ...alpha, homepages: { 'o/r': 'https://r.example' }, deploy, slowReads: [[/\/repos\/o\/alpha\/deployments/, 8000]] }, async ({ page, url }) => {
     await page.addInitScript(() => localStorage.setItem('factory.project', 'o/alpha'));
     await page.goto(url);
     await page.locator('#project-name', { hasText: 'alpha' }).waitFor();
     await page.waitForTimeout(300);
     await pick(page, 'r');
     // Far before the next refresh (8 s): the read of the project left must not swallow this one's.
-    await page.locator('#prod-gap', { hasText: 'En ligne : à jour' }).waitFor({ timeout: 2500 });
+    await page.locator('#prod-gap', { hasText: 'En ligne : à jour' }).waitFor({ timeout: 4000 });
   });
 });
 
@@ -65,5 +65,21 @@ test('la ligne « En ligne » tient compte du mode de mise en production lu dans
     await page.locator('#prod-gap', { hasText: 'En ligne : version inconnue' }).waitFor({ timeout: 5000 });
     await page.waitForTimeout(2000);
     assert.equal(await page.locator('#prod-gap').textContent(), 'En ligne : version inconnue');
+  });
+});
+
+test('je change de projet pendant que celui d\'avant attend une relecture de sa ligne « En ligne » : celle du projet ouvert n\'est pas perdue', async () => {
+  // Both sheets say production is manual; each one arrives while its project's line is still being read.
+  const deploy = { deployments: [{ id: 1, sha: 'a', environment: 'Production' }], statuses: { 1: [{ state: 'success' }] }, compare: { commits: [] }, pulls: [] };
+  await withPanel({ ...alpha, homepages: { 'o/r': 'https://r.example', 'o/alpha': 'https://a.example' }, files: { 'STACK.md': sheet }, deploy,
+    slowReads: [[/\/repos\/o\/alpha\/deployments/, 6000], [/\/repos\/o\/r\/deployments/, 1500]] }, async ({ page, url }) => {
+    await page.route(/\/repos\/o\/alpha\/contents\/STACK\.md/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(sheet).toString('base64'), encoding: 'base64', sha: 's' }) }));
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/alpha'));
+    await page.goto(url);
+    await page.locator('#project-sub', { hasText: 'Mise en production externe' }).waitFor({ timeout: 5000 });
+    await pick(page, 'r');
+    await page.locator('#project-name', { hasText: /^r$/ }).waitFor();
+    // r's own read (1.5 s) and its read again with the sheet's mode: far before the next refresh of the line.
+    await page.locator('#prod-gap', { hasText: 'En ligne : version inconnue' }).waitFor({ timeout: 4500 });
   });
 });

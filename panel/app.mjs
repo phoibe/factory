@@ -85,7 +85,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); for (const m of Object.values(gap)) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -1438,12 +1438,14 @@ function drawSub() {
   $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
 }
 async function loadDelivery(project) {
-  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);
-  if (current !== project) return;
+  // A failed read keeps the mode known from the last visit; only a missing sheet (404, null) forgets it.
+  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => undefined);
+  if (current !== project || file === undefined) return;
   const delivery = file?.content ? deliveryOf(fromBase64(file.content)) : null;
   if (JSON.stringify(delivery) === JSON.stringify(current.delivery)) return;
   current.delivery = delivery;
   drawSub();
+  drawGap(); // a line read for the former mode is hidden at once
   drawRelease();
   refreshGap(true).catch(() => {});
   if (!$('rules').contains(document.activeElement)) renderRules();
@@ -1453,30 +1455,31 @@ async function loadDelivery(project) {
 // Under the project's name: is the live site up to date with the validated changes? A version is live only once its
 // host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
 const GAP_MS = 60_000;
-// `views`: each project's last line with the mode it was read for, kept while this tab stays open (issue #397).
-const gap = { repo: null, at: 0, busy: null, busyRepo: null, again: null, views: new Map() };
+// Kept per project while this tab stays open (issue #397): `views` its last line with the mode it was read for, `at`
+// when it was read, `busy` the read going and `again` the forced read waiting for it.
+const gap = { at: new Map(), busy: new Map(), again: new Map(), views: new Map() };
 function refreshGap(force = false) {
   const project = current;
   const repo = project.repo.full_name;
   // One read at a time per project: opening a project and its first refresh must not fire the same requests twice.
-  // A forced read (its production mode just read) waits for the one going, never lost behind it (issue #397).
-  if (gap.busy && gap.busyRepo === repo) {
-    if (!force) return gap.busy;
-    gap.again ||= gap.busy.catch(() => {}).then(() => { gap.again = null; return current === project ? refreshGap(true) : null; });
-    return gap.again;
+  // A forced read (its production mode just read) waits for the one going, never lost behind it. A read of another
+  // project never holds this one up.
+  const busy = gap.busy.get(repo);
+  if (busy) {
+    if (!force) return busy;
+    if (!gap.again.has(repo)) gap.again.set(repo, busy.catch(() => {}).then(() => { gap.again.delete(repo); return current === project ? refreshGap(true) : null; }));
+    return gap.again.get(repo);
   }
-  // A read of a project left meanwhile does not hold this one up: its answer will be dropped.
-  const run = readGap(force).finally(() => { if (gap.busy === run) { gap.busy = null; gap.busyRepo = null; } });
-  gap.busy = run;
-  gap.busyRepo = repo;
+  const run = readGap(force).finally(() => { if (gap.busy.get(repo) === run) gap.busy.delete(repo); });
+  gap.busy.set(repo, run);
   return run;
 }
 const gapMode = (project) => effectiveProduction(project.config, project.delivery);
 async function readGap(force) {
   const project = current;
   const repo = project.repo.full_name;
-  if (!force && gap.repo === repo && Date.now() - gap.at < GAP_MS) return;
-  gap.at = Date.now();
+  if (!force && Date.now() - (gap.at.get(repo) || 0) < GAP_MS) return;
+  gap.at.set(repo, Date.now());
   const mode = effectiveProduction(project.config, project.delivery);
   const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
   let view;
@@ -1529,7 +1532,6 @@ async function readGap(force) {
   }
   // A line read for another project, or before its stack sheet changed its mode, is never shown (issue #397).
   if (current !== project || gapMode(project) !== mode) return;
-  gap.repo = repo;
   gap.views.set(repo, { mode, view });
   drawGap();
 }
