@@ -85,7 +85,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); for (const m of Object.values(gap)) m.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); token = null; projects = []; current = null; dots = new Map(); etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -1467,7 +1467,10 @@ function refreshGap(force = false) {
   const busy = gap.busy.get(repo);
   if (busy) {
     if (!force) return busy;
-    if (!gap.again.has(repo)) gap.again.set(repo, busy.catch(() => {}).then(() => { gap.again.delete(repo); return current === project ? refreshGap(true) : null; }));
+    if (!gap.again.has(repo)) {
+      const next = busy.catch(() => {}).then(() => { if (gap.again.get(repo) === next) gap.again.delete(repo); return current === project ? refreshGap(true) : null; });
+      gap.again.set(repo, next);
+    }
     return gap.again.get(repo);
   }
   const run = readGap(force).finally(() => { if (gap.busy.get(repo) === run) gap.busy.delete(repo); });
