@@ -50,21 +50,38 @@ export function gapItems(pulls, aheadShas) {
 const count = (n) => `${n} modification${n > 1 ? 's' : ''} d'écart`;
 const unknown = (why) => ({ kind: 'unknown', text: 'En ligne : version inconnue', items: [], why });
 
-// What the line under the project's name says. `mode`: 'auto' | 'approval' | 'external'. `hasSite`: the project
-// has a site address. `aheadShas`: Set (see gapItems). `error`: GitHub could not be read.
-export function gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, error, truncated }) {
-  const live = (deployments || []).some((d) => isLiveEnv(d.environment));
-  if (mode === 'external') return !hasSite && !live ? { kind: 'none', text: '', items: [] } : unknown('La mise en ligne de ce projet se fait hors de la factory : elle ne voit pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.');
-  if (error) return hasSite || live ? unknown('GitHub ne répond pas pour le moment : la version en ligne n\'a pas pu être lue.') : { kind: 'none', text: '', items: [] };
-  if (!live) return hasSite ? unknown('L\'hébergeur de ce site ne prévient pas GitHub quand il publie : la factory ne sait pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.') : { kind: 'none', text: '', items: [] };
-  const { liveSha, latest } = deploymentState(deployments, statusesById || {});
-  if (latest === 'gone') return unknown('L\'hébergeur a retiré la dernière publication : on ne sait plus quelle version est en ligne.');
-  if (latest === 'pending') return { kind: 'deploying', text: 'En ligne : publication en cours…', items: liveSha ? gapItems(pulls, aheadShas || new Set()) : [] };
-  if (!liveSha) return unknown('Aucune publication réussie récente n\'est visible chez l\'hébergeur.');
+const NO_TAG = {
+  external: 'Mise en ligne hors de la factory, et le site ne donne pas encore son étiquette de version.',
+  silent: 'L\'hébergeur ne prévient pas GitHub, et le site ne donne pas encore son étiquette de version.',
+};
+const NONE = { kind: 'none', text: '', items: [] };
+
+// The line once the live commit is known: up to date, or the validated changes it lacks.
+function liveView({ aheadShas, pulls, truncated }, latest = 'success') {
   // The compare stops at 250 commits: the newest ones are then missing, and « à jour » would be a lie.
   if (truncated) return unknown('Le site en ligne est en retard de trop de modifications pour les compter : l\'écart exact n\'est pas connu.');
   const items = gapItems(pulls, aheadShas || new Set());
   if (!items.length) return { kind: 'ok', text: 'En ligne : à jour', items };
   if (latest === 'failure') return { kind: 'failed', text: `En ligne : ${count(items.length)} · la dernière publication a échoué`, items };
   return { kind: 'gap', text: `En ligne : ${count(items.length)}`, items };
+}
+
+// Whether the version tag (issue #372) says what is live: external production, or a site whose host reports no live
+// deployment to GitHub. Projects without a site show nothing.
+export const tagged = ({ mode, hasSite, deployments }) => Boolean(hasSite) && (mode === 'external' || !(deployments || []).some((d) => isLiveEnv(d.environment)));
+
+// What the line under the project's name says. `mode`: 'auto' | 'approval' | 'external'. `hasSite`: the project
+// has a site address. `aheadShas`: Set (see gapItems). `error`: GitHub could not be read. `tagSha`: the commit the
+// site's version tag names (refs/factory/live), null when the site gives none.
+export function gapView(input) {
+  const { mode, hasSite, deployments, statusesById, aheadShas, pulls, error, tagSha } = input;
+  const live = (deployments || []).some((d) => isLiveEnv(d.environment));
+  if (!hasSite && (mode === 'external' || !live)) return NONE;
+  if (error) return unknown('GitHub ne répond pas pour le moment : la version en ligne n\'a pas pu être lue.');
+  if (tagged(input)) return tagSha ? liveView(input) : unknown(NO_TAG[mode === 'external' ? 'external' : 'silent']);
+  const { liveSha, latest } = deploymentState(deployments, statusesById || {});
+  if (latest === 'gone') return unknown('L\'hébergeur a retiré la dernière publication : on ne sait plus quelle version est en ligne.');
+  if (latest === 'pending') return { kind: 'deploying', text: 'En ligne : publication en cours…', items: liveSha ? gapItems(pulls, aheadShas || new Set()) : [] };
+  if (!liveSha) return unknown('Aucune publication réussie récente n\'est visible chez l\'hébergeur.');
+  return liveView(input, latest);
 }

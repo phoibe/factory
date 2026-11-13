@@ -4,6 +4,7 @@
 //        [--dark-class dark | --dark-attr data-theme=dark]   (only for a dark theme switched by the app, not by the browser)
 //        [--cookie session=abc123[,other=v]]                 (screens behind a sign-in: the session cookie to send)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
+//   node .factory/scripts/shots.mjs check comment.md   (exit 1 when a table row is not a displayed image)
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
 // Publish builds one side-by-side image (before left, after right) per screen, size and theme.
 import { createRequire } from 'node:module';
@@ -196,6 +197,17 @@ export function markdownTable({ repo, dir, files, unchanged = [] }) {
 export const SHOTS_META = 'shots.json';
 export const shotsMeta = ({ files, unchanged = [] }) => JSON.stringify({ files, unchanged }, null, 2);
 
+// The table rows of a screenshots message (after its hidden shots mark) that would not show an image: the agent once
+// retyped the table by hand and the dark rows became broken links (issue #375). Empty when every row is an image
+// from the assets branch, or when the text is not a screenshots message.
+const SHOT_ROW = new RegExp(`^\\|[^|]+\\| !\\[[^\\]]*\\]\\(https://github\\.com/[\\w.-]+/[\\w.-]+/blob/${ASSETS_BRANCH.replace(/[/.]/g, '\\$&')}/[^\\s()]+\\.png\\?raw=true\\) \\|$`);
+export function brokenShotRows(text) {
+  const at = String(text || '').indexOf('<!-- shots:');
+  if (at < 0) return [];
+  const rows = String(text).slice(at).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|'));
+  return rows.filter((l) => !/^\|\s*Écran\s*\|/.test(l) && !/^\|[\s|:-]+\|$/.test(l) && !SHOT_ROW.test(l));
+}
+
 async function publish({ pr, before, after }) {
   const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const repo = git(['config', '--get', 'remote.origin.url']).replace(/^.*github\.com[:/]/, '').replace(/\.git$/, '');
@@ -239,10 +251,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const cmd = args._[0];
   if (cmd === 'capture') {
     await capture({ baseUrl: args['base-url'], routes: String(args.routes || '/').split(','), out: args.out, toggle: darkToggle(args), cookies: cookiesFor(args.cookie, args['base-url']) });
+  } else if (cmd === 'check') {
+    // node .factory/scripts/shots.mjs check comment.md : refuses a screenshots message whose table is broken.
+    const broken = brokenShotRows(readFileSync(args._[1], 'utf8'));
+    for (const row of broken) console.error(`ligne cassée : ${row}`);
+    if (broken.length) process.exit(1);
   } else if (cmd === 'publish') {
     console.log(await publish({ pr: args.pr, before: args.before, after: args.after }));
   } else {
-    console.error('usage: shots.mjs capture|publish ...');
+    console.error('usage: shots.mjs capture|publish|check ...');
     process.exit(2);
   }
 }

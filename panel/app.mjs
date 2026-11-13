@@ -6,7 +6,7 @@ import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine }
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=10';
 import { waitedFor } from './waits.mjs?v=2';
 import { trustNotes } from './trust.mjs';
-import { gapView, deploymentState, isLiveEnv } from './production.mjs?v=1';
+import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -1465,7 +1465,11 @@ async function readGap(force) {
       statusesById[d.id] = (await cachedGet(`/repos/${repo}/deployments/${d.id}/statuses?per_page=20`)).data || [];
       if (statusesById[d.id].some((x) => x.state === 'success')) break;
     }
-    const { liveSha } = deploymentState(live, statusesById);
+    // External production or a silent host: the site's version tag (issue #372), kept by the relay in refs/factory/live.
+    const byTag = tagged({ mode, hasSite, deployments });
+    const tagSha = byTag ? await cachedGet(`/repos/${repo}/git/ref/factory/live`)
+      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.message === '404') return null; throw e; }) : null;
+    const liveSha = byTag ? tagSha : deploymentState(live, statusesById).liveSha;
     let aheadShas = new Set();
     let pulls = [];
     let truncated = false;
@@ -1490,7 +1494,7 @@ async function readGap(force) {
         }
       }
     }
-    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, truncated });
+    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, truncated, tagSha });
   } catch (err) {
     // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
     if (err?.rateLimited) throw err;

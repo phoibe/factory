@@ -200,3 +200,34 @@ test('publish leaves the list of identical screens next to the images, for the f
   assert.equal(SHOTS_META, 'shots.json');
   assert.deepEqual(JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: ['b--mobile.png'] })), { files: ['a--desktop.png'], unchanged: ['b--mobile.png'] });
 });
+
+// Issue #375: a comment's screenshots table, retyped by hand, showed broken links instead of the dark images.
+const BROKEN_373 = [
+  '<!-- shots: claude/factory-assets -->',
+  '| Écran | Avant (gauche) · Après (droite) |',
+  '| --- | --- |',
+  '| s · desktop | ![avant · après](https://github.com/o/r/blob/claude/factory-assets/pr-1/t/compare/s--desktop.png?raw=true) |',
+  '| s · desktop · sombre | [avant · après](` https://github.com/o/r/blob/claude/factory-assets/pr-1/t/compare/s--desktop--sombre.png?raw=true `) |',
+  '| s · mobile · sombre | [avant · après](`` https://github.com/o/r/blob/claude/factory-assets/pr-1/t/compare/s--mobile--sombre.png?raw=true ``) |',
+].join('\n');
+
+test('brokenShotRows finds every table row that is not a displayed image', async () => {
+  const { brokenShotRows } = await import('../agent/scripts/shots.mjs');
+  const rows = brokenShotRows(BROKEN_373);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.includes('sombre')));
+});
+
+test('brokenShotRows accepts the tool output as is, whatever is written around it', async () => {
+  const { brokenShotRows } = await import('../agent/scripts/shots.mjs');
+  const md = markdownTable({ repo: 'o/r', dir: 'pr-1/t', files: ['a--desktop.png', 'a--desktop--sombre.png'], unchanged: ['b--mobile.png'] });
+  assert.deepEqual(brokenShotRows(`<!-- factory-agent -->\nIntro.\n\n${md}\n\nRépondez « ok ».`), []);
+  assert.deepEqual(brokenShotRows(markdownTable({ repo: 'o/r', dir: 'd', files: [] })), []);
+  assert.deepEqual(brokenShotRows('| a | b |\n| --- | --- |\n| x | y |'), []); // no shots mark: not a screenshots message
+});
+
+test('brokenShotRows refuses a table with no image row, or a row with a missing image', async () => {
+  const { brokenShotRows } = await import('../agent/scripts/shots.mjs');
+  const md = '<!-- shots: claude/factory-assets -->\n| Écran | Avant (gauche) · Après (droite) |\n| --- | --- |\n| a · desktop | ![avant · après]() |';
+  assert.equal(brokenShotRows(md).length, 1);
+});

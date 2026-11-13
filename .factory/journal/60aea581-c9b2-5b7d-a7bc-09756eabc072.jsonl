@@ -9,3 +9,5 @@
 {"t":"2026-11-13T14:38:31.644Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head -20","ok":true,"id":"toolu_016fEo1ktMYYe12MKigoWUiN"}
 {"t":"2026-11-13T14:38:33.843Z","kind":"skill","name":"requesting-code-review","id":"toolu_01TpPToVRPYKWeEuudzh6iHz"}
 {"t":"2026-11-13T14:40:48.745Z","kind":"agent","model":"opus","effort":"high","label":"Review captures fix #378","id":"toolu_01BGDhdv6VkpDmUhFWC5nXie"}
+{"t":"2026-11-13T14:41:18.069Z","kind":"test","cmd":"git status --short | head; git rev-parse HEAD; npm test 2>&1 | tail -15","ok":true,"id":"toolu_01G2cTjtg7c9WHsusGBUP5z8"}
+{"t":"2026-11-13T14:44:09.586Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\np=…\ns=…\ns=… HEAD\\n(.*?)=======\\n(.*?)>>>>>>> origin/main\\n', lambda m: m.group(1), s, flags=…\nopen(p,'w').write(s)\nEOF\ngrep -rn \"<<<<<<<\\|>>>>>>>\" agent scripts test | head","ok":true,"id":"toolu_01PLpfAzVsoFj33mnoQ9JxWj"}

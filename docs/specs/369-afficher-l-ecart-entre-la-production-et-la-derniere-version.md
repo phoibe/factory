@@ -1,6 +1,8 @@
 # 369 · Afficher l'écart entre la production et la dernière version, sur tous les projets
 
 > Demande [#369](https://github.com/phoibe/factory/issues/369) · 2026-11-13
+>
+> Modifiée par la demande n° [#372](https://github.com/phoibe/factory/issues/372)
 
 **En une phrase** : chaque projet affiche, sous son nom, si son site en ligne est à jour ou combien de modifications validées n'y sont pas encore, avec leur liste.
 
