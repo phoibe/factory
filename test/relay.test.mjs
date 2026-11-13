@@ -228,7 +228,7 @@ test('the dispatched run hands the payload to the agent job', async () => {
 
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet });
   await assert.rejects(relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [], text: 'go', fromOwner: true }));
   assert.deepEqual((await gh.getIssue(3)).labels.map((l) => l.name), [L.feature, L.specReview]);
@@ -302,7 +302,7 @@ test('a permanent merge refusal blocks with an explanation instead of looping', 
 
 test('a failed fix-checks fire parks the issue as blocked', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet }).report({ result: 'failure', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /réessaie/.test(c[2])));
@@ -912,7 +912,7 @@ test('autoPick takes the oldest bug first when several tie', async () => {
 test('autoPick: a failed start releases the claim and stops', async () => {
   const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
   const relay = createRelay({ gh, repo: 'phoibe/app', config: pickConfig, env, log: quiet,
-    fetchImpl: async () => ({ ok: false, status: 429, text: async () => 'limit' }) });
+    fetchImpl: async () => ({ ok: false, status: 401, text: async () => 'bad token' }) });
   await relay.dequeue();
   const issue = (await gh.getIssue(1)).labels.map((l) => l.name);
   assert.deepEqual(issue, [L.bug]);
@@ -2375,7 +2375,7 @@ test('« Mise en production » merges preprod into main, then checks the live si
   assert.match(merged[3], /#11/);
   assert.deepEqual(prodChecksOf(gh).map(({ sha, release }) => ({ sha, from: release.from })), [{ sha: 'm2', from: 'm1' }]);
   assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
-  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /En production/);
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /part en ligne/);
 });
 
 test('« Mise en production » blocked by a conflict on the project files names them, and changes nothing', async () => {
@@ -2442,7 +2442,7 @@ test('in automatic mode, an existing production branch follows main after each m
   assert.ok(!none.gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
 });
 
-test('« Mise en production » from the owner sends every pending change live, checks the site and says what left', async () => {
+test('« Mise en production » from the owner sends every pending change live, starts the live check and says what leaves', async () => {
   const awaiting = [
     { number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z', merge_commit_sha: 'a1' },
     { number: 12, title: 'Correction du menu', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T11:00:00Z', merge_commit_sha: 'a2' },
@@ -2454,10 +2454,11 @@ test('« Mise en production » from the owner sends every pending change live, c
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 12 && c[2] === L.awaitingProd));
   assert.deepEqual(prodChecksOf(gh).map(({ pr, sha }) => ({ pr, sha })), [{ pr: 12, sha: 'a2' }]);
   const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2];
-  assert.match(msg, /En production/);
+  assert.match(msg, /partent en ligne/);
   assert.match(msg, /Ajout du mode sombre/);
   assert.match(msg, /Correction du menu/);
-  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  // Issue #370: « En production ✅ » and the end of the request wait for the live check.
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });
 
 test('« Mise en production » with nothing pending moves nothing and says so', async () => {
@@ -2707,7 +2708,7 @@ test('waits: the place freed by the merge itself is counted, the card resumes at
 test('waits: a failed launch tells the owner once and leaves a normal block', async () => {
   const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
   const gh = fakeGh(state);
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet });
   await relay.dequeue();
   assert.ok(state.issues[0].labels.includes(L.blocked));
@@ -2920,4 +2921,431 @@ test('writeOutputs: the multiline delimiter is random, so a value containing __E
   assert.notEqual(d1, '__EOF__');
   assert.notEqual(d1, d2);
   assert.ok(text.includes(`a\n__EOF__\nagent=true\n${d1}\n`));
+});
+
+// The version tag (issue #372): a site whose host tells GitHub nothing says itself which commit it runs; the tick
+// points refs/factory/live at it (the panel reads that ref), and opens once a card that adds the tag when it is missing.
+const TAG_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+function tagWorld({ html = '', deployments = [], live = null, state = null, files = ['PRODUCT.md'], production = 'external', homepage = 'https://p.example', issues = [] } = {}) {
+  const world = { issues: [...issues], prs: [] };
+  const gh = fakeGh(world);
+  gh.getRepo = async () => ({ default_branch: 'main', homepage });
+  gh.getContent = async (path) => (files.includes(path) ? { content: '' } : null);
+  gh.liveDeployments = async () => deployments;
+  gh.resolveCommit = async (ref) => (TAG_SHA.startsWith(ref) ? { sha: TAG_SHA } : null);
+  gh.getLiveRef = async () => live;
+  gh.setLiveRef = async (sha) => { gh.calls.push(['liveRef', sha]); };
+  gh.getState = async (name) => (name === 'version-tag' ? state : null);
+  gh.setState = async (name, value) => { gh.calls.push(['state', name, value]); };
+  gh.createIssue = async (title, body, labels) => { world.issues.push({ number: 60, title, body, labels: [...labels] }); gh.calls.push(['create', title, body, labels]); return { number: 60 }; };
+  const fetchImpl = async (url, init) => (/^https?:\/\/p\.example/.test(String(url)) ? { ok: true, text: async () => html } : fetchOk([])(url, init));
+  const tick = () => createRelay({ gh, repo: 'r', config: { ...config, production }, env, fetchImpl, log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  return { gh, tick };
+}
+
+test('the tag on the live site moves refs/factory/live to that commit', async () => {
+  const { gh, tick } = tagWorld({ html: '<meta name="factory-version" content="a1b2c3d">' });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
+  assert.ok(!gh.calls.some((c) => c[0] === 'create'));
+});
+
+test('an unchanged tag writes nothing', async () => {
+  const { gh, tick } = tagWorld({ html: `<meta name="factory-version" content="${TAG_SHA}">`, live: TAG_SHA });
+  await tick();
+  assert.ok(!gh.calls.some((c) => c[0] === 'liveRef'));
+});
+
+test('a tag naming a commit the repository does not know removes the ref', async () => {
+  const { gh, tick } = tagWorld({ html: '<meta name="factory-version" content="fffffff">', live: TAG_SHA, state: { card: 3 } });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === null));
+});
+
+test('a silent host (no live deployment) is read too; a host that reports is not', async () => {
+  const silent = tagWorld({ production: 'auto', deployments: [{ id: 1, environment: 'Preview' }], html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await silent.tick();
+  assert.ok(silent.gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
+  const reported = tagWorld({ production: 'auto', deployments: [{ id: 2, environment: 'Production' }], html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await reported.tick();
+  assert.ok(!reported.gh.calls.some((c) => c[0] === 'liveRef' || c[0] === 'create'));
+});
+
+test('a project without a site is left alone', async () => {
+  const { gh, tick } = tagWorld({ homepage: '' });
+  await tick();
+  assert.ok(!gh.calls.some((c) => c[0] === 'liveRef' || c[0] === 'create'));
+});
+
+test('no tag: one card « Ajouter l\'étiquette de version », remembered so it is never opened twice', async () => {
+  const { gh, tick } = tagWorld({ html: '<html></html>' });
+  await tick();
+  const created = gh.calls.find((c) => c[0] === 'create');
+  assert.ok(created, 'card created');
+  assert.ok(created[3].includes(L.feature) && created[3].includes(L.kept));
+  assert.match(created[2], /factory-version/);
+  assert.ok(created[2].startsWith(AGENT_MARKER));
+  assert.ok(gh.calls.some((c) => c[0] === 'state' && c[1] === 'version-tag' && c[2]?.card === 60));
+  const again = tagWorld({ html: '<html></html>', state: { card: 60 } });
+  await again.tick();
+  assert.ok(!again.gh.calls.some((c) => c[0] === 'create'));
+});
+
+test('no tag card before the project is framed, nor while its framing is under way', async () => {
+  for (const world of [tagWorld({ files: [] }), tagWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] })]) {
+    await world.tick();
+    assert.ok(!world.gh.calls.some((c) => c[0] === 'create'));
+  }
+});
+
+test('the tag card is remembered before it is opened: a failure after opening it never opens a second one', async () => {
+  const { gh, tick } = tagWorld({ html: '<html></html>' });
+  await tick();
+  const order = gh.calls.filter((c) => (c[0] === 'state' && c[1] === 'version-tag') || c[0] === 'create').map((c) => c[0]);
+  assert.equal(order[0], 'state');
+  assert.ok(order.includes('create'));
+});
+
+test('a site address the panel accepts (http, spaces around it) is read by the tick too', async () => {
+  const { gh, tick } = tagWorld({ homepage: ' http://p.example ', html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
+});
+
+test('a tag card GitHub failed to open is tried again at the next tick, unless it was opened after all', async () => {
+  const world = tagWorld({ html: '<html></html>' });
+  const states = {};
+  world.gh.getState = async (name) => states[name] ?? null;
+  world.gh.setState = async (name, value) => { states[name] = value; };
+  world.gh.createIssue = async () => { throw new Error('POST /issues -> 502'); };
+  await world.tick();
+  assert.equal(states['version-tag'] ?? null, null, 'nothing remembered: the next tick tries again');
+  const lost = tagWorld({ html: '<html></html>' });
+  const kept = {};
+  lost.gh.getState = async (name) => kept[name] ?? null;
+  lost.gh.setState = async (name, value) => { kept[name] = value; };
+  lost.gh.listIssues = async (q) => (q.labels !== L.feature ? [] : [{ number: 61, body: `${AGENT_MARKER}\n<!-- factory-version-tag -->`, labels: [{ name: L.feature }] }]);
+  lost.gh.createIssue = async () => { throw new Error('POST /issues -> 502'); };
+  await lost.tick();
+  assert.deepEqual(kept['version-tag'], { card: 61 });
+});
+
+// ---- Issue #370: the « Mise en production » card follows the release until the live site is checked ----
+import { releaseNote } from '../scripts/lib/labels.mjs';
+const noteOf = (text) => JSON.parse(/<!-- factory-release (\{.*?\}) -->/.exec(text || '')?.[1] || 'null');
+const said50 = (gh) => gh.calls.filter((c) => c[0] === 'comment' && c[1] === 50).map((c) => c[2]);
+const pending11 = () => [{ number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z' }];
+
+test('releaseNote hides the release state in an HTML comment', () => {
+  assert.equal(releaseNote({ state: 'live' }), '<!-- factory-release {"state":"live"} -->');
+  assert.deepEqual(noteOf(`x\n${releaseNote({ state: 'failed', reason: 'a -- b' })}`), { state: 'failed', reason: 'a -- b' });
+});
+
+test('« Mise en production »: the request stays open while the site goes live, with the released changes in its note', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'a2', production: 'm0' }, issues: [{ number: 50, labels: [L.production] }] });
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.doesNotMatch(msg, /En production ✅/);
+  assert.deepEqual(noteOf(msg), { state: 'deploying', prs: [{ number: 11, title: 'Ajout du mode sombre' }] });
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 50), 'still open');
+});
+
+test('the live site checked after a release: « En production ✅ », the list and the site, then the request is closed', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: n === 11 ? 'Ajout du mode sombre' : 'Correction du menu', body: 'Closes #1' });
+  await relay().prodReport({ pr: 12, sha: 'a2', url: 'https://site.example', result: 'passed', detail: 'ok', release: { from: 'm0', prs: [11, 12], issue: 50, version: '1.2.0' } });
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.match(msg, /Correction du menu/);
+  assert.deepEqual(noteOf(msg), { state: 'live', prs: [{ number: 11, title: 'Ajout du mode sombre' }, { number: 12, title: 'Correction du menu' }], version: '1.2.0', site: 'https://site.example' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 50 && c[2] === L.releaseChecking));
+});
+
+test('a release whose live site cannot be checked (no deployment, no address) still ends, as live but unchecked', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'a2', production: 'm0' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.recentDeployments = async () => [];
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.equal(noteOf(msg).state, 'live');
+  assert.equal(noteOf(msg).unchecked, true);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('nothing pending: the request ends with a « nothing » note', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production] }] });
+  await askRelease(relay);
+  assert.deepEqual(noteOf(said50(gh).at(-1)), { state: 'nothing' });
+});
+
+test('a release refused by GitHub or blocked by a conflict is closed with a « failed » note saying why and what to do', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.mergeBranches = async () => { throw new Error('GitHub 502: Bad gateway'); };
+  await assert.rejects(askRelease(relay));
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'failed');
+  assert.match(note.reason, /GitHub/);
+  assert.match(note.todo, /Recliquez sur « Mise en production » dans quelques minutes/);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+
+  const c = prodGh({ awaiting: pending11(), branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  c.gh.mergeBranches = async () => { throw new Error('GitHub 409: Merge conflict'); };
+  c.gh.compare = async () => ({ files: [{ filename: 'app.py', status: 'modified', sha: 'x' }] });
+  c.gh.createTree = async () => ({ sha: 't' });
+  c.gh.createGitCommit = async () => ({ sha: 'c' });
+  await assert.rejects(askRelease(c.relay));
+  const conflict = noteOf(said50(c.gh).at(-1));
+  assert.equal(conflict.state, 'failed');
+  assert.match(conflict.todo, /conflit/);
+  assert.ok(c.gh.calls.some((x) => x[0] === 'close' && x[1] === 50));
+});
+
+test('a refused version number ends the request with a « failed » note', async () => {
+  const { gh, relay } = versionGh({ body: 'Version : 0.16.0' });
+  await askRelease(relay);
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'failed');
+  assert.match(note.todo, /autre numéro/);
+});
+
+test('a release undone because the live site broke ends with an « undone » note linking the urgent fix', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.resetRef = async (name, sha) => { gh.branches[name] = sha; };
+  gh.createIssue = async () => ({ number: 60 });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'a2', result: 'failed', detail: 'la page répond 500', release: { from: 'm0', prs: [11], issue: 50 } });
+  assert.deepEqual(noteOf(said50(gh).at(-1)), { state: 'undone', fix: 60, reason: 'la page répond 500' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+
+  const moved = prodGh({ branches: { main: 'm3' }, issues: [{ number: 50, labels: [L.production] }] });
+  moved.gh.createIssue = async () => ({ number: 61 });
+  await moved.relay().prodReport({ pr: 11, sha: 'm2', result: 'failed', detail: 'la page répond 500', release: { from: 'm1', prs: [11], issue: 50 } });
+  assert.deepEqual(noteOf(said50(moved.gh).at(-1)), { state: 'broken', fix: 61, reason: 'la page répond 500' });
+});
+
+test('the host refusing to publish a release, even after a retry, ends the request with an « unpublished » note', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  await relay().deployFailed({ pr: 12, sha: 'a2', detail: 'build failed', retried: true, release: { from: 'm0', prs: [12], issue: 50 } });
+  assert.equal(noteOf(said50(gh).at(-1)).state, 'unpublished');
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('once the new version is online, the release request moves to « Vérification du site en ligne »', async () => {
+  const { gh, relay } = prodGh({ issues: [{ number: 50, labels: [L.production] }] });
+  await relay().releaseChecking({ pr: 12, sha: 'a2', release: { from: 'm0', prs: [12], issue: 50 } });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 50 && c[2] === L.releaseChecking));
+  const none = prodGh({});
+  await none.relay().releaseChecking({ pr: 12, sha: 'a2' });
+  assert.ok(!none.gh.calls.some((c) => c[0] === 'add'));
+});
+
+test('a release that reached production with no deployment observed is ended as live-but-unchecked', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'a2', result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: { from: 'm0', prs: [11], issue: 50 } });
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'live');
+  assert.equal(note.unchecked, true);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+// ---- Issue #378: the factory posts the captures table itself, from the images on the assets branch ----
+function shotsGh({ labels = [L.visualReview, L.checks], dirs = ['2026-11-13T13-48-46-520Z', '2026-11-13T14-18-33-759Z'], images = ['ecran--desktop.png', 'ecran--desktop--sombre.png'], meta = { unchanged: ['autre--mobile.png'] }, comments = [] } = {}) {
+  const gh = fakeGh({ issues: [], prs: [{ number: 7, labels, state: 'open', head: { sha: 's1' } }], comments: { 7: comments } });
+  gh.getContent = async (path, ref) => {
+    gh.calls.push(['getContent', path, ref]);
+    if (ref !== 'claude/factory-assets') return null;
+    if (path === 'pr-7') return dirs.map((name) => ({ name, type: 'dir' }));
+    if (path === `pr-7/${dirs.at(-1)}/compare`) return images.map((name) => ({ name, type: 'file' }));
+    if (path === `pr-7/${dirs.at(-1)}/shots.json` && meta) return { content: Buffer.from(JSON.stringify(meta)).toString('base64') };
+    return null;
+  };
+  return gh;
+}
+const labeledChecks = { kind: 'pr', event: 'pull_request', action: 'labeled', addedLabel: L.checks, number: 7, labels: [L.visualReview, L.checks], fromOwner: true };
+
+test('captures to validate: the factory posts the table of the latest captures, dark rows as images too (#378)', async () => {
+  const gh = shotsGh();
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  const posted = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- shots: claude/factory-assets -->'));
+  assert.equal(posted.length, 1);
+  const body = posted[0][2];
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  assert.ok(body.includes(`| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |`), body);
+  assert.ok(body.includes(`| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`), body);
+  assert.ok(body.indexOf('ecran · desktop |') < body.indexOf('ecran · desktop · sombre'), 'light rows first');
+  assert.match(body, /non montrés : autre · mobile/);
+  assert.ok(body.startsWith(AGENT_MARKER));
+});
+
+test('the same captures are never posted twice, and nothing is posted outside the captures step (#378)', async () => {
+  const relayFor = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+  const first = shotsGh();
+  await relayFor(first).handle(labeledChecks);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  const again = shotsGh({ comments: [{ body, user: { login: 'github-actions[bot]' } }] });
+  await relayFor(again).handle(labeledChecks);
+  assert.ok(!again.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'already posted');
+  const noReview = shotsGh({ labels: [L.checks] });
+  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });
+  assert.ok(!noReview.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures to validate');
+  const empty = shotsGh({ dirs: [] });
+  await relayFor(empty).handle(labeledChecks);
+  assert.ok(!empty.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures pushed');
+});
+
+test('a table the agent already posted for the same captures is not posted again by the factory (#378, transition)', async () => {
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const body = `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |\n| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`;
+  const gh = shotsGh({ comments: [{ body, user: { login: 'phoibe' } }] });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
+});
+
+test('a rate limit while posting the captures is not swallowed: the relay run is retried (#378)', async () => {
+  const gh = shotsGh();
+  gh.comment = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
+});
+
+test('green checks with captures waiting on the assets branch post them instead of starting a captures catch-up (#378)', async () => {
+  const gh = prWithSkippedSteps();
+  const state = { comments: [] };
+  gh.listComments = async () => state.comments;
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); state.comments.push({ body, user: { login: 'github-actions[bot]' } }); };
+  gh.getIssue = async (n) => ({ number: n, state: 'open', labels: (n === 10 ? [L.visualReview, L.checks] : [L.feature, L.building]).map((name) => ({ name })) });
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async (path, ref) => {
+    if (ref !== 'claude/factory-assets') return { content: Buffer.from(journal).toString('base64') };
+    if (path === 'pr-10') return [{ name: '2026-11-13T14-18-33-759Z', type: 'dir' }];
+    if (path === 'pr-10/2026-11-13T14-18-33-759Z/compare') return [{ name: 'ecran--desktop--sombre.png', type: 'file' }];
+    return null;
+  };
+  const sent = [];
+  await createRelay({ gh, repo: 'phoibe/factory', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('ecran--desktop--sombre.png')), 'captures posted');
+  assert.ok(!sent.some((s) => /"stage":"skills-fix"/.test(JSON.parse(s.init.body).text)), 'no catch-up run');
+});
+
+test('an agent table whose dark rows arrived broken does not stop the factory from posting the right one (#378)', async () => {
+  const at = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const broken = [AGENT_MARKER, '<!-- shots: claude/factory-assets -->', '| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |',
+    `| ecran · desktop | ![avant · après](${at('ecran--desktop.png')}) |`,
+    `| ecran · desktop · sombre | [avant · après](\` ${at('ecran--desktop--sombre.png')} \`) |`].join('\n');
+  const gh = shotsGh({ comments: [{ body: broken, user: { login: 'phoibe' } }] });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
+});
+
+test('a rate limit while reading the captures folder is not swallowed either (#378)', async () => {
+  const gh = shotsGh();
+  gh.getContent = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
+});
+
+// Issue #384: every factory step that may free a place fills it at once, instead of waiting for the rare tick.
+const startedBuild = (gh, n) => gh.calls.some((c) => c[0] === 'add' && c[1] === n && c[2] === L.building);
+
+test('the factory blocking a card after red checks starts the queued card in the place it leaves', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER })) } };
+  const gh = fakeGh(state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
+  assert.ok(startedBuild(gh, 4));
+  assert.equal(payloadOf(sent.at(-1).init.body).issue, 4);
+});
+
+test('the end of an agent run that kept its lock starts the queued card', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.building, L.blocked, L.running] }, { number: 5, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.release({ issue: 3, pr: null });
+  await relay.refill();
+  assert.ok(startedBuild(gh, 4));
+});
+
+test('a refill after a factory step never starts a queued card while the factory is still full', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.running] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #3', head: { sha: 'abc' } }], comments: { 10: [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER })) } };
+  const gh = fakeGh(state);
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.report({ result: 'failure', pr: 10 });
+  await relay.release({ issue: 3, pr: null });
+  await relay.refill();
+  assert.ok(!startedBuild(gh, 4));
+  assert.ok(state.issues[3].labels.includes(L.queued));
+});
+
+test('a merge at the end of the checks looks at the queue only once', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }, { number: 6, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: `Closes #1\n${NOTHING_TO_TEST_MARKER}`, head: { sha: 'abc' }, labels: [L.checks] }] });
+  const sent = [];
+  let queueReads = 0;
+  const list = gh.listIssues;
+  gh.listIssues = async (q) => { if (q.labels === L.queued) queueReads += 1; return list(q); };
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(startedBuild(gh, 4));
+  assert.ok(!startedBuild(gh, 6));
+  assert.equal(queueReads, 1);
+});
+
+test('a live check that ends a delivery fills a free place', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm1' }, issues: [{ number: 4, labels: [L.feature, L.queued] }] });
+  await relay().prodReport({ pr: 10, sha: 'm1', url: 'https://site', result: 'passed' });
+  assert.ok(startedBuild(gh, 4));
+});
+
+test('a failed deploy report fills a free place', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm1' }, issues: [{ number: 4, labels: [L.feature, L.queued] }] });
+  await relay().deployFailed({ pr: 10, sha: 'm1', retried: true });
+  assert.ok(startedBuild(gh, 4));
+});
+
+// ---- E4: a stranger's fork PR is never the card's PR ----
+const forkPr = { number: 50, state: 'open', body: 'Closes #7', head: { sha: 'f', ref: 'claude/issue-7-x', repo: { full_name: 'stranger/x' } }, labels: [] };
+
+test('a fork PR naming a building card does not make it look done: the queued card is not started (maxParallel 1)', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.queued] }], prs: [forkPr] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.equal(sent.length, 0);
+});
+
+test('a stranger fork PR naming the card is not closed when the card is dropped', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling, L.close] }], prs: [forkPr] });
+  gh.closePr = async (n) => gh.calls.push(['closePr', n]);
+  gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
+  await createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 7, labels: [L.feature, L.grilling, L.close], fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
+  assert.ok(!gh.calls.some((c) => c[0] === 'closePr' && c[1] === 50));
+});
+
+// ---- E5: a merge applied behind a 5xx is a merge ----
+test('a merge error whose PR is in fact merged is a success: no block, no failure comment, the issue is handled as merged', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance], mergeable_state: 'blocked' }] });
+  gh.merge = async () => { throw new Error('PUT merge -> 405'); };
+  const getPr = gh.getPr;
+  gh.getPr = async (n) => (n === 10 ? { ...(await getPr(n)), merged: true } : getPr(n));
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet })
+    .handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /arrive pas à fusionner/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.building));
+});
+
+// ---- E1: a rate limit is never a reason to block ----
+test('a rate limit when a failed-checks fix cannot start is re-thrown: no blocked label, the PR keeps its labels', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  gh.dispatch = async () => { throw new RateLimited(90_000); };
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, runner: 'github-actions' }, env: {}, log: quiet });
+  await assert.rejects(relay.report({ result: 'failure', pr: 10 }), (e) => e.rateLimited === true);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.checks));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
 });
