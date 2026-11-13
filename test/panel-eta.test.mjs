@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { labelIntervals, stageMinutes, estimate, etaText, humanMinutes, DEFAULT_MINUTES, parseEstimate, rangeText, buildingMinutes, BUILD_DEFAULTS, kindText } from '../panel/eta.mjs';
+import { labelIntervals, stageMinutes, estimate, etaText, humanMinutes, DEFAULT_MINUTES, parseEstimate, rangeText, buildingMinutes, BUILD_DEFAULTS, kindText, kindParts } from '../panel/eta.mjs';
 
 const T0 = Date.parse('2026-11-03T18:00:00Z');
 const at = (min) => new Date(T0 + min * 60_000).toISOString();
@@ -178,4 +178,10 @@ test('kindText names the size of a request, never of a PR', () => {
   assert.equal(kindText('Fonctionnalité', false, 12, 'huge'), 'Fonctionnalité · demande #12');
   assert.equal(kindText('Fonctionnalité', true, 13, 'small'), 'Fonctionnalité · modification #13');
   assert.equal(kindText('Review générale', false, 14, 'large'), 'Review générale · demande #14');
+});
+
+test('kindParts sets the size apart so the card can show it as a tag', () => {
+  assert.deepEqual(kindParts('Fonctionnalité', false, 12, 'small'), ['Fonctionnalité · ', { size: 'petite demande' }, ' #12']);
+  assert.deepEqual(kindParts('Fonctionnalité', true, 13, 'small'), ['Fonctionnalité · modification #13']);
+  assert.deepEqual(kindParts('Bug', false, 14, undefined), ['Bug · demande #14']);
 });

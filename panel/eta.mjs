@@ -196,5 +196,12 @@ export function etaText(e) {
 const SIZE_WORDS = { small: 'petite demande', medium: 'demande moyenne', large: 'grande demande' };
 const SIZED = ['Fonctionnalité', 'Bug'];
 export function kindText(kind, isPr, number, size) {
-  return `${kind} · ${isPr ? 'modification' : (SIZED.includes(kind) && SIZE_WORDS[size]) || 'demande'} #${number}`;
+  return kindParts(kind, isPr, number, size).map((p) => (typeof p === 'string' ? p : p.size)).join('');
+}
+
+// The same line in pieces, the size apart ({ size }) so the card shows it as a tag that stands out (issue #381:
+// in plain grey text the owner could not spot it).
+export function kindParts(kind, isPr, number, size) {
+  const sized = !isPr && SIZED.includes(kind) && SIZE_WORDS[size];
+  return sized ? [`${kind} · `, { size: sized }, ` #${number}`] : [`${kind} · ${isPr ? 'modification' : 'demande'} #${number}`];
 }
