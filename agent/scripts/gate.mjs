@@ -27,7 +27,9 @@ export function opensPr(tool, input = {}) {
   if (/\bgh\s+pr\s+create\b/.test(cmd)) return true;
   const posts = /(\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b|-X\s*POST|--method[\s=]+POST|--request[\s=]+POST)/;
   const reads = /(-X\s*|--method[\s=]+|--request[\s=]+)GET\b/;
-  return cmd.split('\n').some((l) => /(gh\s+api|curl)\b.*\/pulls(?=$|[\s'"])/.test(l) && posts.test(l) && !reads.test(l));
+  // Each gh api / curl call on its own, so a read chained to an opening does not hide it.
+  const calls = cmd.split('\n').flatMap((l) => l.split(/(?=\b(?:gh\s+api|curl)\b)/));
+  return calls.some((c) => /^(gh\s+api|curl)\b.*\/pulls(?=$|[\s'"])/.test(c) && posts.test(c) && !reads.test(c));
 }
 
 // Does this tool call open a PR, or hand it to the next step?
@@ -48,6 +50,8 @@ export function postedTexts(tool, input = {}, { readFile = () => null, cwd = '.'
   if (!/\b(gh\s+(api|pr|issue)|curl)\b/.test(cmd)) return [];
   const paths = [...cmd.matchAll(/=@(['"]?)([^\s'"]+)\1|--input\s+(['"]?)([^\s'"]+)\3|\$\((?:cat\s+|<\s*)(['"]?)([^\s'")]+)\5\s*\)/g)]
     .map((m) => m[2] || m[4] || m[6]).filter((f) => f && f !== '-');
+  // curl -d @file, --data-binary @file, gh pr create --body-file file
+  for (const m of cmd.matchAll(/(?:\s-d|--data[\w-]*|--body-file)[\s=]+@?(['"]?)([^\s'"]+)\1/g)) if (m[2] !== '-') paths.push(m[2].replace(/^@/, ''));
   return [cmd, ...paths.map((f) => readFile(isAbsolute(f) ? f : join(cwd, f))).filter((x) => typeof x === 'string')];
 }
 
@@ -93,12 +97,11 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
     if (shots) return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: shots } } };
     if (!handsOver(input.tool_name, input.tool_input)) return null;
     const list = problems(files, read, stages, opts);
+    const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
     if (!list.length) {
-      const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
       return real ? { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: real } } } : null;
     }
     // Everything at once: each refusal spends one of the run's MAX_DENIALS.
-    const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
     const reason = ['Verrou de la factory : la PR ne peut pas avancer, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
       'Fais-les (avec l\'outil Skill), commit, puis réessaie.', ...(real ? ['', real] : [])].join('\n');
     return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } };

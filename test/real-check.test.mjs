@@ -43,6 +43,21 @@ test('a PR opened with a « ; » in its title or flags before the address is sti
     "gh api repos/o/r/pulls -H 'X: a;b' -f title=x"]) assert.ok(decide(bash(c), env('build')), c);
 });
 
+test('a read and an opening of a PR in the same command: the opening is still seen', () => {
+  const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+  const empty = { ...env('build'), sessionText: j({ t: '1', kind: 'run', stage: 'bugfix' }) };
+  for (const c of [`n=$(gh api repos/o/r/pulls -X GET -f head=o:b --jq '.[0].number'); [ -z "$n" ] && gh api repos/o/r/pulls -f title=x -F body=@pr.md`,
+    'gh api repos/o/r/pulls -X GET -f head=o:b; gh api repos/o/r/pulls -f title=x -F body=@pr.md']) assert.ok(decide(bash(c), empty), c);
+});
+
+test('a PR body sent with curl -d @file or --body-file is read', () => {
+  const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd: '/w', tool_input: { command } });
+  const e = env('build', { '/w/pr.json': '{"body":"Essayé en vrai : la page."}', '/w/pr.md': 'Essayé en vrai : la page.' });
+  assert.equal(decide(bash('curl -X POST -d @pr.json https://api.github.com/repos/o/r/pulls'), e), null);
+  assert.equal(decide(bash('curl -X POST --data-binary @pr.json https://api.github.com/repos/o/r/pulls'), e), null);
+  assert.equal(decide(bash('gh pr create --title x --body-file pr.md'), e), null);
+});
+
 test('fetching the PR number inside the hand-over command is not taken for opening a PR', () => {
   const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
   assert.equal(decide(bash("gh api repos/o/r/issues/$(gh api 'repos/o/r/pulls?head=o:b' --jq '.[0].number')/labels -f 'labels[]=factory:checks'"), env('build')), null);
