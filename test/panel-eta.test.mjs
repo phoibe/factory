@@ -185,3 +185,9 @@ test('kindParts sets the size apart so the card can show it as a tag', () => {
   assert.deepEqual(kindParts('Fonctionnalité', true, 13, 'small'), ['Fonctionnalité · modification #13']);
   assert.deepEqual(kindParts('Bug', false, 14, undefined), ['Bug · demande #14']);
 });
+
+test('humanMinutes never shows « 60 » minutes: it rounds before splitting hours', () => {
+  assert.equal(humanMinutes(119.6), '2 h');
+  assert.equal(humanMinutes(59.6), '1 h');
+  assert.equal(humanMinutes(90.4), '1 h 30');
+});

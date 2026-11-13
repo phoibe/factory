@@ -448,3 +448,57 @@ test('review3 2: a fix that fails while the owner\'s launch waits runs after it'
   await relay.retryLaunches();
   assert.equal(payloadOf(sent.at(-1).body).stage, 'fix-checks');
 });
+
+// ---- Engine review: a rate limit is not a setting problem ----
+test('a saved launch retried while GitHub rate-limits us is re-thrown: nothing is written, the card is not blocked', async () => {
+  const { RateLimited } = await import('../scripts/lib/ratelimit.mjs');
+  const body = writeRelaunch('', { stage: 'build', issue: 2, pr: null, then: { labels: [{ n: 2, remove: [L.queued], add: [L.building] }] }, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 2, body, labels: [L.feature, L.queued, L.relaunch] }], prs: [] });
+  gh.dispatch = async () => { throw new RateLimited(90_000); };
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, runner: 'github-actions' }, env: {}, log: quiet, now: () => 3 * MIN, sleep: async () => {} });
+  await assert.rejects(relay.retryLaunches(), (e) => e.rateLimited === true);
+  assert.ok(!(await labelsOf(gh, 2)).includes(L.blocked));
+  assert.ok(!readRelaunch((await gh.getIssue(2)).body)?.blocked);
+});
+
+test('a stale « relaunch » label with no saved launch is removed at the tick, a card with a launch or an agent at work keeps it', async () => {
+  const saved = writeRelaunch('', { stage: 'build', issue: 4, pr: null, since: 0, failures: 1, next: 99 * MIN });
+  const gh = fakeGh({ issues: [
+    { number: 2, body: 'Ma demande', labels: [L.feature, L.queued, L.relaunch] },
+    { number: 3, body: 'Autre', labels: [L.feature, L.building, L.relaunch, L.running] },
+    { number: 4, body: saved, labels: [L.feature, L.queued, L.relaunch] },
+  ], prs: [] });
+  const { relay } = make(gh, []);
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.ok(!(await labelsOf(gh, 2)).includes(L.relaunch));
+  assert.ok((await labelsOf(gh, 3)).includes(L.relaunch));
+  assert.ok((await labelsOf(gh, 4)).includes(L.relaunch));
+});
+
+test('a PR copy of a launch its request no longer holds is cleared at the tick; a copy whose request still waits is kept', async () => {
+  const waiting = writeRelaunch('', { stage: 'fix-checks', issue: 5, pr: 11, since: 0, failures: 1, next: 99 * MIN });
+  const gh = fakeGh({ issues: [
+    { number: 1, body: 'Demande sans relance', labels: [L.feature, L.building] },
+    { number: 10, body: writeRelaunch('PR', { next: 99 * MIN, of: 1 }), labels: [L.relaunch], pull_request: {} },
+    { number: 5, body: waiting, labels: [L.feature, L.building, L.relaunch] },
+    { number: 11, body: writeRelaunch('PR', { next: 99 * MIN, of: 5 }), labels: [L.relaunch], pull_request: {} },
+  ], prs: [] });
+  const { relay } = make(gh, []);
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.ok(!(await labelsOf(gh, 10)).includes(L.relaunch));
+  assert.equal(readRelaunch((await gh.getIssue(10)).body), null);
+  assert.ok((await labelsOf(gh, 11)).includes(L.relaunch));
+  assert.ok(readRelaunch((await gh.getIssue(11)).body));
+});
+
+test('one unreadable request (deleted issue) does not stop the clean-up of the other stale labels', async () => {
+  const gh = fakeGh({ issues: [
+    { number: 10, body: writeRelaunch('PR', { next: 99 * MIN, of: 1 }), labels: [L.relaunch], pull_request: {} },
+    { number: 12, body: 'Sans relance', labels: [L.feature, L.queued, L.relaunch] },
+  ], prs: [] });
+  const getIssue = gh.getIssue.bind(gh);
+  gh.getIssue = async (n) => { if (n === 1) throw new Error('GET /issues/1 -> 410 This issue was deleted'); return getIssue(n); };
+  const { relay } = make(gh, []);
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.ok(!(await labelsOf(gh, 12)).includes(L.relaunch));
+});

@@ -204,7 +204,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // `self`: the card an event is about; its own waiting launch must not count against it (a second « go »).
   async function inFlight(freed = null, self = null) {
     const open = await gh.listIssues({ labels: L.building });
-    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
+    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p)).map(prIssue).filter(Boolean));
     // A card woken by this run counts even when GitHub's list still shows it blocked.
     const building = (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
     // A « go » whose launch waits for its relaunch (issue #383) holds its place too.
@@ -450,6 +450,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     try {
       await fireAgent({ stage, issue, pr, extra: saved.extra });
     } catch (e) {
+      if (isRateLimited(e)) throw e; // not a setting problem: the launch stays saved, retried after the limit
       if (!e.transient) {
         // A setting broke meanwhile: fireAgent explained it. The launch stays saved for the owner's « réessaie »; its PR
         // leaves its step like any blocked card's (fireOrBlock).
@@ -505,6 +506,29 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // A « relaunch » label with no readable saved launch (lost body edit, launch cleared by hand) would keep the card out of
+  // every automatic path for good: it is removed, unless an agent works on the card.
+  async function dropStaleRelaunchLabels() {
+    for (const item of (await gh.listIssues({ labels: L.relaunch })) || []) {
+      if (names(item.labels).includes(L.running)) continue;
+      try {
+        const saved = readRelaunch(item.body);
+        if (saved?.of) {
+          // A PR's copy: kept while its open request still holds the launch for this PR, cleared with its label otherwise.
+          const request = await gh.getIssue(saved.of);
+          const held = request?.state !== 'closed' && readRelaunch(request?.body);
+          if (held && (held.pr === item.number || held.after?.pr === item.number)) continue;
+          await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
+        } else if (saved) continue;
+        await gh.removeLabel(item.number, L.relaunch);
+        log(`#${item.number}: stale « relaunch » label removed (no saved launch)`);
+      } catch (e) {
+        if (isRateLimited(e)) throw e;
+        log(`#${item.number}: stale « relaunch » check skipped (${e.message})`); // one bad card never stops the others
+      }
+    }
+  }
+
   // An owner's message on a card whose launch waits. A message that moves the card (« go », « ok ») replaces the saved
   // launch: the usual handling goes on. Any other (« réessaie », a remark) starts the saved launch at once; the agent
   // reads the new message with the others. Returns true when the event is handled this way.
@@ -538,6 +562,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     try {
       return await launch({ stage, issue, pr, extra, then, quiet: true });
     } catch (e) {
+      if (isRateLimited(e)) throw e; // not a setting problem: the event is taken up again once the limit is over
       log(`fire failed: ${e}`);
       for (const l of [L.checks, L.fixing, L.acceptance]) if (pr) await gh.removeLabel(pr, l);
       if (issue) await gh.addLabels(issue, [L.blocked]);
@@ -761,21 +786,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.merge(prNumber, sha);
     } catch (e) {
       if (isRateLimited(e)) throw e; // not a refused merge: the event is taken up again once the limit is over
-      log(`merge failed: ${e}`);
-      const state = (await gh.getPr(prNumber))?.mergeable_state;
-      const head = sha || pr?.head?.sha;
-      const updates = branchUpdates(await gh.listComments(prNumber), head);
-      if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
-        await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion', then: {
-          labels: [{ n: prNumber, remove: [L.acceptance, L.checks], add: [L.fixing] }],
-          comments: [{ n: prNumber, body: `${UPDATE_BRANCH_MARKER}\n${updateMark(head)}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}` }],
-        } });
+      // The merge may have gone through behind a 5xx: a merged PR is a success, not a refusal.
+      const fresh = await gh.getPr(prNumber);
+      if (fresh?.merged) log(`merge reported as failed (${e}) but PR #${prNumber} is merged`);
+      else {
+        log(`merge failed: ${e}`);
+        const state = fresh?.mergeable_state;
+        const head = sha || pr?.head?.sha;
+        const updates = branchUpdates(await gh.listComments(prNumber), head);
+        if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
+          await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion', then: {
+            labels: [{ n: prNumber, remove: [L.acceptance, L.checks], add: [L.fixing] }],
+            comments: [{ n: prNumber, body: `${UPDATE_BRANCH_MARKER}\n${updateMark(head)}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}` }],
+          } });
+          return;
+        }
+        for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
+        if (issue) await gh.addLabels(issue, [L.blocked]);
+        await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dites-moi « réessaie » une fois la règle ajustée, ou fusionnez la PR vous-même.`));
         return;
       }
-      for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
-      if (issue) await gh.addLabels(issue, [L.blocked]);
-      await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dites-moi « réessaie » une fois la règle ajustée, ou fusionnez la PR vous-même.`));
-      return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
     await afterMerge(prNumber, { held });
@@ -1170,7 +1200,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const branch = `claude/revert-pr-${prNumber}`;
     // An undo already open is done, unless a passing error stopped the run right after opening it (no card marker):
     // then the run goes on from there, without a second undo branch.
-    const open = ((await gh.listPulls?.().catch(() => null)) || []).find((p) => p.head?.ref === branch);
+    const open = ((await gh.listPulls?.().catch(() => null)) || []).find((p) => !fromFork(p) && p.head?.ref === branch);
     if (open && String(open.body || '').includes(REVERT_REDO)) return log('already undone');
     // A relaunch after an undo that was never opened reuses the card it left behind (issue #227); a card already
     // started (the undo was refused) repairs the live site itself: nothing more to do.
@@ -1296,7 +1326,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const isPr = Boolean(item.pull_request);
     const pr = isPr ? await gh.getPr(n) : null;
     const issue = isPr ? prIssue(pr) : n;
-    const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
+    const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p) && (linkedIssue(p.body) === n || branchIssue(p) === n)).map((p) => p.number);
     // The agent closing by itself (already done, duplicate, obsolete: issue #203). Only a feature or a bug; its own
     // message is the only one, and the card's state is saved so that a message from the owner brings it back.
     const it0 = issue ? (issue === n ? item : await gh.getIssue(issue)) : null;
@@ -1391,6 +1421,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function heal(ownerLogin) {
     await retryRateLimited().catch((e) => log(`rate-limited runs: ${e.message}`));
     await retryLaunches().catch((e) => { if (isRateLimited(e)) throw e; log(`relaunches: ${e.message}`); });
+    await dropStaleRelaunchLabels().catch((e) => { if (isRateLimited(e)) throw e; log(`stale relaunch labels: ${e.message}`); });
     const closed = (await gh.listClosedPulls?.().catch(() => null)) || [];
     await closeMerged(closed);
     await relaunchIdle(closed, ownerLogin);

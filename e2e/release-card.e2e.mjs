@@ -94,3 +94,13 @@ test('sur téléphone, la carte de mise en production reste lisible', async () =
     assert.ok(box.width <= 390, `card width ${box.width}`);
   });
 });
+
+test('une mise en production fermée en cours de route (dernière note « en cours ») ne prétend pas être en ligne', async () => {
+  await withPanel({ config: approval, closed: [closedRelease()], comments: { 50: [botComment(note({ state: 'deploying', prs: [{ number: 11, title: 'Ajout du mode sombre' }] }))] } }, async ({ page, url }) => {
+    await page.goto(url);
+    const done = page.locator('.lane-done .ticket', { hasText: 'Mise en production' }).first();
+    await done.getByText('Ajout du mode sombre').waitFor();
+    assert.equal(await done.getByText(/En ligne/).count(), 0);
+    await done.getByText('Terminée').waitFor();
+  });
+});

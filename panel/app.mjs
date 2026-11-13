@@ -424,8 +424,8 @@ async function refresh() {
     // More than a page of events while away: the older pages are read again, so that no step is missing.
     if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
-    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
-    live.doneTried = true;
+    // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
+    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // The cards show now; their details (preview, session, estimate) come in below, in their place.
@@ -611,13 +611,14 @@ function releaseDoneCard(d, now) {
   else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
   else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
   else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
-  else body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  else if (o.state === 'live') body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  else body.push(head('✓', 'Terminée')); // closed on the way (« deploying »…): never a false « En ligne »
   if (!red && changes.length) body.push(changeList(changes));
   if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
   const site = o.state === 'live' && siteLink(o.site);
   if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
   if (red && (o.reason || o.todo)) body.push(el('p', { class: 'release-why' }, [o.reason, o.todo].filter(Boolean).join(' ')));
-  if (o.fix) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${o.fix}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${o.fix})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  if (Number(o.fix) > 0) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${Number(o.fix)}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${Number(o.fix)})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
   return el('article', { class: `ticket done${red ? ' closed' : ''}` },
     el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, 'Mise en production')),
     ...body);
@@ -702,7 +703,8 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 const pendingGo = new Map();
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
 // Both are keyed by project and number: #12 of one project is not #12 of another.
-const goKey = (c) => `${current.repo.full_name}#${c.number}`;
+// The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
+const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
 function cancelPendingGos() {
   if (!pendingGo.size) return;
   const words = new Set([...pendingGo.values()].map((h) => h.word));
@@ -1167,7 +1169,7 @@ function renderRules() {
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
-      ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
+      ['external', 'Externe, faite hors de la factory']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
@@ -1411,7 +1413,7 @@ async function refreshRuns() {
     const counts = await mapLimit(projects, 2, async (p) => {
       const events = [];
       for (let page = 1; page <= 5; page++) {
-        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        const batch = (await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`)) || [];
         events.push(...batch);
         if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
       }
@@ -2139,9 +2141,9 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
       : status === 'late'
-        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
     announceAnswers(chat.issue.number, messages);
