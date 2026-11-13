@@ -600,13 +600,13 @@ function releaseDoneCard(d, now) {
   const changes = (o.prs?.length ? o.prs : d.changes) || [];
   const red = ['failed', 'undone', 'broken', 'unpublished'].includes(o.state);
   const when = el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`);
-  const head = (sym, text, cls = '') => el('p', { class: `finished${cls ? ` ${cls}` : ''}` }, el('span', { 'aria-hidden': 'true' }, `${sym} `), text, when);
+  const head = (sym, text, cls = '') => el('p', { class: `finished${cls ? ` ${cls}` : ''}` }, sym ? el('span', { 'aria-hidden': 'true' }, `${sym} `) : null, text, when);
   const body = [];
   if (o.state === 'nothing') body.push(head('✓', 'Rien à mettre en ligne : le site est déjà à jour', 'closed'));
   else if (o.state === 'undone') body.push(head('–', 'Annulée : le site en ligne ne marchait plus, la version d\'avant est revenue', 'broken'));
   else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
   else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
-  else body.push(head('✓', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  else body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
   if (!red && changes.length) body.push(changeList(changes));
   if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
   if (o.state === 'live' && o.site) body.push(el('a', { class: 'release-site', href: o.site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));

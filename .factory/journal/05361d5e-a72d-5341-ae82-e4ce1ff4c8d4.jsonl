@@ -25,3 +25,12 @@
 {"t":"2026-11-13T13:33:34.830Z","kind":"test","cmd":"npm run lint 2>&1 | grep -iE \"error|fail\"; npm run typecheck 2>&1 | grep -iE \"error|fail\"; npm run build 2>&1 | grep -iE \"error|fail\"; echo \"---tests---\"; npm test 2>&1 | grep -E \"^# (pass|fail)|^not ","ok":true,"id":"toolu_01RhLr6Kf17EYT63XUHm87ov"}
 {"t":"2026-11-13T13:33:57.588Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 node --test \"e2e/release.e2e.mjs\" \"e2e/release-card.e2e.mjs\" \"e2e/panel.e2e.mjs\" 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01XqAu7b3w1qLcUvhmZtDDWK"}
 {"t":"2026-11-13T13:34:23.553Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head","ok":true,"id":"toolu_0149D7RB4ghcnGRym45R7XLm"}
+{"t":"2026-11-13T13:34:40.910Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Bhw8Gd8Vq3XuHZKAaVx3eN"}
+{"t":"2026-11-13T13:35:08.641Z","kind":"agent","model":"opus","effort":"high","label":"Review release-card branch","id":"toolu_01LMzkinov6EwkEC99h3LZkh"}
+{"t":"2026-11-13T13:36:13.497Z","kind":"test","cmd":"S=… && CHROMIUM_PATH=… timeout 200 node --test e2e/release-card.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)\"; S=… CHROMIUM_PATH=… timeout 180 node $S/shot.mjs >/dev/null 2>&1 && echo shots-ok","ok":true,"id":"toolu_014oA36XJZocoYJ2kwtFi1us"}
+{"t":"2026-11-13T13:36:15.008Z","kind":"skill","name":"impeccable","id":"toolu_01Vp1WCvejJ6zbKwTyQgnFYr"}
+{"t":"2026-11-13T13:37:11.706Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design review release cards","id":"toolu_01MHjfjtQWr9mGhAqoqRcW1w"}
+{"t":"2026-11-13T13:37:11.710Z","kind":"agent","model":"sonnet","effort":"medium","label":"A11y/contrast review cards","id":"toolu_017GMFymYvvSPcdGF3zE27GB"}
+{"t":"2026-11-13T13:39:11.870Z","kind":"test","cmd":"node --test test/relay.test.mjs test/panel-lib.test.mjs 2>&1 | grep -E \"^# (tests|pass|fail)|^not ok\" | head -30","ok":true,"id":"toolu_011ZyA1qvbZARSvqDXmUmfga"}
+{"t":"2026-11-13T13:39:43.330Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 400 node --test e2e/release-card.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)\"; CHROMIUM_PATH=… timeout 400 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_011EAGoDKG51pz1qmwME2DDk"}
+{"t":"2026-11-13T13:41:07.384Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; node .factory/scripts/journal-check.mjs 2>&1 | tail -20","ok":true,"id":"toolu_017nJDmsuHXmhH1JpGwv9278"}
