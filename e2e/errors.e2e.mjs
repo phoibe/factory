@@ -24,7 +24,7 @@ test('GitHub refuse la mise en production : la fenêtre dit que l\'envoi a écho
     await page.locator('#release[aria-disabled="false"]').click();
     await page.locator('#release-confirm').click();
     await page.locator('#release-error:not([hidden])').waitFor();
-    assert.equal(await page.locator('#release-error').textContent(), 'L\'envoi a échoué. Réessayez.');
+    assert.equal(await page.locator('#release-error').textContent(), 'L\'envoi a échoué. Le jeton n\'a pas accès à ce projet\u00a0: créez-en un qui y a accès.');
     assert.equal(await page.locator('#release-dialog').evaluate((d) => d.open), true);
     assert.doesNotMatch(await page.locator('#toast').textContent(), /lancée/);
   });
@@ -36,7 +36,7 @@ test('la connexion tombe pendant l\'envoi d\'un « Ok » : message en français 
     await page.locator('button.go[data-go="10"]').click();
     await page.waitForFunction(() => /Envoi impossible/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 10_000 });
     const text = await page.locator('#toast').textContent();
-    assert.equal(text, 'Envoi impossible : Connexion perdue, réessayez.');
+    assert.equal(text, 'Envoi impossible. Connexion perdue, réessayez.');
     assert.doesNotMatch(text, ENGLISH);
   });
 });
@@ -49,6 +49,6 @@ test('GitHub refuse l\'enregistrement des paramètres : message en français, sa
     await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.waitForFunction(() => /Échec de l'enregistrement/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 10_000 });
     const text = await page.locator('#toast').textContent();
-    assert.equal(text, 'Échec de l\'enregistrement : Élément introuvable sur GitHub, ou le jeton n\'y a pas accès.');
+    assert.equal(text, 'Échec de l\'enregistrement. Le jeton n\'a pas accès à ce projet\u00a0: créez-en un qui y a accès.');
   });
 });

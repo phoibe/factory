@@ -104,7 +104,7 @@ async function api(path, init = {}) {
   });
   if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
   return res.status === 204 ? null : res.json();
 }
 
@@ -205,7 +205,7 @@ function renderProjectList() {
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
   if (current && current.repo.full_name === fullName) return;
-  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${errorText(err)}`); renderProjectList(); });
+  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
 
 function setDot(repo, dot) {
@@ -374,7 +374,7 @@ async function cachedGet(path, cache = etags) {
   }
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw httpError(res.status);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
@@ -672,7 +672,7 @@ async function sendGo(c, btn, repo, key) {
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
-    toast(`Envoi impossible : ${errorText(e)}`);
+    toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
     if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
@@ -1246,7 +1246,7 @@ async function writeRules() {
 }
 async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
-  if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
+  if (!fresh) throw saidError('Les paramètres de ce projet ont disparu de GitHub\u00a0: rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
@@ -1327,7 +1327,7 @@ async function start() {
       return;
     }
     resetSession();
-    $('login-error').textContent = 'GitHub a refusé le jeton. Vérifiez-le et réessayez.';
+    $('login-error').textContent = 'GitHub a refusé le jeton. Vérifiez-le ou créez-en un nouveau.';
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -1471,9 +1471,9 @@ $('release-confirm').addEventListener('click', async () => {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
     toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
-  } catch {
+  } catch (e) {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
-    $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';
+    $('release-error').textContent = `L'envoi a échoué. ${errorText(e)}`;
     $('release-error').hidden = false;
   } finally {
     btn.disabled = false;
@@ -1533,7 +1533,7 @@ $('stable').addEventListener('click', async () => {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     btn.hidden = true;
   } catch (e) {
-    toast(`Impossible de déclarer stable : ${errorText(e)} (le jeton doit avoir accès au dépôt factory)`);
+    toast(`Impossible de déclarer stable. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1676,7 +1676,7 @@ async function askStack(repo, btn) {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Établir la fiche';
-    toast("La demande n'est pas partie. Réessayez.");
+    toast(`La demande n'est pas partie. ${errorText(e)}`);
   }
 }
 
@@ -1695,7 +1695,7 @@ async function startGeneralReview() {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review : ${errorText(e)}`);
+    toast(`Impossible de lancer la review. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1757,7 +1757,7 @@ async function chatGet(path) {
   });
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw httpError(res.status);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
@@ -1779,7 +1779,7 @@ async function branchJson(path) {
     cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw httpError(res.status);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   return res.json();
 }
 
@@ -1825,7 +1825,7 @@ async function refreshChat() {
     drawChat();
   } catch (err) {
     if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
-    else if (!$('chat').hidden) toast(`${errorText(err)} Nouvel essai dans quelques secondes.`);
+    else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
     scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
@@ -2144,7 +2144,7 @@ async function sendChat(text, withImages = true) {
     if (gone()) return;
     chat.pending = null;
     drawChat();
-    toast(`Message non envoyé : ${errorText(e)} Votre texte est toujours là.`);
+    toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -2219,7 +2219,7 @@ async function sendToServer(text, files, withImages) {
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
-    toast(`L'agent n'a pas pu répondre : ${errorText(e)} Votre message est remis dans la zone de saisie : renvoyez-le.`);
+    toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
   } finally {
     if (!gone()) {
       chat.pending = null;
@@ -2247,7 +2247,7 @@ async function closeConversation() {
       $('chat').classList.remove('viewing');
       await refreshChat();
     } catch (e) {
-      toast(`Impossible de terminer la conversation : ${errorText(e)}`);
+      toast(`Impossible de terminer la conversation. ${errorText(e)}`);
     }
     return;
   }
@@ -2259,7 +2259,7 @@ async function closeConversation() {
     $('chat').classList.remove('viewing');
     await refreshChat();
   } catch (e) {
-    toast(`Impossible de terminer la conversation : ${errorText(e)}`);
+    toast(`Impossible de terminer la conversation. ${errorText(e)}`);
   }
 }
 
@@ -2302,7 +2302,7 @@ watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
-$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${errorText(err)}`)));
+$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
 
 // Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
