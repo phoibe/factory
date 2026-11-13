@@ -3305,3 +3305,47 @@ test('a failed deploy report fills a free place', async () => {
   await relay().deployFailed({ pr: 10, sha: 'm1', retried: true });
   assert.ok(startedBuild(gh, 4));
 });
+
+// ---- E4: a stranger's fork PR is never the card's PR ----
+const forkPr = { number: 50, state: 'open', body: 'Closes #7', head: { sha: 'f', ref: 'claude/issue-7-x', repo: { full_name: 'stranger/x' } }, labels: [] };
+
+test('a fork PR naming a building card does not make it look done: the queued card is not started (maxParallel 1)', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }, { number: 8, labels: [L.feature, L.queued] }], prs: [forkPr] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.equal(sent.length, 0);
+});
+
+test('a stranger fork PR naming the card is not closed when the card is dropped', async () => {
+  const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling, L.close] }], prs: [forkPr] });
+  gh.closePr = async (n) => gh.calls.push(['closePr', n]);
+  gh.closeIssue = async (n, reason) => gh.calls.push(['close', n, reason]);
+  await createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'issue', event: 'issues', action: 'unlabeled', removedLabel: L.running, number: 7, labels: [L.feature, L.grilling, L.close], fromOwner: true });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 7));
+  assert.ok(!gh.calls.some((c) => c[0] === 'closePr' && c[1] === 50));
+});
+
+// ---- E5: a merge applied behind a 5xx is a merge ----
+test('a merge error whose PR is in fact merged is a success: no block, no failure comment, the issue is handled as merged', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance], mergeable_state: 'blocked' }] });
+  gh.merge = async () => { throw new Error('PUT merge -> 405'); };
+  const getPr = gh.getPr;
+  gh.getPr = async (n) => (n === 10 ? { ...(await getPr(n)), merged: true } : getPr(n));
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet })
+    .handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /arrive pas à fusionner/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 1 && c[2] === L.building));
+});
+
+// ---- E1: a rate limit is never a reason to block ----
+test('a rate limit when a failed-checks fix cannot start is re-thrown: no blocked label, the PR keeps its labels', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  gh.dispatch = async () => { throw new RateLimited(90_000); };
+  const relay = createRelay({ gh, repo: 'r', config: { ...config, runner: 'github-actions' }, env: {}, log: quiet });
+  await assert.rejects(relay.report({ result: 'failure', pr: 10 }), (e) => e.rateLimited === true);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.blocked));
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.checks));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});

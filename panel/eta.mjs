@@ -175,10 +175,11 @@ export function rangeText(low, high) {
 }
 
 // Short French text for a duration in minutes.
-export function humanMinutes(m) {
-  if (m < 60) return `${Math.max(1, Math.round(m))} min`;
+export function humanMinutes(minutes) {
+  const m = Math.round(minutes);
+  if (m < 60) return `${Math.max(1, m)} min`;
   const h = Math.floor(m / 60);
-  const r = Math.round(m % 60);
+  const r = m % 60;
   return r ? `${h} h ${String(r).padStart(2, '0')}` : `${h} h`;
 }
 
