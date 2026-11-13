@@ -192,8 +192,9 @@ export function etaText(e) {
 }
 
 // The card's first line, e.g. « Fonctionnalité · petite demande #12 » (issue #381). The size comes from the agent's
-// estimate (see parseEstimate); a PR carries none of its own.
+// estimate (see parseEstimate); a PR carries none of its own, and a general review keeps its own route (no size).
 const SIZE_WORDS = { small: 'petite demande', medium: 'demande moyenne', large: 'grande demande' };
+const SIZED = ['Fonctionnalité', 'Bug'];
 export function kindText(kind, isPr, number, size) {
-  return `${kind} · ${isPr ? 'modification' : SIZE_WORDS[size] || 'demande'} #${number}`;
+  return `${kind} · ${isPr ? 'modification' : (SIZED.includes(kind) && SIZE_WORDS[size]) || 'demande'} #${number}`;
 }

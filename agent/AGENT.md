@@ -74,13 +74,15 @@ Pour chacune : `gh api "repos/<repo>/contents/<chemin>?ref=factory-attachments" 
 puis ouvre le fichier avec l'outil Read pour le voir. Regarde-les avant de répondre à un message qui contient une
 image, et ne dis jamais que tu n'y as pas accès sans avoir essayé. Ne fusionne jamais cette branche.
 
-**Taille d'une demande.** Chaque feature ou bug est classé petit (une retouche précise, 3 fichiers de code au plus),
-moyen ou grand, dès ta première lecture : le marqueur `<!-- factory-estimate size=small|medium|large … -->` (format à
+**Taille d'une demande.** Chaque feature est classée petite (une retouche précise, 3 fichiers de code au plus),
+moyenne ou grande, dès ta première lecture : le marqueur `<!-- factory-estimate size=small|medium|large … -->` (format à
 l'étape 0 de `stages/build.md`) le dit au tableau. La taille choisit le parcours : une petite demande claire passe sans
 questions à une spec courte et se construit sans plan ; une moyenne a un plan exécuté d'une traite ; une grande, un plan
 exécuté tâche par tâche. Relecture finale, tests, contrôles, passe design et captures sont les mêmes pour toutes.
 **Si le propriétaire donne ou corrige la taille** (« c'est une grosse demande », « c'est une petite retouche »), à
-n'importe quelle étape : suis la sienne et publie aussitôt une nouvelle estimation avec cette taille.
+n'importe quelle étape : suis la sienne et publie aussitôt une nouvelle estimation avec cette taille. Seule exception :
+une « petite » qui touche finalement plus de 3 fichiers de code doit avoir un plan (le verrou le demande) ; dis-le-lui en
+une phrase dans ton message de fin.
 
 ## Parler au propriétaire
 

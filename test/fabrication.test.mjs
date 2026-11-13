@@ -77,8 +77,17 @@ const buildRun = (...skills) => parseJournal([j(
   ...skills.map((name, i) => ({ t: `2026-11-13T10:0${i + 1}`, kind: 'skill', name })),
 )]);
 
-test('a small build shows the light route', () => {
+test('a build with a plan is a medium route even when it touched few files', () => {
   const runs = buildRun('superpowers:writing-plans', 'test-driven-development');
+  assert.equal(routeLine(runs, { small: true }), "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale");
+});
+
+test('a big build without a plan claims no plan', () => {
+  assert.equal(routeLine(buildRun('test-driven-development'), { small: false }), "**Parcours** : sans plan écrit, construite d'une traite avec une seule relecture finale");
+});
+
+test('a small build shows the light route', () => {
+  const runs = buildRun('test-driven-development');
   assert.equal(routeLine(runs, { small: true }), "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale");
   assert.match(summarize(runs, { stages, small: true }).body, /\*\*Parcours\*\* : petite demande/);
 });

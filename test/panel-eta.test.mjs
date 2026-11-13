@@ -177,4 +177,5 @@ test('kindText names the size of a request, never of a PR', () => {
   assert.equal(kindText('Fonctionnalité', false, 12, undefined), 'Fonctionnalité · demande #12');
   assert.equal(kindText('Fonctionnalité', false, 12, 'huge'), 'Fonctionnalité · demande #12');
   assert.equal(kindText('Fonctionnalité', true, 13, 'small'), 'Fonctionnalité · modification #13');
+  assert.equal(kindText('Review générale', false, 14, 'large'), 'Review générale · demande #14');
 });

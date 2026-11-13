@@ -8,7 +8,7 @@ But : comprendre la feature demandée dans l'issue jusqu'à une compréhension p
    `<!-- factory-estimate … -->`, fourchette pour la construction), dans le message de ce run ou seule. Le tableau
    l'affiche dès maintenant.
 0 bis. **Petite demande claire ?** Si elle est petite et dit déjà exactement quoi faire (« renommer l'onglet X en Y »,
-   « retirer le bouton Z »), ne pose aucune question : passe directement à `.factory/stages/spec.md` (spec courte)
+   « retirer le bouton Z ») et n'est pas une tranche déjà découpée (étape 0 ter), ne pose aucune question : passe directement à `.factory/stages/spec.md` (spec courte)
    dans ce même run. Au moindre doute sur ce qu'il veut, pose tes questions comme d'habitude.
 0 ter. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle

@@ -17,7 +17,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    départ les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
 3. **Parcours selon la taille** (ton estimation de l'étape 0). Pas de validation humaine du plan. Dans tous les cas,
-   une seule relecture finale (étape 5) par un sous-agent `opus` effort `high`, et les mêmes tests, contrôles,
+   une relecture finale (étape 5, avec ses tours après correction) par un sous-agent `opus` effort `high`, et les mêmes tests, contrôles,
    passe design et captures :
    - **petite** : pas de plan écrit, code-la toi-même d'une traite. Si elle touche finalement plus de 3 fichiers de
      code, elle devient moyenne : écris le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
@@ -28,6 +28,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
      `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
      effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+   Si l'étape plan est désactivée, une demande moyenne ou grande se code aussi d'une traite, sans plan écrit.
    Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
    lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD).

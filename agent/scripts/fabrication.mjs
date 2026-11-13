@@ -112,13 +112,15 @@ export function agentsLine(runs) {
   return `**Sous-agents** : ${parts.join(', ')}`;
 }
 
-// Issue #381: the route a build followed, read from the journal. A small change is built without a plan; a plan
-// executed by one sub-agent per task (subagent-driven-development) is the large route; any other plan, the medium one.
+// Issue #381: the route a build followed, read from the journal (never from the size the agent declared): a plan
+// executed by one sub-agent per task (subagent-driven-development) is the large route, any other plan the medium one,
+// no plan on a small change the small one. A bigger change without a plan claims nothing more (the plan alert says it).
 export function routeLine(runs, { small = false } = {}) {
   if (!runs.some((r) => r.stage === 'build')) return null;
-  if (small) return "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale";
   if (runs.some((r) => used(r, 'subagent-driven-development'))) return '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue';
-  return "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale";
+  if (runs.some((r) => used(r, 'writing-plans'))) return "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale";
+  if (small) return "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale";
+  return "**Parcours** : sans plan écrit, construite d'une traite avec une seule relecture finale";
 }
 
 const STAGE_NAMES = {
