@@ -6,6 +6,7 @@ import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine }
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
 import { waitedFor } from './waits.mjs?v=2';
 import { trustNotes } from './trust.mjs';
+import { gapView, deploymentState, isLiveEnv } from './production.mjs?v=1';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -289,6 +290,8 @@ async function openProject(fullName) {
   $('project-switch-name').textContent = current.repo.name;
   current.delivery = null;
   drawSub();
+  drawGap();
+  refreshGap(true);
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -490,7 +493,7 @@ async function refresh() {
       }
     });
     const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
-    const [eventsChanged] = await Promise.all([deepEvents(), comments, release]);
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
@@ -1374,8 +1377,78 @@ async function loadDelivery(project) {
   current.delivery = delivery;
   drawSub();
   drawRelease();
+  refreshGap(true);
   if (!$('rules').contains(document.activeElement)) renderRules();
 }
+
+// ---- Écart de production (issue #369) ---------------------------------------------------------------------------
+// Under the project's name: is the live site up to date with the validated changes? A version is live only once its
+// host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
+const GAP_MS = 60_000;
+const gap = { repo: null, at: 0, view: null };
+async function refreshGap(force = false) {
+  const project = current;
+  const repo = project.repo.full_name;
+  if (!force && gap.repo === repo && Date.now() - gap.at < GAP_MS) return;
+  gap.at = Date.now();
+  const mode = effectiveProduction(project.config, project.delivery);
+  const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
+  let view;
+  try {
+    const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=30`)).data || [];
+    const statusesById = {};
+    const live = deployments.filter((d) => isLiveEnv(d.environment))
+      .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 5);
+    for (const d of live) {
+      statusesById[d.id] = (await cachedGet(`/repos/${repo}/deployments/${d.id}/statuses?per_page=20`)).data || [];
+      if (statusesById[d.id].some((x) => x.state === 'success')) break;
+    }
+    const { liveSha } = deploymentState(live, statusesById);
+    let aheadShas = new Set();
+    let pulls = [];
+    if (liveSha) {
+      const preprod = mode === 'approval' && await api(`/repos/${repo}/git/ref/heads/preprod`).catch(() => null);
+      const branch = preprod ? 'preprod' : project.repo.default_branch || 'main';
+      const [cmp, prs] = await Promise.all([
+        cachedGet(`/repos/${repo}/compare/${liveSha}...${encodeURIComponent(branch)}`),
+        cachedGet(`/repos/${repo}/pulls?state=closed&base=${encodeURIComponent(branch)}&sort=updated&direction=desc&per_page=50`),
+      ]);
+      aheadShas = new Set((cmp.data?.commits || []).map((c) => c.sha));
+      pulls = Array.isArray(prs.data) ? prs.data : [];
+    }
+    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls });
+  } catch {
+    view = gapView({ mode, hasSite, error: true });
+  }
+  if (current !== project) return;
+  gap.repo = repo;
+  gap.view = view;
+  drawGap();
+}
+function drawGap() {
+  const view = gap.repo === current?.repo.full_name ? gap.view : null;
+  const on = Boolean(view && view.kind !== 'none');
+  $('prod-gap').hidden = !on;
+  $('prod-gap-sep').hidden = !on;
+  if (!on) return;
+  $('prod-gap').textContent = view.text;
+  $('prod-gap').classList.toggle('failed', view.kind === 'failed');
+}
+const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+$('prod-gap').addEventListener('click', () => {
+  const view = gap.view;
+  if (!view) return;
+  const base = current.repo.html_url;
+  const why = view.why || (view.items.length ? 'Modifications validées pas encore sur le site en ligne, de la plus ancienne à la plus récente.'
+    : view.kind === 'deploying' ? 'L\'hébergeur publie la dernière version.' : 'Toutes les modifications validées sont sur le site en ligne.');
+  $('gap-why').textContent = why;
+  $('gap-list').hidden = !view.items.length;
+  $('gap-list').replaceChildren(...view.items.map((i) => el('li', {},
+    el('a', { href: `${base}/issues/${i.issue}`, target: '_blank', rel: 'noopener' }, i.title), ' ',
+    el('span', { class: 'gap-date' }, `validée le ${gapDate(i.mergedAt)}`))));
+  $('gap-dialog').showModal();
+});
+$('gap-close').addEventListener('click', () => $('gap-dialog').close());
 
 // ---- « Mise en production » (issue #294) ----------------------------------------------------------------------
 // On a project set to « sur mon accord », validated changes are merged but wait (label factory:awaiting-production on
