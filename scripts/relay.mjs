@@ -264,8 +264,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           for (const n of targets) await gh.removeLabel(n, L.running);
           throw e;
         }
-        // No HTTP answer at all (fetch failed, reset) or a server error: passing. A 4xx (workflow disabled, no right) is a setting.
-        if (isNetworkFailure(String(e)) || /-> 5\d\d\b/.test(String(e.message || e)) || !/-> \d{3}\b/.test(String(e.message || e))) await passing(`dispatch failed: ${e}`);
+        // No HTTP answer at all (fetch failed, reset) or a server error: passing. A 4xx (workflow disabled, no right), or any
+        // other error, is a setting the owner is told about.
+        if (isNetworkFailure(String(e)) || /-> 5\d\d\b/.test(String(e.message || e)) || /fetch failed/i.test(String(e.message || e))) await passing(`dispatch failed: ${e}`);
         await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécrivez votre message dans quelques minutes ; si ça se répète, vérifiez que le workflow « Factory » est activé (onglet Actions).", String(e));
       }
       return;
@@ -335,14 +336,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         return false;
       }
     }
-    await afterLaunch(then);
-    // The same launch saved earlier is now done; an automatic one is superseded. A launch the owner started for another
-    // step stays: it starts once this agent is done (retryLaunch waits while the card is running).
+    // Cleared before anything else can fail, so that a started launch is never started twice. The same launch saved
+    // earlier is now done; an automatic one is superseded. A launch the owner started for another step stays: it starts
+    // once this agent is done (retryLaunch waits while the card is running).
     try {
       const card = await gh.getIssue(issue || pr);
       const kept = readRelaunch(card?.body);
-      if (!kept?.owner || sameLaunch(kept, { stage, pr })) await clearRelaunch(issue || pr, card);
+      if (!kept?.owner || sameLaunch(kept, { stage, pr })) await clearRelaunch(issue || pr, card, { followUp: true });
     } catch (e) { if (isRateLimited(e)) throw e; log(`relaunch not cleared: ${e.message}`); }
+    await afterLaunch(then);
     return true;
   }
 
@@ -371,8 +373,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const item = await gh.getIssue(card);
     const existing = readRelaunch(item?.body);
     if (prior === undefined && existing?.owner && !saved.owner && !sameLaunch(existing, saved)) {
-      log(`launch of #${card} (${saved.stage}) not saved: the owner's waiting launch (${existing.stage}) goes first`);
-      return { action: 'kept', state: existing, tell: false };
+      // Kept behind it: started once the owner's launch has started (clearRelaunch with followUp), never dropped.
+      log(`launch of #${card} (${saved.stage}) waits behind the owner's waiting launch (${existing.stage})`);
+      const state = { ...existing, after: launchOf(saved) };
+      await gh.updateIssue(card, { body: writeRelaunch(item?.body, state) });
+      return { action: 'kept', state, tell: false };
     }
     const step = relaunchStep(prior === undefined ? existing : prior, { launch: saved, now: now() });
     await gh.updateIssue(card, { body: writeRelaunch(item?.body, step.state) });
@@ -395,11 +400,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   // Forgets the launch saved on card `n` (and the copy on its PR). Reads the card unless given.
-  async function clearRelaunch(n, item = null) {
+  // `followUp`: the saved launch has just started; an automatic launch kept behind it (`after`) now waits in its place,
+  // started at the first tick once this agent is done.
+  async function clearRelaunch(n, item = null, { followUp = false } = {}) {
     const card = item || await gh.getIssue(n);
     const saved = readRelaunch(card?.body);
     const labelled = names(card?.labels).includes(L.relaunch);
     if (!saved && !labelled) return;
+    if (followUp && saved?.after) {
+      const next = { ...saved.after, since: now(), failures: 1, next: now() };
+      await gh.updateIssue(n, { body: writeRelaunch(card.body, next) });
+      if (saved.pr && saved.pr !== n && saved.pr !== next.pr) await gh.removeLabel(saved.pr, L.relaunch);
+      if (next.pr && next.pr !== n) { await copyOnPr(next.pr, n, next); await gh.addLabels(next.pr, [L.relaunch]); }
+      if (!labelled) await gh.addLabels(n, [L.relaunch]);
+      return;
+    }
     if (saved) await gh.updateIssue(n, { body: writeRelaunch(card.body, null) });
     if (labelled) await gh.removeLabel(n, L.relaunch);
     if (saved?.pr && saved.pr !== n) {
@@ -451,10 +466,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await waitRelaunch(saved.blocked ? { ...launchOf(saved), unblock: true } : launchOf(saved), saved.blocked ? null : saved);
       return 'failed';
     }
-    await afterLaunch(then);
-    if (saved.blocked || saved.unblock) await gh.removeLabel(n, L.blocked);
-    await clearRelaunch(n, item);
+    // Cleared first: a GitHub hiccup in what follows must never start the same launch a second time.
+    await clearRelaunch(n, item, { followUp: true });
     log(`relaunch of #${n} (${stage}) started`);
+    if (saved.blocked || saved.unblock) await gh.removeLabel(n, L.blocked);
+    await afterLaunch(then);
     return 'started';
   }
 

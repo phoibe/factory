@@ -415,3 +415,36 @@ test('review2 6: the project foundation never queues at its relaunch', async () 
   await relay.retryLaunches();
   assert.equal(payloadOf(sent[0].body).stage, 'foundation');
 });
+
+// ---- Third review of #383 ----
+
+test('review3 1: a GitHub hiccup after a relaunch started never starts it a second time', async () => {
+  const body = writeRelaunch('', { stage: 'build', issue: 3, pr: null, then: { comments: [{ n: 3, body: 'Une place s\'est libérée' }] }, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 3, body, labels: [L.feature, L.queued, L.relaunch] }], prs: [] });
+  gh.comment = async () => { throw new Error('POST comments -> 502'); };
+  const { relay, sent, clock } = make(gh, [], { at: 3 * MIN });
+  await relay.retryLaunches().catch(() => {});
+  assert.equal(sent.length, 1);
+  assert.equal(readRelaunch((await gh.getIssue(3)).body), null, 'cleared as soon as the agent started');
+  await gh.removeLabel(3, L.running);
+  clock.t = 60 * MIN;
+  await relay.retryLaunches();
+  assert.equal(sent.length, 1);
+});
+
+test('review3 2: a fix that fails while the owner\'s launch waits runs after it', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, body: 'feature', labels: [L.feature, L.building, L.blocked] }], prs: [{ number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  const { relay, sent, clock } = make(gh, [529, 529]);
+  await relay.handle(remark(1, [L.feature, L.building, L.blocked], 'mets le bouton en rouge'));
+  await relay.report({ result: 'failure', pr: 10 });
+  clock.t = 2 * MIN;
+  await relay.retryLaunches(); // the owner's launch starts
+  assert.equal(readRelaunch((await gh.getIssue(1)).body)?.stage, 'fix-checks', 'the fix waits behind it');
+  await relay.retryLaunches();
+  assert.equal(sent.length, 3, 'not while the owner\'s agent works');
+  await gh.removeLabel(1, L.running);
+  await gh.removeLabel(10, L.running);
+  clock.t = 30 * MIN;
+  await relay.retryLaunches();
+  assert.equal(payloadOf(sent.at(-1).body).stage, 'fix-checks');
+});
