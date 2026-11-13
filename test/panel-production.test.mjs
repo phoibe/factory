@@ -75,6 +75,31 @@ test('external production: « version inconnue » with a reason', () => {
   assert.equal(v.kind, 'unknown');
   assert.equal(v.text, 'En ligne : version inconnue');
   assert.match(v.why, /hors de la factory/);
+  assert.match(v.why, /étiquette de version/);
+});
+
+// Issue #372: the version tag the site publishes (read by the relay into refs/factory/live) says what is live.
+test('external production with a version tag: « à jour », or the validated changes the tag lacks', () => {
+  const ext = { ...base, mode: 'external', deployments: [], statusesById: {}, tagSha: 'a' };
+  assert.equal(gapView(ext).text, 'En ligne : à jour');
+  const v = gapView({ ...ext, pulls: [pr(111, 's1', '2026-11-08T10:00:00Z')], aheadShas: new Set(['s1']) });
+  assert.equal(v.kind, 'gap');
+  assert.equal(v.text, 'En ligne : 1 modification d\'écart');
+  assert.deepEqual(v.items.map((i) => i.number), [111]);
+});
+
+test('a silent host with a version tag shows the gap too; without one, « version inconnue » explains the tag', () => {
+  const silent = { ...base, deployments: [dep(1, 'a', 'Preview')], statusesById: {} };
+  assert.equal(gapView({ ...silent, tagSha: 'a' }).kind, 'ok');
+  const v = gapView({ ...silent, tagSha: null });
+  assert.equal(v.kind, 'unknown');
+  assert.match(v.why, /étiquette de version/);
+});
+
+test('a version tag never hides GitHub not answering, nor a truncated compare', () => {
+  const ext = { ...base, mode: 'external', deployments: [], tagSha: 'a' };
+  assert.match(gapView({ ...ext, error: true }).why, /GitHub/);
+  assert.equal(gapView({ ...ext, truncated: true }).kind, 'unknown');
 });
 
 test('a site whose host tells GitHub nothing: « version inconnue »; a « site answers » never counts', () => {

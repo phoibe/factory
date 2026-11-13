@@ -25,7 +25,8 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
 // `homepages`: full name → the project's « website » field on GitHub.
-// `deploy`: the live site's publications (issue #369): { deployments, statuses: { id: [...] }, compare: { commits }, pulls }.
+// `deploy`: the live site's publications (issue #369): { deployments, statuses: { id: [...] }, compare: { commits }, pulls },
+// and `liveRef`, the commit the site's version tag names (issue #372).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
 export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, deploy = null }, journey) {
@@ -112,6 +113,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const one = /^\/repos\/o\/r\/issues\/(\d+)$/.exec(path)?.[1];
       if (one && issues.some((i) => String(i.number) === one)) return json(issues.find((i) => String(i.number) === one));
       if (path === '/repos/o/r/issues/events') return json(new URL(req.url()).searchParams.get('page') === '1' ? events : []);
+      // refs/factory/live: the commit the site's version tag names (issue #372), kept by the relay.
+      if (path === '/repos/o/r/git/ref/factory/live') return deploy?.liveRef ? json({ object: { sha: deploy.liveRef } }) : json({ message: 'Not Found' }, 404);
       const ref = /^\/repos\/o\/r\/git\/ref\/heads\/(.+)$/.exec(path)?.[1];
       if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
       const q = new URL(req.url()).searchParams;
