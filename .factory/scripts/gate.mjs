@@ -45,8 +45,8 @@ export function shotsRefusal(tool, input, io) {
   if (!broken.length) return null;
   return ["Verrou de la factory : ce message de captures ne s'afficherait pas, ces lignes du tableau ne sont pas des images :",
     ...broken.map((l) => `- ${l}`),
-    'Reprends le tableau tel que `shots.mjs publish` l\'a écrit (le fichier de sortie entier, jamais recopié à la main), '
-    + 'vérifie avec `node .factory/scripts/shots.mjs check <fichier>`, puis republie.'].join('\n');
+    'Ne publie pas le tableau des captures : la factory le publie elle-même à partir des images poussées (issue #378). '
+    + 'Retire le tableau de ton message (garde tes phrases), puis republie.'].join('\n');
 }
 
 const entries = (text) => String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
