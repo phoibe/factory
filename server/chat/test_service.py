@@ -49,7 +49,6 @@ class FakeGitHub:
         self.raw_calls = 0
         self.writes = []  # every write that is not the write probe
 
-    PROBE = ".factory-write-probe"
 
     def __call__(self, request):
         path, method = request.url.path, request.method
@@ -59,9 +58,11 @@ class FakeGitHub:
             if self.user_status:
                 return httpx.Response(self.user_status, json={}, headers=self.user_headers)
             return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"})
-        if method == "PUT" and path.endswith("/contents/" + self.PROBE):
-            # GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
-            return httpx.Response(422 if "writer" in request.headers["authorization"] else 403, json={})
+        if method != "GET" and json.loads(request.content or b"null") == {}:
+            # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
+            auth = request.headers["authorization"]
+            writer = "writer" in auth or ("issues" in auth and path.endswith("/issues"))
+            return httpx.Response(422 if writer else 403, json={})
         if method != "GET":
             self.writes.append((method, path))
         if "/branches/" in path:
@@ -143,6 +144,11 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
         self.assertFalse(os.path.exists(self.claude + ".prompt"))  # the agent never ran
+
+    def test_a_token_that_can_only_open_issues_is_refused_too(self):
+        r, _ = self.post("goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["code"], "writable")
 
     def test_the_next_message_carries_the_stored_conversation(self):
         cid = "20261113-101010-abcde"

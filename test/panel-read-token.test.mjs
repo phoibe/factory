@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenFromHash, readTokenFromHash, phoneLink } from '../panel/lib.mjs';
-import { newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, readTokenProblem, probeSaysWritable, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
+import { newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
 
 test('le lien du téléphone emporte les deux jetons', () => {
   const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_FULL_1', 'github_pat_READ_2');
@@ -83,4 +83,8 @@ test('a request GitHub refused is said under the answer', () => {
   assert.equal(notCreatedNote(0), '');
   assert.equal(notCreatedNote(1), '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._');
   assert.equal(notCreatedNote(2), '\n\n_2 demandes n\'ont pas pu être créées sur GitHub : redemandez dans un moment._');
+});
+
+test('the write probes cover files, requests and pull requests, always with an empty body', () => {
+  assert.deepEqual(WRITE_PROBES, [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']]);
 });

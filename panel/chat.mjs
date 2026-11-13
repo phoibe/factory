@@ -220,9 +220,9 @@ export const serverList = (index) => [...(index || [])]
 export const READ_TOKEN_KEY = 'factory.chatToken';
 export const READ_TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=factory+discussion+lecture&description=Lecture+seule+pour+la+discussion+avec+l%27agent&expires_in=365&contents=read';
 export const WRITABLE_TOKEN = 'Ce jeton peut modifier vos projets : créez-en un en lecture seule avec le bouton ci-dessus.';
-// A write with an empty body: GitHub refuses a read-only token (403) before reading the body; a token that may write
-// gets a 422 (invalid body). Nothing is ever written. Same probe as the server's.
-export const WRITE_PROBE = '.factory-write-probe';
+// Writes with an empty body: GitHub refuses a read-only token (403) before reading the body; a token that may write
+// gets a 422 (invalid body). Nothing is ever written. Same probes as the server's (files, requests, pull requests).
+export const WRITE_PROBES = [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']];
 export const probeSaysWritable = (status) => ![401, 403, 404].includes(status);
 
 // Why a pasted read token is refused, or null when it is fine.

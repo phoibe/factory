@@ -35,9 +35,9 @@ MAX_IMAGES = 4
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
-# A write with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
-# can write with a 422 (invalid body), so nothing is ever written.
-WRITE_PROBE = ".factory-write-probe"
+# Writes with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
+# can write with a 422 (invalid body), so nothing is ever written. Files, issues, pull requests: same list as the panel.
+WRITE_PROBES = (("PUT", "contents/.factory-write-probe"), ("POST", "issues"), ("POST", "pulls"))
 
 
 def now_iso():
@@ -66,9 +66,11 @@ class GitHub:
         return r.content if raw else r.json()
 
     async def can_write(self):
-        """True when the token may change the project's files."""
-        r = await self.client.put(f"/repos/{self.repo}/contents/{WRITE_PROBE}", json={})
-        return r.status_code not in (401, 403, 404)
+        """True when the token may change the project's files, issues or pull requests."""
+        answers = await asyncio.gather(*(self.client.request(m, f"/repos/{self.repo}/{p}", json={}) for m, p in WRITE_PROBES))
+        if any(r.status_code >= 500 or r.status_code == 429 for r in answers):
+            raise httpx.TransportError("github")
+        return any(r.status_code not in (401, 403, 404) for r in answers)
 
     async def read_json(self, path, default):
         meta = await self.get(f"/repos/{{repo}}/contents/{path}", ref=BRANCH)
