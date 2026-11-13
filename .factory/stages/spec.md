@@ -15,6 +15,11 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    - ce qui est hors périmètre ;
    - les critères d'acceptation, sous forme de vérifications qu'il pourra faire lui-même sur la preview.
    Si les questions ont produit des documents (voir `.factory/stages/docs.md`), ajoute la phrase de résumé en français.
+   **Pas encore d'estimation de ta part sur l'issue** (projet sans étape de questions) : publie-la d'abord (« Avant tout : taille de la
+   demande » dans `.factory/stages/grilling.md`).
+   **Petite demande** (voir « Taille d'une demande » dans AGENT.md) : spec courte, quelques lignes seulement :
+   `**En une phrase** :`, « Ce qui change » et « Comment vérifier » (sans parcours écran par écran ni hors périmètre).
+   Elle suit ensuite la même règle de validation (étape 4) : une petite spec sensible se fait toujours valider.
    **Questions sautées** (seulement quand tu arrives de l'étape 0 ter de `grilling.md`, jamais si l'étape des
    questions est désactivée) : la spec commence, juste
    sous son titre, par la phrase « Pas de questions : la demande était claire. »
