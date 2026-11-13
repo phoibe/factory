@@ -3149,3 +3149,98 @@ test('a release that reached production with no deployment observed is ended as 
   assert.equal(note.unchecked, true);
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });
+
+// ---- Issue #378: the factory posts the captures table itself, from the images on the assets branch ----
+function shotsGh({ labels = [L.visualReview, L.checks], dirs = ['2026-11-13T13-48-46-520Z', '2026-11-13T14-18-33-759Z'], images = ['ecran--desktop.png', 'ecran--desktop--sombre.png'], meta = { unchanged: ['autre--mobile.png'] }, comments = [] } = {}) {
+  const gh = fakeGh({ issues: [], prs: [{ number: 7, labels, state: 'open', head: { sha: 's1' } }], comments: { 7: comments } });
+  gh.getContent = async (path, ref) => {
+    gh.calls.push(['getContent', path, ref]);
+    if (ref !== 'claude/factory-assets') return null;
+    if (path === 'pr-7') return dirs.map((name) => ({ name, type: 'dir' }));
+    if (path === `pr-7/${dirs.at(-1)}/compare`) return images.map((name) => ({ name, type: 'file' }));
+    if (path === `pr-7/${dirs.at(-1)}/shots.json` && meta) return { content: Buffer.from(JSON.stringify(meta)).toString('base64') };
+    return null;
+  };
+  return gh;
+}
+const labeledChecks = { kind: 'pr', event: 'pull_request', action: 'labeled', addedLabel: L.checks, number: 7, labels: [L.visualReview, L.checks], fromOwner: true };
+
+test('captures to validate: the factory posts the table of the latest captures, dark rows as images too (#378)', async () => {
+  const gh = shotsGh();
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  const posted = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- shots: claude/factory-assets -->'));
+  assert.equal(posted.length, 1);
+  const body = posted[0][2];
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  assert.ok(body.includes(`| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |`), body);
+  assert.ok(body.includes(`| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`), body);
+  assert.ok(body.indexOf('ecran · desktop |') < body.indexOf('ecran · desktop · sombre'), 'light rows first');
+  assert.match(body, /non montrés : autre · mobile/);
+  assert.ok(body.startsWith(AGENT_MARKER));
+});
+
+test('the same captures are never posted twice, and nothing is posted outside the captures step (#378)', async () => {
+  const relayFor = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+  const first = shotsGh();
+  await relayFor(first).handle(labeledChecks);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  const again = shotsGh({ comments: [{ body, user: { login: 'github-actions[bot]' } }] });
+  await relayFor(again).handle(labeledChecks);
+  assert.ok(!again.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'already posted');
+  const noReview = shotsGh({ labels: [L.checks] });
+  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });
+  assert.ok(!noReview.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures to validate');
+  const empty = shotsGh({ dirs: [] });
+  await relayFor(empty).handle(labeledChecks);
+  assert.ok(!empty.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures pushed');
+});
+
+test('a table the agent already posted for the same captures is not posted again by the factory (#378, transition)', async () => {
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const body = `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |\n| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`;
+  const gh = shotsGh({ comments: [{ body, user: { login: 'phoibe' } }] });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
+});
+
+test('a rate limit while posting the captures is not swallowed: the relay run is retried (#378)', async () => {
+  const gh = shotsGh();
+  gh.comment = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
+});
+
+test('green checks with captures waiting on the assets branch post them instead of starting a captures catch-up (#378)', async () => {
+  const gh = prWithSkippedSteps();
+  const state = { comments: [] };
+  gh.listComments = async () => state.comments;
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); state.comments.push({ body, user: { login: 'github-actions[bot]' } }); };
+  gh.getIssue = async (n) => ({ number: n, state: 'open', labels: (n === 10 ? [L.visualReview, L.checks] : [L.feature, L.building]).map((name) => ({ name })) });
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async (path, ref) => {
+    if (ref !== 'claude/factory-assets') return { content: Buffer.from(journal).toString('base64') };
+    if (path === 'pr-10') return [{ name: '2026-11-13T14-18-33-759Z', type: 'dir' }];
+    if (path === 'pr-10/2026-11-13T14-18-33-759Z/compare') return [{ name: 'ecran--desktop--sombre.png', type: 'file' }];
+    return null;
+  };
+  const sent = [];
+  await createRelay({ gh, repo: 'phoibe/factory', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('ecran--desktop--sombre.png')), 'captures posted');
+  assert.ok(!sent.some((s) => /"stage":"skills-fix"/.test(JSON.parse(s.init.body).text)), 'no catch-up run');
+});
+
+test('an agent table whose dark rows arrived broken does not stop the factory from posting the right one (#378)', async () => {
+  const at = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  const broken = [AGENT_MARKER, '<!-- shots: claude/factory-assets -->', '| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |',
+    `| ecran · desktop | ![avant · après](${at('ecran--desktop.png')}) |`,
+    `| ecran · desktop · sombre | [avant · après](\` ${at('ecran--desktop--sombre.png')} \`) |`].join('\n');
+  const gh = shotsGh({ comments: [{ body: broken, user: { login: 'phoibe' } }] });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
+});
+
+test('a rate limit while reading the captures folder is not swallowed either (#378)', async () => {
+  const gh = shotsGh();
+  gh.getContent = async () => { throw new RateLimited(90_000); };
+  await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
+});

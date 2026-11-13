@@ -27,6 +27,7 @@ import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
+import { markdownTable, brokenShotRows } from '../agent/scripts/shots.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from './lib/version-tag.mjs';
 import { siteLink } from '../panel/lib.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
@@ -1399,6 +1400,41 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
+  // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
+  // reached GitHub as broken links after leaving the agent's environment. Posted once per folder.
+  // Never throws but on a rate limit, so that the relay run is retried (a missed post is caught up when checks end).
+  async function postCaptures(n) {
+    try { await postLatestCaptures(n); } catch (e) {
+      if (isRateLimited(e)) throw e;
+      log(`captures: ${e.message}`);
+    }
+  }
+  async function postLatestCaptures(n) {
+    if (!gh.getContent) return;
+    // A missing folder reads as nothing; a rate limit goes up, so that the run is retried.
+    const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; return null; });
+    const runs = await soft(gh.getContent(`pr-${n}`, SHOTS_BRANCH));
+    const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
+    if (!latest) return;
+    const dir = `pr-${n}/${latest}`;
+    const mark = `<!-- factory-shots-posted: ${dir} -->`;
+    const images = await soft(gh.getContent(`${dir}/compare`, SHOTS_BRANCH));
+    const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
+    if (!files.length) return;
+    // Also skipped when a whole, unbroken table of this folder is already there (posted by an agent not yet given this
+    // rule). A table whose dark rows arrived broken (#373) does not count: the factory posts the right one.
+    const link = (f) => `![avant · après](https://github.com/${repo}/blob/${SHOTS_BRANCH}/${dir}/compare/${f}?raw=true)`;
+    const whole = (c) => postedCaptures(c) && files.every((f) => c.body.includes(link(f))) && !brokenShotRows(c.body).length;
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return;
+    const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
+    let unchanged = [];
+    try { unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || []; } catch { /* an older tool wrote no list: the identical screens are just not named */ }
+    const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)) });
+    await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
+    log(`captures of #${n} posted from ${dir}`);
+  }
+
   // True when the factory's checks job already passed on this commit (they ran while the owner looked at the captures).
   async function checksGreen(sha) {
     const runs = (await gh.checkRuns?.(sha).catch(() => null)) || [];
@@ -1646,6 +1682,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
     }
+    // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first.
+    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && ev.labels.includes(L.visualReview)) {
+      await postCaptures(ev.number);
+    }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
       if (ev.closed) return { action: { type: 'ignore', reason: 'demande de mise en production déjà traitée' }, outputs };
@@ -1861,6 +1901,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const catchUp = reverting ? [] : (missing || []).filter((s) => CATCH_UP.includes(s));
     // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
     if (result === 'success' && ui && config.stages.screenshots !== false && !reverting) {
+      // Captures pushed but whose table was never posted (a missed event): posted now rather than redone.
+      if (live.includes(L.visualReview)) await postCaptures(prNumber);
       const shown = ((await gh.listComments(prNumber)) || []).some(postedCaptures);
       if (!shown) catchUp.push('screenshots');
     }
