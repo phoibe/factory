@@ -88,6 +88,16 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .finished.closed { color: var(--muted); font-weight: 400; }
 .finished.closed .reason { color: var(--text); font-weight: 650; }
 .finished .when { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Issue #370: a release outcome in « Terminé ». A failed or undone one reads red, like a blocked card. */
+.finished.broken { color: var(--danger); }
+.ticket.done.closed:has(.finished.broken) { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.release-changes { margin: 8px 0 0; padding-left: 18px; color: var(--text); font-size: .875rem; }
+.release-changes li { margin: 2px 0; }
+.release-changes li::marker { color: var(--muted); }
+.release-meta { margin: 8px 0 0; color: var(--muted); font-size: .8125rem; }
+/* Links keep the page's ink-underlined style (never the signal blue), with a 44px touch target like .quiet-link. */
+.release-site, .release-fix { display: inline-block; margin-top: 4px; padding: 10px 0; font-size: .875rem; font-weight: 500; text-underline-offset: 3px; }
+.release-why { margin: 8px 0 0; color: var(--text); font-size: .875rem; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .done-more { color: var(--muted); font-size: .8125rem; margin: 10px 2px 0; }
 .tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }

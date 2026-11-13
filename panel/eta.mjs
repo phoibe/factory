@@ -1,6 +1,6 @@
 // Time estimates for the board (pure, tested in test/panel-eta.test.mjs).
 // Only agent and machine time is estimated: the owner's own answer time is never guessed.
-import { COLUMNS } from './lib.mjs?v=24';
+import { COLUMNS } from './lib.mjs?v=25';
 
 const MIN = 60_000;
 const RUNNING = 'factory:running';

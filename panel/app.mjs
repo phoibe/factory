@@ -1,9 +1,9 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=24';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=25';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=10';
 import { waitedFor } from './waits.mjs?v=2';
 import { trustNotes } from './trust.mjs';
 import { gapView, deploymentState, isLiveEnv } from './production.mjs?v=1';
@@ -312,12 +312,12 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -486,14 +486,34 @@ async function refresh() {
         live.plans.set(c.number, plan);
         previewsChanged = true;
       }
+      // Issue #370: where a « Mise en production » stands, read from the relay's hidden note on its comments.
+      if (c.column === 'release') {
+        const outcome = releaseOutcome([...before.data, ...res.data]);
+        if (JSON.stringify(live.releases.get(c.number) ?? null) !== JSON.stringify(outcome)) {
+          live.releases.set(c.number, outcome);
+          previewsChanged = true;
+        }
+      }
       if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
         live.previews.set(c.number, url);
         live.targets.set(c.number, target);
         previewsChanged = true;
       }
     });
+    // Issue #370: a finished « Mise en production » shows its outcome in « Terminé ». Its note lives in its comments,
+    // which the done list does not carry; read it once for each release not already cached (while it was on the board).
+    const doneReleases = async () => {
+      const need = (live.done || []).filter((d) => d.release && !live.releases.has(d.number));
+      await mapLimit(need, 6, async (d) => {
+        if (!same()) return;
+        const res = await cachedGet(`/repos/${repo}/issues/${d.number}/comments?per_page=100`).catch(quiet);
+        if (!res || !same()) return;
+        live.releases.set(d.number, releaseOutcome(res.data));
+        previewsChanged = true;
+      });
+    };
     const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
-    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, refreshGap()]);
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneReleases(), refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
@@ -570,17 +590,51 @@ const holdStatus = (hold) => hold.late
   ? el('p', { class: 'alert', 'data-time': '' }, hold.text)
   : el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), hold.text);
 
+// Issue #370: a « Mise en production » card. While it runs it shows its step and the changes going live; the change
+// list comes from the relay's note once it lands, else from the request body.
+const releaseStep = (c) => (c.labels.includes('factory:release-checking') ? 'Vérification du site en ligne' : 'Mise en ligne en cours');
+const releaseChanges = (c) => (live.releases.get(c.number)?.prs?.length ? live.releases.get(c.number).prs : releaseList(c.body));
+const changeList = (changes) => (changes.length ? el('ul', { class: 'release-changes' }, changes.map((p) => el('li', {}, p.title))) : null);
+
+// Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
+// headline and whether the card is red; everything the owner needs is on the card, the title still opens GitHub.
+function releaseDoneCard(d, now) {
+  const o = live.releases.get(d.number) || { state: 'unknown' };
+  const changes = (o.prs?.length ? o.prs : d.changes) || [];
+  const red = ['failed', 'undone', 'broken', 'unpublished'].includes(o.state);
+  const when = el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`);
+  const head = (sym, text, cls = '') => el('p', { class: `finished${cls ? ` ${cls}` : ''}` }, sym ? el('span', { 'aria-hidden': 'true' }, `${sym} `) : null, text, when);
+  const body = [];
+  if (o.state === 'nothing') body.push(head('✓', 'Rien à mettre en ligne : le site est déjà à jour', 'closed'));
+  else if (o.state === 'undone') body.push(head('–', 'Annulée : le site en ligne ne marchait plus, la version d\'avant est revenue', 'broken'));
+  else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
+  else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
+  else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
+  else body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  if (!red && changes.length) body.push(changeList(changes));
+  if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
+  const site = o.state === 'live' && siteLink(o.site);
+  if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  if (red && (o.reason || o.todo)) body.push(el('p', { class: 'release-why' }, [o.reason, o.todo].filter(Boolean).join(' ')));
+  if (o.fix) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${o.fix}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${o.fix})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  return el('article', { class: `ticket done${red ? ' closed' : ''}` },
+    el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, 'Mise en production')),
+    ...body);
+}
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running && !c.waits?.length;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
+    : c.column === 'release'
+      ? el('p', { class: 'doing' }, el('span', { class: 'dot on', 'aria-hidden': 'true' }), releaseStep(c))
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
@@ -605,10 +659,11 @@ function card(c, lane, minutes, now, moved) {
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview && !asks ? null : status,
+    c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
-    stepTrack(c),
-    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
+    c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    c.column === 'release' ? null : stepTrack(c),
+    c.column === 'release' ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.
@@ -847,7 +902,7 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}`).join('|') : null;
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}${d.release ? `:${JSON.stringify(live.releases.get(d.number) ?? null)}` : ''}`).join('|') : null;
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
@@ -890,7 +945,7 @@ function drawBoard() {
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
-        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
+        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
             ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
@@ -1515,7 +1570,9 @@ function drawRelease() {
   placeNewFeature();
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];
-  const b = releaseButton(pending);
+  // Issue #370: a release is on its way while its request is still open on the board (one at a time).
+  const running = (live.issues || []).some((i) => i.labels.includes('factory:production'));
+  const b = releaseButton(pending, running);
   // The count in the mono face (Mono Numbers Rule).
   const m = /^(.*) \((\d+)\)$/.exec(b.text);
   btn.replaceChildren(...(m ? [`${m[1]} `, el('span', { class: 'num' }, `(${m[2]})`)] : [b.text]));
@@ -1532,7 +1589,7 @@ async function sendRelease(pending, version) {
   drawRelease();
 }
 $('release').addEventListener('click', () => {
-  if ($('release').getAttribute('aria-disabled') === 'true') return toast('Rien en attente');
+  if ($('release').getAttribute('aria-disabled') === 'true') return toast($('release').title || 'Rien en attente');
   const n = release.pending.length;
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;
@@ -1567,7 +1624,7 @@ $('release-confirm').addEventListener('click', async () => {
   try {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
-    toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
+    toast('Mise en production lancée : suivez-la dans l\'onglet Suivi.');
   } catch {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
     $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';

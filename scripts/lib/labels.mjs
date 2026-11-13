@@ -31,6 +31,8 @@ export const L = {
   // Issue #294: a merged PR whose project waits for the owner's « Mise en production », and the panel's request to send them.
   awaitingProd: 'factory:awaiting-production',
   production: 'factory:production',
+  // Issue #370: the release request's second step, once the new version is online and the live site is being opened.
+  releaseChecking: 'factory:release-checking',
 };
 
 // Why the agent closed a feature or bug by itself (issue #203). The label stays on the closed issue: the board shows
@@ -69,10 +71,15 @@ export const LABEL_DEFS = [
   [L.kept, 'c2e0c6', "Idée de l'agent gardée par le propriétaire : la factory peut la prendre"],
   [L.awaitingProd, 'c5def5', 'Modification validée et intégrée : elle attend votre « Mise en production »'],
   [L.production, '0e8a16', 'Mise en production demandée depuis le tableau de bord'],
+  [L.releaseChecking, '5319e7', 'Mise en production : vérification du site en ligne'],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 
 export const AGENT_MARKER = '<!-- factory-agent -->';
+// Issue #370: where a « Mise en production » stands and how it ended, hidden in the relay's comments on the release
+// request. The board reads it: state 'deploying' | 'live' | 'nothing' | 'failed' | 'undone' | 'broken' | 'unpublished',
+// with prs [{ number, title }], version, site, fix (the urgent correction), reason and todo (sentences for the owner).
+export const releaseNote = (data) => `<!-- factory-release ${JSON.stringify(data).replace(/-->/g, '--\\u003e')} -->`;
 export const CHECKS_FAILED_MARKER = '<!-- factory-checks-failed -->';
 export const CHECKS_RESET_MARKER = '<!-- factory-checks-reset -->';
 export const UPDATE_BRANCH_MARKER = '<!-- factory-update-branch -->';
