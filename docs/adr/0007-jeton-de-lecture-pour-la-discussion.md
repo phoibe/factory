@@ -1,0 +1,3 @@
+# Un jeton de lecture seule pour la discussion avec l'agent
+
+Le serveur de discussion (hébergé hors de GitHub) ne reçoit plus le jeton complet du panneau, qui peut modifier tous les projets : il reçoit un second jeton, créé une fois par le propriétaire, qui ne peut que lire. Le panneau, depuis le navigateur et avec le jeton complet qui n'en sort plus, enregistre lui-même la conversation et crée lui-même les demandes proposées par l'agent. Le propriétaire a refusé toute solution de secours qui renverrait le jeton complet au serveur quand le second manque : sans lui, la discussion attend qu'il soit créé. Garder l'ancien fonctionnement a été écarté parce qu'une fuite du serveur permettrait de modifier le code de tous ses projets.
