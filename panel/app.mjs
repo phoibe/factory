@@ -12,6 +12,7 @@ import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } 
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
+import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { startCountdown } from './countdown.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
@@ -109,9 +110,9 @@ async function api(path, init = {}) {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
   });
-  if (res.status === 404) return null;
+  if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.json().catch(() => ({}))).message || ''}`), { status: res.status });
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
   return res.status === 204 ? null : res.json();
 }
 
@@ -276,7 +277,7 @@ function renderProjectList() {
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
   if (current && current.repo.full_name === fullName) return;
-  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas : ${err.message}`); renderProjectList(); });
+  openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
 
 function setDot(repo, dot) {
@@ -447,7 +448,7 @@ async function cachedGet(path, cache = etags) {
   }
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
@@ -807,7 +808,7 @@ async function sendGo(c, btn, repo, key) {
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
-    toast(`Envoi impossible : ${e.message}`);
+    toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
     if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
@@ -1381,7 +1382,7 @@ async function writeRules() {
 }
 async function writeProjectRules() {
   const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
-  if (!fresh) throw new Error('les paramètres de ce projet ont disparu de GitHub. Rechargez la page.');
+  if (!fresh) throw saidError('Les paramètres de ce projet ont disparu de GitHub\u00a0: rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
   if (fresh.sha !== current.file.sha) {
@@ -1479,7 +1480,7 @@ async function start() {
       return;
     }
     resetSession();
-    $('login-error').textContent = `GitHub a refusé le jeton (${err.message}). Vérifiez-le et réessayez.`;
+    $('login-error').textContent = 'GitHub a refusé le jeton. Vérifiez-le ou créez-en un nouveau.';
     return show('login');
   }
   refreshStable().catch(() => {});
@@ -1563,7 +1564,7 @@ async function readGap(force) {
     // External production or a silent host: the site's version tag (issue #372), kept by the relay in refs/factory/live.
     const byTag = tagged({ mode, hasSite, deployments });
     const tagSha = byTag ? await cachedGet(`/repos/${repo}/git/ref/factory/live`)
-      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.message === '404') return null; throw e; }) : null;
+      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.status === 404) return null; throw e; }) : null;
     const liveSha = byTag ? tagSha : deploymentState(live, statusesById).liveSha;
     let aheadShas = new Set();
     let pulls = [];
@@ -1724,9 +1725,9 @@ $('release-confirm').addEventListener('click', async () => {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
     toast('Mise en production lancée : suivez-la dans l\'onglet Suivi.');
-  } catch {
+  } catch (e) {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
-    $('release-error').textContent = 'L\'envoi a échoué. Réessayez.';
+    $('release-error').textContent = `L'envoi a échoué. ${errorText(e)}`;
     $('release-error').hidden = false;
   } finally {
     btn.disabled = false;
@@ -1786,7 +1787,7 @@ $('stable').addEventListener('click', async () => {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     btn.hidden = true;
   } catch (e) {
-    toast(`Impossible de déclarer stable : ${e.message} (le jeton doit avoir accès au dépôt factory)`);
+    toast(`Impossible de déclarer stable. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -1824,7 +1825,7 @@ $('site').addEventListener('click', (e) => {
   selectTab('rules');
   $('site-url')?.focus();
 });
-$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(`Erreur : ${err.message}`)));
+$('phone-open').addEventListener('click', () => openPhone().catch((err) => toast(errorText(err))));
 $('phone-close').addEventListener('click', () => $('phone').close());
 $('project-switch').addEventListener('click', () => {
   $('projects-dialog-list').replaceChildren(...projectItems());
@@ -1929,7 +1930,7 @@ async function askStack(repo, btn) {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Établir la fiche';
-    toast("La demande n'est pas partie. Réessayez.");
+    toast(`La demande n'est pas partie. ${errorText(e)}`);
   }
 }
 
@@ -1948,7 +1949,7 @@ async function startGeneralReview() {
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review : ${e.message}`);
+    toast(`Impossible de lancer la review. ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
@@ -2010,7 +2011,7 @@ async function chatGet(path) {
   });
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const data = await res.json();
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
@@ -2032,7 +2033,7 @@ async function branchJson(path) {
     cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${res.status}`);
+  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   return res.json();
 }
 
@@ -2078,7 +2079,7 @@ async function refreshChat() {
     drawChat();
   } catch (err) {
     if (!chat.list) { chat.error = true; if (!$('chat').hidden) drawChatList(); }
-    else if (!$('chat').hidden) toast(`GitHub ne répond pas (${err.message}). Nouvel essai dans quelques secondes.`);
+    else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
     scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
@@ -2397,7 +2398,7 @@ async function sendChat(text, withImages = true) {
     if (gone()) return;
     chat.pending = null;
     drawChat();
-    toast(`Message non envoyé : ${e.message}. Votre texte est toujours là, réessayez.`);
+    toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -2431,7 +2432,7 @@ async function sendToServer(text, files, withImages) {
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `le serveur a répondu ${res.status}`);
+    if (!res.ok) throw saidError((await res.json().catch(() => ({}))).error || `Le serveur de l'agent a répondu ${res.status}.`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -2465,14 +2466,14 @@ async function sendToServer(text, files, withImages) {
       }
       if (!gone()) drawLive();
     }
-    if (!answer) throw new Error('la réponse a été coupée');
+    if (!answer) throw saidError('La réponse a été coupée.');
   } catch (e) {
     if (gone()) return;
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
     autosize();
-    toast(`L'agent n'a pas pu répondre : ${e.message}. Votre message est remis dans la zone de saisie : renvoyez-le.`);
+    toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
   } finally {
     if (!gone()) {
       chat.pending = null;
@@ -2500,7 +2501,7 @@ async function closeConversation() {
       $('chat').classList.remove('viewing');
       await refreshChat();
     } catch (e) {
-      toast(`Impossible de terminer la conversation : ${e.message}`);
+      toast(`Impossible de terminer la conversation. ${errorText(e)}`);
     }
     return;
   }
@@ -2512,7 +2513,7 @@ async function closeConversation() {
     $('chat').classList.remove('viewing');
     await refreshChat();
   } catch (e) {
-    toast(`Impossible de terminer la conversation : ${e.message}`);
+    toast(`Impossible de terminer la conversation. ${errorText(e)}`);
   }
 }
 
@@ -2555,8 +2556,8 @@ watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
 $('tab-chat').addEventListener('click', () => selectTab('chat'));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
-$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement : ${err.message}`)));
-start().catch((err) => toast(`Erreur : ${err.message}`));
+$('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
+start().catch((err) => toast(errorText(err)));
 
 // Width diagnostic: only when the address asks for it (?largeur), listing what is wider than the screen,
 // so the owner can send a screenshot from his phone.
