@@ -3349,3 +3349,109 @@ test('a rate limit when a failed-checks fix cannot start is re-thrown: no blocke
   assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.checks));
   assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
 });
+
+// ---- Issue #396: a preview or live-site check that never reported is started again by the tick ----
+const watchOf = (body) => { const m = /<!-- factory-watch (\{.*?\}) -->/s.exec(String(body || '')); return m ? JSON.parse(m[1]) : null; };
+const watchedPr = (watch, labels = [L.checks]) => {
+  const pr = { number: 10, state: 'open', body: `Closes #1\n\n<!-- factory-watch ${JSON.stringify(watch)} -->`, head: { sha: 'abc' }, labels };
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [pr] });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); if (n === 10) Object.assign(pr, fields); };
+  return { gh, pr, relay: () => createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet, sleep: async () => {} }) };
+};
+const previewChecks = (gh) => gh.calls.filter((c) => c[0] === 'dispatch' && /previewCheck/.test(c[3]?.payload || '')).map((c) => JSON.parse(c[3].payload).previewCheck);
+
+test('#396: starting the preview check notes it on the PR, and its report clears the note', async () => {
+  const pr = { number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] };
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [pr] });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); Object.assign(pr, fields); };
+  const relay = createRelay({ gh, repo: 'r', config, env, now: () => NOW, log: quiet, sleep: async () => {} });
+  await relay.report({ result: 'success', pr: 10 });
+  assert.deepEqual(watchOf(pr.body), { kind: 'preview', sha: 'abc', at: NOW, tries: 0 });
+  assert.match(pr.body, /^Closes #1/);
+  await relay.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'passed', url: 'https://preview.example' } });
+  assert.equal(watchOf(pr.body), null);
+  assert.equal(pr.body, 'Closes #1');
+});
+
+test('#396: a preview check that never reported is started again by the tick', async () => {
+  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 });
+  await relay().handle(tick);
+  assert.deepEqual(previewChecks(gh), [{ pr: 10, sha: 'abc' }]);
+  assert.deepEqual(watchOf(pr.body), { kind: 'preview', sha: 'abc', at: NOW, tries: 1 });
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
+});
+
+test('#396: a preview check still in its time, on older code, or while an agent works is left alone', async () => {
+  for (const [watch, labels] of [
+    [{ kind: 'preview', sha: 'abc', at: NOW - 20 * 60_000, tries: 0 }, [L.checks]],
+    [{ kind: 'preview', sha: 'old', at: NOW - 80 * 60_000, tries: 0 }, [L.checks]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 }, [L.checks, L.running]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 }, [L.acceptance]],
+  ]) {
+    const { gh, relay } = watchedPr(watch, labels);
+    await relay().handle(tick);
+    assert.deepEqual(previewChecks(gh), [], JSON.stringify([watch, labels]));
+  }
+});
+
+test('#396: after the last try, the factory gives up on the check and the owner gets the recette all the same', async () => {
+  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 2 });
+  await relay().handle(tick);
+  assert.deepEqual(previewChecks(gh), []);
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('https://preview.example')));
+  assert.equal(watchOf(pr.body), null);
+});
+
+test('#396: a « Mise en production » notes its live check on the request', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'a2', production: 'm0' }, issues: [{ number: 50, labels: [L.production], body: 'Demandé depuis le tableau de bord.' }] });
+  gh.updateIssue = async (n, fields) => gh.calls.push(['update', n, fields]);
+  await askRelease(relay);
+  const up = gh.calls.find((c) => c[0] === 'update' && c[1] === 50);
+  const watch = watchOf(up[2].body);
+  assert.equal(watch.kind, 'production');
+  assert.equal(watch.tries, 0);
+  assert.deepEqual(watch.check, prodChecksOf(gh)[0]);
+  assert.match(up[2].body, /^Demandé depuis le tableau de bord\./);
+});
+
+const watchedRelease = (watch) => {
+  const issue = { number: 50, labels: [L.production], body: `Demandé.\n\n<!-- factory-watch ${JSON.stringify(watch)} -->` };
+  const { gh } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [issue] });
+  gh.updateIssue = async (n, fields) => { gh.calls.push(['update', n, fields]); if (n === 50) Object.assign(issue, fields); };
+  gh.getPr = async (n) => ({ number: n, title: 'Mode sombre', body: 'Closes #1', state: 'closed' });
+  return { gh, issue, relay: () => createRelay({ gh, repo: 'r', config: { ...config, production: 'approval' }, env, fetchImpl: fetchOk([]), now: () => NOW, log: quiet, sleep: async () => {} }) };
+};
+const releaseCheck = { pr: 11, sha: 'a2', release: { from: 'm0', prs: [11], issue: 50 } };
+
+test('#396: a release whose live-site check never reported is checked again by the tick', async () => {
+  const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW - 3 * 60 * 60_000, tries: 0 });
+  await relay().handle(tick);
+  assert.deepEqual(prodChecksOf(gh), [releaseCheck]);
+  assert.equal(watchOf(issue.body).tries, 1);
+  assert.equal(watchOf(issue.body).at, NOW);
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('#396: a release check still in its time is left alone; after the last try the release ends as live but unchecked', async () => {
+  const waiting = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW - 30 * 60_000, tries: 0 });
+  await waiting.relay().handle(tick);
+  assert.deepEqual(prodChecksOf(waiting.gh), []);
+  const { gh, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW - 3 * 60 * 60_000, tries: 2 });
+  await relay().handle(tick);
+  assert.deepEqual(prodChecksOf(gh), []);
+  const msg = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 50).map((c) => c[2]).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.match(msg, /pas pu vérifier le site en ligne/);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('#396: a release whose publication is re-run: its note follows the new attempt', async () => {
+  const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW - 40 * 60_000, tries: 0 });
+  gh.rerunFailed = async (id) => gh.calls.push(['rerun', id]);
+  await relay().deployFailed({ pr: 11, sha: 'a2', runId: 77, release: releaseCheck.release });
+  const watch = watchOf(issue.body);
+  assert.equal(watch.at, NOW);
+  assert.equal(watch.check.deployRetried, true);
+  assert.deepEqual(watch.check, prodChecksOf(gh)[0]);
+});
