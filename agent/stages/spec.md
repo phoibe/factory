@@ -4,6 +4,10 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
 
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
 2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
+   - si tu as fait des choix à sa place (les évidences que tu n'as pas posées en questions), une courte partie
+     `### Ce que j'ai décidé pour vous` en tête de spec, juste après la phrase « En une phrase » : une ligne par choix,
+     concrète (« le bouton s'appellera Archiver », « il apparaît aussi sur téléphone »), pour qu'il réagisse d'un coup
+     d'œil ;
    - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
      specs rangées la reprend) ;
    - les parcours, écran par écran, en langage simple ;
@@ -11,6 +15,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    - ce qui est hors périmètre ;
    - les critères d'acceptation, sous forme de vérifications qu'il pourra faire lui-même sur la preview.
    Si les questions ont produit des documents (voir `.factory/stages/docs.md`), ajoute la phrase de résumé en français.
+   **Questions sautées** (demande petite et claire, voir l'étape 0 ter de `grilling.md`) : la spec commence, juste
+   sous son titre, par la phrase « Pas de questions : la demande était claire. »
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
    titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
 4. **Faut-il la faire valider ?** Oui si l'étape « validation de chaque spec » est active (voir AGENT.md).
@@ -19,6 +25,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    validés, ou repose sur une hypothèse importante que le grilling n'a pas confirmée.
    - **À valider** : termine par « Répondez « go » pour lancer la construction, ou dites-moi ce qu'il faut
      changer. » (et, si la validation est désactivée, dis en une phrase pourquoi tu demandes quand même).
+   Une spec écrite avec les questions sautées n'est pas sensible par définition (sinon les questions auraient été
+   posées) : elle n'est à valider que si l'étape « validation de chaque spec » est active.
    - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
      projet). Si quelque chose ne va pas, écrivez-le ici : j'en tiendrai compte. »
 4 bis. **Feature trop grosse pour une seule construction ?** (plusieurs écrans indépendants, ou plus d'une demi-journée
