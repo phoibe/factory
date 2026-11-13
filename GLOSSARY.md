@@ -51,3 +51,9 @@ _À éviter_ : menu déroulant, sélecteur
 **Point d'état** :
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
+
+## Parcours d'une demande
+
+**Taille d'une demande** :
+Le classement d'une demande en petite, moyenne ou grande, fait par l'agent dès sa première lecture et affiché sur le tableau ; il décide du parcours suivi (une petite demande claire se construit sans questions ni plan, une moyenne d'une traite à partir d'un plan, une grande tâche par tâche) ; le propriétaire peut le corriger en l'écrivant dans la demande.
+_À éviter_ : complexité, size, t-shirt
