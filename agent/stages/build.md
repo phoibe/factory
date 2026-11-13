@@ -66,6 +66,21 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
+7 bis. **Essai en conditions réelles** (issue #385 : les deuxièmes demandes juste après une livraison venaient de
+   tests qui ne tournaient que sur des exemples inventés). Après les tests et avant d'ouvrir la PR, rejoue le parcours
+   de la demande sur les vraies données du projet, **en lecture seule** : le vrai dépôt GitHub (ses vraies issues, PR,
+   labels, commentaires, via `gh api` en lecture), le vrai site en ligne (ouvre-le, lis la page), le vrai message
+   déjà publié, le vrai fichier de configuration. Fais tourner ton code sur ces données réelles (par exemple ta
+   fonction appliquée à la vraie réponse de l'API, la page de la branche contre le vrai site) et compare avec ce
+   que la spec attend. **Lecture seule stricte** : ne crée, ne modifie, n'envoie ni ne supprime rien de réel pour
+   « essayer » (pas de message de test, pas de label posé pour voir, pas d'écriture en production, pas de
+   formulaire envoyé). Si l'essai montre un problème, corrige-le (avec un test qui échoue d'abord) comme un test
+   rouge, avant la PR.
+   Dans le résumé de la PR, écris une ligne **« Essayé en vrai : … »** (ce que tu as regardé, sur quelles vraies
+   données, et ce que tu as vu), et une ligne **« Pas vérifié en vrai : … »** pour chaque partie qu'on ne peut pas
+   essayer en lecture seule (il faudrait écrire de vraies données, un service extérieur intervient, la mise en
+   ligne elle-même) : le propriétaire sait ainsi quoi regarder pendant la recette. Rien à essayer (outillage pur) :
+   « Pas vérifié en vrai : rien à essayer, … » en une phrase. Le verrou refuse d'ouvrir une PR sans l'une de ces lignes.
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
    lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais.
    **Rien à tester pour lui ?** Si la PR ne change rien à l'écran ni dans l'usage de l'appli (tests, robustesse,

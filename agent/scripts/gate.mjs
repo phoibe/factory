@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { branchFiles, problems } from './journal-check.mjs';
+import { branchFiles, GATED, problems } from './journal-check.mjs';
 import { sessionRoot } from './run-root.mjs';
 import { brokenShotRows } from './shots.mjs';
 
@@ -49,6 +49,20 @@ export function shotsRefusal(tool, input, io) {
     + 'Retire le tableau de ton message (garde tes phrases), puis republie.'].join('\n');
 }
 
+// Issue #385: the PR a building run opens says what was tried in the project's real conditions, or what was not.
+const REAL_CHECK = /Essayé en vrai|Pas vérifié en vrai/i;
+export function realCheckRefusal(tool, input, io) {
+  if (/(add|update)_(issue_)?labels?$|issue_write$/.test(tool || '')) return null;
+  if (tool === 'Bash' && !/\/pulls(?=$|[\s'"?])|\bgh\s+pr\s+create\b/m.test(String(input?.command || '').replace(HEREDOC, ''))) return null;
+  if (postedTexts(tool, input, io).some((t) => REAL_CHECK.test(t))) return null;
+  return ['Verrou de la factory : le résumé de la PR ne dit pas ce qui a été essayé en conditions réelles.',
+    'Rejoue le parcours de la demande sur les vraies données du projet (vrai GitHub, vrai site en ligne, vrai message publié), '
+    + 'en lecture seule : ne crée, ne modifie, n\'envoie ni ne supprime rien de réel.',
+    'Puis ajoute au résumé une ligne « Essayé en vrai : … » (ce que tu as regardé et ce que tu as vu), et une ligne '
+    + '« Pas vérifié en vrai : … » pour ce qui ne pouvait pas l\'être (il faudrait écrire de vraies données, un service extérieur intervient). '
+    + 'Puis réessaie.'].join('\n');
+}
+
 const entries = (text) => String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 
 // The hook's answer for one input, or null to let it through. `env` gives the files, the journal and config.
@@ -64,7 +78,10 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
     if (shots) return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: shots } } };
     if (!handsOver(input.tool_name, input.tool_input)) return null;
     const list = problems(files, read, stages, opts);
-    if (!list.length) return null;
+    if (!list.length) {
+      const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
+      return real ? { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: real } } } : null;
+    }
     const reason = ['Verrou de la factory : la PR ne peut pas avancer, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
       'Fais-les (avec l\'outil Skill), commit, puis réessaie.'].join('\n');
     return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } };

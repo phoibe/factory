@@ -30,7 +30,7 @@ test('a build run cannot open its PR while a step is missing', () => {
 test('a build run with every step goes through', () => {
   const text = j(run('build'), ...['writing-plans', 'test-driven-development', 'requesting-code-review', 'impeccable'].map(skill),
     { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true });
-  assert.equal(decide(bash('gh pr create --fill'), env(text)), null);
+  assert.equal(decide(bash('gh pr create --body "Essayé en vrai : la page en ligne."'), env(text)), null);
 });
 
 test('TDD without a red test then a green one is refused', () => {
@@ -65,7 +65,7 @@ test('stopping early is sent back once, and only when something was built', () =
 test('a general review cannot open its PR without both passes', () => {
   const res = decide(bash('gh pr create'), env(j(run('audit'), skill('impeccable')), ['lib/x.ts', '.factory/journal/s.jsonl']));
   assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /revue de code/);
-  assert.equal(decide(bash('gh pr create'), env(j(run('audit'), skill('impeccable'), skill('requesting-code-review')))), null);
+  assert.equal(decide(bash('gh pr create --body "Pas vérifié en vrai : rien à essayer."'), env(j(run('audit'), skill('impeccable'), skill('requesting-code-review')))), null);
 });
 
 test('a command continued on the next line with a backslash still hands over', async () => {
