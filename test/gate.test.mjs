@@ -73,3 +73,28 @@ test('a command continued on the next line with a backslash still hands over', a
   assert.equal(handsOver('Bash', { command: 'gh api repos/o/r/pulls \\\n  -f title=x -f head=b -f base=main' }), true);
   assert.equal(handsOver('Bash', { command: 'gh api repos/o/r/issues/5/labels \\\n  -f "labels[]=factory:checks"' }), true);
 });
+
+// Issue #375: a screenshots comment with a broken table is refused before it is posted.
+const BAD_SHOTS = '<!-- factory-agent -->\n<!-- shots: claude/factory-assets -->\n| Écran | Avant (gauche) · Après (droite) |\n| --- | --- |\n'
+  + '| a · desktop · sombre | [avant · après](` https://github.com/o/r/blob/claude/factory-assets/pr-1/t/compare/a--desktop--sombre.png?raw=true `) |\n';
+const GOOD_SHOTS = '<!-- factory-agent -->\n<!-- shots: claude/factory-assets -->\n| Écran | Avant (gauche) · Après (droite) |\n| --- | --- |\n'
+  + '| a · desktop · sombre | ![avant · après](https://github.com/o/r/blob/claude/factory-assets/pr-1/t/compare/a--desktop--sombre.png?raw=true) |\n';
+
+test('a screenshots comment whose table is broken is refused, in a file or inline', () => {
+  const text = j(run('visual-fix'));
+  const files = { '/w/c.md': BAD_SHOTS, '/w/ok.md': GOOD_SHOTS };
+  const e = { ...env(text), readFile: (p) => files[p] ?? null, cwd: '/w' };
+  const res = decide({ ...bash('gh api repos/o/r/issues/3/comments -F body=@c.md'), cwd: '/w' }, e);
+  assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /captures[\s\S]*sombre/);
+  assert.equal(decide({ ...bash('gh api repos/o/r/issues/3/comments -F body=@ok.md'), cwd: '/w' }, e), null);
+  assert.ok(decide({ hook_event_name: 'PreToolUse', tool_name: 'mcp__github__add_issue_comment', tool_input: { body: BAD_SHOTS } }, e));
+  assert.ok(decide(bash(`cat > c.md <<'EOF'\n${BAD_SHOTS}EOF\ngh api repos/o/r/issues/3/comments -F body=@c.md`), e));
+  assert.equal(decide({ hook_event_name: 'PreToolUse', tool_name: 'mcp__github__add_issue_comment', tool_input: { body: GOOD_SHOTS } }, e), null);
+});
+
+test('only a command that posts is checked for a broken screenshots table', () => {
+  const e = { ...env(j(run('visual-fix'))), readFile: () => BAD_SHOTS, cwd: '/w' };
+  assert.equal(decide(bash(`cat > fixture.md <<'EOF'\n${BAD_SHOTS}EOF`), e), null);
+  assert.equal(decide(bash('node --test'), e), null);
+});
