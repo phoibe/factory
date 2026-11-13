@@ -8,3 +8,4 @@
 {"t":"2026-11-13T14:37:39.441Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\nnew=…\"// Written next to the images: the factory posts the table itself from that folder (issue #378), and only this file\n// tells it which screens were identical befor","ok":true,"id":"toolu_016SA2VYRhdU8r1h6sJiHXWU"}
 {"t":"2026-11-13T14:38:31.644Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head -20","ok":true,"id":"toolu_016fEo1ktMYYe12MKigoWUiN"}
 {"t":"2026-11-13T14:38:33.843Z","kind":"skill","name":"requesting-code-review","id":"toolu_01TpPToVRPYKWeEuudzh6iHz"}
+{"t":"2026-11-13T14:40:48.745Z","kind":"agent","model":"opus","effort":"high","label":"Review captures fix #378","id":"toolu_01BGDhdv6VkpDmUhFWC5nXie"}
