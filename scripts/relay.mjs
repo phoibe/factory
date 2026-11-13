@@ -511,15 +511,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function dropStaleRelaunchLabels() {
     for (const item of (await gh.listIssues({ labels: L.relaunch })) || []) {
       if (names(item.labels).includes(L.running)) continue;
-      const saved = readRelaunch(item.body);
-      if (saved?.of) {
-        // A PR's copy: kept while its request still holds the launch for this PR, cleared with its label otherwise.
-        const held = readRelaunch((await gh.getIssue(saved.of))?.body);
-        if (held && (held.pr === item.number || held.after?.pr === item.number)) continue;
-        await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
-      } else if (saved) continue;
-      await gh.removeLabel(item.number, L.relaunch);
-      log(`#${item.number}: stale « relaunch » label removed (no saved launch)`);
+      try {
+        const saved = readRelaunch(item.body);
+        if (saved?.of) {
+          // A PR's copy: kept while its open request still holds the launch for this PR, cleared with its label otherwise.
+          const request = await gh.getIssue(saved.of);
+          const held = request?.state !== 'closed' && readRelaunch(request?.body);
+          if (held && (held.pr === item.number || held.after?.pr === item.number)) continue;
+          await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
+        } else if (saved) continue;
+        await gh.removeLabel(item.number, L.relaunch);
+        log(`#${item.number}: stale « relaunch » label removed (no saved launch)`);
+      } catch (e) {
+        if (isRateLimited(e)) throw e;
+        log(`#${item.number}: stale « relaunch » check skipped (${e.message})`); // one bad card never stops the others
+      }
     }
   }
 

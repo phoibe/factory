@@ -490,3 +490,15 @@ test('a PR copy of a launch its request no longer holds is cleared at the tick; 
   assert.ok((await labelsOf(gh, 11)).includes(L.relaunch));
   assert.ok(readRelaunch((await gh.getIssue(11)).body));
 });
+
+test('one unreadable request (deleted issue) does not stop the clean-up of the other stale labels', async () => {
+  const gh = fakeGh({ issues: [
+    { number: 10, body: writeRelaunch('PR', { next: 99 * MIN, of: 1 }), labels: [L.relaunch], pull_request: {} },
+    { number: 12, body: 'Sans relance', labels: [L.feature, L.queued, L.relaunch] },
+  ], prs: [] });
+  const getIssue = gh.getIssue.bind(gh);
+  gh.getIssue = async (n) => { if (n === 1) throw new Error('GET /issues/1 -> 410 This issue was deleted'); return getIssue(n); };
+  const { relay } = make(gh, []);
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.ok(!(await labelsOf(gh, 12)).includes(L.relaunch));
+});
