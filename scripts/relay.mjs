@@ -402,6 +402,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
+      // Its agent was started but the run stopped before the labels changed (rate limit): never a second agent.
+      if (await lockFresh(issue.number, labels)) continue;
       const resumed = labels.includes(L.resumeQueued);
       // Queued by wakeWaiters once its awaited requests were merged (issue #298), not by an owner's answer.
       const merged = resumed ? mergedWaits((await gh.listComments(issue.number)) || []) : [];
@@ -2069,6 +2071,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   const refilling = (step) => async (...args) => {
     const before = dequeues;
     const result = await step(...args);
+    // Never throws, rate limit included, on purpose: the step itself is done, and re-running it would be worse.
+    // The place is then filled by the next event or tick, as before #384.
     if (dequeues === before) await dequeue().catch((e) => log(`queue check: ${e.message}`));
     return result;
   };

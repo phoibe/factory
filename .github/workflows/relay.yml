@@ -94,7 +94,8 @@ jobs:
     needs: [decide, agent]
     if: always() && needs.decide.outputs.agent == 'true'
     runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
-    timeout-minutes: 5
+    # Waits for the queue lock (up to 13 min, scripts/lib/lock.mjs) since it may start a queued card (issue #384).
+    timeout-minutes: 15
     permissions:
       issues: write
       pull-requests: write
@@ -113,6 +114,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PAYLOAD: ${{ needs.decide.outputs.payload }}
+          FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
+          FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
       # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
       - name: 'Rate limited: retried at the next tick'
         if: steps.release.outputs.ratelimited == 'true'
@@ -417,7 +420,8 @@ jobs:
     needs: [decide, production-open, production-smoke]
     if: always() && needs.decide.outputs.production != '' && (needs.production-open.outputs.url != '' || needs.production-open.outputs.deployFailed == 'true' || needs.decide.outputs.releaseIssue != '')
     runs-on: ${{ vars.FACTORY_RUNS_ON && fromJSON(vars.FACTORY_RUNS_ON) || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    # Waits for the queue lock (up to 13 min, scripts/lib/lock.mjs).
+    timeout-minutes: 15
     permissions:
       contents: write
       issues: write

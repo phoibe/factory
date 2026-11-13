@@ -3277,14 +3277,26 @@ test('a refill after a factory step never starts a queued card while the factory
   assert.ok(state.issues[3].labels.includes(L.queued));
 });
 
-test('a merge at the end of the checks starts the queued card only once', async () => {
+test('a merge at the end of the checks looks at the queue only once', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }, { number: 6, labels: [L.feature, L.queued] }],
     prs: [{ number: 10, body: `Closes #1\n${NOTHING_TO_TEST_MARKER}`, head: { sha: 'abc' }, labels: [L.checks] }] });
   const sent = [];
+  let queueReads = 0;
+  const list = gh.listIssues;
+  gh.listIssues = async (q) => { if (q.labels === L.queued) queueReads += 1; return list(q); };
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'success', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
   assert.ok(startedBuild(gh, 4));
   assert.ok(!startedBuild(gh, 6));
+  assert.equal(queueReads, 1);
+});
+
+test('a queued card already started (its agent running) is never started a second time', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.feature, L.queued, L.running] }], prs: [],
+    events: { 4: [{ event: 'labeled', label: { name: L.running }, created_at: new Date(Date.now() - 2 * 60_000).toISOString() }] } });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
+  assert.equal(sent.length, 0);
 });
 
 test('a failed deploy report fills a free place', async () => {
