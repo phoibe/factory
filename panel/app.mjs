@@ -819,6 +819,9 @@ async function sortIdea(i, keep, pick) {
     if (keep) await api(`/repos/${repo}/issues/${i.number}/labels`, { method: 'POST', body: JSON.stringify({ labels: ['factory:kept'] }) });
     else await api(`/repos/${repo}/issues/${i.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
     sortingIdea(repo).set(i.number, 'sent');
+    // Kept with automatic pick on: it may take a free place now. Older project workflows ignore the kept label,
+    // so the board wakes the factory itself (issue #406).
+    if (keep && pick && current.repo.full_name === repo) wakeFactory(current.repo);
     if (live.repo === repo) refresh();
   } catch (e) {
     console.warn(`Idea #${i.number} not sorted`, e);
@@ -1261,11 +1264,14 @@ async function writeProjectRules() {
   current.file = { ...res.content, content: toBase64(body) };
   current.saved = JSON.stringify(current.config);
   // More places: ask the factory to look at the queue now instead of at its next regular check.
-  if (current.config.maxParallel > (before || 0)) {
-    api(`/repos/${current.repo.full_name}/actions/workflows/factory.yml/dispatches`, {
-      method: 'POST', body: JSON.stringify({ ref: current.repo.default_branch, inputs: { payload: '{"tick":true}' } }),
-    }).catch(() => {});
-  }
+  if (current.config.maxParallel > (before || 0)) wakeFactory(current.repo);
+}
+
+// Asks the factory to look at its free places now rather than at its next regular check (« tick »).
+function wakeFactory(repo) {
+  api(`/repos/${repo.full_name}/actions/workflows/factory.yml/dispatches`, {
+    method: 'POST', body: JSON.stringify({ ref: repo.default_branch, inputs: { payload: '{"tick":true}' } }),
+  }).catch(() => {});
 }
 
 function selectTab(name) {

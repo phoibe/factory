@@ -368,3 +368,23 @@ test('a stack sheet card from the panel is built right away, or queued when the 
   assert.deepEqual(go.add, ['factory:building']);
   assert.equal(decide(ev, cfg, { inFlight: 2 }).type, 'queue');
 });
+
+test('an idea kept by the owner advances the queue: it starts at once when a place is free (issue #406)', () => {
+  const kept = ev({ event: 'issues', action: 'labeled', addedLabel: L.kept, labels: [L.feature, L.kept] });
+  assert.deepEqual([decide(kept, config, ctx).type, decide(kept, config, ctx).candidate], ['dequeue', true]);
+  assert.equal(decide({ ...kept, labels: [L.bug, L.kept] }, config, ctx).type, 'dequeue');
+});
+
+test('every label the factory reacts to when it is added gets through the workflow filter (issue #406)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const yml = readFileSync(new URL('../.github/workflows/factory.yml', import.meta.url), 'utf8');
+  const issuesFilter = yml.split('\n').find((l) => l.includes("github.event_name != 'issues' || github.event.action != 'labeled'"));
+  const allowed = new Set([...issuesFilter.matchAll(/github\.event\.label\.name == '([^']+)'/g)].map((m) => m[1]));
+  const reacting = Object.values(L).filter((label) => {
+    const a = decide(ev({ event: 'issues', action: 'labeled', addedLabel: label, labels: [L.feature, L.building, label] }), config, ctx);
+    const b = decide(ev({ event: 'issues', action: 'labeled', addedLabel: label, labels: [label] }), config, ctx);
+    return a.type !== 'ignore' || b.type !== 'ignore';
+  });
+  assert.ok(reacting.length > 0);
+  for (const label of reacting) assert.ok(allowed.has(label), `${label} is ignored by .github/workflows/factory.yml`);
+});

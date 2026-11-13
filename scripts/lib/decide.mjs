@@ -65,6 +65,9 @@ function onIssue(ev, config, ctx) {
     if (ev.action === 'reopened' && closeReason(ev.labels)) return { type: 'reopen', reason: "demande fermée par l'agent, rouverte" };
     // A card that gets blocked gives up its place: the queue can move on.
     if (ev.action === 'labeled' && ev.addedLabel === L.blocked && has(ev.labels, L.building)) return { type: 'dequeue', reason: 'carte bloquée : sa place est libre' };
+    // An idea the owner keeps (« Garder » on the board) may start now: the queue looks at its free places (issue #406).
+    // `candidate`: this card is one to start, not one that just freed its place.
+    if (ev.action === 'labeled' && ev.addedLabel === L.kept) return { type: 'dequeue', candidate: true, reason: 'idée gardée : elle peut prendre une place libre' };
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit, L.stack].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (ev.action === 'labeled' && ev.openedRecently) return ignore("label posé à l'ouverture : l'ouverture s'en charge");
