@@ -17,3 +17,9 @@
 {"t":"2026-11-13T13:27:55.927Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: design review","id":"toolu_01NhjyrafhsMZRdmxDyH37fM"}
 {"t":"2026-11-13T13:27:55.941Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01GmHRxuu2R3ceMcG6ektcRd"}
 {"t":"2026-11-13T13:28:26.169Z","kind":"test","cmd":"git diff origin/main...HEAD -- e2e test; echo \"=== run tests ===\"; node --test test/panel-production.test.mjs 2>&1 | tail -20","ok":true,"id":"toolu_01UAFCfSGwygTQ7iBtxeUw24"}
+{"t":"2026-11-13T13:29:25.685Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/production-gap.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01LGLMhxBCPKjRMW2LnHtzGd"}
+{"t":"2026-11-13T13:31:44.444Z","kind":"skill","name":"receiving-code-review","id":"toolu_01NgHhvX8F6Q7uo845eaZPnW"}
+{"t":"2026-11-13T13:31:49.605Z","kind":"test","cmd":"cat >> test/panel-production.test.mjs <<'EOF'\n\ntest('an external project without any site (a tool, a library) shows nothing', () => {\n  assert.equal(gapView({ ...base, mode: 'external', hasSite: false","ok":false,"id":"toolu_01WxZRBPJEASEMvEghrdS4rL"}
+{"t":"2026-11-13T13:31:58.723Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\ns=…  if (mode === 'external') return unknown(\",\"  if (mode === 'external') return !hasSite && !live ? { kind: 'none', text: '', items: [] } : unknown(\")\nopen(p,'w').write(s)","ok":true,"id":"toolu_01TGKBwAtS2G3NaDGfjdZjL2"}
+{"t":"2026-11-13T13:32:52.034Z","kind":"test","cmd":"npm run typecheck >/dev/null 2>&1 && npm run lint >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && echo \"checks ok\"; npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01AfAXr9S4LJiKfnCto2gMdv"}
+{"t":"2026-11-13T13:35:14.762Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 400 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_016pVuVEJGJXrmiXJYbShfnM"}

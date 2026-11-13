@@ -32,7 +32,7 @@ test('sur un projet « sur accord » avec 2 modifications en attente, le texte d
   await withPanel({ ...site, config: { production: 'approval' }, awaiting, branches: { preprod: 'p' }, deploy: { ...live(), compare: { commits: [{ sha: 's1' }, { sha: 's2' }, { sha: 'chore' }] } } }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#prod-gap', { hasText: 'En ligne : 2 modifications d\'écart' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Écart de production' });
+    const dialog = page.getByRole('dialog', { name: 'Pas encore en ligne' });
     await dialog.waitFor();
     const items = dialog.locator('#gap-list li');
     assert.equal(await items.count(), 2);
@@ -55,7 +55,7 @@ test('un projet en mise en ligne externe affiche « version inconnue », avec so
   await withPanel({ ...site, config: { production: 'external' }, deploy: { deployments: [] } }, async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#prod-gap', { hasText: 'En ligne : version inconnue' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Écart de production' });
+    const dialog = page.getByRole('dialog', { name: 'Version en ligne inconnue' });
     await dialog.getByText(/hors de la factory/).waitFor();
   });
 });

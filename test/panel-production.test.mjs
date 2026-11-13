@@ -92,3 +92,7 @@ test('GitHub not answering gives « version inconnue », never a stale « à jou
   assert.equal(v.kind, 'unknown');
   assert.match(v.why, /GitHub/);
 });
+
+test('an external project without any site (a tool, a library) shows nothing', () => {
+  assert.equal(gapView({ ...base, mode: 'external', hasSite: false, deployments: [] }).kind, 'none');
+});

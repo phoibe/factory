@@ -291,7 +291,7 @@ async function openProject(fullName) {
   current.delivery = null;
   drawSub();
   drawGap();
-  refreshGap(true);
+  refreshGap(true).catch(() => {});
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -1377,7 +1377,7 @@ async function loadDelivery(project) {
   current.delivery = delivery;
   drawSub();
   drawRelease();
-  refreshGap(true);
+  refreshGap(true).catch(() => {});
   if (!$('rules').contains(document.activeElement)) renderRules();
 }
 
@@ -1398,7 +1398,7 @@ async function refreshGap(force = false) {
     const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=30`)).data || [];
     const statusesById = {};
     const live = deployments.filter((d) => isLiveEnv(d.environment))
-      .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 5);
+      .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 10);
     for (const d of live) {
       statusesById[d.id] = (await cachedGet(`/repos/${repo}/deployments/${d.id}/statuses?per_page=20`)).data || [];
       if (statusesById[d.id].some((x) => x.state === 'success')) break;
@@ -1407,7 +1407,7 @@ async function refreshGap(force = false) {
     let aheadShas = new Set();
     let pulls = [];
     if (liveSha) {
-      const preprod = mode === 'approval' && await api(`/repos/${repo}/git/ref/heads/preprod`).catch(() => null);
+      const preprod = mode === 'approval' && await cachedGet(`/repos/${repo}/git/ref/heads/preprod`).catch((e) => { if (e?.rateLimited) throw e; return null; });
       const branch = preprod ? 'preprod' : project.repo.default_branch || 'main';
       const [cmp, prs] = await Promise.all([
         cachedGet(`/repos/${repo}/compare/${liveSha}...${encodeURIComponent(branch)}`),
@@ -1415,9 +1415,19 @@ async function refreshGap(force = false) {
       ]);
       aheadShas = new Set((cmp.data?.commits || []).map((c) => c.sha));
       pulls = Array.isArray(prs.data) ? prs.data : [];
+      // A PR the factory undid may have left the 50 most recently updated: read it alone, so it still comes back.
+      for (const r of pulls) {
+        const undone = Number(/^claude\/revert-pr-(\d+)$/.exec(r.head?.ref || '')?.[1]);
+        if (undone && r.merged_at && !pulls.some((p) => p.number === undone)) {
+          const original = (await cachedGet(`/repos/${repo}/pulls/${undone}`).catch((e) => { if (e?.rateLimited) throw e; return null; }))?.data;
+          if (original?.number) pulls = [...pulls, original];
+        }
+      }
     }
     view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls });
-  } catch {
+  } catch (err) {
+    // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
+    if (err?.rateLimited) throw err;
     view = gapView({ mode, hasSite, error: true });
   }
   if (current !== project) return;
@@ -1434,14 +1444,16 @@ function drawGap() {
   $('prod-gap').textContent = view.text;
   $('prod-gap').classList.toggle('failed', view.kind === 'failed');
 }
-const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 $('prod-gap').addEventListener('click', () => {
   const view = gap.view;
   if (!view) return;
   const base = current.repo.html_url;
-  const why = view.why || (view.items.length ? 'Modifications validées pas encore sur le site en ligne, de la plus ancienne à la plus récente.'
-    : view.kind === 'deploying' ? 'L\'hébergeur publie la dernière version.' : 'Toutes les modifications validées sont sur le site en ligne.');
+  // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
+  const why = view.why || (view.items.length ? '' : view.kind === 'deploying' ? 'Publication en cours.' : 'Tout est en ligne.');
+  $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : 'Site en ligne';
   $('gap-why').textContent = why;
+  $('gap-why').hidden = !why;
   $('gap-list').hidden = !view.items.length;
   $('gap-list').replaceChildren(...view.items.map((i) => el('li', {},
     el('a', { href: `${base}/issues/${i.issue}`, target: '_blank', rel: 'noopener' }, i.title), ' ',

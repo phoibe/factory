@@ -49,7 +49,7 @@ const unknown = (why) => ({ kind: 'unknown', text: 'En ligne : version inconnue'
 // has a site address. `aheadShas`: Set (see gapItems). `error`: GitHub could not be read.
 export function gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, error }) {
   const live = (deployments || []).some((d) => isLiveEnv(d.environment));
-  if (mode === 'external') return unknown('La mise en ligne de ce projet se fait hors de la factory : elle ne voit pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.');
+  if (mode === 'external') return !hasSite && !live ? { kind: 'none', text: '', items: [] } : unknown('La mise en ligne de ce projet se fait hors de la factory : elle ne voit pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.');
   if (error) return hasSite || live ? unknown('GitHub ne répond pas pour le moment : la version en ligne n\'a pas pu être lue.') : { kind: 'none', text: '', items: [] };
   if (!live) return hasSite ? unknown('L\'hébergeur de ce site ne prévient pas GitHub quand il publie : la factory ne sait pas encore quelle version est en ligne. La demande n° 372 donnera au site le moyen de le dire.') : { kind: 'none', text: '', items: [] };
   const { liveSha, latest } = deploymentState(deployments, statusesById || {});

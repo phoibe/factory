@@ -475,8 +475,8 @@ details summary { color: var(--text); }
 
 /* ---- « Mise en production » (issue #294) ---- */
 .button[aria-disabled=true] { opacity: .55; cursor: not-allowed; }
-dialog#release-dialog { max-width: 420px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
-dialog#release-dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog#release-dialog, dialog#gap-dialog { max-width: 420px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
+dialog#release-dialog::backdrop, dialog#gap-dialog::backdrop { background: rgb(0 0 0 / .45); }
 #release-title { margin: 0 0 8px; font-size: 1.125rem; text-wrap: balance; }
 #release-confirm.ink { background: var(--text); border-color: var(--text); color: var(--bg); }
 .release-error { margin: 12px 0 0; color: var(--text); font-weight: 500; }
@@ -485,7 +485,7 @@ dialog#release-dialog::backdrop { background: rgb(0 0 0 / .45); }
 /* The production gap under the project's name (issue #369): a quiet text button, red with its words on a failed publication. */
 .project-sub-line { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
 .project-sub-line .sep { color: var(--muted); }
-.prod-gap { min-height: 44px; padding: 0; border: none; background: none; color: inherit; font: inherit; font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.prod-gap { min-height: 44px; padding: 0; border: none; background: none; color: inherit; font: inherit; font-weight: 400; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .prod-gap:hover { color: var(--text); }
 .prod-gap.failed { color: var(--danger); }
 .gap-list .gap-date { color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
