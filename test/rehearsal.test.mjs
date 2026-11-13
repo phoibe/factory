@@ -191,3 +191,12 @@ test('rehearsal: an issue left open after its merge is closed by the guard and f
   assert.equal(w.get(a).open, false);
   healthy(w);
 });
+
+test('rehearsal: an idea the owner keeps starts at once when a place is free, without waiting for another event (issue #406)', async () => {
+  const w = createWorld({ config: { ...base, autoPick: true } });
+  const n = await w.agentIdea({ title: 'Bouton cassé', labels: [L.bug] });
+  assert.deepEqual(w.stages(), [], 'an idea waits for the owner to sort it');
+  await w.owner.keep(n);
+  assert.deepEqual(w.stages(), ['bugfix'], 'kept: it takes the free place right away');
+  healthy(w);
+});
