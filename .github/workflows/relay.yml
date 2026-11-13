@@ -97,6 +97,7 @@ jobs:
     # Waits for the queue lock (up to 13 min, scripts/lib/lock.mjs) since it may start a queued card (issue #384).
     timeout-minutes: 15
     permissions:
+      contents: write # the queue lock is a ref of the repository (scripts/lib/lock.mjs)
       issues: write
       pull-requests: write
       actions: write

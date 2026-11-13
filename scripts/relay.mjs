@@ -402,15 +402,6 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (free <= 0) break;
       const labels = await liveLabels(issue.number);
       if (!labels.includes(L.queued)) continue; // another relay run took it
-      // Its agent was started but the run stopped before the labels changed (rate limit): never a second agent, and
-      // the handover is finished so that the card holds its place and leaves the queue.
-      if (await lockFresh(issue.number, labels)) {
-        await gh.removeLabel(issue.number, L.queued);
-        await gh.removeLabel(issue.number, L.resumeQueued);
-        await gh.addLabels(issue.number, [L.building]);
-        free -= 1;
-        continue;
-      }
       const resumed = labels.includes(L.resumeQueued);
       // Queued by wakeWaiters once its awaited requests were merged (issue #298), not by an owner's answer.
       const merged = resumed ? mergedWaits((await gh.listComments(issue.number)) || []) : [];
