@@ -91,11 +91,17 @@ test('the live status line is never empty, so the cards do not jump when its tex
   assert.match(statusText(2, 0), /Connexion à GitHub perdue/);
 });
 
+test('a project never read yet does not say « à jour » (issue #397)', () => {
+  assert.equal(statusText(0, null), 'En direct · mise à jour…');
+  assert.match(statusText(1, null), /Connexion à GitHub perdue/);
+});
+
 test('the « À vous » card is drawn with its status text already filled (no growth after the cards are measured)', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
   const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
-  assert.match(line, /statusText\(/);
+  assert.match(line, /liveText\(\)/);
+  assert.match(src, /const liveText = \(\) => statusText\(/);
 });
 
 test('a card only slides when it really moved: a few pixels of text reflow stay still', async () => {

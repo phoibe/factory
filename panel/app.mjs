@@ -3,7 +3,7 @@ import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=11';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
@@ -92,7 +92,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -360,7 +360,8 @@ async function openProject(fullName) {
   for (const w of warnings) console.warn(w);
   $('project-name').textContent = current.repo.name;
   $('project-switch-name').textContent = current.repo.name;
-  current.delivery = null;
+  // The stack sheet read at the last visit stays until it is read again: the mode shows at once (issue #397).
+  current.delivery ??= null;
   drawSub();
   drawGap();
   refreshGap(true).catch(() => {});
@@ -388,8 +389,8 @@ const live = { repo: null, issues: null, events: [], eventsDeep: false, previews
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -423,7 +424,9 @@ function enterBoard(repo) {
   const known = boards.get(repo) || { issues, waits: knownWaits(repo, issues) };
   // `synced`: the first answers since coming back are always drawn, even « unchanged » ones (the ETags are shared
   // with the project list, which may have fetched a change this board has not drawn yet).
-  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false });
+  // `last` comes with the board (when it was read), `failures` starts over: the line under « À vous de jouer » never
+  // shows the left project's lost connection or « à jour à l'instant » (issue #397).
+  Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false, failures: 0 });
 }
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
@@ -616,12 +619,15 @@ function schedule() {
   live.timer = setTimeout(refresh, delay);
 }
 
+// Never read yet (a first open): no « à jour » taken from another project.
+const liveText = () => statusText(live.failures, live.last ? Date.now() - live.last : null);
 function drawStatus() {
   const s = document.querySelector('.live');
   if (!s) return;
   const down = live.failures > 0;
   s.classList.toggle('down', down);
-  s.querySelector('.live-text').textContent = statusText(live.failures, Date.now() - live.last);
+  s.classList.toggle('pending', !down && !live.last); // never read yet: no green « tout va bien » dot
+  s.querySelector('.live-text').textContent = liveText();
 }
 
 function stepTrack(c) {
@@ -879,7 +885,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) owed
 // « À vous de jouer »: everything that waits for an answer, oldest first, as cards like the other lanes; only their
 // « go » / « Ok » buttons are blue. Nothing waiting: the calm box.
 function youCard(yours, headline, sub, minutes, now, movedSet) {
-  const status = el('p', { class: 'live' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, statusText(live.failures, Date.now() - live.last)));
+  const status = el('p', { class: live.last || live.failures ? 'live' : 'live pending' }, el('span', { class: 'live-dot', 'aria-hidden': 'true' }), el('span', { class: 'live-text' }, liveText()));
   if (!yours.length) return el('div', { class: 'you-card calm' }, el('p', { class: 'headline' }, headline), ...(sub ? [el('p', { class: 'muted' }, sub)] : []), status);
   return el('section', { class: 'lane lane-yours you-card', 'aria-label': 'À vous de jouer' },
     el('div', { class: 'lane-head' }, el('h2', {}, 'À vous de jouer', el('span', { class: 'count' }, String(yours.length))), status),
@@ -1382,6 +1388,8 @@ async function writeRules() {
   renderRules();
   drawSite();
   drawSub();
+  // A new production mode: the line read for the former one hides at once and is read again (issue #397).
+  if (wasMode !== effectiveProduction(current.config, current.delivery)) { drawGap(); refreshGap(true).catch(() => {}); }
   toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {
@@ -1528,12 +1536,14 @@ function drawSub() {
   $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
 }
 async function loadDelivery(project) {
-  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => null);
-  if (current !== project) return;
+  // A failed read keeps the mode known from the last visit; only a missing sheet (404, null) forgets it.
+  const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => undefined);
+  if (current !== project || file === undefined) return;
   const delivery = file?.content ? deliveryOf(fromBase64(file.content)) : null;
   if (JSON.stringify(delivery) === JSON.stringify(current.delivery)) return;
   current.delivery = delivery;
   drawSub();
+  drawGap(); // a line read for the former mode is hidden at once
   drawRelease();
   refreshGap(true).catch(() => {});
   if (!$('rules').contains(document.activeElement)) renderRules();
@@ -1543,18 +1553,34 @@ async function loadDelivery(project) {
 // Under the project's name: is the live site up to date with the validated changes? A version is live only once its
 // host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
 const GAP_MS = 60_000;
-const gap = { repo: null, at: 0, view: null, busy: null };
+// Kept per project while this tab stays open (issue #397): `views` its last line with the mode it was read for, `at`
+// when it was read, `busy` the read going and `again` the forced read waiting for it.
+const gap = { at: new Map(), busy: new Map(), again: new Map(), views: new Map() };
 function refreshGap(force = false) {
-  // One read at a time: opening a project and its first refresh must not fire the same requests twice.
-  if (gap.busy) return gap.busy;
-  gap.busy = readGap(force).finally(() => { gap.busy = null; });
-  return gap.busy;
+  const project = current;
+  const repo = project.repo.full_name;
+  // One read at a time per project: opening a project and its first refresh must not fire the same requests twice.
+  // A forced read (its production mode just read) waits for the one going, never lost behind it. A read of another
+  // project never holds this one up.
+  const busy = gap.busy.get(repo);
+  if (busy) {
+    if (!force) return busy;
+    if (!gap.again.has(repo)) {
+      const next = busy.catch(() => {}).then(() => { if (gap.again.get(repo) === next) gap.again.delete(repo); return current === project ? refreshGap(true) : null; });
+      gap.again.set(repo, next);
+    }
+    return gap.again.get(repo);
+  }
+  const run = readGap(force).finally(() => { if (gap.busy.get(repo) === run) gap.busy.delete(repo); });
+  gap.busy.set(repo, run);
+  return run;
 }
+const gapMode = (project) => effectiveProduction(project.config, project.delivery);
 async function readGap(force) {
   const project = current;
   const repo = project.repo.full_name;
-  if (!force && gap.repo === repo && Date.now() - gap.at < GAP_MS) return;
-  gap.at = Date.now();
+  if (!force && Date.now() - (gap.at.get(repo) || 0) < GAP_MS) return;
+  gap.at.set(repo, Date.now());
   const mode = effectiveProduction(project.config, project.delivery);
   const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
   let view;
@@ -1602,16 +1628,17 @@ async function readGap(force) {
     // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
     if (err?.rateLimited) throw err;
     // A project that was showing something keeps a line (« version inconnue »), it does not vanish on one failure.
-    const shown = gap.repo === repo && gap.view && gap.view.kind !== 'none';
+    const shown = gap.views.get(repo)?.view?.kind && gap.views.get(repo).view.kind !== 'none';
     view = gapView({ mode, hasSite: hasSite || shown, error: true });
   }
-  if (current !== project) return;
-  gap.repo = repo;
-  gap.view = view;
+  // A line read for another project, or before its stack sheet changed its mode, is never shown (issue #397).
+  if (current !== project || gapMode(project) !== mode) return;
+  gap.views.set(repo, { mode, view });
   drawGap();
 }
 function drawGap() {
-  const view = gap.repo === current?.repo.full_name ? gap.view : null;
+  const kept = current && gap.views.get(current.repo.full_name);
+  const view = kept && kept.mode === gapMode(current) ? kept.view : null;
   const on = Boolean(view && view.kind !== 'none');
   $('prod-gap').hidden = !on;
   $('prod-gap-sep').hidden = !on;
@@ -1621,7 +1648,7 @@ function drawGap() {
 }
 const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 $('prod-gap').addEventListener('click', () => {
-  const view = gap.view;
+  const view = gap.views.get(current.repo.full_name)?.view;
   if (!view) return;
   const base = current.repo.html_url;
   // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
