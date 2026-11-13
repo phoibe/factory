@@ -121,6 +121,7 @@ test('a failing release neither hides the work result nor throws', async () => {
 
 test('a takeover that changes nothing does not spin forever: the wait limit still applies', async () => {
   let t = 0;
-  const store = { acquire: async () => false, ageMs: async () => 1001, takeOver: async () => {}, release: async () => {} };
+  let takeOvers = 0; // a broken loop never yields to timers: it fails here instead of hanging the suite
+  const store = { acquire: async () => false, ageMs: async () => 1001, takeOver: async () => { if (++takeOvers > 100) throw new Error('takeOver keeps spinning'); }, release: async () => {} };
   await assert.rejects(withLock(store, async () => {}, { ttlMs: 1000, waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }), /waited too long/);
 });

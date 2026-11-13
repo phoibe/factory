@@ -424,8 +424,8 @@ async function refresh() {
     // More than a page of events while away: the older pages are read again, so that no step is missing.
     if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
-    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
-    if (closed.data) live.doneTried = true; // a failed read is not « Rien de livré »
+    // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
+    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // The cards show now; their details (preview, session, estimate) come in below, in their place.

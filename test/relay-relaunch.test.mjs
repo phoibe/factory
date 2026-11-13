@@ -474,3 +474,19 @@ test('a stale « relaunch » label with no saved launch is removed at the tick, 
   assert.ok((await labelsOf(gh, 3)).includes(L.relaunch));
   assert.ok((await labelsOf(gh, 4)).includes(L.relaunch));
 });
+
+test('a PR copy of a launch its request no longer holds is cleared at the tick; a copy whose request still waits is kept', async () => {
+  const waiting = writeRelaunch('', { stage: 'fix-checks', issue: 5, pr: 11, since: 0, failures: 1, next: 99 * MIN });
+  const gh = fakeGh({ issues: [
+    { number: 1, body: 'Demande sans relance', labels: [L.feature, L.building] },
+    { number: 10, body: writeRelaunch('PR', { next: 99 * MIN, of: 1 }), labels: [L.relaunch], pull_request: {} },
+    { number: 5, body: waiting, labels: [L.feature, L.building, L.relaunch] },
+    { number: 11, body: writeRelaunch('PR', { next: 99 * MIN, of: 5 }), labels: [L.relaunch], pull_request: {} },
+  ], prs: [] });
+  const { relay } = make(gh, []);
+  await relay.handle({ kind: 'tick', event: 'schedule', number: null, labels: [], fromOwner: false });
+  assert.ok(!(await labelsOf(gh, 10)).includes(L.relaunch));
+  assert.equal(readRelaunch((await gh.getIssue(10)).body), null);
+  assert.ok((await labelsOf(gh, 11)).includes(L.relaunch));
+  assert.ok(readRelaunch((await gh.getIssue(11)).body));
+});

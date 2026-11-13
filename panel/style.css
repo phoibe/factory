@@ -97,7 +97,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .release-meta { margin: 8px 0 0; color: var(--muted); font-size: .8125rem; }
 /* Links keep the page's ink-underlined style (never the signal blue), with a 44px touch target like .quiet-link. */
 .release-site, .release-fix { display: inline-block; margin-top: 4px; padding: 10px 0; font-size: .8125rem; font-weight: 500; text-underline-offset: 3px; }
-.release-why { margin: 8px 0 0; color: var(--text); font-size: .875rem; }
+.release-why { margin: 8px 0 0; color: var(--text); font-size: .8125rem; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .done-more { color: var(--muted); font-size: .8125rem; margin: 10px 2px 0; }
 .tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
@@ -343,7 +343,7 @@ a.button { text-decoration: none; }
 .brand, .ticket .main { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
-a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 2px; }
+a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
 #chat-send { background: var(--text); border-color: var(--text); color: var(--bg); }
 .row input[type=checkbox], .row input[type=radio] { accent-color: var(--text); }

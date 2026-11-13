@@ -510,7 +510,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // every automatic path for good: it is removed, unless an agent works on the card.
   async function dropStaleRelaunchLabels() {
     for (const item of (await gh.listIssues({ labels: L.relaunch })) || []) {
-      if (readRelaunch(item.body) || names(item.labels).includes(L.running)) continue;
+      if (names(item.labels).includes(L.running)) continue;
+      const saved = readRelaunch(item.body);
+      if (saved?.of) {
+        // A PR's copy: kept while its request still holds the launch for this PR, cleared with its label otherwise.
+        const held = readRelaunch((await gh.getIssue(saved.of))?.body);
+        if (held && (held.pr === item.number || held.after?.pr === item.number)) continue;
+        await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
+      } else if (saved) continue;
       await gh.removeLabel(item.number, L.relaunch);
       log(`#${item.number}: stale « relaunch » label removed (no saved launch)`);
     }
