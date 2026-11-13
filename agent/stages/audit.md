@@ -36,8 +36,9 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    `node .factory/scripts/journal-check.mjs` : il doit dire que rien ne manque.
 6. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français pour le propriétaire (« Review générale :
    ce qui a été amélioré »), avec la section « Design » de `design-pass.md` (score de la première et de la
-   dernière critique), une section « Code » (une ligne simple par problème corrigé) et les issues ouvertes.
-   Puis `Closes #<n>`, puis les détails techniques en anglais.
+   dernière critique), une section « Code » (une ligne simple par problème corrigé) et les issues ouvertes,
+   et la ligne « Essayé en vrai : … » / « Pas vérifié en vrai : … » de l'étape 7 bis de `build.md` (essai en
+   conditions réelles, en lecture seule). Puis `Closes #<n>`, puis les détails techniques en anglais.
 7. **Captures** : si l'apparence a changé et que l'étape screenshots est active, suis
    `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:visual-review` puis `factory:checks` sur la PR
    (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)).

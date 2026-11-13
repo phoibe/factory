@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, afterChecks } from './lib/decide.mjs';
-import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage } from './lib/labels.mjs';
+import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, UPDATE_BRANCH_MARKER, SESSION_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, isIdea, buildStage, releaseNote } from './lib/labels.mjs';
 import { runTitle, stageName } from './lib/run-title.mjs';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from './lib/config-core.mjs';
@@ -21,12 +21,17 @@ import { withLock } from './lib/lock.mjs';
 import { mirrorAttachments } from './lib/attachments.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from './lib/notify.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from './lib/fabrication.mjs';
-import { readOutage, writeOutage, outageStep, isRetry, syncStep, OUTAGE_TOLD, SERVER_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
+import { readOutage, writeOutage, outageStep, isRetry, syncStep, isNetworkFailure, OUTAGE_TOLD, SERVER_TOLD, OUTAGE_GIVE_UP_MS } from './lib/outage.mjs';
+import { readRelaunch, writeRelaunch, relaunchStep, isTransientStatus, RELAUNCH_TOLD, RELAUNCH_BLOCKED, QUESTION_RETRY_MS, QUESTION_BUSY } from './lib/relaunch.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
+import { readWatch, writeWatch, watchStep } from './lib/watch.mjs';
 import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
+import { markdownTable, brokenShotRows } from '../agent/scripts/shots.mjs';
+import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from './lib/version-tag.mjs';
+import { siteLink } from '../panel/lib.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -185,6 +190,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // A place is taken only while the agent builds: once the card's PR is open (checks, captures, recette), the
   // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
   const woken = new Set(); // cards wakeWaiters resumed during this relay run
+  let dequeues = 0; // queue checks made during this relay run (see refilling)
   // A blocked card's comments, read once per relay run while the card does not change (its `updated_at` moves with
   // every new comment): the queue is checked several times per run, and the alerts read the same cards.
   const commentCache = new Map();
@@ -196,11 +202,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return comments;
   }
 
-  async function inFlight(freed = null) {
+  // `self`: the card an event is about; its own waiting launch must not count against it (a second « go »).
+  async function inFlight(freed = null, self = null) {
     const open = await gh.listIssues({ labels: L.building });
-    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
+    const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p)).map(prIssue).filter(Boolean));
     // A card woken by this run counts even when GitHub's list still shows it blocked.
-    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
+    const building = (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
+    // A « go » whose launch waits for its relaunch (issue #383) holds its place too.
+    const waiting = (await waitingLaunches()).filter(({ item, saved }) => ![freed, self].includes(item.number) && takesPlace(saved) && !names(item.labels).includes(L.building)).length;
+    return building + waiting;
   }
 
   async function lockStart(number) {
@@ -234,6 +244,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (!quiet) await gh.comment(targets[targets.length - 1], say(message));
       throw new Error(error);
     };
+    // A failure that passes by itself (issue #383): nothing is said here, the caller saves the launch to retry it.
+    const passing = async (error) => {
+      for (const n of targets) await gh.removeLabel(n, L.running);
+      throw Object.assign(new Error(error), { transient: true });
+    };
     // Without its instructions the agent stops at once and says nothing on the card (Pulsar Novae #173: every sync
     // had failed). Only a file known to be absent stops the run; a GitHub hiccup lets it go.
     if (gh.getContent && !(await gh.getContent('.factory/AGENT.md').catch(() => true))) {
@@ -251,6 +266,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           for (const n of targets) await gh.removeLabel(n, L.running);
           throw e;
         }
+        // No HTTP answer at all (fetch failed, reset) or a server error: passing. A 4xx (workflow disabled, no right), or any
+        // other error, is a setting the owner is told about.
+        if (isNetworkFailure(String(e)) || /-> 5\d\d\b/.test(String(e.message || e)) || /fetch failed/i.test(String(e.message || e))) await passing(`dispatch failed: ${e}`);
         await fail("Je n'ai pas pu lancer l'agent sur GitHub Actions. Réécrivez votre message dans quelques minutes ; si ça se répète, vérifiez que le workflow « Factory » est activé (onglet Actions).", String(e));
       }
       return;
@@ -260,21 +278,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         + `Ouvrez https://github.com/${repo}/settings/secrets/actions (la page des secrets de ce dépôt-ci, pas de factory-template) `
         + 'et créez, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écrivez « réessaie » ici.', 'routine secrets missing');
     }
-    const res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${env.FACTORY_ROUTINE_TOKEN}`,
-        'anthropic-beta': 'experimental-cc-routine-2026-04-01',
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      // The first line names the run, so the owner tells the sessions apart in the routine's list.
-      body: JSON.stringify({ text: `${runTitle(payload)}\n\n${JSON.stringify(payload)}` }),
-    });
+    let res;
+    try {
+      res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${env.FACTORY_ROUTINE_TOKEN}`,
+          'anthropic-beta': 'experimental-cc-routine-2026-04-01',
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        // The first line names the run, so the owner tells the sessions apart in the routine's list.
+        body: JSON.stringify({ text: `${runTitle(payload)}\n\n${JSON.stringify(payload)}` }),
+      });
+    } catch (e) { await passing(`routine unreachable: ${e}`); }
     if (!res.ok) {
-      const detail = await res.text();
-      await fail(`Je n'ai pas pu lancer l'agent (la routine Claude a répondu ${res.status}). `
-        + "Ça arrive quand la limite quotidienne de lancements est atteinte. Réécrivez votre dernier message plus tard (rien n'a changé entre-temps), ou passez ce projet sur le moteur « GitHub Actions » dans le panneau.",
+      const detail = await res.text().catch(() => '');
+      // Saturated service, daily limit, server error: retried by the factory alone.
+      if (isTransientStatus(res.status)) await passing(`routine fire failed: ${res.status} ${detail}`);
+      await fail(`Je n'ai pas pu lancer l'agent : la routine Claude refuse le lancement (réponse ${res.status}). C'est un problème de réglage, qui ne passera pas tout seul. `
+        + `Vérifiez les secrets \`FACTORY_ROUTINE_URL\` et \`FACTORY_ROUTINE_TOKEN\` sur https://github.com/${repo}/settings/secrets/actions (étape 5 du README), puis écrivez « réessaie » ici. Vous pouvez aussi passer ce projet sur le moteur « GitHub Actions » dans le panneau.`,
       `routine fire failed: ${res.status} ${detail}`);
     }
     const body = await res.json().catch(() => ({}));
@@ -292,13 +315,255 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (mine) await gh.updateComment(mine.id, text); else await gh.comment(n, text);
   }
 
-  // For runs no owner message started (checks, merge): on failure, park the issue as blocked so that
-  // « réessaie » resumes it, instead of leaving a state where comments are ignored.
-  async function fireOrBlock({ stage, issue, pr, extra, why }) {
+  // Issue #383. Starts the agent, then does `then`: what the caller does once the agent really started (labels to move,
+  // messages to post). A failure that passes by itself (saturated service, network) saves the whole launch on the card
+  // and returns false: the guard starts it again later (retryLaunches), quietly. Any other failure throws, as before.
+  // The question chat gets one quick retry, then a clear message: the owner waits for an answer there.
+  // `owner`: started by the owner's message; such a launch, once saved, is never replaced nor cleared by an automatic one.
+  async function launch({ stage, issue, pr = null, extra = {}, then = {}, quiet = false, owner = false }) {
     try {
-      await fireAgent({ stage, issue, pr, extra, quiet: true });
-      return true;
+      await fireAgent({ stage, issue, pr, extra, quiet });
     } catch (e) {
+      if (!e.transient) throw e;
+      log(`launch failed for a passing reason: ${e.message}`);
+      if (stage === 'question') {
+        await sleep(QUESTION_RETRY_MS);
+        try { await fireAgent({ stage, issue, pr, extra, quiet }); } catch (again) {
+          if (!again.transient) throw again;
+          await gh.comment(issue || pr, say(QUESTION_BUSY));
+          return false;
+        }
+      } else {
+        await waitRelaunch({ stage, issue, pr, extra, then, ...(owner ? { owner: true } : {}) });
+        return false;
+      }
+    }
+    // Cleared before anything else can fail, so that a started launch is never started twice. The same launch saved
+    // earlier is now done; an automatic one is superseded. A launch the owner started for another step stays: it starts
+    // once this agent is done (retryLaunch waits while the card is running).
+    try {
+      const card = await gh.getIssue(issue || pr);
+      const kept = readRelaunch(card?.body);
+      if (!kept?.owner || sameLaunch(kept, { stage, pr })) await clearRelaunch(issue || pr, card, { followUp: true });
+    } catch (e) { if (isRateLimited(e)) throw e; log(`relaunch not cleared: ${e.message}`); }
+    await afterLaunch(then);
+    return true;
+  }
+
+  const sameLaunch = (a, b) => a?.stage === b?.stage && (a?.pr || null) === (b?.pr || null);
+  // What a saved launch needs to start again.
+  const launchOf = ({ stage, issue, pr = null, extra, then, owner, unblock }) => ({ stage, issue, pr, extra, then, ...(owner ? { owner } : {}), ...(unblock ? { unblock } : {}) });
+
+  // The messages first: a message that uses a link up (« je reprends ») must be posted before anything can fail.
+  async function afterLaunch(then = {}) {
+    for (const { n, body } of then.comments || []) await gh.comment(n, body);
+    for (const { n, add = [], remove = [] } of then.labels || []) {
+      for (const l of remove) await gh.removeLabel(n, l);
+      if (add.length) await gh.addLabels(n, add);
+    }
+  }
+
+  // A saved launch that would start a build takes a place, like the build itself (the owner's « go »).
+  // The project's foundation never waits for a place (owner's rule).
+  const takesPlace = (saved) => saved?.stage !== 'foundation' && (saved?.then?.labels || []).some((l) => (l.add || []).includes(L.building));
+
+  // Saves a launch that failed for a passing reason on its card (the issue, else the PR), with its schedule. The PR
+  // gets a copy of the time only ({ next, of }), for the board, which shows the PR in place of its request.
+  // `prior`: the schedule that goes on (undefined: the card's own; null: a fresh one, after the owner's « réessaie »).
+  async function waitRelaunch(saved, prior) {
+    const card = saved.issue || saved.pr;
+    const item = await gh.getIssue(card);
+    const existing = readRelaunch(item?.body);
+    if (prior === undefined && existing?.owner && !saved.owner && !sameLaunch(existing, saved)) {
+      // Kept behind it: started once the owner's launch has started (clearRelaunch with followUp), never dropped.
+      log(`launch of #${card} (${saved.stage}) waits behind the owner's waiting launch (${existing.stage})`);
+      const state = { ...existing, after: launchOf(saved) };
+      await gh.updateIssue(card, { body: writeRelaunch(item?.body, state) });
+      return { action: 'kept', state, tell: false };
+    }
+    const step = relaunchStep(prior === undefined ? existing : prior, { launch: saved, now: now() });
+    await gh.updateIssue(card, { body: writeRelaunch(item?.body, step.state) });
+    if (saved.pr && saved.pr !== card) await copyOnPr(saved.pr, card, step.state);
+    for (const n of new Set([card, saved.pr].filter(Boolean))) await gh.addLabels(n, [L.relaunch]);
+    if (step.firstInMs) outputs.relaunchInMs = step.firstInMs;
+    log(`launch of #${card} (${saved.stage}) ${step.action === 'block' ? 'given up after 3 hours' : `retried at ${new Date(step.state.next).toISOString()}`}`);
+    if (step.action === 'block') {
+      await gh.addLabels(card, [L.blocked]);
+      await gh.comment(card, say(RELAUNCH_BLOCKED));
+    } else if (step.tell) {
+      await gh.comment(card, say(RELAUNCH_TOLD));
+    }
+    return step;
+  }
+
+  async function copyOnPr(prNumber, card, state) {
+    const pr = await gh.getPr(prNumber);
+    if (pr) await gh.updateIssue(prNumber, { body: writeRelaunch(pr.body, { next: state.next, of: card, ...(state.blocked ? { blocked: true } : {}) }) });
+  }
+
+  // Forgets the launch saved on card `n` (and the copy on its PR). Reads the card unless given.
+  // `followUp`: the saved launch has just started; an automatic launch kept behind it (`after`) now waits in its place,
+  // started at the first tick once this agent is done.
+  async function clearRelaunch(n, item = null, { followUp = false } = {}) {
+    const card = item || await gh.getIssue(n);
+    const saved = readRelaunch(card?.body);
+    const labelled = names(card?.labels).includes(L.relaunch);
+    if (!saved && !labelled) return;
+    if (followUp && saved?.after) {
+      const next = { ...saved.after, since: now(), failures: 1, next: now() };
+      await gh.updateIssue(n, { body: writeRelaunch(card.body, next) });
+      if (saved.pr && saved.pr !== n && saved.pr !== next.pr) await gh.removeLabel(saved.pr, L.relaunch);
+      if (next.pr && next.pr !== n) { await copyOnPr(next.pr, n, next); await gh.addLabels(next.pr, [L.relaunch]); }
+      if (!labelled) await gh.addLabels(n, [L.relaunch]);
+      return;
+    }
+    if (saved) await gh.updateIssue(n, { body: writeRelaunch(card.body, null) });
+    if (labelled) await gh.removeLabel(n, L.relaunch);
+    if (saved?.pr && saved.pr !== n) {
+      const pr = await gh.getPr(saved.pr);
+      if (pr && readRelaunch(pr.body)) await gh.updateIssue(saved.pr, { body: writeRelaunch(pr.body, null) });
+      await gh.removeLabel(saved.pr, L.relaunch);
+    }
+  }
+
+  // Starts the launch saved on card `n` again. Returns 'started', 'failed' (passing failure, rescheduled), 'queued'
+  // (the factory is full: the card waits for a place like any other) or 'dropped' (nothing to start any more, an
+  // agent already on it, or a setting problem the owner was told about).
+  async function retryLaunch(n) {
+    const item = await gh.getIssue(n);
+    const saved = readRelaunch(item?.body);
+    if (!saved || saved.of) return 'dropped';
+    if (item.state === 'closed') { await clearRelaunch(n, item); return 'dropped'; }
+    const labels = names(item.labels);
+    if (labels.includes(L.running)) return 'dropped'; // an agent already works on it
+    const { stage, issue, pr, then } = saved;
+    if (pr && (await gh.getPr(pr))?.state === 'closed') { await clearRelaunch(n, item); return 'dropped'; }
+    // The places may have been taken meanwhile: a build never starts past the limit, it queues (owner's rule).
+    if (takesPlace(saved) && !labels.includes(L.building) && config.maxParallel - (await inFlight(n)) <= 0) {
+      await clearRelaunch(n, item);
+      const resume = stage === 'resume';
+      for (const l of [L.blocked, ...(then?.labels || []).filter((x) => x.n === n).flatMap((x) => x.remove || [])]) if (labels.includes(l)) await gh.removeLabel(n, l);
+      await gh.addLabels(n, resume ? [L.queued, L.resumeQueued] : [L.queued]);
+      if (!labels.includes(L.queued)) await gh.comment(n, say(`C'est noté. ${config.maxParallel} feature(s) sont déjà en construction, c'est le maximum réglé pour ce projet : celle-ci est en file d'attente et démarrera toute seule dès qu'une place se libère.`));
+      log(`relaunch of #${n}: the factory is full, queued`);
+      return 'queued';
+    }
+    try {
+      await fireAgent({ stage, issue, pr, extra: saved.extra });
+    } catch (e) {
+      if (isRateLimited(e)) throw e; // not a setting problem: the launch stays saved, retried after the limit
+      if (!e.transient) {
+        // A setting broke meanwhile: fireAgent explained it. The launch stays saved for the owner's « réessaie »; its PR
+        // leaves its step like any blocked card's (fireOrBlock).
+        log(`relaunch of #${n} refused: ${e.message}`);
+        const state = { ...saved, next: null, blocked: true };
+        await gh.updateIssue(n, { body: writeRelaunch(item.body, state) });
+        if (pr && pr !== n) {
+          await copyOnPr(pr, n, state);
+          for (const l of [L.checks, L.fixing, L.acceptance]) await gh.removeLabel(pr, l);
+        }
+        await gh.addLabels(n, [L.blocked]);
+        return 'dropped';
+      }
+      // After the owner's « réessaie » on a blocked card, its schedule starts afresh and « Bloqué » goes at the start.
+      await waitRelaunch(saved.blocked ? { ...launchOf(saved), unblock: true } : launchOf(saved), saved.blocked ? null : saved);
+      return 'failed';
+    }
+    // Cleared first: a GitHub hiccup in what follows must never start the same launch a second time.
+    await clearRelaunch(n, item, { followUp: true });
+    log(`relaunch of #${n} (${stage}) started`);
+    if (saved.blocked || saved.unblock) await gh.removeLabel(n, L.blocked);
+    await afterLaunch(then);
+    return 'started';
+  }
+
+  // The launches saved on cards, oldest first: not the copies on PRs, not the ones blocked (they wait for the owner),
+  // not a card an agent already works on.
+  async function waitingLaunches() {
+    const items = (await gh.listIssues({ labels: L.relaunch })) || [];
+    return items.map((item) => ({ item, saved: readRelaunch(item.body) }))
+      .filter((x) => x.saved && !x.saved.of && !x.saved.blocked && !names(x.item.labels).includes(L.running))
+      .sort((a, b) => (a.saved.since || 0) - (b.saved.since || 0));
+  }
+
+  // Run by the guard at every tick, and 2 minutes after a first failure (relaunch-soon). When one is due, the oldest
+  // is tried first; if it fails again, the others are not tried during the outage: the failure counts for them too
+  // (told at their third, blocked after 3 hours) and they move to its next time.
+  async function retryLaunches() {
+    const waiting = await waitingLaunches();
+    if (!waiting.some((x) => x.saved.next <= now())) return;
+    for (let k = 0; k < waiting.length; k++) {
+      const result = await retryLaunch(waiting[k].item.number);
+      if (result !== 'failed') continue;
+      const next = readRelaunch((await gh.getIssue(waiting[k].item.number))?.body)?.next;
+      for (const { item, saved } of waiting.slice(k + 1)) {
+        const step = await waitRelaunch(launchOf(saved), saved);
+        if (step.action === 'wait' && next && step.state.next < next) {
+          const fresh = await gh.getIssue(item.number);
+          await gh.updateIssue(item.number, { body: writeRelaunch(fresh?.body, { ...step.state, next }) });
+        }
+      }
+      break;
+    }
+  }
+
+  // A « relaunch » label with no readable saved launch (lost body edit, launch cleared by hand) would keep the card out of
+  // every automatic path for good: it is removed, unless an agent works on the card.
+  async function dropStaleRelaunchLabels() {
+    for (const item of (await gh.listIssues({ labels: L.relaunch })) || []) {
+      if (names(item.labels).includes(L.running)) continue;
+      try {
+        const saved = readRelaunch(item.body);
+        if (saved?.of) {
+          // A PR's copy: kept while its open request still holds the launch for this PR, cleared with its label otherwise.
+          const request = await gh.getIssue(saved.of);
+          const held = request?.state !== 'closed' && readRelaunch(request?.body);
+          if (held && (held.pr === item.number || held.after?.pr === item.number)) continue;
+          await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
+        } else if (saved) continue;
+        await gh.removeLabel(item.number, L.relaunch);
+        log(`#${item.number}: stale « relaunch » label removed (no saved launch)`);
+      } catch (e) {
+        if (isRateLimited(e)) throw e;
+        log(`#${item.number}: stale « relaunch » check skipped (${e.message})`); // one bad card never stops the others
+      }
+    }
+  }
+
+  // An owner's message on a card whose launch waits. A message that moves the card (« go », « ok ») replaces the saved
+  // launch: the usual handling goes on. Any other (« réessaie », a remark) starts the saved launch at once; the agent
+  // reads the new message with the others. Returns true when the event is handled this way.
+  async function relaunchOnMessage(ev, action, said) {
+    if (!ev.fromOwner || ev.fromAgent || !said || !(ev.labels || []).includes(L.relaunch)) return false;
+    if (['drop', 'defer'].includes(action.type)) return false; // closing wins; a running agent reads it anyway
+    let target = ev.number;
+    const own = readRelaunch((await gh.getIssue(ev.number))?.body);
+    if (own?.of) target = own.of;
+    else if (!own && ev.kind === 'pr') target = prIssue(await gh.getPr(ev.number)) || ev.number;
+    const saved = target === ev.number ? own : readRelaunch((await gh.getIssue(target))?.body);
+    // A message that moves the card, or starts another step while an automatic launch waits (a remark while a fix
+    // waits), is the owner's latest word. A remark after his own waiting launch goes with it (spec: « avec votre message »).
+    const moves = ['merge', 'queue', 'checks', 'visual-ok', 'docs-merge'].includes(action.type)
+      || (action.type === 'fire' && (action.add?.length || (saved && !saved.owner && action.stage !== saved.stage)));
+    if (moves && !isRetry(said)) {
+      log(`owner message on #${ev.number}: it replaces the waiting launch`);
+      await clearRelaunch(target);
+      return false;
+    }
+    const result = await retryLaunch(target);
+    if (result === 'dropped' && !(await liveLabels(target)).includes(L.blocked)) return false; // nothing waited: usual handling
+    log(`owner message on #${ev.number}: its waiting launch ${result}`);
+    return true;
+  }
+
+  // For runs no owner message started (checks, merge): a setting failure parks the issue as blocked so that
+  // « réessaie » resumes it, instead of leaving a state where comments are ignored. A passing failure waits for its
+  // relaunch (false too: the caller stops, `then` is done once the agent starts).
+  async function fireOrBlock({ stage, issue, pr, extra, why, then }) {
+    try {
+      return await launch({ stage, issue, pr, extra, then, quiet: true });
+    } catch (e) {
+      if (isRateLimited(e)) throw e; // not a setting problem: the event is taken up again once the limit is over
       log(`fire failed: ${e}`);
       for (const l of [L.checks, L.fixing, L.acceptance]) if (pr) await gh.removeLabel(pr, l);
       if (issue) await gh.addLabels(issue, [L.blocked]);
@@ -311,7 +576,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // (or queues when the factory is full, like an owner's answer); one abandoned, the owner is told and decides.
   // A card an agent is still working on is left for the end of its run.
   async function wakeWaiters(freed = null) {
-    const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.running));
+    // A card whose resume waits for its relaunch is not woken twice.
+    const blocked = ((await gh.listIssues({ labels: L.blocked })) || []).filter((i) => !i.pull_request && !names(i.labels).some((l) => [L.running, L.relaunch].includes(l)));
     let free = null; // places left, counted once: GitHub's lists lag behind the cards resumed here
     // The issues a merged PR closes: the latest closed PRs first, older pages only for an issue closed before them.
     let mergedIssues = null;
@@ -370,28 +636,35 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           await tell(item.number, `${WAITS_DONE_MARKER}\n${mergedMarker(waits)}\n${say(`${merged}. La factory est pleine : je reprends dès qu'une place se libère.`)}`);
           continue;
         }
+        let started;
         try {
-          await fireAgent({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true });
+          // The link is used up first (the message comes before the label): the agent is never sent back twice for it.
+          started = await launch({ stage: 'resume', issue: item.number, extra: { merged: waits }, quiet: true, then: {
+            comments: [{ n: item.number, body: `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}` }],
+            labels: [{ n: item.number, remove: [L.blocked] }],
+          } });
         } catch (e) {
           // Told once (the link is used up): the card becomes a normal block that his « réessaie » resumes.
           log(`waits #${item.number}: resume failed: ${e.message}`);
-          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}, mais je n'ai pas pu relancer l'agent (limite quotidienne de la routine Claude atteinte, ou moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`)}`);
+          await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged}, mais je n'ai pas pu relancer l'agent (moteur mal configuré). Répondez « réessaie » ici quand vous voulez relancer.`)}`);
           continue;
         }
+        commentCache.delete(item.number);
+        if (!started) break; // its relaunch is planned: no other card is started during the outage
         woken.add(item.number);
         if (holdsPlace) free -= 1;
-        // The link is used up first: whatever fails next, the agent is never sent back a second time for it.
-        await tell(item.number, `${WAITS_DONE_MARKER}\n${say(`${merged} : je reprends.`)}`);
-        await gh.removeLabel(item.number, L.blocked);
       } catch (e) { log(`waits #${item.number}: ${e.message}`); }
     }
   }
 
   async function dequeue({ freed = null } = {}) {
+    dequeues += 1;
+    // While a launch waits for its relaunch, the service is down: no other card is started on top of it (issue #383).
+    if ((await waitingLaunches()).length) return log('a launch waits for its relaunch: nothing new is started');
     await wakeWaiters(freed).catch((e) => log(`waits: ${e.message}`));
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
-    const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
+    const queued = ((await gh.listIssues({ labels: L.queued, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.relaunch));
     let failed = false; // a queued issue could not start: the factory is in trouble, do not pick on top of it
     for (const issue of queued) {
       if (free <= 0) break;
@@ -400,18 +673,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const resumed = labels.includes(L.resumeQueued);
       // Queued by wakeWaiters once its awaited requests were merged (issue #298), not by an owner's answer.
       const merged = resumed ? mergedWaits((await gh.listComments(issue.number)) || []) : [];
+      let started = false;
       try {
-        await fireAgent({ stage: resumed ? 'resume' : buildStage(labels), issue: issue.number, quiet: true, extra: merged.length ? { merged } : {} });
+        started = await launch({ stage: resumed ? 'resume' : buildStage(labels), issue: issue.number, quiet: true, extra: merged.length ? { merged } : {}, then: {
+          labels: [{ n: issue.number, remove: [L.queued, L.resumeQueued], add: [L.building] }],
+          comments: [{ n: issue.number, body: merged.length ? `${RESUMED_MARKER}\n${say("Une place s'est libérée : je reprends.")}`
+            : say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction.") }],
+        } });
       } catch (e) {
         log(`dequeue fire failed, the issue stays queued: ${e}`);
-        failed = true;
-        break;
       }
-      await gh.removeLabel(issue.number, L.queued);
-      await gh.removeLabel(issue.number, L.resumeQueued);
-      await gh.addLabels(issue.number, [L.building]);
-      await gh.comment(issue.number, merged.length ? `${RESUMED_MARKER}\n${say("Une place s'est libérée : je reprends.")}`
-        : say(resumed ? "Une place s'est libérée : je reprends la construction avec votre réponse." : "Une place s'est libérée : je démarre la construction."));
+      if (!started) { failed = true; break; } // it stays queued (its relaunch planned, or a setting to fix)
       free -= 1;
     }
     if (free > 0 && !failed) await autoPick(free, freed);
@@ -454,14 +726,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       // Claim first (the labels also keep a second run from picking it again), release if the agent does not start.
       const claim = [...(isBug ? [L.building] : grilling ? [L.grilling] : []), L.autoPicked];
       await gh.addLabels(issue.number, claim);
+      let started;
       try {
-        await fireAgent({ stage, issue: issue.number, quiet: true });
+        started = await launch({ stage, issue: issue.number, quiet: true, then: { comments: [{ n: issue.number, body: say("La factory l'a prise d'elle-même car une place était libre.") }] } });
       } catch (e) {
         log(`auto-pick fire failed: ${e}`);
         for (const l of claim) await gh.removeLabel(issue.number, l);
         break;
       }
-      await gh.comment(issue.number, say("La factory l'a prise d'elle-même car une place était libre."));
+      if (!started) break; // claimed, its relaunch planned: no other card during the outage
       free -= 1;
       if (!isBug) featureRoom -= 1;
     }
@@ -514,21 +787,26 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       await gh.merge(prNumber, sha);
     } catch (e) {
       if (isRateLimited(e)) throw e; // not a refused merge: the event is taken up again once the limit is over
-      log(`merge failed: ${e}`);
-      const state = (await gh.getPr(prNumber))?.mergeable_state;
-      const head = sha || pr?.head?.sha;
-      const updates = branchUpdates(await gh.listComments(prNumber), head);
-      if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
-        if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion' }))) return;
-        for (const l of [L.acceptance, L.checks]) await gh.removeLabel(prNumber, l);
-        await gh.addLabels(prNumber, [L.fixing]);
-        await gh.comment(prNumber, `${UPDATE_BRANCH_MARKER}\n${updateMark(head)}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}`);
+      // The merge may have gone through behind a 5xx: a merged PR is a success, not a refusal.
+      const fresh = await gh.getPr(prNumber);
+      if (fresh?.merged) log(`merge reported as failed (${e}) but PR #${prNumber} is merged`);
+      else {
+        log(`merge failed: ${e}`);
+        const state = fresh?.mergeable_state;
+        const head = sha || pr?.head?.sha;
+        const updates = branchUpdates(await gh.listComments(prNumber), head);
+        if ((state === 'behind' || state === 'dirty') && updates < MAX_BRANCH_UPDATES) {
+          await fireOrBlock({ stage: 'update-branch', issue, pr: prNumber, why: 'La branche doit être mise à jour avant la fusion', then: {
+            labels: [{ n: prNumber, remove: [L.acceptance, L.checks], add: [L.fixing] }],
+            comments: [{ n: prNumber, body: `${UPDATE_BRANCH_MARKER}\n${updateMark(head)}\n${say("Je n'ai pas pu fusionner : la branche n'est plus à jour avec la version en ligne (une autre feature est sans doute passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté.")}` }],
+          } });
+          return;
+        }
+        for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
+        if (issue) await gh.addLabels(issue, [L.blocked]);
+        await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dites-moi « réessaie » une fois la règle ajustée, ou fusionnez la PR vous-même.`));
         return;
       }
-      for (const l of [L.acceptance, L.checks, L.fixing]) await gh.removeLabel(prNumber, l);
-      if (issue) await gh.addLabels(issue, [L.blocked]);
-      await gh.comment(issue || prNumber, say(`Je n'arrive pas à fusionner la PR #${prNumber} (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Ce n'est pas un problème de code : souvent une règle du dépôt (protection de branche, revue obligatoire) ou une branche impossible à remettre à jour automatiquement. Dites-moi « réessaie » une fois la règle ajustée, ou fusionnez la PR vous-même.`));
-      return;
     }
     for (const l of [L.acceptance, L.checks, L.fixing, L.running, L.blocked]) await gh.removeLabel(prNumber, l);
     await afterMerge(prNumber, { held });
@@ -669,8 +947,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const ref = (await gh.getRepo())?.default_branch || 'main';
     if (!pending.length) {
       if (issueNumber) {
-        await gh.comment(issueNumber, say("Rien n'attendait d'être mis en production : le site en ligne est déjà à jour."));
-        await gh.closeIssue(issueNumber).catch(() => {});
+        await endRelease(issueNumber, "Rien n'attendait d'être mis en production : le site en ligne est déjà à jour.", { state: 'nothing' });
       }
       return;
     }
@@ -680,8 +957,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (version) {
       const refused = await cutChangelog(version, ref);
       if (refused) {
-        await gh.comment(issueNumber, say(`Je n'ai pas mis en production : ${refused} Rien n'a changé ; recliquez sur « Mise en production » avec un autre numéro.`));
-        await gh.closeIssue(issueNumber).catch(() => {});
+        const todo = 'Recliquez sur « Mise en production » avec un autre numéro.';
+        await endRelease(issueNumber, `Je n'ai pas mis en production : ${refused} Rien n'a changé ; ${todo.charAt(0).toLowerCase()}${todo.slice(1)}`, { state: 'failed', reason: `${refused.charAt(0).toUpperCase()}${refused.slice(1)}`, todo });
         return;
       }
     }
@@ -702,24 +979,64 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       }
     } catch (e) {
       if (issueNumber && e instanceof MergeConflict) {
-        await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production : ${PREPROD_BRANCH} et ${ref} ont modifié les mêmes fichiers, et je ne règle seul que les miens. Fichiers en conflit : ${e.files.slice(0, 10).map((f) => `\`${f}\``).join(', ')}${e.files.length > 10 ? ` (et ${e.files.length - 10} autres)` : ''}. Rien n'a changé en ligne ; il faut régler ce conflit avant de recliquer sur « Mise en production ».`));
+        await endRelease(issueNumber, `Je n'ai pas pu mettre en production : ${PREPROD_BRANCH} et ${ref} ont modifié les mêmes fichiers, et je ne règle seul que les miens. Fichiers en conflit : ${e.files.slice(0, 10).map((f) => `\`${f}\``).join(', ')}${e.files.length > 10 ? ` (et ${e.files.length - 10} autres)` : ''}. Rien n'a changé en ligne ; il faut régler ce conflit avant de recliquer sur « Mise en production ».`,
+          { state: 'failed', reason: 'Des modifications en attente touchent les mêmes fichiers que la version en ligne.', todo: 'Ce conflit doit être réglé avant de recliquer sur « Mise en production ».' });
         throw e;
       }
-      if (issueNumber) await gh.comment(issueNumber, say(`Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`));
+      if (issueNumber) {
+        await endRelease(issueNumber, `Je n'ai pas pu mettre en production (GitHub répond : « ${String(e.message || e).slice(0, 200)} »). Rien n'a changé en ligne ; recliquez sur « Mise en production » dans quelques minutes.`,
+          { state: 'failed', reason: 'GitHub n\'a pas répondu comme prévu.', todo: 'Recliquez sur « Mise en production » dans quelques minutes.' });
+      }
       throw e;
     }
     try { await gh.dispatch('pages.yml', ref, {}); } catch (e) { log(`release: pages.yml not started (${String(e.message || e).slice(0, 80)})`); }
     const tagged = version ? await tagRelease(version, head, ref) : null;
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
-    const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null };
-    await checkLive(pending.at(-1).number, head, { release }).catch((e) => log(`live check not started: ${e.message}`));
+    const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null, ...(version ? { version } : {}) };
+    const checking = await checkLive(pending.at(-1).number, head, { release }).catch((e) => { log(`live check not started: ${e.message}`); return false; });
     const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
     const n = pending.length;
-    const text = `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite comme d'habitude, et j'ouvre une demande de correction si quelque chose casse.${tagged ? `\n\n${tagged}` : ''}`;
-    if (issueNumber) {
-      await gh.comment(issueNumber, say(text));
-      await gh.closeIssue(issueNumber).catch(() => {});
+    const prs = pending.map((p) => ({ number: p.number, title: p.title }));
+    const extra = { ...(version ? { version } : {}) };
+    if (!issueNumber) return;
+    // The request stays open (the board's card « en cours ») until the live site is checked: prodReport ends it.
+    if (checking) {
+      // Noted on the request, so that the tick checks the site again if that check never reports (issue #396).
+      await noteWatch(issueNumber, { kind: 'production', check: checking, at: now(), tries: 0 }).catch((e) => log(`release watch: ${e.message}`));
+      await gh.comment(issueNumber, say(`${n === 1 ? 'Cette modification part' : `Ces ${n} modifications partent`} en ligne :\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite, et je vous dis ici quand c'est fait.${tagged ? `\n\n${tagged}` : ''}\n\n${releaseNote({ state: 'deploying', prs, ...extra })}`));
+      return;
     }
+    // Nothing tells when the new version is online (no deployment, no site address): it cannot be checked.
+    await endRelease(issueNumber, `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nJe ne peux pas vérifier le site en ligne : l'hébergeur ne dit pas quand la nouvelle version est publiée.${tagged ? `\n\n${tagged}` : ''}`,
+      { state: 'live', prs, ...extra, unchecked: true });
+  }
+
+  // The end of a « Mise en production »: the owner's message, with the outcome the board reads, then the request closes.
+  // `checking`: the request may carry the second step's label (after the new version went online).
+  async function endRelease(issueNumber, text, note, { checking = false } = {}) {
+    if (!issueNumber) return;
+    await gh.comment(issueNumber, say(`${text}\n\n${releaseNote(note)}`));
+    // Ended by the factory: its live-check note goes, so a late report of that check is known as late (issue #396).
+    const body = (await gh.getIssue(issueNumber).catch(() => null))?.body;
+    if (readWatch(body)) await gh.updateIssue(issueNumber, { body: writeWatch(body, null) }).catch((e) => log(`release watch: ${e.message}`));
+    if (checking) await gh.removeLabel(issueNumber, L.releaseChecking).catch(() => {});
+    await gh.closeIssue(issueNumber).catch(() => {});
+  }
+
+  // The new version of a release is online: its card moves on to « Vérification du site en ligne » (production-step job).
+  async function releaseChecking(check) {
+    const n = Number(check?.release?.issue);
+    if (n) await gh.addLabels(n, [L.releaseChecking]);
+  }
+
+  // The live site works (or could not be opened) after a release: « En production ✅ », only now.
+  async function releaseLive({ release, url, result, detail }) {
+    const prs = [];
+    for (const n of release.prs || []) prs.push({ number: n, title: (await gh.getPr(n).catch(() => null))?.title || 'Modification' });
+    const list = prs.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+    const checked = result === 'passed';
+    const text = `En production ✅ : ${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\n${checked ? 'J\'ai vérifié le site en ligne : il marche.' : `Je n'ai pas pu vérifier le site en ligne (${detail || 'vérification sautée'}).`}${url ? ` [Voir le site en ligne](${url})` : ''}`;
+    await endRelease(release.issue, text, { state: 'live', prs, ...(release.version ? { version: release.version } : {}), ...(url ? { site: url } : {}), ...(checked ? {} : { unchecked: true }) }, { checking: true });
   }
 
   // The live site broke after a « Mise en production »: main goes back to what was live before (preprod keeps the
@@ -738,7 +1055,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         `La factory n'a pas remis la version d'avant en ligne : la branche \`${ref}\` a avancé depuis la mise en production (elle est à \`${head}\`, la mise en production était \`${sha}\`), et la remettre en arrière effacerait ce qui a été livré depuis. Répare directement la version en ligne.`, '',
         `Les modifications parties sont : ${prs.map((n) => `#${n}`).join(', ') || 'aucune'} ; l'ancienne version en ligne était \`${release.from}\`. Trouve ce qui casse la version en ligne, corrige-le, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
       const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
-      if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu remettre la version d'avant en ligne : d'autres livraisons sont passées depuis et seraient effacées. La demande #${bug?.number} répare directement le site. Rien à faire de votre côté pour l'instant.`));
+      await endRelease(release.issue, `Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJe n'ai pas pu remettre la version d'avant en ligne : d'autres livraisons sont passées depuis et seraient effacées. La demande #${bug?.number} répare directement le site. Rien à faire de votre côté pour l'instant.`,
+        { state: 'broken', fix: bug?.number || null, reason: detail }, { checking: true });
       if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
       return log(`release broke the live site, but ${ref} moved on (${String(head).slice(0, 7)}): not rolled back`);
     }
@@ -752,7 +1070,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       "La factory a remis en ligne la version d'avant. Les modifications parties attendent de nouveau :", '', ...titles, '',
       `Trouve laquelle casse la version en ligne (commit \`${sha}\`, l'ancienne version en ligne est \`${release.from}\`), corrige-la, et vérifie la version déployée de ta PR avant de la rendre.`].join('\n');
     const bug = await gh.createIssue("Corriger la mise en production : le site en ligne ne marchait plus", body, [L.bug, L.urgent, L.kept]);
-    if (release.issue) await gh.comment(release.issue, say(`Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJ'ai remis la version d'avant en ligne. Les modifications attendent de nouveau (le bouton « Mise en production » les compte), et la demande #${bug?.number} les corrige. Rien à faire de votre côté pour l'instant.`));
+    await endRelease(release.issue, `Après cette mise en production, le site en ligne ne marchait plus : ${detail}${link}.\n\nJ'ai remis la version d'avant en ligne. Les modifications attendent de nouveau (le bouton « Mise en production » les compte), et la demande #${bug?.number} les corrige. Rien à faire de votre côté pour l'instant.`,
+      { state: 'undone', fix: bug?.number || null, reason: detail }, { checking: true });
     if (bug?.number) await startRedo(bug.number).catch((e) => log(`correction not started: ${e.message}`));
     log(`release broke the live site: production back to ${String(release.from).slice(0, 7)}`);
   }
@@ -770,15 +1089,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const hosted = envs.some((e) => e && e !== 'github-pages') || ((await gh.listComments(prNumber).catch(() => [])) || []).some((c) => c.user?.login === 'vercel[bot]');
       if (!site || !hosted) {
         log(`live check: no live deployment${envs.length ? ` (seen: ${[...new Set(envs)].join(', ')})` : ''}${site ? '' : ', no site address'}`);
-        return;
+        return false;
       }
       url = site;
     }
     const sha = releasedSha || (await gh.getPr(prNumber))?.merge_commit_sha;
-    if (!sha) return;
+    if (!sha) return false;
     const ref = (await gh.getRepo())?.default_branch || 'main';
-    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, ...(url ? { url } : {}), ...extra } }) });
+    const check = { pr: prNumber, sha, ...(url ? { url } : {}), ...extra };
+    await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: check }) });
     log(`live check started for #${prNumber} (${sha.slice(0, 7)})${url ? ` on ${url}` : ''}`);
+    return check;
   }
 
   // The factory undid a broken delivery (prodReport): once the undo is live, the issue that redoes it can start.
@@ -845,6 +1166,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The host did not publish the new version: the old one still runs, nothing is broken. The publication is run
   // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
   async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false, release = null }) {
+    if (release?.issue && await releaseOver(release.issue)) return log(`publication of release #${release.issue} reported late: already ended`);
     const def = (await gh.getRepo())?.default_branch || 'main';
     // After a « Mise en production » on a project of the first version (its host publishes the production branch),
     // main may already be further ahead: the production branch is the one to compare with. Otherwise main is.
@@ -857,12 +1179,23 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       try {
         const retriedAt = now() - 60_000; // a minute of slack: GitHub's clock, rounded to the second
         await gh.rerunFailed(runId);
-        await gh.dispatch(PROJECT_WORKFLOW, def, { payload: JSON.stringify({ prodCheck: { pr: prNumber, sha, deployRetried: true, retriedAt, ...(release ? { release } : {}) } }) });
+        const check = { pr: prNumber, sha, deployRetried: true, retriedAt, ...(release ? { release } : {}) };
+        await gh.dispatch(PROJECT_WORKFLOW, def, { payload: JSON.stringify({ prodCheck: check }) });
+        // The release's note follows the new attempt: the tick waits for it before checking again (issue #396).
+        if (release?.issue) {
+          const body = (await gh.getIssue(release.issue).catch(() => null))?.body;
+          const st = readWatch(body);
+          if (st) await noteWatch(release.issue, { ...st, check, at: now() }, body).catch((e) => log(`release watch: ${e.message}`));
+        }
         return log(`live deploy of #${prNumber} failed: run ${runId} re-run`);
       } catch (e) { log(`live deploy re-run failed: ${String(e.message || e).slice(0, 80)}`); }
     }
     const said = detail ? ` Son message : « ${detail} ».` : '';
     await gh.comment(prNumber, say(`Cette version n'a pas été mise en ligne : l'hébergeur refuse de la publier${retried ? ', même après une nouvelle tentative' : ''}.${said} ${newest ? "L'ancienne version reste en ligne et marche : je ne retire rien." : 'Je ne retire rien : une livraison plus récente, qui la contient, est en cours de publication et la mettra en ligne si elle passe.'}`));
+    if (release?.issue) {
+      await endRelease(release.issue, `Cette mise en production n'a pas été publiée : l'hébergeur refuse de publier la nouvelle version${retried ? ', même après une nouvelle tentative' : ''}.${said} ${newest ? "L'ancienne version reste en ligne et marche." : 'Une livraison plus récente, qui la contient, est en cours de publication.'}`,
+        { state: 'unpublished', reason: `L'hébergeur refuse de publier la nouvelle version${detail ? ` (« ${detail} »)` : ''}.`, todo: newest ? "L'ancienne version reste en ligne et marche." : 'Une livraison plus récente, qui la contient, est en cours de publication.' }, { checking: true });
+    }
     log(`live deploy of #${prNumber} failed, reported`);
   }
 
@@ -870,6 +1203,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
   async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null, release = null }) {
     if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
+    // A release the factory already ended (a check the tick started again, reporting after the first one): nothing
+    // more (#396). A request closed by hand still has its note: its live site is still looked after.
+    if (release?.issue && await releaseOver(release.issue)) return log(`live check of release #${release.issue} reported late: already ended`);
+    if (result !== 'failed' && release?.issue) return releaseLive({ release, url, result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
     if (release?.from) return rollbackRelease({ release, sha, detail, runId });
     const pr = await gh.getPr(prNumber);
@@ -881,7 +1218,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const branch = `claude/revert-pr-${prNumber}`;
     // An undo already open is done, unless a passing error stopped the run right after opening it (no card marker):
     // then the run goes on from there, without a second undo branch.
-    const open = ((await gh.listPulls?.().catch(() => null)) || []).find((p) => p.head?.ref === branch);
+    const open = ((await gh.listPulls?.().catch(() => null)) || []).find((p) => !fromFork(p) && p.head?.ref === branch);
     if (open && String(open.body || '').includes(REVERT_REDO)) return log('already undone');
     // A relaunch after an undo that was never opened reuses the card it left behind (issue #227); a card already
     // started (the undo was refused) repairs the live site itself: nothing more to do.
@@ -980,7 +1317,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   async function unstickConflicts() {
     const waiting = ((await gh.listIssues({ labels: L.checks })) || []).filter((i) => i.pull_request);
     for (const item of waiting) {
-      if (names(item.labels).includes(L.running)) continue;
+      if (names(item.labels).includes(L.running) || names(item.labels).includes(L.relaunch)) continue; // its launch waits
       const pr = await settledPr(item.number);
       if (pr?.state !== 'open' || pr.mergeable_state !== 'dirty') continue;
       if (!(await liveLabels(item.number)).includes(L.checks)) continue; // another relay run took it
@@ -992,10 +1329,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         await gh.comment(issue || item.number, say(`La PR #${item.number} est en conflit avec la version en ligne et l'agent n'a pas réussi à la remettre à jour. Répondez « réessaie » ici pour une nouvelle tentative.`));
         continue;
       }
-      if (!(await fireOrBlock({ stage: 'update-branch', issue, pr: item.number, why: 'La branche est en conflit avec la version en ligne' }))) continue;
-      await gh.removeLabel(item.number, L.checks);
-      await gh.addLabels(item.number, [L.fixing]);
-      await gh.comment(item.number, `${UPDATE_BRANCH_MARKER}\n${updateMark(pr.head?.sha)}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté pour l'instant.")}`);
+      await fireOrBlock({ stage: 'update-branch', issue, pr: item.number, why: 'La branche est en conflit avec la version en ligne', then: {
+        labels: [{ n: item.number, remove: [L.checks], add: [L.fixing] }],
+        comments: [{ n: item.number, body: `${UPDATE_BRANCH_MARKER}\n${updateMark(pr.head?.sha)}\n${say("Les contrôles ne pouvaient pas démarrer : la branche est en conflit avec la version en ligne (une autre feature est passée entre-temps). L'agent la met à jour, puis les contrôles repartent. Rien à faire de votre côté pour l'instant.")}` }],
+      } });
     }
   }
 
@@ -1007,7 +1344,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const isPr = Boolean(item.pull_request);
     const pr = isPr ? await gh.getPr(n) : null;
     const issue = isPr ? prIssue(pr) : n;
-    const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => linkedIssue(p.body) === n || branchIssue(p) === n).map((p) => p.number);
+    const prs = isPr ? [n] : ((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p) && (linkedIssue(p.body) === n || branchIssue(p) === n)).map((p) => p.number);
     // The agent closing by itself (already done, duplicate, obsolete: issue #203). Only a feature or a bug; its own
     // message is the only one, and the card's state is saved so that a message from the owner brings it back.
     const it0 = issue ? (issue === n ? item : await gh.getIssue(issue)) : null;
@@ -1036,7 +1373,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const saved = { labels: kinds.filter((l) => REOPEN_LABELS.includes(l)), prs: prSteps };
       await gh.updateIssue(issue, { body: `${stripReopen(it0.body)}\n\n${REOPEN_MARKER} ${JSON.stringify(saved)} -->`.replace(/^\n\n/, '') });
     }
-    const dropLabels = async (k) => { for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l); };
+    const dropLabels = async (k) => {
+      await clearRelaunch(k); // a launch that waited must never start on a closed card
+      for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l);
+    };
     for (const p of prs) {
       await gh.closePr(p);
       await dropLabels(p);
@@ -1098,6 +1438,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // It only speaks to the owner when it cannot repair (a card that stops twice without finishing).
   async function heal(ownerLogin) {
     await retryRateLimited().catch((e) => log(`rate-limited runs: ${e.message}`));
+    await retryLaunches().catch((e) => { if (isRateLimited(e)) throw e; log(`relaunches: ${e.message}`); });
+    await dropStaleRelaunchLabels().catch((e) => { if (isRateLimited(e)) throw e; log(`stale relaunch labels: ${e.message}`); });
     const closed = (await gh.listClosedPulls?.().catch(() => null)) || [];
     await closeMerged(closed);
     await relaunchIdle(closed, ownerLogin);
@@ -1105,10 +1447,63 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await reportLost();
     await closeAsked(ownerLogin);
     await retryOutages();
+    await retryLostChecks();
     await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
     await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
     await syncPreprod().catch((e) => log(`${PREPROD_BRANCH}: ${e.message}`));
+    await syncVersionTag().catch((e) => log(`version tag: ${e.message}`));
+  }
+
+  // Issue #372: a site whose host tells GitHub nothing (external production, a silent host) says itself which commit it
+  // runs. Read on every tick, it moves refs/factory/live, which the panel reads to show the production gap. A tag that
+  // cannot be read removes the ref: the panel then says « version inconnue », never a stale « à jour ».
+  async function syncVersionTag() {
+    if (!gh.setLiveRef || !gh.getRepo) return;
+    const repoInfo = await gh.getRepo();
+    // The same rule as the panel's: a project it shows a line for is one the tick reads.
+    const site = siteLink(config.siteUrl, repoInfo?.homepage);
+    if (!site) return;
+    const mode = effectiveProduction(config, config.production ? null : await readDelivery());
+    const liveEnvs = mode === 'external' ? [] : ((await gh.liveDeployments()) || []).map((d) => d.environment);
+    if (!tagConcerned({ mode, site, liveEnvs })) return;
+    const tag = await readSiteTag(site, fetchImpl);
+    const sha = (tag && (await gh.resolveCommit(tag))?.sha) || null;
+    if (sha !== await gh.getLiveRef()) {
+      await gh.setLiveRef(sha);
+      log(`version tag: live ${sha ? sha.slice(0, 7) : 'unknown'}`);
+    }
+    if (!sha) await ensureVersionTagCard();
+  }
+
+  // A project concerned whose site has no tag gets one card that adds it, once (remembered in a state ref, so a card
+  // closed or abandoned is never reopened by itself). Never before the project is framed, nor during its framing.
+  async function ensureVersionTagCard() {
+    if (!gh.getState || !gh.createIssue) return;
+    if ((await gh.getState('version-tag'))?.card) return;
+    if (!(await gh.getContent?.('PRODUCT.md')) && !(await gh.getContent?.('docs/PRODUCT.md'))) return;
+    if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
+    const body = [AGENT_MARKER, VERSION_TAG_MARKER,
+      'Le tableau de la factory affiche sous le nom du projet si le site en ligne est à jour (« En ligne : à jour ») ou combien de modifications validées n\'y sont pas encore. Pour ce projet, l\'hébergeur ne le dit pas à GitHub : le site doit le dire lui-même, avec une **étiquette de version** invisible pour les visiteurs.', '',
+      'Rien à régler de votre côté : ni serveur, ni clé d\'accès.', '',
+      '### For the agent',
+      '- The site publishes the commit it was built from, filled in automatically at each publication (never by hand): `<meta name="factory-version" content="<commit sha>">` in the `<head>` of the page at the site address, in the HTML as the server sends it (not added later by JavaScript), or, when that address serves no HTML page, a `factory-version.txt` file at the site root containing only the sha (full, or its first 7 characters or more).',
+      '- Use what the host or the build gives (for example `VERCEL_GIT_COMMIT_SHA`, `git rev-parse HEAD` at build time). A tag that would be wrong is worse than none.',
+      '- The factory reads it every 5 minutes from GitHub Actions (server side, no CORS needed) and points `refs/factory/live` at that commit.',
+      '- Acceptance: after the next publication, the board shows « En ligne : à jour » under the project name.'].join('\n');
+    // Remembered first: a failure once the card exists must never open another one at each tick.
+    await gh.setState('version-tag', { card: 'opening' });
+    let card;
+    try { card = await gh.createIssue('Ajouter l\'étiquette de version au site', body, [L.feature, L.kept]); } catch (e) {
+      // GitHub may have opened it all the same (the answer was lost): kept if so, otherwise tried again next tick.
+      const opened = ((await gh.listIssues({ labels: L.feature, state: 'all' }).catch(() => [])) || []).find((i) => String(i.body || '').includes(VERSION_TAG_MARKER));
+      await gh.setState('version-tag', opened ? { card: opened.number } : null).catch(() => {});
+      throw e;
+    }
+    await gh.setState('version-tag', { card: card.number }).catch((e) => log(`version tag: ${e.message}`));
+    log(`version tag: card #${card.number} opened`);
+    const labels = await liveLabels(card.number);
+    await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
   }
 
   // Issue #242: every framed project keeps a stack sheet (STACK.md). One without it gets an « Établir la fiche » card,
@@ -1226,6 +1621,63 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // Issue #396: a preview or live-site check started by the factory whose report never came (its run stopped on a
+  // GitHub limit, a time limit, a lost runner) left the card « en contrôle » until the owner wrote. The tick starts it
+  // again, a few times, then goes on without it: the recette with whatever preview is known, or a release that ends as
+  // live but unchecked. Never while an agent works on the PR, once it is blocked or in recette, nor on changed code.
+  // Ended by the factory: closed, and its live-check note cleared by endRelease.
+  async function releaseOver(n) {
+    const issue = await gh.getIssue(n).catch(() => null);
+    return issue?.state === 'closed' && !readWatch(issue.body);
+  }
+  async function noteWatch(n, state, body) {
+    if (!gh.updateIssue) return;
+    const current = body ?? (await gh.getIssue(n))?.body;
+    await gh.updateIssue(n, { body: writeWatch(current, state) });
+  }
+  async function retryLostChecks() {
+    // One card that fails every time must not stop the rest of the guard: logged, tried again at the next tick.
+    const each = async (n, fn) => { try { await fn(); } catch (e) { if (isRateLimited(e)) throw e; log(`guard: lost check of #${n}: ${e.message}`); } };
+    for (const p of (await gh.listPulls?.().catch(() => null)) || []) await each(p.number, async () => {
+      const st = readWatch(p.body);
+      if (st?.kind !== 'preview') return;
+      const step = watchStep(st, now());
+      if (step === 'wait') return;
+      // Still waiting for its preview: in its checks, or with no label at all after « ok » on the captures (the report
+      // is then made without factory:checks). Not while an agent works, nor once blocked or in recette.
+      const labels = await liveLabels(p.number);
+      if ([L.running, L.blocked, L.acceptance].some((l) => labels.includes(l)) || (labels.includes(L.fixing) && !labels.includes(L.checks))) return;
+      const pr = await gh.getPr(p.number);
+      if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) return;
+      if (step === 'retry') {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: p.number, sha: st.sha } }) });
+        await noteWatch(p.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, pr.body);
+        log(`guard: preview check of #${p.number} never reported, started again (try ${(st.tries || 0) + 1})`);
+        return;
+      }
+      log(`guard: preview check of #${p.number} never reported after ${st.tries} tries: the recette goes on without it`);
+      const url = await previewUrl(st.sha, p.number, { attempts: 1 });
+      await report({ result: 'success', pr: p.number, sha: st.sha, preview: { result: 'skipped', detail: "la vérification de la preview n'a pas pu aller au bout", url } });
+    });
+    for (const issue of (await gh.listIssues({ labels: L.production }).catch(() => null)) || []) await each(issue.number, async () => {
+      if (issue.pull_request) return;
+      const st = readWatch(issue.body);
+      if (st?.kind !== 'production' || !st.check?.release) return;
+      const step = watchStep(st, now());
+      if (step === 'wait') return;
+      if (step === 'retry') {
+        const ref = (await gh.getRepo())?.default_branch || 'main';
+        await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: st.check }) });
+        await noteWatch(issue.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, issue.body);
+        log(`guard: live check of release #${issue.number} never reported, started again (try ${(st.tries || 0) + 1})`);
+        return;
+      }
+      log(`guard: live check of release #${issue.number} never reported after ${st.tries} tries: ended as unchecked`);
+      await prodReport({ pr: st.check.pr, sha: st.check.sha, result: 'skipped', detail: "la vérification du site en ligne n'a pas pu aller au bout", release: st.check.release });
+    });
+  }
+
   // Checks that failed on an outage (issue #213): the retries due now start here, one per PR, never while an agent
   // works on it or once the card is blocked. A retry not reported after OUTAGE_LOST_MS is started again.
   async function retryOutages() {
@@ -1303,6 +1755,41 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
+  // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
+  // reached GitHub as broken links after leaving the agent's environment. Posted once per folder.
+  // Never throws but on a rate limit, so that the relay run is retried (a missed post is caught up when checks end).
+  async function postCaptures(n) {
+    try { await postLatestCaptures(n); } catch (e) {
+      if (isRateLimited(e)) throw e;
+      log(`captures: ${e.message}`);
+    }
+  }
+  async function postLatestCaptures(n) {
+    if (!gh.getContent) return;
+    // A missing folder reads as nothing; a rate limit goes up, so that the run is retried.
+    const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; return null; });
+    const runs = await soft(gh.getContent(`pr-${n}`, SHOTS_BRANCH));
+    const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
+    if (!latest) return;
+    const dir = `pr-${n}/${latest}`;
+    const mark = `<!-- factory-shots-posted: ${dir} -->`;
+    const images = await soft(gh.getContent(`${dir}/compare`, SHOTS_BRANCH));
+    const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
+    if (!files.length) return;
+    // Also skipped when a whole, unbroken table of this folder is already there (posted by an agent not yet given this
+    // rule). A table whose dark rows arrived broken (#373) does not count: the factory posts the right one.
+    const link = (f) => `![avant · après](https://github.com/${repo}/blob/${SHOTS_BRANCH}/${dir}/compare/${f}?raw=true)`;
+    const whole = (c) => postedCaptures(c) && files.every((f) => c.body.includes(link(f))) && !brokenShotRows(c.body).length;
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return;
+    const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
+    let unchanged = [];
+    try { unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || []; } catch { /* an older tool wrote no list: the identical screens are just not named */ }
+    const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)) });
+    await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
+    log(`captures of #${n} posted from ${dir}`);
+  }
+
   // True when the factory's checks job already passed on this commit (they ran while the owner looked at the captures).
   async function checksGreen(sha) {
     const runs = (await gh.checkRuns?.(sha).catch(() => null)) || [];
@@ -1361,8 +1848,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   async function relaunchIdle(closed, ownerLogin) {
-    const building = ((await gh.listIssues({ labels: L.building })) || []).filter((i) => !i.pull_request);
+    const building = ((await gh.listIssues({ labels: L.building })) || []).filter((i) => !i.pull_request && !names(i.labels).includes(L.relaunch));
     if (!building.length) return;
+    if ((await waitingLaunches()).length) return; // the service is down: the waiting launches go first
     // A fork PR names whatever card it likes: it never stands for the card's own PR (issue #339).
     const linked = new Set([...((await gh.listPulls?.().catch(() => null)) || []).filter((p) => !fromFork(p)), ...closed].flatMap((p) => [linkedIssue(p.body), branchIssue(p)]).filter(Boolean));
     for (const item of building) {
@@ -1390,13 +1878,15 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         continue;
       }
       const stage = labels.includes(L.project) ? 'foundation' : buildStage(labels);
+      let started = false;
       try {
-        await fireAgent({ stage, issue: n, extra: { relaunch: true }, quiet: true });
+        started = await launch({ stage, issue: n, extra: { relaunch: true }, quiet: true, then: {
+          comments: [{ n, body: `${HEAL_MARKER}\n${say("L'agent s'était arrêté avant d'avoir fini : je le relance là où il en était. Rien à faire de votre côté.")}` }],
+        } });
       } catch (e) {
         log(`guard: relaunch of #${n} failed: ${e}`);
-        break; // the routine does not start: no use trying the others now
       }
-      await gh.comment(n, `${HEAL_MARKER}\n${say("L'agent s'était arrêté avant d'avoir fini : je le relance là où il en était. Rien à faire de votre côté.")}`);
+      if (!started) break; // the routine does not start: no use trying the others now
       log(`guard: #${n} relaunched (${stage})`);
     }
   }
@@ -1524,6 +2014,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const which = ev.kind === 'preview-check' ? 'preview' : 'production';
       outputs[which] = toJobOutput(JSON.stringify(ev.check));
       outputs[`${which}Sha`] = String(ev.check?.sha || '');
+      // Issue #370: a « Mise en production » always reaches the production job, so it is closed even when no
+      // deployment is ever observed (the button would otherwise stay greyed forever).
+      if (ev.kind === 'prod-check' && ev.check?.release?.issue) outputs.releaseIssue = String(ev.check.release.issue);
       return { action: { type: ev.kind }, outputs };
     }
     const ctx = { inFlight: 0, lockFresh: false };
@@ -1545,7 +2038,11 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const live = await gh.getIssue(ev.number);
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
-      ctx.inFlight = await inFlight();
+      ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
+    }
+    // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first.
+    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && ev.labels.includes(L.visualReview)) {
+      await postCaptures(ev.number);
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
@@ -1585,6 +2082,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       said = text;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
     }
+    if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
     // Also when the factory is full (the checks need no place) and when he writes it on the PR itself.
     // The PR itself has no factory label left once blocked: the owner's message there is otherwise ignored.
@@ -1617,10 +2115,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       case 'fire': {
         const pr = ev.kind === 'pr' ? await gh.getPr(n) : null;
         const issue = pr ? prIssue(pr) : n;
-        await fireAgent({ stage: action.stage, issue, pr: pr ? n : reopenedPr });
-        await applyLabels(); // only once the agent really started
+        // The labels move only once the agent really started (now, or at its relaunch).
         // A blocked PR is often blocked on its issue too: the owner's answer unblocks both.
-        if (pr && issue && action.remove?.includes(L.blocked)) await gh.removeLabel(issue, L.blocked);
+        await launch({ stage: action.stage, issue, pr: pr ? n : reopenedPr, owner: true, then: { labels: [
+          { n, add: action.add || [], remove: action.remove || [] },
+          ...(pr && issue && action.remove?.includes(L.blocked) ? [{ n: issue, remove: [L.blocked] }] : []),
+        ] } });
         break;
       }
       case 'defer':
@@ -1744,6 +2244,14 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // The agent hands the PR back with factory:checks when it is done: from then on a report counts again.
     const live = await liveLabels(prNumber);
     if (live.includes(L.fixing) && !live.includes(L.checks)) return log('stale report: an agent is changing the PR, its own checks will report');
+    // A preview report for a PR no longer waiting for it (closed, or past its checks with no check noted) comes late:
+    // the slow first run of a check the tick started again, or a duplicate. It must not move the card twice (#396).
+    if (preview && (pr.state === 'closed' || (!readWatch(pr.body) && !live.includes(L.checks)))) return log('stale preview report: the PR no longer waits for it');
+    // A report answers the preview check the PR waited for, or starts its cycle again: the note is cleared (issue #396).
+    if (readWatch(pr.body)) {
+      pr = { ...pr, body: writeWatch(pr.body, null) };
+      await gh.updateIssue(prNumber, { body: pr.body });
+    }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
     if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
@@ -1762,17 +2270,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const catchUp = reverting ? [] : (missing || []).filter((s) => CATCH_UP.includes(s));
     // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
     if (result === 'success' && ui && config.stages.screenshots !== false && !reverting) {
+      // Captures pushed but whose table was never posted (a missed event): posted now rather than redone.
+      if (live.includes(L.visualReview)) await postCaptures(prNumber);
       const shown = ((await gh.listComments(prNumber)) || []).some(postedCaptures);
       if (!shown) catchUp.push('screenshots');
     }
     if (result === 'success' && catchUp.length) {
       const done = ((await gh.listComments(prNumber)) || []).some((c) => (c.body || '').includes(SKILLS_FIX_MARKER));
       if (!done) {
-        if (!(await fireOrBlock({ stage: 'skills-fix', issue: issueNumber, pr: prNumber, extra: { missing: catchUp }, why: "L'agent a sauté une étape" }))) return;
-        await gh.removeLabel(prNumber, L.checks);
-        await gh.addLabels(prNumber, [L.fixing]);
         const steps = catchUp.map((s) => STEP_NAMES[s]).join(' et ');
-        await gh.comment(prNumber, `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de votre côté pour l'instant. Si ça change l'apparence, je vous remontrerai les captures.`)}`);
+        await fireOrBlock({ stage: 'skills-fix', issue: issueNumber, pr: prNumber, extra: { missing: catchUp }, why: "L'agent a sauté une étape", then: {
+          labels: [{ n: prNumber, remove: [L.checks], add: [L.fixing] }],
+          comments: [{ n: prNumber, body: `${SKILLS_FIX_MARKER}\n${say(`L'agent a sauté ${steps}. Il ${catchUp.length > 1 ? 'les' : 'la'} rattrape maintenant, puis les contrôles repartent : rien à faire de votre côté pour l'instant. Si ça change l'apparence, je vous remontrerai les captures.`)}` }],
+        } });
         return;
       }
     }
@@ -1799,17 +2309,19 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     if (previews && !preview) {
       const url = await previewUrl(pr.head.sha, prNumber, { attempts: 1 });
       const ref = (await gh.getRepo())?.default_branch || 'main';
+      // Noted first: a check whose run dies before reporting is started again by the tick (issue #396).
+      await noteWatch(prNumber, { kind: 'preview', sha: pr.head.sha, at: now(), tries: 0 }, pr.body);
       await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: prNumber, sha: pr.head.sha, ...(url ? { url } : {}) } }) });
       log(url ? `preview check started on ${url}` : 'preview check started: it waits for the preview');
       return;
     }
     if (preview?.result === 'failed') {
       if (failures >= config.review.maxLoops) return blockOnRed(prNumber, issueNumber);
-      if (!(await fireOrBlock({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { preview: preview.url, previewProblem: preview.detail || null, checksRun: preview.runId || null }, why: 'La preview ne marche pas' }))) return;
-      await gh.removeLabel(prNumber, L.checks);
-      await gh.addLabels(prNumber, [L.fixing]);
       const link = preview.runId ? ` ([détail](https://github.com/${repo}/actions/runs/${preview.runId}))` : '';
-      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`Avant de vous la donner, j'ai ouvert la preview : ${preview.detail || 'quelque chose ne marche pas'}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}`);
+      await fireOrBlock({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { preview: preview.url, previewProblem: preview.detail || null, checksRun: preview.runId || null }, why: 'La preview ne marche pas', then: {
+        labels: [{ n: prNumber, remove: [L.checks], add: [L.fixing] }],
+        comments: [{ n: prNumber, body: `${CHECKS_FAILED_MARKER}\n${say(`Avant de vous la donner, j'ai ouvert la preview : ${preview.detail || 'quelque chose ne marche pas'}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}` }],
+      } });
       return;
     }
     const knownUrl = preview?.url || null;
@@ -1842,12 +2354,12 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       return;
     }
     if (next === 'fix') {
-      if (!(await fireOrBlock({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { checksRun: runId || null }, why: 'Un contrôle automatique a échoué' }))) return;
-      await gh.removeLabel(prNumber, L.checks);
-      await gh.addLabels(prNumber, [L.fixing]);
       const link = runId ? ` ([détail](https://github.com/${repo}/actions/runs/${runId}))` : '';
       const what = timedOut ? `Les contrôles automatiques ont dépassé la durée maximale réglée dans Paramètres (${config.checksMinutes || 30} min), je les ai arrêtés : aucun contrôle n'a échoué, mais un test bloqué peut en être la cause` : 'Un contrôle automatique a échoué';
-      await gh.comment(prNumber, `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}`);
+      await fireOrBlock({ stage: 'fix-checks', issue: issueNumber, pr: prNumber, extra: { checksRun: runId || null }, why: 'Un contrôle automatique a échoué', then: {
+        labels: [{ n: prNumber, remove: [L.checks], add: [L.fixing] }],
+        comments: [{ n: prNumber, body: `${CHECKS_FAILED_MARKER}\n${say(`${what}${link}. L'agent corrige (tentative ${failures + 1} sur ${config.review.maxLoops}), rien à faire de votre côté.`)}` }],
+      } });
       return;
     }
     return blockOnRed(prNumber, issueNumber, timedOut);
@@ -1920,7 +2432,33 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
   }
 
-  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, deployFailed, liveUrl, previewWait, outputs };
+  // The first relaunch, 2 minutes after a first failure: run by its own job once the decision is over (relay.yml), so
+  // that nothing waits behind it. Never throws: the tick starts it later anyway.
+  async function relaunchSoon(ms = outputs.relaunchInMs) {
+    if (!ms) return;
+    try {
+      await sleep(Number(ms));
+      const ref = (await gh.getRepo())?.default_branch || 'main';
+      await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ tick: true }) });
+      log('relaunch of the waiting launches asked for');
+    } catch (e) { log(`relaunch not asked for (${String(e.message || e).slice(0, 80)}): the tick will`); }
+  }
+
+  // Issue #384: the factory's own steps (a report that merges or blocks a card, a live check) write with the workflow's token, which raises no event: nothing else would fill the place they
+  // free before the rare scheduled tick. Each fills it before returning, unless the step already did.
+  const refilling = (step) => async (...args) => {
+    const before = dequeues;
+    const result = await step(...args);
+    // Never throws, rate limit included, on purpose: the step itself is done, and re-running it would be worse.
+    // The place is then filled by the next event or tick, as before #384.
+    if (dequeues === before) await dequeue().catch((e) => log(`queue check: ${e.message}`));
+    return result;
+  };
+
+  // The queue check after a step that ran outside the lock (release): never throws, like the one in refilling.
+  const refill = () => dequeue().catch((e) => log(`queue check: ${e.message}`));
+
+  return { handle, report: refilling(report), retrySoon, relaunchSoon, retryLaunches, dequeue, refill, release, fabrication, notifyWaiting, prodReport: refilling(prodReport), deployFailed: refilling(deployFailed), releaseChecking, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -1965,20 +2503,33 @@ async function main() {
     // A report may merge and then dequeue: same lock as the decisions.
     await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
+    await relay.relaunchSoon(); // a fix whose launch failed for a passing reason: first relaunch, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
+    // The lock and the replay need no queue lock: done first, they never wait behind it. Then the place the run may
+    // have freed is filled at once (issue #384), under the same lock as the decisions.
     await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
+    await withLock(gh.queueLock, () => relay.refill()).catch((e) => console.log(`queue check after the run: ${e.message}`));
+  } else if (command === 'relaunch-soon') {
+    // Its own job after a decision whose launch failed for a passing reason (issue #383): the first relaunch, 2 min later.
+    await relay.relaunchSoon(Number(arg('ms')) || 0);
+    return;
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
     const check = readCheck();
     const url = fromJobOutput(arg('url')) || check.url || null;
     const res = url ? readResult(arg('result-file')) : { result: 'skipped', detail: "la preview n'est pas apparue" };
     await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url, runId: process.env.GITHUB_RUN_ID } }));
+    await relay.relaunchSoon(); // a fix whose launch failed for a passing reason: first relaunch, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting());
   } else if (command === 'preview-url') {
     // The preview job waits for the preview here, without the queue lock: minutes that block no decision.
     const url = await relay.previewWait(readCheck());
     writeOutputs({ url: toJobOutput(url) });
+    return;
+  } else if (command === 'release-step') {
+    // The new version of a release is online: move its card to « Vérification du site en ligne » (issue #370).
+    await relay.releaseChecking(readCheck());
     return;
   } else if (command === 'live-url') {
     const check = readCheck();
@@ -2000,6 +2551,12 @@ async function main() {
       await withLock(gh.queueLock, () => relay.deployFailed({ pr: Number(check.pr), sha: check.sha, detail: failure.detail, runId: failure.runId, retried: Boolean(check.deployRetried), release: check.release || null }));
       return;
     }
+    // Issue #370: a release reached the production job without any deployment ever observed (no site opened, no
+    // failure). End it as live-but-unchecked so the request closes and the button is freed, instead of staying open.
+    if (!fromJobOutput(arg('url')) && check.release?.issue) {
+      await withLock(gh.queueLock, () => relay.prodReport({ pr: Number(check.pr), sha: check.sha, result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: check.release }));
+      return;
+    }
     const res = readResult(arg('result-file'));
     const dir = arg('dir') || '.';
     const git = (args) => execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
@@ -2009,7 +2566,7 @@ async function main() {
   } else {
     throw new Error(`unknown command ${command}`);
   }
-  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
+  writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', previewSha: '', productionSha: '', releaseIssue: '', checksMinutes: String(config.checksMinutes || 30), ...relay.outputs });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -32,8 +32,11 @@
    il attend sans doute que le temps passe ; dis-le aussi dans le commentaire.
 5. `node .factory/scripts/shots.mjs publish --pr <numéro> --before /tmp/shots/before --after /tmp/shots/after > /tmp/shots.md`
    (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
-   après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
+   après à droite), la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
+   **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
+   poussées, dès que la PR porte `factory:visual-review` (un tableau envoyé depuis ta session peut arriver abîmé sur
+   GitHub, issue #378). Ne recopie aucun lien d'image dans tes messages.
 6. **Aucun écran n'a changé** : la sortie de l'outil contient alors `<!-- factory-shots-unchanged -->` et la phrase
    « J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence. ».
    - Si la demande prévoyait justement un changement d'apparence, revérifie d'abord tes captures (bonne page, bon état
@@ -43,6 +46,8 @@
      demande rien au propriétaire : pas de « Répondez « ok » », et pas `factory:visual-review` sur la PR, seulement
      `factory:checks`. La carte passe directement aux contrôles, puis à la suite habituelle (recette ou mise en
      ligne, selon les règles de la factory, qui ne changent pas).
-7. **Au moins un écran a changé** : commente la PR : `<!-- factory-agent -->`, une phrase par écran sur ce qui change visuellement (en clair puis en
-   sombre), le tableau (un écran que la feature ne devait pas toucher et qui a changé : corrige-le d'abord, ou
-   explique pourquoi en une phrase), puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. »
+7. **Au moins un écran a changé** : commente la PR, **sans le tableau** : `<!-- factory-agent -->`, une phrase par écran sur ce qui change
+   visuellement (en clair puis en sombre) (un écran que la feature ne devait pas toucher et qui a changé : corrige-le
+   d'abord, ou explique pourquoi en une phrase), « Les captures suivent juste en dessous, publiées par la factory. »,
+   puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. ».
+   Mets ensuite `factory:visual-review` puis `factory:checks` sur la PR : la factory publie alors le tableau.
