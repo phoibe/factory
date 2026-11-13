@@ -15,7 +15,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    - ce qui est hors périmètre ;
    - les critères d'acceptation, sous forme de vérifications qu'il pourra faire lui-même sur la preview.
    Si les questions ont produit des documents (voir `.factory/stages/docs.md`), ajoute la phrase de résumé en français.
-   **Questions sautées** (demande petite et claire, voir l'étape 0 ter de `grilling.md`) : la spec commence, juste
+   **Questions sautées** (seulement quand tu arrives de l'étape 0 ter de `grilling.md`, jamais si l'étape des
+   questions est désactivée) : la spec commence, juste
    sous son titre, par la phrase « Pas de questions : la demande était claire. »
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
    titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
@@ -24,7 +25,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    l'argent, à la sécurité, aux comptes ou au partage de données personnelles, change la vision ou le design
    validés, ou repose sur une hypothèse importante que le grilling n'a pas confirmée.
    Une spec écrite avec les questions sautées n'est en principe pas sensible (sinon les questions auraient été posées) ;
-   si en l'écrivant tu découvres un point sensible, demande quand même la validation.
+   si en l'écrivant tu découvres un point sensible, demande quand même la validation. Les évidences de « Ce que j'ai
+   décidé pour vous » ne sont pas des hypothèses importantes non confirmées.
    - **À valider** : termine par « Répondez « go » pour lancer la construction, ou dites-moi ce qu'il faut
      changer. » (et, si la validation est désactivée, dis en une phrase pourquoi tu demandes quand même).
    - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
