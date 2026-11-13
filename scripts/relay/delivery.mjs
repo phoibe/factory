@@ -2,7 +2,6 @@
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
 import { L, AGENT_MARKER, UPDATE_BRANCH_MARKER, REVERT_MARKER, PROD_BUG_MARKER, releaseNote } from '../lib/labels.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-core.mjs';
-import { github } from '../lib/github.mjs';
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
@@ -20,7 +19,6 @@ export function deliveryPart(ctx) {
   const unstickConflicts = (...a) => ctx.unstickConflicts(...a);
   const dropCard = (...a) => ctx.dropCard(...a);
   const handle = (...a) => ctx.handle(...a);
-  const release = (...a) => ctx.release(...a);
 
   // The documents written during the questions (glossary, decisions) are merged as soon as their PR opens, but only
   // when it touches nothing else: a doc PR that carries code is left for the owner.

@@ -2,7 +2,6 @@
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, UPDATE_BRANCH_MARKER, buildStage } from '../lib/labels.mjs';
 import { PREPROD_BRANCH } from '../lib/config-core.mjs';
-import { github } from '../lib/github.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
 import { syncFingerprint } from '../lib/fingerprint.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from '../lib/notify.mjs';

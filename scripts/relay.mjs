@@ -22,7 +22,8 @@ import { ROOT, rateLimitHandled } from './relay/shared.mjs';
 
 // The engine lives in scripts/relay/: one file per job, composed by createRelay below. Their public names stay exported here.
 export { LOCK_MINUTES, PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, branchUpdates, IDLE_MINUTES, RATE_LIMIT_STEP, MAX_RATE_LIMIT_ATTEMPTS, rateLimitHandled, redoOf, isLiveEnv, linkedIssue, vercelPreview, isDocFile } from './relay/shared.mjs';
-export { eventFromPayload } from './relay/events.mjs';
+import { eventFromPayload } from './relay/events.mjs';
+export { eventFromPayload };
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const ctx = { gh, repo, config, env, fetchImpl, now, log, sleep };

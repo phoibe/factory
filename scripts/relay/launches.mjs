@@ -2,7 +2,6 @@
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
 import { L, CLOSE_REASONS, AGENT_MARKER, SESSION_MARKER, isIdea, buildStage } from '../lib/labels.mjs';
 import { runTitle, stageName } from '../lib/run-title.mjs';
-import { github } from '../lib/github.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
 import { mirrorAttachments } from '../lib/attachments.mjs';
 import { isRetry, isNetworkFailure } from '../lib/outage.mjs';

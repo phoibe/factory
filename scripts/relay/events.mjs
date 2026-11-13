@@ -2,7 +2,6 @@
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
 import { decide, afterChecks } from '../lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER } from '../lib/labels.mjs';
-import { github } from '../lib/github.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from '../lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD } from '../lib/outage.mjs';
