@@ -210,7 +210,8 @@ export function brokenShotRows(text) {
 
 async function publish({ pr, before, after }) {
   const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
-  const repo = git(['config', '--get', 'remote.origin.url']).replace(/^.*github\.com[:/]/, '').replace(/\.git$/, '');
+  const { repoFromRemote } = await import('./specs.mjs');
+  const repo = repoFromRemote(git(['config', '--get', 'remote.origin.url']));
   const dir = `pr-${pr}/${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const wt = mkdtempSync(join(tmpdir(), 'factory-assets-'));
   rmSync(wt, { recursive: true, force: true });
