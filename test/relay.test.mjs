@@ -2375,7 +2375,7 @@ test('« Mise en production » merges preprod into main, then checks the live si
   assert.match(merged[3], /#11/);
   assert.deepEqual(prodChecksOf(gh).map(({ sha, release }) => ({ sha, from: release.from })), [{ sha: 'm2', from: 'm1' }]);
   assert.ok(!gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
-  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /En production/);
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /part en ligne/);
 });
 
 test('« Mise en production » blocked by a conflict on the project files names them, and changes nothing', async () => {
@@ -2442,7 +2442,7 @@ test('in automatic mode, an existing production branch follows main after each m
   assert.ok(!none.gh.calls.some((c) => c[0] === 'updateRef' || c[0] === 'createRef'));
 });
 
-test('« Mise en production » from the owner sends every pending change live, checks the site and says what left', async () => {
+test('« Mise en production » from the owner sends every pending change live, starts the live check and says what leaves', async () => {
   const awaiting = [
     { number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z', merge_commit_sha: 'a1' },
     { number: 12, title: 'Correction du menu', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T11:00:00Z', merge_commit_sha: 'a2' },
@@ -2454,10 +2454,11 @@ test('« Mise en production » from the owner sends every pending change live, c
   assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 12 && c[2] === L.awaitingProd));
   assert.deepEqual(prodChecksOf(gh).map(({ pr, sha }) => ({ pr, sha })), [{ pr: 12, sha: 'a2' }]);
   const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2];
-  assert.match(msg, /En production/);
+  assert.match(msg, /partent en ligne/);
   assert.match(msg, /Ajout du mode sombre/);
   assert.match(msg, /Correction du menu/);
-  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  // Issue #370: « En production ✅ » and the end of the request wait for the live check.
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });
 
 test('« Mise en production » with nothing pending moves nothing and says so', async () => {
@@ -3027,4 +3028,124 @@ test('a tag card GitHub failed to open is tried again at the next tick, unless i
   lost.gh.createIssue = async () => { throw new Error('POST /issues -> 502'); };
   await lost.tick();
   assert.deepEqual(kept['version-tag'], { card: 61 });
+});
+
+// ---- Issue #370: the « Mise en production » card follows the release until the live site is checked ----
+import { releaseNote } from '../scripts/lib/labels.mjs';
+const noteOf = (text) => JSON.parse(/<!-- factory-release (\{.*?\}) -->/.exec(text || '')?.[1] || 'null');
+const said50 = (gh) => gh.calls.filter((c) => c[0] === 'comment' && c[1] === 50).map((c) => c[2]);
+const pending11 = () => [{ number: 11, title: 'Ajout du mode sombre', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T10:00:00Z' }];
+
+test('releaseNote hides the release state in an HTML comment', () => {
+  assert.equal(releaseNote({ state: 'live' }), '<!-- factory-release {"state":"live"} -->');
+  assert.deepEqual(noteOf(`x\n${releaseNote({ state: 'failed', reason: 'a -- b' })}`), { state: 'failed', reason: 'a -- b' });
+});
+
+test('« Mise en production »: the request stays open while the site goes live, with the released changes in its note', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'a2', production: 'm0' }, issues: [{ number: 50, labels: [L.production] }] });
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.doesNotMatch(msg, /En production ✅/);
+  assert.deepEqual(noteOf(msg), { state: 'deploying', prs: [{ number: 11, title: 'Ajout du mode sombre' }] });
+  assert.ok(!gh.calls.some((c) => c[0] === 'close' && c[1] === 50), 'still open');
+});
+
+test('the live site checked after a release: « En production ✅ », the list and the site, then the request is closed', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: n === 11 ? 'Ajout du mode sombre' : 'Correction du menu', body: 'Closes #1' });
+  await relay().prodReport({ pr: 12, sha: 'a2', url: 'https://site.example', result: 'passed', detail: 'ok', release: { from: 'm0', prs: [11, 12], issue: 50, version: '1.2.0' } });
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.match(msg, /Correction du menu/);
+  assert.deepEqual(noteOf(msg), { state: 'live', prs: [{ number: 11, title: 'Ajout du mode sombre' }, { number: 12, title: 'Correction du menu' }], version: '1.2.0', site: 'https://site.example' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 50 && c[2] === L.releaseChecking));
+});
+
+test('a release whose live site cannot be checked (no deployment, no address) still ends, as live but unchecked', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'a2', production: 'm0' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.recentDeployments = async () => [];
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.equal(noteOf(msg).state, 'live');
+  assert.equal(noteOf(msg).unchecked, true);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('nothing pending: the request ends with a « nothing » note', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production] }] });
+  await askRelease(relay);
+  assert.deepEqual(noteOf(said50(gh).at(-1)), { state: 'nothing' });
+});
+
+test('a release refused by GitHub or blocked by a conflict is closed with a « failed » note saying why and what to do', async () => {
+  const { gh, relay } = prodGh({ awaiting: pending11(), branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  gh.mergeBranches = async () => { throw new Error('GitHub 502: Bad gateway'); };
+  await assert.rejects(askRelease(relay));
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'failed');
+  assert.match(note.reason, /GitHub/);
+  assert.match(note.todo, /Recliquez sur « Mise en production » dans quelques minutes/);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+
+  const c = prodGh({ awaiting: pending11(), branches: { main: 'm1', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
+  c.gh.mergeBranches = async () => { throw new Error('GitHub 409: Merge conflict'); };
+  c.gh.compare = async () => ({ files: [{ filename: 'app.py', status: 'modified', sha: 'x' }] });
+  c.gh.createTree = async () => ({ sha: 't' });
+  c.gh.createGitCommit = async () => ({ sha: 'c' });
+  await assert.rejects(askRelease(c.relay));
+  const conflict = noteOf(said50(c.gh).at(-1));
+  assert.equal(conflict.state, 'failed');
+  assert.match(conflict.todo, /conflit/);
+  assert.ok(c.gh.calls.some((x) => x[0] === 'close' && x[1] === 50));
+});
+
+test('a refused version number ends the request with a « failed » note', async () => {
+  const { gh, relay } = versionGh({ body: 'Version : 0.16.0' });
+  await askRelease(relay);
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'failed');
+  assert.match(note.todo, /autre numéro/);
+});
+
+test('a release undone because the live site broke ends with an « undone » note linking the urgent fix', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.resetRef = async (name, sha) => { gh.branches[name] = sha; };
+  gh.createIssue = async () => ({ number: 60 });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'a2', result: 'failed', detail: 'la page répond 500', release: { from: 'm0', prs: [11], issue: 50 } });
+  assert.deepEqual(noteOf(said50(gh).at(-1)), { state: 'undone', fix: 60, reason: 'la page répond 500' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+
+  const moved = prodGh({ branches: { main: 'm3' }, issues: [{ number: 50, labels: [L.production] }] });
+  moved.gh.createIssue = async () => ({ number: 61 });
+  await moved.relay().prodReport({ pr: 11, sha: 'm2', result: 'failed', detail: 'la page répond 500', release: { from: 'm1', prs: [11], issue: 50 } });
+  assert.deepEqual(noteOf(said50(moved.gh).at(-1)), { state: 'broken', fix: 61, reason: 'la page répond 500' });
+});
+
+test('the host refusing to publish a release, even after a retry, ends the request with an « unpublished » note', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  await relay().deployFailed({ pr: 12, sha: 'a2', detail: 'build failed', retried: true, release: { from: 'm0', prs: [12], issue: 50 } });
+  assert.equal(noteOf(said50(gh).at(-1)).state, 'unpublished');
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
+});
+
+test('once the new version is online, the release request moves to « Vérification du site en ligne »', async () => {
+  const { gh, relay } = prodGh({ issues: [{ number: 50, labels: [L.production] }] });
+  await relay().releaseChecking({ pr: 12, sha: 'a2', release: { from: 'm0', prs: [12], issue: 50 } });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 50 && c[2] === L.releaseChecking));
+  const none = prodGh({});
+  await none.relay().releaseChecking({ pr: 12, sha: 'a2' });
+  assert.ok(!none.gh.calls.some((c) => c[0] === 'add'));
+});
+
+test('a release that reached production with no deployment observed is ended as live-but-unchecked', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
+  await relay().prodReport({ pr: 11, sha: 'a2', result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: { from: 'm0', prs: [11], issue: 50 } });
+  const note = noteOf(said50(gh).at(-1));
+  assert.equal(note.state, 'live');
+  assert.equal(note.unchecked, true);
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });

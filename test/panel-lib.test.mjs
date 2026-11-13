@@ -256,3 +256,55 @@ test('siteLink only keeps http(s) addresses, a javascript: homepage counts as no
   assert.equal(siteLink('javascript:alert(1)', 'https://b.fr'), 'https://b.fr');
   assert.equal(siteLink(undefined, null), '');
 });
+
+// ---- Issue #370: the « Mise en production » card follows a release and shows its outcome ----
+import { releaseOutcome, releaseList, COLUMNS as COLS } from '../panel/lib.mjs';
+const relComment = (body, login = 'github-actions[bot]') => ({ body, user: { login }, author_association: 'NONE' });
+
+test('COLUMNS maps factory:production to a « Mise en production » column', () => {
+  const col = COLS.find((c) => c.label === 'factory:production');
+  assert.ok(col);
+  assert.equal(columnFor(['factory:production']), col.id);
+});
+
+test('releaseOutcome reads the latest factory-release note from a trusted comment', () => {
+  const comments = [
+    relComment('x <!-- factory-release {"state":"deploying","prs":[{"number":11,"title":"A"}]} -->'),
+    relComment('En production ✅ <!-- factory-release {"state":"live","site":"https://s"} -->'),
+  ];
+  assert.deepEqual(releaseOutcome(comments), { state: 'live', site: 'https://s' });
+  assert.equal(releaseOutcome([]), null);
+});
+
+test('releaseOutcome ignores a note planted by an untrusted commenter', () => {
+  assert.equal(releaseOutcome([relComment('<!-- factory-release {"state":"live"} -->', 'stranger')]), null);
+});
+
+test('releaseOutcome falls back to the old « En production ✅ » text when there is no note', () => {
+  assert.deepEqual(releaseOutcome([relComment('En production ✅ : cette modification part en ligne.')]), { state: 'live', legacy: true });
+});
+
+test('releaseList reads the changes from the request body', () => {
+  const body = 'Demandé depuis le tableau de bord.\n\n- Mode sombre (#11)\n- Menu (#12)';
+  assert.deepEqual(releaseList(body), [{ number: 11, title: 'Mode sombre' }, { number: 12, title: 'Menu' }]);
+  assert.deepEqual(releaseList(''), []);
+});
+
+test('the « Mise en production » button is greyed « en cours » while a release runs', async () => {
+  const { releaseButton } = await import('../panel/lib.mjs');
+  assert.deepEqual(releaseButton([{}, {}], true), { text: 'Mise en production', disabled: true, hint: 'Mise en production en cours' });
+  assert.deepEqual(releaseButton([{}, {}], false), { text: 'Mise en production (2)', disabled: false, hint: '2 modifications en attente' });
+});
+
+test('doneItems lists a closed « Mise en production » request as a release item with its change list', () => {
+  const closed = { number: 50, title: 'Mise en production', closed_at: '2026-11-09T10:00:00Z', html_url: 'https://github.com/o/r/issues/50', labels: [{ name: 'factory:production' }], body: '- Mode sombre (#11)' };
+  const out = doneItems([], [closed]);
+  const rel = out.find((d) => d.number === 50);
+  assert.ok(rel.release);
+  assert.deepEqual(rel.changes, [{ number: 11, title: 'Mode sombre' }]);
+  assert.equal(rel.mergedAt, '2026-11-09T10:00:00Z');
+});
+
+test('releaseOutcome returns null for an old release with neither a note nor « En production ✅ »', () => {
+  assert.equal(releaseOutcome([relComment("Je n'ai pas pu mettre en production (conflit).")]), null);
+});
