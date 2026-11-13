@@ -27,6 +27,8 @@ import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
+import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from './lib/version-tag.mjs';
+import { siteLink } from '../panel/lib.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -1151,6 +1153,58 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     await syncIfBehind();
     await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
     await syncPreprod().catch((e) => log(`${PREPROD_BRANCH}: ${e.message}`));
+    await syncVersionTag().catch((e) => log(`version tag: ${e.message}`));
+  }
+
+  // Issue #372: a site whose host tells GitHub nothing (external production, a silent host) says itself which commit it
+  // runs. Read on every tick, it moves refs/factory/live, which the panel reads to show the production gap. A tag that
+  // cannot be read removes the ref: the panel then says « version inconnue », never a stale « à jour ».
+  async function syncVersionTag() {
+    if (!gh.setLiveRef || !gh.getRepo) return;
+    const repoInfo = await gh.getRepo();
+    // The same rule as the panel's: a project it shows a line for is one the tick reads.
+    const site = siteLink(config.siteUrl, repoInfo?.homepage);
+    if (!site) return;
+    const mode = effectiveProduction(config, config.production ? null : await readDelivery());
+    const liveEnvs = mode === 'external' ? [] : ((await gh.liveDeployments()) || []).map((d) => d.environment);
+    if (!tagConcerned({ mode, site, liveEnvs })) return;
+    const tag = await readSiteTag(site, fetchImpl);
+    const sha = (tag && (await gh.resolveCommit(tag))?.sha) || null;
+    if (sha !== await gh.getLiveRef()) {
+      await gh.setLiveRef(sha);
+      log(`version tag: live ${sha ? sha.slice(0, 7) : 'unknown'}`);
+    }
+    if (!sha) await ensureVersionTagCard();
+  }
+
+  // A project concerned whose site has no tag gets one card that adds it, once (remembered in a state ref, so a card
+  // closed or abandoned is never reopened by itself). Never before the project is framed, nor during its framing.
+  async function ensureVersionTagCard() {
+    if (!gh.getState || !gh.createIssue) return;
+    if ((await gh.getState('version-tag'))?.card) return;
+    if (!(await gh.getContent?.('PRODUCT.md')) && !(await gh.getContent?.('docs/PRODUCT.md'))) return;
+    if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
+    const body = [AGENT_MARKER, VERSION_TAG_MARKER,
+      'Le tableau de la factory affiche sous le nom du projet si le site en ligne est à jour (« En ligne : à jour ») ou combien de modifications validées n\'y sont pas encore. Pour ce projet, l\'hébergeur ne le dit pas à GitHub : le site doit le dire lui-même, avec une **étiquette de version** invisible pour les visiteurs.', '',
+      'Rien à régler de votre côté : ni serveur, ni clé d\'accès.', '',
+      '### For the agent',
+      '- The site publishes the commit it was built from, filled in automatically at each publication (never by hand): `<meta name="factory-version" content="<commit sha>">` in the `<head>` of the page at the site address, in the HTML as the server sends it (not added later by JavaScript), or, when that address serves no HTML page, a `factory-version.txt` file at the site root containing only the sha (full, or its first 7 characters or more).',
+      '- Use what the host or the build gives (for example `VERCEL_GIT_COMMIT_SHA`, `git rev-parse HEAD` at build time). A tag that would be wrong is worse than none.',
+      '- The factory reads it every 5 minutes from GitHub Actions (server side, no CORS needed) and points `refs/factory/live` at that commit.',
+      '- Acceptance: after the next publication, the board shows « En ligne : à jour » under the project name.'].join('\n');
+    // Remembered first: a failure once the card exists must never open another one at each tick.
+    await gh.setState('version-tag', { card: 'opening' });
+    let card;
+    try { card = await gh.createIssue('Ajouter l\'étiquette de version au site', body, [L.feature, L.kept]); } catch (e) {
+      // GitHub may have opened it all the same (the answer was lost): kept if so, otherwise tried again next tick.
+      const opened = ((await gh.listIssues({ labels: L.feature, state: 'all' }).catch(() => [])) || []).find((i) => String(i.body || '').includes(VERSION_TAG_MARKER));
+      await gh.setState('version-tag', opened ? { card: opened.number } : null).catch(() => {});
+      throw e;
+    }
+    await gh.setState('version-tag', { card: card.number }).catch((e) => log(`version tag: ${e.message}`));
+    log(`version tag: card #${card.number} opened`);
+    const labels = await liveLabels(card.number);
+    await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
   }
 
   // Issue #242: every framed project keeps a stack sheet (STACK.md). One without it gets an « Établir la fiche » card,
