@@ -27,6 +27,7 @@ import { forwardedAnswer } from './lib/answer.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../panel/changelog.mjs';
 import { trustedAuthor } from './lib/trust.mjs';
+import { markdownTable } from '../agent/scripts/shots.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from './lib/waits.mjs';
 
 const SKILLS_FIX_MARKER = '<!-- factory-skills-fix -->';
@@ -1345,6 +1346,30 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
+  // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
+  // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
+  // reached GitHub as broken links after leaving the agent's environment. Posted once per folder.
+  async function postCaptures(n) {
+    if (!gh.getContent) return;
+    const runs = await gh.getContent(`pr-${n}`, SHOTS_BRANCH).catch(() => null);
+    const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
+    if (!latest) return;
+    const dir = `pr-${n}/${latest}`;
+    const mark = `<!-- factory-shots-posted: ${dir} -->`;
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark))) return;
+    const images = await gh.getContent(`${dir}/compare`, SHOTS_BRANCH).catch(() => null);
+    const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
+    if (!files.length) return;
+    let unchanged = [];
+    try {
+      const meta = await gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH);
+      unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || [];
+    } catch { /* an older tool wrote no list: the identical screens are just not named */ }
+    const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)) });
+    await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
+    log(`captures of #${n} posted from ${dir}`);
+  }
+
   // True when the factory's checks job already passed on this commit (they ran while the owner looked at the captures).
   async function checksGreen(sha) {
     const runs = (await gh.checkRuns?.(sha).catch(() => null)) || [];
@@ -1591,6 +1616,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight();
+    }
+    // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first.
+    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && ev.labels.includes(L.visualReview)) {
+      await postCaptures(ev.number).catch((e) => log(`captures: ${e.message}`));
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {

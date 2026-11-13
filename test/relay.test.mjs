@@ -3042,3 +3042,48 @@ test('a release that reached production with no deployment observed is ended as 
   assert.equal(note.unchecked, true);
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });
+
+// ---- Issue #378: the factory posts the captures table itself, from the images on the assets branch ----
+function shotsGh({ labels = [L.visualReview, L.checks], dirs = ['2026-11-13T13-48-46-520Z', '2026-11-13T14-18-33-759Z'], images = ['ecran--desktop.png', 'ecran--desktop--sombre.png'], meta = { unchanged: ['autre--mobile.png'] }, comments = [] } = {}) {
+  const gh = fakeGh({ issues: [], prs: [{ number: 7, labels, state: 'open', head: { sha: 's1' } }], comments: { 7: comments } });
+  gh.getContent = async (path, ref) => {
+    gh.calls.push(['getContent', path, ref]);
+    if (ref !== 'claude/factory-assets') return null;
+    if (path === 'pr-7') return dirs.map((name) => ({ name, type: 'dir' }));
+    if (path === `pr-7/${dirs.at(-1)}/compare`) return images.map((name) => ({ name, type: 'file' }));
+    if (path === `pr-7/${dirs.at(-1)}/shots.json` && meta) return { content: Buffer.from(JSON.stringify(meta)).toString('base64') };
+    return null;
+  };
+  return gh;
+}
+const labeledChecks = { kind: 'pr', event: 'pull_request', action: 'labeled', addedLabel: L.checks, number: 7, labels: [L.visualReview, L.checks], fromOwner: true };
+
+test('captures to validate: the factory posts the table of the latest captures, dark rows as images too (#378)', async () => {
+  const gh = shotsGh();
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  const posted = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- shots: claude/factory-assets -->'));
+  assert.equal(posted.length, 1);
+  const body = posted[0][2];
+  const url = (f) => `https://github.com/phoibe/factory/blob/claude/factory-assets/pr-7/2026-11-13T14-18-33-759Z/compare/${f}?raw=true`;
+  assert.ok(body.includes(`| ecran · desktop | ![avant · après](${url('ecran--desktop.png')}) |`), body);
+  assert.ok(body.includes(`| ecran · desktop · sombre | ![avant · après](${url('ecran--desktop--sombre.png')}) |`), body);
+  assert.ok(body.indexOf('ecran · desktop |') < body.indexOf('ecran · desktop · sombre'), 'light rows first');
+  assert.match(body, /non montrés : autre · mobile/);
+  assert.ok(body.startsWith(AGENT_MARKER));
+});
+
+test('the same captures are never posted twice, and nothing is posted outside the captures step (#378)', async () => {
+  const relayFor = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+  const first = shotsGh();
+  await relayFor(first).handle(labeledChecks);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  const again = shotsGh({ comments: [{ body, user: { login: 'github-actions[bot]' } }] });
+  await relayFor(again).handle(labeledChecks);
+  assert.ok(!again.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'already posted');
+  const noReview = shotsGh({ labels: [L.checks] });
+  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });
+  assert.ok(!noReview.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures to validate');
+  const empty = shotsGh({ dirs: [] });
+  await relayFor(empty).handle(labeledChecks);
+  assert.ok(!empty.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures pushed');
+});

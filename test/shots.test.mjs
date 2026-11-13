@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { SHOTS_META, shotsMeta, sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -194,4 +194,9 @@ test('identical captures before and after end in the no-change output, with noth
   assert.deepEqual(files, []);
   assert.deepEqual(unchanged, ['accueil--desktop.png', 'accueil--mobile.png']);
   assert.ok(markdownTable({ repo: 'o/r', dir: 'd', files, unchanged }).includes(NO_CHANGE_MARKER));
+});
+
+test('publish leaves the list of identical screens next to the images, for the factory that posts the table (#378)', () => {
+  assert.equal(SHOTS_META, 'shots.json');
+  assert.deepEqual(JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: ['b--mobile.png'] })), { files: ['a--desktop.png'], unchanged: ['b--mobile.png'] });
 });

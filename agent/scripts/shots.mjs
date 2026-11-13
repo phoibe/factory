@@ -191,6 +191,11 @@ export function markdownTable({ repo, dir, files, unchanged = [] }) {
   return `${mark}\n${table}\n\n_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._`;
 }
 
+// Written next to the images: the factory posts the table itself from that folder (issue #378), and only this file
+// tells it which screens were identical before and after.
+export const SHOTS_META = 'shots.json';
+export const shotsMeta = ({ files, unchanged = [] }) => JSON.stringify({ files, unchanged }, null, 2);
+
 async function publish({ pr, before, after }) {
   const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const repo = git(['config', '--get', 'remote.origin.url']).replace(/^.*github\.com[:/]/, '').replace(/\.git$/, '');
@@ -211,6 +216,7 @@ async function publish({ pr, before, after }) {
     const { files, unchanged } = screensToShow(from, after);
     if (files.length) {
       await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
+      writeFileSync(join(wt, dir, SHOTS_META), shotsMeta({ files, unchanged }));
       git(['add', '.'], wt);
       git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
       // Another PR may have pushed its captures meanwhile: each PR writes its own folder, so a rebase never conflicts.
