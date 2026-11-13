@@ -1163,6 +1163,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // The host did not publish the new version: the old one still runs, nothing is broken. The publication is run
   // once more and the live site checked again; a second failure is only reported, never undone (issue #227).
   async function deployFailed({ pr: prNumber, sha, detail = '', runId = null, retried = false, release = null }) {
+    if (release?.issue && await releaseEnded(release.issue)) return log(`publication of release #${release.issue} reported late: already ended`);
     const def = (await gh.getRepo())?.default_branch || 'main';
     // After a « Mise en production » on a project of the first version (its host publishes the production branch),
     // main may already be further ahead: the production branch is the one to compare with. Otherwise main is.
@@ -1199,6 +1200,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // open an urgent bug that redoes it properly once the undo is live. Never undoes an undo.
   async function prodReport({ pr: prNumber, sha, url, result, detail = '', runId = null, git, redo: stuckCard = null, release = null }) {
     if (stuckCard) return recheckedRedo(Number(stuckCard), { result, detail });
+    // A release already ended (a check the tick started again, reporting after the first one): nothing more (#396).
+    // Except a broken site still at the released commit (the request closed by hand): it is put back as usual.
+    if (release?.issue && await releaseEnded(release.issue) && !(result === 'failed' && await liveAt(sha))) return log(`live check of release #${release.issue} reported late: already ended`);
     if (result !== 'failed' && release?.issue) return releaseLive({ release, url, result, detail });
     if (result !== 'failed') return log(`live site ${result} after #${prNumber}: ${detail}`);
     if (release?.from) return rollbackRelease({ release, sha, detail, runId });
@@ -1618,48 +1622,57 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // GitHub limit, a time limit, a lost runner) left the card « en contrôle » until the owner wrote. The tick starts it
   // again, a few times, then goes on without it: the recette with whatever preview is known, or a release that ends as
   // live but unchecked. Never while an agent works on the PR, nor once the PR left its checks or changed code.
+  async function liveAt(sha) {
+    const ref = (await gh.getBranch?.(PROD_BRANCH).catch(() => null)) ? PROD_BRANCH : ((await gh.getRepo())?.default_branch || 'main');
+    return Boolean(sha) && (await gh.getBranch?.(ref).catch(() => null))?.object?.sha === sha;
+  }
+  async function releaseEnded(n) {
+    return (await gh.getIssue(n).catch(() => null))?.state === 'closed';
+  }
   async function noteWatch(n, state, body) {
     if (!gh.updateIssue) return;
     const current = body ?? (await gh.getIssue(n))?.body;
     await gh.updateIssue(n, { body: writeWatch(current, state) });
   }
   async function retryLostChecks() {
-    for (const p of (await gh.listPulls?.().catch(() => null)) || []) {
+    // One card that fails every time must not stop the rest of the guard: logged, tried again at the next tick.
+    const each = async (n, fn) => { try { await fn(); } catch (e) { if (isRateLimited(e)) throw e; log(`guard: lost check of #${n}: ${e.message}`); } };
+    for (const p of (await gh.listPulls?.().catch(() => null)) || []) await each(p.number, async () => {
       const st = readWatch(p.body);
-      if (st?.kind !== 'preview') continue;
+      if (st?.kind !== 'preview') return;
       const step = watchStep(st, now());
-      if (step === 'wait') continue;
+      if (step === 'wait') return;
       const labels = await liveLabels(p.number);
-      if (!labels.includes(L.checks) || labels.includes(L.running)) continue;
+      if (!labels.includes(L.checks) || labels.includes(L.running)) return;
       const pr = await gh.getPr(p.number);
-      if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) continue;
+      if (pr?.state === 'closed' || pr?.head?.sha !== st.sha) return;
       if (step === 'retry') {
         await noteWatch(p.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, pr.body);
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ previewCheck: { pr: p.number, sha: st.sha } }) });
         log(`guard: preview check of #${p.number} never reported, started again (try ${(st.tries || 0) + 1})`);
-        continue;
+        return;
       }
       log(`guard: preview check of #${p.number} never reported after ${st.tries} tries: the recette goes on without it`);
       const url = await previewUrl(st.sha, p.number, { attempts: 1 });
       await report({ result: 'success', pr: p.number, sha: st.sha, preview: { result: 'skipped', detail: "la vérification de la preview n'a pas pu aller au bout", url } });
-    }
-    for (const issue of (await gh.listIssues({ labels: L.production }).catch(() => null)) || []) {
-      if (issue.pull_request) continue;
+    });
+    for (const issue of (await gh.listIssues({ labels: L.production }).catch(() => null)) || []) await each(issue.number, async () => {
+      if (issue.pull_request) return;
       const st = readWatch(issue.body);
-      if (st?.kind !== 'production' || !st.check?.release) continue;
+      if (st?.kind !== 'production' || !st.check?.release) return;
       const step = watchStep(st, now());
-      if (step === 'wait') continue;
+      if (step === 'wait') return;
       if (step === 'retry') {
         await noteWatch(issue.number, { ...st, at: now(), tries: (st.tries || 0) + 1 }, issue.body);
         const ref = (await gh.getRepo())?.default_branch || 'main';
         await gh.dispatch(PROJECT_WORKFLOW, ref, { payload: JSON.stringify({ prodCheck: st.check }) });
         log(`guard: live check of release #${issue.number} never reported, started again (try ${(st.tries || 0) + 1})`);
-        continue;
+        return;
       }
       log(`guard: live check of release #${issue.number} never reported after ${st.tries} tries: ended as unchecked`);
       await prodReport({ pr: st.check.pr, sha: st.check.sha, result: 'skipped', detail: "la vérification du site en ligne n'a pas pu aller au bout", release: st.check.release });
-    }
+    });
   }
 
   // Checks that failed on an outage (issue #213): the retries due now start here, one per PR, never while an agent
@@ -2228,6 +2241,9 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     // The agent hands the PR back with factory:checks when it is done: from then on a report counts again.
     const live = await liveLabels(prNumber);
     if (live.includes(L.fixing) && !live.includes(L.checks)) return log('stale report: an agent is changing the PR, its own checks will report');
+    // A preview report for a PR no longer waiting for it (closed, or past its checks with no check noted) comes late:
+    // the slow first run of a check the tick started again, or a duplicate. It must not move the card twice (#396).
+    if (preview && (pr.state === 'closed' || (!readWatch(pr.body) && !live.includes(L.checks)))) return log('stale preview report: the PR no longer waits for it');
     // A report answers the preview check the PR waited for, or starts its cycle again: the note is cleared (issue #396).
     if (readWatch(pr.body)) {
       pr = { ...pr, body: writeWatch(pr.body, null) };

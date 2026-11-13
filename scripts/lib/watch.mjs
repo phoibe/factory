@@ -13,12 +13,14 @@ export function readWatch(body) {
 }
 export function writeWatch(body, state) {
   const clean = String(body || '').replace(WATCH_RE, '');
-  return state ? `${clean}\n\n${WATCH_MARKER} ${JSON.stringify(state)} -->` : clean;
+  // < and > escaped: an address or a version holding « --> » must not end the comment early.
+  return state ? `${clean}\n\n${WATCH_MARKER} ${JSON.stringify(state).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->` : clean;
 }
 
-// How long a check may take before it counts as lost: its jobs' time limits in relay.yml, plus the wait for a runner.
-// Preview: preview-open (20 min) then preview (30). Live site: production-open (35), production-smoke (35), production (15).
-export const WATCH_LOST_MS = { preview: 75 * MIN, production: 2 * 60 * MIN };
+// How long a check may take before it counts as lost: its jobs' time limits in relay.yml, plus the wait for runners.
+// Preview: decide (15 min), preview-open (20), preview (30) = 65. Live site: decide (15), production-open (35),
+// production-smoke (35), production (15) = 100. A late report after a restart is dropped by the relay anyway.
+export const WATCH_LOST_MS = { preview: 90 * MIN, production: 2 * 60 * MIN };
 // Checks started again before the factory gives up on one and goes on without it.
 export const WATCH_MAX_TRIES = 2;
 

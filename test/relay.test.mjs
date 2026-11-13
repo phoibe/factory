@@ -344,7 +344,7 @@ test('missing routine secrets explain the fix in French and release the lock', a
 });
 
 test('green checks on a feature: the factory opens the preview first, then opens acceptance with its link', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }] });
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
   await relay.report({ result: 'success', pr: 10 });
   const d = gh.calls.find((c) => c[0] === 'dispatch');
@@ -357,7 +357,7 @@ test('green checks on a feature: the factory opens the preview first, then opens
 });
 
 test('a preview the host protects (skipped) still goes to the recette', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }] });
   await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'skipped', url: 'https://p.example' } });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[2] === L.acceptance));
 });
@@ -392,7 +392,7 @@ test('« nothing to test » is ignored when a screen changed', async () => {
 });
 
 test('when no preview shows up, the acceptance message names no host in particular', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }] });
   gh.deploymentStatuses = async () => [{ state: 'pending' }];
   const relay = createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} });
   await relay.report({ result: 'success', pr: 10 });
@@ -1482,7 +1482,7 @@ test('dispatched checks: the preview and live-site checks become job outputs, a 
 });
 
 test('after a merge, the live site is checked once the host deploys it (only for a deployed project)', async () => {
-  const mk = (deployments) => fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments });
+  const mk = (deployments) => fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks], merge_commit_sha: 'm1' }], deployments });
   const gh = mk([{ id: 1, environment: 'Production' }]);
   await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10, preview: { result: 'passed', url: 'u' } });
   await createRelay({ gh, repo: 'r', config, env, log: quiet, sleep: async () => {} }).handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [L.acceptance], text: 'ok', fromOwner: true });
@@ -1495,7 +1495,7 @@ test('after a merge, the live site is checked once the host deploys it (only for
 
 test('a host that reports no deployment (Vercel on yoldmewhen2) is checked on the site address once it builds the PRs', async () => {
   const mk = ({ homepage = 'https://app.example', siteUrl, vercel = true, deployments = [] } = {}) => {
-    const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, merge_commit_sha: 'm1' }], deployments, comments: { 10: vercel ? [{ user: { login: 'vercel[bot]' }, body: 'Ready' }] : [] } });
+    const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks], merge_commit_sha: 'm1' }], deployments, comments: { 10: vercel ? [{ user: { login: 'vercel[bot]' }, body: 'Ready' }] : [] } });
     gh.getRepo = async () => ({ default_branch: 'main', homepage });
     return { gh, relay: createRelay({ gh, repo: "r", config: siteUrl ? { ...config, siteUrl } : config, env, log: quiet, sleep: async () => {} }) };
   };
@@ -1920,7 +1920,7 @@ test('a late preview never makes the report wait under the queue lock', async ()
 });
 
 test('the preview job waits for a late preview, outside the lock, then the recette gets its link without waiting', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }] });
   let polls = 0;
   gh.deploymentStatuses = async () => (++polls < 4 ? [{ state: 'pending' }] : [{ state: 'success', environment_url: 'https://late.example' }]);
   let waited = 0;
@@ -2318,7 +2318,7 @@ test('forwardedAnswer reads back what answerForPr writes', () => {
 
 // ---- Production on approval (issue #294) ----
 function prodGh({ mode = 'approval', branches = { main: 'm1' }, awaiting = [], body = 'Closes #1', issues = [] } = {}) {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, ...issues], prs: [{ number: 10, title: 'Mode sombre', body, head: { sha: 'abc' }, merge_commit_sha: 'm1' }, ...awaiting], deployments: [{ id: 1, environment: 'Production' }] });
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, ...issues], prs: [{ number: 10, title: 'Mode sombre', body, head: { sha: 'abc' }, merge_commit_sha: 'm1', labels: [L.checks] }, ...awaiting], deployments: [{ id: 1, environment: 'Production' }] });
   gh.branches = { ...branches };
   gh.getBranch = async (name) => (gh.branches[name] ? { object: { sha: gh.branches[name] } } : null);
   gh.createRef = async (name, sha) => { gh.calls.push(['createRef', name, sha]); gh.branches[name] = sha; };
@@ -2401,7 +2401,7 @@ test('a release that breaks the live site puts main back where it was (preprod k
 });
 
 test('a release rollback does not rewrite history when main moved since the release: the owner is told, nothing is reset', async () => {
-  const { gh, relay } = prodGh({ branches: { main: 'm3', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production], open: false }] });
+  const { gh, relay } = prodGh({ branches: { main: 'm3', preprod: 'p1' }, issues: [{ number: 50, labels: [L.production] }] });
   gh.resetRef = async (name, sha) => { gh.calls.push(['resetRef', name, sha]); gh.branches[name] = sha; };
   gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue', title, body, labels]); return { number: 60 }; };
   gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: 'Closes #1' });
@@ -3374,7 +3374,7 @@ test('#396: starting the preview check notes it on the PR, and its report clears
 });
 
 test('#396: a preview check that never reported is started again by the tick', async () => {
-  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 });
+  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 });
   await relay().handle(tick);
   assert.deepEqual(previewChecks(gh), [{ pr: 10, sha: 'abc' }]);
   assert.deepEqual(watchOf(pr.body), { kind: 'preview', sha: 'abc', at: NOW, tries: 1 });
@@ -3384,9 +3384,9 @@ test('#396: a preview check that never reported is started again by the tick', a
 test('#396: a preview check still in its time, on older code, or while an agent works is left alone', async () => {
   for (const [watch, labels] of [
     [{ kind: 'preview', sha: 'abc', at: NOW - 20 * 60_000, tries: 0 }, [L.checks]],
-    [{ kind: 'preview', sha: 'old', at: NOW - 80 * 60_000, tries: 0 }, [L.checks]],
-    [{ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 }, [L.checks, L.running]],
-    [{ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 0 }, [L.acceptance]],
+    [{ kind: 'preview', sha: 'old', at: NOW - 100 * 60_000, tries: 0 }, [L.checks]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.checks, L.running]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.acceptance]],
   ]) {
     const { gh, relay } = watchedPr(watch, labels);
     await relay().handle(tick);
@@ -3395,7 +3395,7 @@ test('#396: a preview check still in its time, on older code, or while an agent 
 });
 
 test('#396: after the last try, the factory gives up on the check and the owner gets the recette all the same', async () => {
-  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 80 * 60_000, tries: 2 });
+  const { gh, pr, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 2 });
   await relay().handle(tick);
   assert.deepEqual(previewChecks(gh), []);
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance));
@@ -3454,4 +3454,36 @@ test('#396: a release whose publication is re-run: its note follows the new atte
   assert.equal(watch.at, NOW);
   assert.equal(watch.check.deployRetried, true);
   assert.deepEqual(watch.check, prodChecksOf(gh)[0]);
+});
+
+test('#396: a late preview report (the PR already left its checks) moves nothing', async () => {
+  const { gh, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW, tries: 1 }, [L.checks]);
+  const sent = [];
+  const r = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), now: () => NOW, log: quiet, sleep: async () => {} });
+  await r.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'passed', url: 'https://preview.example' } });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 10 && c[2] === L.acceptance), 'the first report opens the recette');
+  const before = gh.calls.length;
+  await r.report({ result: 'success', pr: 10, sha: 'abc', preview: { result: 'failed', detail: 'flaky', url: 'https://preview.example' } });
+  assert.equal(gh.calls.length, before, 'the late one changes nothing');
+  assert.equal(sent.length, 0, 'no agent sent');
+  void relay;
+});
+
+test('#396: a late live-check report for a release already ended moves nothing', async () => {
+  const { gh, issue, relay } = watchedRelease({ kind: 'production', check: releaseCheck, at: NOW, tries: 1 });
+  issue.open = false;
+  gh.branches.main = 'm0'; gh.branches.production = 'm0'; // the first report already put the old version back
+  await relay().prodReport({ ...releaseCheck, result: 'failed', detail: 'boom' });
+  await relay().deployFailed({ ...releaseCheck, detail: 'refused' });
+  assert.ok(!gh.calls.some((c) => ['comment', 'updateRef', 'close'].includes(c[0])), JSON.stringify(gh.calls));
+});
+
+test('#396: one lost check that fails every time does not stop the others', async () => {
+  const { gh, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 2 });
+  gh.deployments = async () => { throw new Error('boom'); };
+  gh.listComments = async () => { throw new Error('boom'); };
+  const issue = { number: 50, labels: [L.production], body: `x\n\n<!-- factory-watch ${JSON.stringify({ kind: 'production', check: releaseCheck, at: NOW - 3 * 60 * 60_000, tries: 0 })} -->` };
+  gh.listIssues = async ({ labels }) => (labels === L.production ? [issue] : []);
+  await relay().handle(tick).catch(() => {});
+  assert.ok(gh.calls.some((c) => c[0] === 'dispatch' && /prodCheck/.test(c[3]?.payload || '')));
 });
