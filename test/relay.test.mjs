@@ -3244,3 +3244,51 @@ test('a rate limit while reading the captures folder is not swallowed either (#3
   gh.getContent = async () => { throw new RateLimited(90_000); };
   await assert.rejects(createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks), RateLimited);
 });
+
+// Issue #384: every factory step that may free a place fills it at once, instead of waiting for the rare tick.
+const startedBuild = (gh, n) => gh.calls.some((c) => c[0] === 'add' && c[1] === n && c[2] === L.building);
+
+test('the factory blocking a card after red checks starts the queued card in the place it leaves', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER })) } };
+  const gh = fakeGh(state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'failure', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
+  assert.ok(startedBuild(gh, 4));
+  assert.equal(payloadOf(sent.at(-1).init.body).issue, 4);
+});
+
+test('the end of an agent run that kept its lock starts the queued card', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.building, L.blocked, L.running] }, { number: 5, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }], prs: [] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).release({ issue: 3, pr: null });
+  assert.ok(startedBuild(gh, 4));
+});
+
+test('a refill after a factory step never starts a queued card while the factory is still full', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building, L.running] }, { number: 4, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: 'Closes #3', head: { sha: 'abc' } }], comments: { 10: [1, 2, 3].map(() => ({ body: CHECKS_FAILED_MARKER })) } };
+  const gh = fakeGh(state);
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.report({ result: 'failure', pr: 10 });
+  await relay.release({ issue: 3, pr: null });
+  assert.ok(!startedBuild(gh, 4));
+  assert.ok(state.issues[3].labels.includes(L.queued));
+});
+
+test('a merge at the end of the checks starts the queued card only once', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }, { number: 2, labels: [L.feature, L.building] }, { number: 4, labels: [L.feature, L.queued] }, { number: 6, labels: [L.feature, L.queued] }],
+    prs: [{ number: 10, body: `Closes #1\n${NOTHING_TO_TEST_MARKER}`, head: { sha: 'abc' }, labels: [L.checks] }] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'success', pr: 10 });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 10));
+  assert.ok(startedBuild(gh, 4));
+  assert.ok(!startedBuild(gh, 6));
+});
+
+test('a failed deploy report fills a free place', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'm1' }, issues: [{ number: 4, labels: [L.feature, L.queued] }] });
+  await relay().deployFailed({ pr: 10, sha: 'm1', retried: true });
+  assert.ok(startedBuild(gh, 4));
+});

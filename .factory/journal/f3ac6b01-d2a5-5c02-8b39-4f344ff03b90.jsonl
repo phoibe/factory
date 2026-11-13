@@ -1,0 +1,6 @@
+{"t":"2026-11-13T15:04:08.480Z","kind":"run","stage":"build","issue":384,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-13T15:04:51.157Z","kind":"skill","name":"test-driven-development","id":"toolu_018StRfUm4N4UsSvww4Q2JDs"}
+{"t":"2026-11-13T15:05:17.941Z","kind":"test","cmd":"cat >> test/relay.test.mjs <<'EOF'\n\n// Issue #384: every factory step that may free a place fills it at once, instead of waiting for the rare tick.\nconst startedBuild = (gh, n) => gh.calls.some((c) =>","ok":false,"id":"toolu_01HVzJmBzf6aHzquqM5L1mEW"}
+{"t":"2026-11-13T15:05:57.371Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=…  const woken = new Set(); // cards wakeWaiters resumed during this relay run\"\"\",\"\"\"  const woken = new Set(); // cards wakeWaiters resumed during this relay run\n  let deq","ok":true,"id":"toolu_01A16cXdVxhCgUW8r37CuqJH"}
+{"t":"2026-11-13T15:06:34.786Z","kind":"test","cmd":"grep -A12 '\"scripts\"' package.json; npm test 2>&1 | tail -8","ok":true,"id":"toolu_01KM5tDKq23eoeUuLbPRPG6A"}
+{"t":"2026-11-13T15:07:14.866Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; npm run typecheck 2>&1 | tail -2; npm run lint 2>&1 | tail -2; npm run build 2>&1 | tail -2","ok":true,"id":"toolu_01Aoo448tCiBJp4YMPW79Enc"}

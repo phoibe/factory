@@ -188,6 +188,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   // A place is taken only while the agent builds: once the card's PR is open (checks, captures, recette), the
   // next card can start (owner's rule). A blocked card has given up its place too, until the owner answers.
   const woken = new Set(); // cards wakeWaiters resumed during this relay run
+  let dequeues = 0; // queue checks made during this relay run (see refilling)
   // A blocked card's comments, read once per relay run while the card does not change (its `updated_at` moves with
   // every new comment): the queue is checked several times per run, and the alerts read the same cards.
   const commentCache = new Map();
@@ -391,6 +392,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
   }
 
   async function dequeue({ freed = null } = {}) {
+    dequeues += 1;
     await wakeWaiters(freed).catch((e) => log(`waits: ${e.message}`));
     let free = config.maxParallel - (await inFlight(freed));
     if (free <= 0) return;
@@ -2061,7 +2063,17 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     } catch (e) { log(`retry after an outage not started (${String(e.message || e).slice(0, 80)}): the tick will`); }
   }
 
-  return { handle, report, retrySoon, dequeue, release, fabrication, notifyWaiting, prodReport, deployFailed, releaseChecking, liveUrl, previewWait, outputs };
+  // Issue #384: the factory's own steps (a report that merges or blocks a card, the end of an agent run that kept its
+  // lock, a live check) write with the workflow's token, which raises no event: nothing else would fill the place they
+  // free before the rare scheduled tick. Each fills it before returning, unless the step already did.
+  const refilling = (step) => async (...args) => {
+    const before = dequeues;
+    const result = await step(...args);
+    if (dequeues === before) await dequeue().catch((e) => log(`queue check: ${e.message}`));
+    return result;
+  };
+
+  return { handle, report: refilling(report), retrySoon, dequeue, release: refilling(release), fabrication, notifyWaiting, prodReport: refilling(prodReport), deployFailed: refilling(deployFailed), releaseChecking, liveUrl, previewWait, outputs };
 }
 
 // The smoke check's result file (smoke.mjs --out). A missing or broken file means the check could not run.
@@ -2108,7 +2120,8 @@ async function main() {
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
-    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
+    // Releasing may free a place that is filled at once (issue #384): same lock as the decisions.
+    await withLock(gh.queueLock, () => relay.release(JSON.parse(process.env.PAYLOAD || '{}')));
   } else if (command === 'preview-report') {
     // After the preview check (smoke.mjs): the report goes on, with the preview's result.
     const check = readCheck();
