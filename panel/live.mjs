@@ -85,11 +85,10 @@ export function agoText(ms) {
 }
 
 // Text of the « En direct » line. It must never be empty: the line changes height when its text arrives,
-// which pushes every card down after they were measured for the slide animation.
+// which pushes every card down after they were measured for the slide animation. `ms` null: the project was never read yet.
 export function statusText(failures, ms) {
-  return failures > 0
-    ? 'Connexion à GitHub perdue · nouvel essai automatique'
-    : `En direct · à jour ${agoText(ms)}`;
+  if (failures > 0) return 'Connexion à GitHub perdue · nouvel essai automatique';
+  return ms == null ? 'En direct · mise à jour…' : `En direct · à jour ${agoText(ms)}`;
 }
 
 // Milliseconds between two refreshes: 8 s when the owner is active, 30 s when idle, doubled after each failure, at most 5 min.
