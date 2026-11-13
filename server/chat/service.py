@@ -3,12 +3,13 @@
 POST /chat        {repo, conversation: id|null, message, images: [paths]}  ->  NDJSON stream of events
 GET  /health      wakes the server up when the panel opens the « Agent » tab
 
-The caller proves who it is with its GitHub token (the panel's): only the factory's owner, only on his own
-repositories. The same token reads the project and writes the conversation, so the server keeps no GitHub secret.
+The caller proves who it is with a read-only GitHub token (the panel's second token): only the factory's owner,
+only on his own repositories. The server never writes to GitHub: the panel saves the conversation and creates the
+issues the agent proposes with the owner's full token, which never leaves the browser. A token that can write is
+refused, so a leak of what the server receives can change nothing.
 """
 import asyncio
 import base64
-import copy
 import json
 import os
 import random
@@ -25,8 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core import (
-    BRANCH, CID_RE, SYSTEM, add_exchange, build_prompt, check_access, events_from_line, extract_issues,
-    new_conversation, upsert_index, visible_text,
+    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, visible_text,
 )
 
 ATTACHMENTS = "factory-attachments"
@@ -35,10 +35,9 @@ MAX_IMAGES = 4
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
-SAVE_PAUSE = 0.4  # seconds, grows with each try
-SAVE_TRIES = 5  # two saves that cross: the later one starts again from the latest version this many times
-BRANCH_README = "# Discussions\n\nConversations du chat du tableau de suivi avec l'agent. Ne pas fusionner.\n"
-VERCEL_OFF = '{ "git": { "deploymentEnabled": false } }\n'
+# A write with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
+# can write with a 422 (invalid body), so nothing is ever written.
+WRITE_PROBE = ".factory-write-probe"
 
 
 def now_iso():
@@ -66,22 +65,10 @@ class GitHub:
         r.raise_for_status()
         return r.content if raw else r.json()
 
-    async def send(self, method, path, body):
-        r = await self.client.request(method, path.replace("{repo}", self.repo), json=body)
-        r.raise_for_status()
-        return r.json() if r.content else None
-
-    async def ensure_branch(self, name, files):
-        if await self.get(f"/repos/{{repo}}/branches/{name}"):
-            return
-        tree = await self.send("POST", "/repos/{repo}/git/trees", {"tree": [
-            {"path": p, "mode": "100644", "type": "blob", "content": c} for p, c in files.items()]})
-        commit = await self.send("POST", "/repos/{repo}/git/commits", {"message": f"chore(factory): {name} branch", "tree": tree["sha"], "parents": []})
-        try:
-            await self.send("POST", "/repos/{repo}/git/refs", {"ref": f"refs/heads/{name}", "sha": commit["sha"]})
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code != 422:  # 422: created meanwhile
-                raise
+    async def can_write(self):
+        """True when the token may change the project's files."""
+        r = await self.client.put(f"/repos/{self.repo}/contents/{WRITE_PROBE}", json={})
+        return r.status_code not in (401, 403, 404)
 
     async def read_json(self, path, default):
         meta = await self.get(f"/repos/{{repo}}/contents/{path}", ref=BRANCH)
@@ -92,12 +79,6 @@ class GitHub:
         # Over 1 MB the contents API sends no content: ask for the raw file instead.
         raw = await self.get(f"/repos/{{repo}}/contents/{path}", raw=True, ref=BRANCH)
         return json.loads(raw.decode()), meta["sha"]
-
-    async def write_json(self, path, data, sha, message):
-        body = {"message": message, "branch": BRANCH, "content": base64.b64encode((json.dumps(data, ensure_ascii=False, indent=1) + "\n").encode()).decode()}
-        if sha:
-            body["sha"] = sha
-        return await self.send("PUT", f"/repos/{{repo}}/contents/{path}", body)
 
 
 def create_app(owner, github_api="https://api.github.com", claude_bin="claude", repos_dir="/repos", model="sonnet",
@@ -180,6 +161,9 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
                 me = None
             refused = check_access(owner, (me or {}).get("login"), repo)
+            if not refused and await gh.can_write():
+                await gh.close()
+                return JSONResponse({"error": "Ce jeton peut modifier vos projets : la discussion n'accepte qu'un jeton de lecture.", "code": "writable"}, 403)
         except httpx.HTTPError:
             await gh.close()
             return JSONResponse({"error": "GitHub ne répond pas, réessayez dans un instant."}, 503)
@@ -265,41 +249,9 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 err = (await proc.stderr.read()).decode(errors="replace")[-300:]
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
-            created, refused = [], 0
-            for issue in wanted:
-                labels = ["factory:bug"] if issue["kind"] == "bug" else ["factory:feature", "factory:kept"]
-                body = f"{issue['body']}\n\n_Demandé depuis le chat du tableau de suivi._"
-                if issue["kind"] != "bug":
-                    # The agent marker makes the factory leave a new feature in the list instead of starting it
-                    # at once: it is picked later by the queue rules. A bug still starts right away. The owner
-                    # asked for it, so it is kept: never an « idée à trier ».
-                    body = f"<!-- factory-agent -->\n{body}"
-                try:
-                    made = await gh.send("POST", "/repos/{repo}/issues", {
-                        "title": issue["title"], "labels": labels, "body": body})
-                except Exception:
-                    # Going on: failing here would make the panel offer to resend, and create the others twice.
-                    refused += 1
-                    continue
-                created.append({**issue, "url": made["html_url"], "number": made["number"]})
-            if refused:
-                lost = "Une demande n'a pas pu être créée" if refused == 1 else f"{refused} demandes n'ont pas pu être créées"
-                text += f"\n\n_{lost} sur GitHub : redemandez dans un moment._"
-            mine, at = {"text": message, "images": images}, now_iso()
-            # The answer is given and the issues exist: a failed save must not make the panel offer to send the
-            # message again (that would create the issues twice). It is reported as « not saved » instead.
-            saved = True
-            yield ev({"type": "status", "text": "Enregistre…"})
-            try:
-                # Shielded: a phone that drops during the save must not leave the conversation half written.
-                conv = await asyncio.shield(save(gh, cid, conv, mine, text, at, created))
-            except Exception:
-                saved = False
-                add_exchange(conv, mine, text, at, created)
-            # Saved before answering: if the phone drops during the answer, the conversation (and the issues it
-            # created) is already stored, so a resend does not create the issues twice.
-            yield ev({"type": "answer", "text": text, "issues": [{"title": i["title"], "url": i["url"], "kind": i["kind"]} for i in created]})
-            yield ev({"type": "done", "saved": saved, "conversation": {"id": conv["id"], "title": conv["title"], "updated": conv["updated"], "state": "open"}})
+            # The panel creates the issues and saves the exchange with the owner's full token: the server never writes.
+            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": conv["title"]}})
+            yield ev({"type": "done"})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})
         finally:
@@ -314,32 +266,5 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 if folder:
                     shutil.rmtree(folder, ignore_errors=True)
                 await gh.close()
-
-    async def save(gh, cid, base, mine, text, at, created):
-        """Adds the exchange to the latest stored conversation, never over an exchange saved meanwhile (another
-        device, a second message sent before this answer came). Returns the conversation as saved."""
-        await gh.ensure_branch(BRANCH, {"README.md": BRANCH_README, "vercel.json": VERCEL_OFF})
-        path = f"chats/{cid}.json"
-        for attempt in range(SAVE_TRIES):
-            latest, sha = await gh.read_json(path, None)
-            conv = add_exchange(latest or copy.deepcopy(base), mine, text, at, created)
-            conv["id"] = cid
-            try:
-                # With the sha just read, GitHub refuses the write if another save landed in between.
-                await gh.write_json(path, conv, sha, f"chore(factory): chat {cid}")
-                break
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
-                    raise
-                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())  # GitHub may still serve the old version
-        for attempt in range(SAVE_TRIES):  # the panel may have changed the index meanwhile (« Terminer »)
-            index, sha = await gh.read_json("index.json", [])
-            try:
-                await gh.write_json("index.json", upsert_index(index, conv), sha, "chore(factory): chat index")
-                return conv
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code not in (409, 422) or attempt == SAVE_TRIES - 1:
-                    raise
-                await asyncio.sleep(SAVE_PAUSE * (attempt + 1) * random.random())
 
     return app

@@ -1,0 +1,11 @@
+{"t":"2026-11-13T21:55:49.191Z","kind":"run","stage":"build","issue":395,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-13T21:57:26.733Z","kind":"skill","name":"writing-plans","id":"toolu_017DQ69qQ1GDCME223t4wpbA"}
+{"t":"2026-11-13T21:57:43.498Z","kind":"skill","name":"executing-plans","id":"toolu_01VKTaDrpxob1jSPdgn67aUf"}
+{"t":"2026-11-13T21:57:43.660Z","kind":"skill","name":"test-driven-development","id":"toolu_01USSBNrrPhtfqhbeHksYZnm"}
+{"t":"2026-11-13T21:58:23.122Z","kind":"test","cmd":"npm test -- test/chat-server.test.mjs 2>&1 | grep -E \"FAIL|Error|^#|test_\" | head -30","ok":true,"id":"toolu_014ybKREerdTqRQxKknKTz4Z"}
+{"t":"2026-11-13T21:59:06.620Z","kind":"test","cmd":"npm test > /tmp/claude-0/t.log 2>&1; grep -E \"^not ok|^# (pass|fail)\" /tmp/claude-0/t.log; python3 -m unittest discover -s server/chat 2>&1 | grep -E \"^(FAIL|ERROR)|Ran|FAILED\"","ok":true,"id":"toolu_015boaDpyoNqvzZ2V6E1J4eE"}
+{"t":"2026-11-13T21:59:21.739Z","kind":"test","cmd":"pip install -q \"fastapi[standard]==0.115.12\" httpx=… 2>&1 | tail -2; python3 -m unittest discover -s server/chat 2>&1 | grep -E \"^(FAIL|ERROR)|Ran|FAILED|OK\"","ok":true,"id":"toolu_01SV9a6R2f78GgCWYgqKh4jN"}
+{"t":"2026-11-13T21:59:47.065Z","kind":"test","cmd":"cd /home/user/factory; which -a python3 pip; python3 -m pip install -q \"fastapi[standard]==0.115.12\" httpx=… 2>&1 | grep -v WARNING | tail -2; python3 -m unittest discover -s server/chat 2>&1 | grep -","ok":false,"id":"toolu_01PVh6ht1pyYTvLNDgUN5g1S"}
+{"t":"2026-11-13T22:00:32.846Z","kind":"test","cmd":"npm test > /tmp/claude-0/t.log 2>&1; grep -E \"^not ok|^# (pass|fail)\" /tmp/claude-0/t.log","ok":false,"id":"toolu_01GjtEtChhZ4rhYYHEwNXZVf"}
+{"t":"2026-11-13T22:00:48.655Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… caller proves who it is with its GitHub token (the panel's): only the factory's owner, only on his own\nrepositories. The same token reads the project and writes the conve","ok":true,"id":"toolu_01LffUrLhFhSmAqrPVZqGR26"}
+{"t":"2026-11-13T22:01:03.253Z","kind":"test","cmd":"sed -i '/^import copy$/d' server/chat/service.py && python3 - <<'EOF'\np=…\ns=…\nfor old in ['''        self.fail_saves = False\n''','''        self.on_read = None  # name -> hook run once after that file","ok":true,"id":"toolu_01NxSszWs7TjVAWkK9VEa6Bq"}
