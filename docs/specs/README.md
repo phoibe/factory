@@ -5,4 +5,5 @@ Chaque spec validée d'une feature ou d'un bug, telle qu'elle a été livrée. C
 | N° | Titre | En une phrase | Date |
 | --- | --- | --- | --- |
 | 359 | [Ranger les specs validées en documents dans chaque projet](359-ranger-les-specs-validees-en-documents-dans-chaque-projet.md) | Chaque spec validée d'une feature ou d'un bug devient un document rangé dans son projet, à côté du glossaire et des décisions, avec un sommaire qui les liste toutes. | 2026-11-12 |
+| 369 | [Afficher l'écart entre la production et la dernière version, sur tous les projets](369-afficher-l-ecart-entre-la-production-et-la-derniere-version.md) | Chaque projet affiche, sous son nom, si son site en ligne est à jour ou combien de modifications validées n'y sont pas encore, avec leur liste. | 2026-11-13 |
 | 370 | [Suivre une mise en production depuis le tableau de bord](370-suivre-une-mise-en-production-depuis-le-tableau-de-bord.md) | Chaque mise en production lancée depuis le tableau de bord devient une carte dans l'onglet « Suivi », qui montre en direct où elle en est, puis son résultat (ce qui est en ligne, ou pourquoi ça n'a pas marché). | 2026-11-13 |
