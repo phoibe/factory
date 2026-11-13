@@ -47,7 +47,8 @@ class FakeGitHub:
         self.user_error = None  # exception raised on GET /user
         self.big = set()  # files whose contents API answer has an empty content (over 1 MB)
         self.raw_calls = 0
-        self.writes = []  # every write that is not the write probe
+        self.writes = []
+        self.probe_limited = False  # every write that is not the write probe
 
 
     def __call__(self, request):
@@ -62,6 +63,8 @@ class FakeGitHub:
             # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
             auth = request.headers["authorization"]
             writer = "writer" in auth or ("issues" in auth and path.endswith("/issues"))
+            if writer and self.probe_limited:  # GitHub's rate limit is a 403 too
+                return httpx.Response(403, json={}, headers={"x-ratelimit-remaining": "0"})
             return httpx.Response(422 if writer else 403, json={})
         if method != "GET":
             self.writes.append((method, path))
@@ -149,6 +152,12 @@ class ServiceTest(unittest.TestCase):
         r, _ = self.post("goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
+
+    def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
+        self.gh.probe_limited = True
+        r, _ = self.post("goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 503)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
 
     def test_the_next_message_carries_the_stored_conversation(self):
         cid = "20261113-101010-abcde"

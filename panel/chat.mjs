@@ -223,7 +223,18 @@ export const WRITABLE_TOKEN = 'Ce jeton peut modifier vos projets : créez-en un
 // Writes with an empty body: GitHub refuses a read-only token (403) before reading the body; a token that may write
 // gets a 422 (invalid body). Nothing is ever written. Same probes as the server's (files, requests, pull requests).
 export const WRITE_PROBES = [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']];
-export const probeSaysWritable = (status) => ![401, 403, 404].includes(status);
+export const probeSaysWritable = (status) => ![401, 403, 404, 410].includes(status);
+// GitHub is unavailable or limiting us: its rate limit is a 403 too, which must never read as « cannot write ».
+export const githubBusy = (status, headers) => status >= 500 || status === 429
+  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after')));
+
+// The requests proposed in one answer, as the panel will create them with the full token: never more than the
+// server's limit, never anything but a bug or a feature with a title (the chat server is not trusted with writes).
+const MAX_ISSUES = 3;
+export const wantedIssues = (list) => (Array.isArray(list) ? list : [])
+  .filter((i) => i && typeof i.title === 'string' && i.title.trim())
+  .slice(0, MAX_ISSUES)
+  .map((i) => ({ kind: i.kind === 'bug' ? 'bug' : 'feature', title: i.title.trim().slice(0, 200), body: String(i.body ?? '').slice(0, 60000) }));
 
 // Why a pasted read token is refused, or null when it is fine.
 export function readTokenProblem({ same, status, login, owner, readable, writable }) {

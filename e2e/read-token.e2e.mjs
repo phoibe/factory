@@ -129,3 +129,21 @@ test('si l\'enregistrement échoue, la réponse reste affichée avec la mention,
     assert.equal(chatCalls.length, 1);
   });
 });
+
+test('deux messages de suite dans la même conversation sont bien enregistrés tous les deux', async () => {
+  await withPanel({ chatServer: { answer: 'Réponse.' } }, async ({ page, url, chatCalls }) => {
+    await page.goto(url);
+    await agent(page);
+    for (const [i, text] of ['Premier', 'Deuxième', 'Troisième'].entries()) {
+      await send(page, text);
+      await page.waitForFunction((n) => !document.getElementById('chat-send').disabled && document.querySelectorAll('#chat-messages .msg').length >= n, (i + 1) * 2);
+    }
+    assert.equal(chatCalls.length, 3);
+    assert.equal(await page.locator('#chat-messages').getByText('pas pu être enregistrée').count(), 0);
+    assert.equal(await page.locator('#toast.show').count(), 0, await page.locator('#toast').textContent());
+    await page.reload();
+    await agent(page);
+    await page.locator('.conv', { hasText: 'Premier' }).click();
+    await page.locator('#chat-messages').getByText('Troisième').waitFor();
+  });
+});

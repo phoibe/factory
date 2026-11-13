@@ -48,6 +48,12 @@ def new_id():
     return time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + "-" + "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
 
 
+def busy(r):
+    """GitHub is unavailable or limiting this token."""
+    limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers)
+    return r.status_code >= 500 or r.status_code == 429 or limited
+
+
 class GitHub:
     def __init__(self, token, repo, api, transport=None):
         self.repo = repo
@@ -68,9 +74,9 @@ class GitHub:
     async def can_write(self):
         """True when the token may change the project's files, issues or pull requests."""
         answers = await asyncio.gather(*(self.client.request(m, f"/repos/{self.repo}/{p}", json={}) for m, p in WRITE_PROBES))
-        if any(r.status_code >= 500 or r.status_code == 429 for r in answers):
+        if any(busy(r) for r in answers):  # a rate limit is a 403 too: never read it as « cannot write »
             raise httpx.TransportError("github")
-        return any(r.status_code not in (401, 403, 404) for r in answers)
+        return any(r.status_code not in (401, 403, 404, 410) for r in answers)
 
     async def read_json(self, path, default):
         meta = await self.get(f"/repos/{{repo}}/contents/{path}", ref=BRANCH)
@@ -155,8 +161,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 me = await gh.get("/user")
             except httpx.HTTPStatusError as e:
                 r = e.response
-                limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers)
-                if r.status_code >= 500 or r.status_code == 429 or limited:
+                if busy(r):
                     raise httpx.TransportError("github") from e
                 if r.status_code == 401:
                     await gh.close()

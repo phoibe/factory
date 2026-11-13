@@ -99,6 +99,9 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         writes.push({ method: 'PUT', path, body: req.postDataJSON() });
         if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
         const name = /^\/repos\/o\/r\/contents\/(?:chats\/(.+)\.json|index\.json)$/.exec(path);
+        // As GitHub: a write with a stale sha (or none on an existing file) is refused.
+        const stored = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index.length ? chatBranch.index : null);
+        if (stored && req.postDataJSON().sha !== `s${JSON.stringify(stored).length}`) return json({ message: 'sha mismatch' }, 409);
         const data = JSON.parse(Buffer.from(req.postDataJSON().content, 'base64').toString());
         if (name?.[1]) chatBranch.chats[name[1]] = data; else if (name) chatBranch.index = data;
         return json({ content: { sha: 'n' } });
@@ -126,7 +129,9 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         const data = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index);
         if (!data) return json({ message: 'Not Found' }, 404);
         if (req.headers().accept === 'application/vnd.github.raw') return json(data);
-        return json({ content: Buffer.from(JSON.stringify(data)).toString('base64'), encoding: 'base64', sha: `s${JSON.stringify(data).length}` });
+        // GitHub lets the browser keep a contents answer for 60 s.
+        return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'private, max-age=60' },
+          body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), encoding: 'base64', sha: `s${JSON.stringify(data).length}` }) });
       }
       if (chatServer && path === '/repos/o/r/branches/factory-chat') return json({ name: 'factory-chat' });
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });

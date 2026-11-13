@@ -103,3 +103,25 @@ test('a conversation id from the chat server is used only when it is a plain id 
   assert.match(conversationId(undefined, null, new Date('2026-11-13T10:11:12Z')), /^20261113-101112-[a-z0-9]{5}$/);
   assert.equal(conversationId('x'.repeat(65), 'c1'), 'c1');
 });
+
+test('a rate-limited GitHub answer (403 with no request left, or retry-after) is « GitHub down », never « cannot write »', async () => {
+  const { githubBusy, probeSaysWritable: writable } = await import('../panel/chat.mjs');
+  const h = (o) => new Headers(o);
+  assert.equal(githubBusy(403, h({ 'x-ratelimit-remaining': '0' })), true);
+  assert.equal(githubBusy(403, h({ 'retry-after': '60' })), true);
+  assert.equal(githubBusy(429, h({})), true);
+  assert.equal(githubBusy(502, h({})), true);
+  assert.equal(githubBusy(403, h({ 'x-ratelimit-remaining': '12' })), false);
+  assert.equal(writable(410), false); // issues turned off on the project: nobody can open one
+});
+
+test('the panel creates at most 3 well-formed requests from one answer, whatever the chat server sends', async () => {
+  const { wantedIssues } = await import('../panel/chat.mjs');
+  const ok = (t) => ({ kind: 'feature', title: t, body: 'b' });
+  assert.deepEqual(wantedIssues([ok('a'), ok('b'), ok('c'), ok('d')]).map((i) => i.title), ['a', 'b', 'c']);
+  assert.deepEqual(wantedIssues([{ kind: 'bug', title: 'x', body: 'y' }, { kind: 'autre', title: 'z', body: '' }, { title: '' }, null, 'x']),
+    [{ kind: 'bug', title: 'x', body: 'y' }, { kind: 'feature', title: 'z', body: '' }]);
+  assert.equal(wantedIssues([{ kind: 'bug', title: 't'.repeat(500), body: 'b'.repeat(70000) }])[0].title.length, 200);
+  assert.equal(wantedIssues([{ kind: 'bug', title: 't', body: 'b'.repeat(70000) }])[0].body.length, 60000);
+  assert.deepEqual(wantedIssues('nope'), []);
+});

@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=25';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId } from './chat.mjs?v=16';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
@@ -1790,11 +1790,12 @@ function readTokenRefused(message) {
 async function checkReadToken(value) {
   if (value === token) return readTokenProblem({ same: true });
   const call = (path, init = {}) => fetch(API + path, { ...init, cache: 'no-store', headers: { authorization: `Bearer ${value}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) } });
-  const down = (r) => r.status >= 500 || r.status === 429;
+  const down = (r) => githubBusy(r.status, r.headers);
   const user = await call('/user');
   if (down(user)) throw new Error('github');
   const owner = current.repo.owner?.login || current.repo.full_name.split('/')[0];
-  if (!user.ok) return readTokenProblem({ status: user.status, owner });
+  if (user.status === 401) return readTokenProblem({ status: 401, owner });
+  if (!user.ok) throw new Error('github');
   const { login } = await user.json();
   const repo = current.repo.full_name;
   const [file, ...probes] = await Promise.all([call(`/repos/${repo}/contents/factory.config.json`),
@@ -2227,7 +2228,7 @@ async function sendToServer(text, files, withImages) {
   const btn = $('chat-send');
   const run = chat.run = {};
   // The owner switched project: the answer is still read to the end (the server stops the agent when the panel hangs
-  // up, and saves nothing), but nothing is shown or restored on the other project.
+  // up), then saved on the project it belongs to, but nothing is shown or restored on the other project.
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
@@ -2244,7 +2245,7 @@ async function sendToServer(text, files, withImages) {
   try {
     const paths = await uploadImages(repo, files);
     // Never the full token: without the read-only one there is no chat (issue #395).
-    if (!readToken) throw Object.assign(new Error('jeton de lecture manquant'), { readToken: true });
+    if (!readToken) throw Object.assign(new Error('Créez d\'abord le jeton de lecture avec le bouton ci-dessus.'), { readToken: true });
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
       headers: { authorization: `Bearer ${readToken}`, 'content-type': 'application/json' },
@@ -2321,7 +2322,7 @@ const SAVE_TRIES = 5;
 async function finishExchange(repo, cid, mine, answer) {
   const created = [];
   let refused = 0;
-  for (const wanted of answer.issues || []) {
+  for (const wanted of wantedIssues(answer.issues)) {
     try {
       const made = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(wanted)) });
       created.push({ ...wanted, url: made.html_url, number: made.number });
@@ -2343,7 +2344,8 @@ async function finishExchange(repo, cid, mine, answer) {
 
 // A JSON file of `factory-chat` with its sha (null when missing). Over 1 MB the contents API sends no content.
 async function chatFile(repo, path) {
-  const meta = await api(`/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`);
+  // Never from the browser's cache (GitHub allows 60 s): an old sha would make every write of the retry fail.
+  const meta = await api(`/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
   if (!meta) return { data: null, sha: null };
   if (meta.content) return { data: JSON.parse(fromBase64(meta.content)), sha: meta.sha };
   const res = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' } });
@@ -2356,9 +2358,11 @@ async function chatFile(repo, path) {
 async function writeChatFile(repo, path, make, message) {
   for (let attempt = 0; ; attempt++) {
     const { data, sha } = await chatFile(repo, path);
+    let written;
     const next = make(data);
     try {
-      await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message, branch: CHAT_BRANCH, content: toBase64(JSON.stringify(next, null, 1) + '\n'), ...(sha ? { sha } : {}) }) });
+      written = await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message, branch: CHAT_BRANCH, content: toBase64(JSON.stringify(next, null, 1) + '\n'), ...(sha ? { sha } : {}) }) });
+      if (!written) throw new Error('404'); // the branch vanished: not saved
       return next;
     } catch (e) {
       if (![409, 422].includes(e.status) || attempt >= SAVE_TRIES - 1) throw e;
@@ -2392,7 +2396,7 @@ async function saveExchange(repo, cid, base, mine, text, at, created) {
 
 // In server mode, « Terminer » only marks the conversation in the branch's index.
 async function closeServerConversation() {
-  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`);
+  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
   const index = JSON.parse(fromBase64(meta.content)).map((c) => (c.id === chat.open ? { ...c, state: 'closed' } : c));
   await api(`/repos/${chat.repo}/contents/index.json`, { method: 'PUT', body: JSON.stringify({
     message: 'chore(factory): chat index', branch: CHAT_BRANCH, sha: meta.sha, content: toBase64(JSON.stringify(index, null, 1) + '\n') }) });
