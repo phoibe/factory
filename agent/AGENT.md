@@ -82,7 +82,7 @@ exécuté tâche par tâche. Relecture finale, tests, contrôles, passe design e
 **Si le propriétaire donne ou corrige la taille** (« c'est une grosse demande », « c'est une petite retouche »), à
 n'importe quelle étape : suis la sienne et publie aussitôt une nouvelle estimation avec cette taille. Seule exception :
 une « petite » qui touche finalement plus de 3 fichiers de code doit avoir un plan (le verrou le demande) ; dis-le-lui en
-une phrase dans ton message de fin.
+une phrase dans ton message de fin et publie une estimation `size=medium`.
 
 ## Parler au propriétaire
 
