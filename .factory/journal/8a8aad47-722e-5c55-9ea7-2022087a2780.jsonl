@@ -27,3 +27,9 @@
 {"t":"2026-11-13T21:20:32.703Z","kind":"test","cmd":"W=… && git worktree add -f $W HEAD~1 >/dev/null 2>&1; cp e2e/switch-state.e2e.mjs $W/e2e/; ln -sf /home/user/factory/node_modules $W/node_modules; cd $W && CHROMIUM_PATH=… timeout 300 node --test --te","ok":false,"id":"toolu_01BKzXkdA3aE8keH1mp9BAsb"}
 {"t":"2026-11-13T21:21:41.812Z","kind":"test","cmd":"for f in production-gap stack version-tag release switch-state; do echo \"== $f\"; CHROMIUM_PATH=… timeout 300 node --test e2e/$f.e2e.mjs 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; done","ok":true,"id":"toolu_0135pvwxuD31ZZsAtDxfZBWw"}
 {"t":"2026-11-13T21:23:47.663Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\na=…\nassert a in s\ns=… (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear();\")\na=…\nassert a in s\ns=… (!gap.again.has(repo)) {\n      const next = busy.catch(() => {}","ok":true,"id":"toolu_018pxxDEAvePSLVhfTPDyCAY"}
+{"t":"2026-11-13T21:23:58.996Z","kind":"skill","name":"impeccable","id":"toolu_01E4FJkDs1pwMt95wGJ226x2"}
+{"t":"2026-11-13T21:24:36.552Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B detector evidence","id":"toolu_01D4pHx4fb8FrB4ydJCStrcg"}
+{"t":"2026-11-13T21:24:36.559Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A design review","id":"toolu_01T2xzmKUvt3ETNXnANLB489"}
+{"t":"2026-11-13T21:24:41.516Z","kind":"agent","model":"opus","effort":"high","label":"Review final gap tweak","id":"toolu_01EcBc1TTGZytcEo3zSsjEWp"}
+{"t":"2026-11-13T21:24:42.603Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-13T21:24:44.266Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Amk5Vwu5LNfKyuieUC8MNU"}
