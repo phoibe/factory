@@ -34,6 +34,12 @@
    (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
+   **Ce tableau ne se recopie jamais à la main** (une recopie a déjà cassé les lignes sombres, issue #375) : écris tes
+   phrases dans un fichier à part, puis assemble le message en reprenant le fichier de l'outil entier, par exemple
+   `{ echo '<!-- factory-agent -->'; cat /tmp/intro.md; echo; cat /tmp/shots.md; echo; cat /tmp/fin.md; } > /tmp/comment.md`.
+   Vérifie avec `node .factory/scripts/shots.mjs check /tmp/comment.md` avant de publier : il refuse toute ligne du
+   tableau qui n'est pas une image (le verrou refuse aussi de publier un tel message). Ne reprends jamais le tableau d'un
+   ancien message : refais les captures et prends la nouvelle sortie.
 6. **Aucun écran n'a changé** : la sortie de l'outil contient alors `<!-- factory-shots-unchanged -->` et la phrase
    « J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence. ».
    - Si la demande prévoyait justement un changement d'apparence, revérifie d'abord tes captures (bonne page, bon état
