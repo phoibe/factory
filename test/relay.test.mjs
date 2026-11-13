@@ -228,7 +228,7 @@ test('the dispatched run hands the payload to the agent job', async () => {
 
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet });
   await assert.rejects(relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 3, labels: [], text: 'go', fromOwner: true }));
   assert.deepEqual((await gh.getIssue(3)).labels.map((l) => l.name), [L.feature, L.specReview]);
@@ -302,7 +302,7 @@ test('a permanent merge refusal blocks with an explanation instead of looping', 
 
 test('a failed fix-checks fire parks the issue as blocked', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet }).report({ result: 'failure', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 1 && c[2] === L.blocked));
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && /réessaie/.test(c[2])));
@@ -912,7 +912,7 @@ test('autoPick takes the oldest bug first when several tie', async () => {
 test('autoPick: a failed start releases the claim and stops', async () => {
   const gh = fakeGh({ issues: [fi(1, L.bug), fi(2, L.bug)], prs: [] });
   const relay = createRelay({ gh, repo: 'phoibe/app', config: pickConfig, env, log: quiet,
-    fetchImpl: async () => ({ ok: false, status: 429, text: async () => 'limit' }) });
+    fetchImpl: async () => ({ ok: false, status: 401, text: async () => 'bad token' }) });
   await relay.dequeue();
   const issue = (await gh.getIssue(1)).labels.map((l) => l.name);
   assert.deepEqual(issue, [L.bug]);
@@ -2708,7 +2708,7 @@ test('waits: the place freed by the merge itself is counted, the card resumes at
 test('waits: a failed launch tells the owner once and leaves a normal block', async () => {
   const state = { issues: [blockedWaiting(5), { number: 12, labels: [], open: false, state_reason: 'completed' }], prs: [mergedPr12], comments: { 5: [waitsComment([12])] } };
   const gh = fakeGh(state);
-  const failing = async () => ({ ok: false, status: 429, text: async () => 'limit' });
+  const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: failing, log: quiet });
   await relay.dequeue();
   assert.ok(state.issues[0].labels.includes(L.blocked));
