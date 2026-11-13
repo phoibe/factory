@@ -26,3 +26,5 @@
 {"t":"2026-11-13T21:16:36.776Z","kind":"test","cmd":"sed -i '2394s/, open: false }/ }/;2487s/, open: false }/ }/' test/relay.test.mjs && npm test 2>&1 | grep -E \"^not ok|# (pass|fail)\"; npm run lint 2>&1 | tail -1","ok":true,"id":"toolu_01WnBHQosFwguTSASu1oGnsw"}
 {"t":"2026-11-13T21:17:34.898Z","kind":"test","cmd":"(npm test 2>&1 | tail -15) ; git diff 1e13dfd..3f0e68d --stat","ok":true,"id":"toolu_01HLZiMT8D7LsVoYEpFfUCqK"}
 {"t":"2026-11-13T21:18:51.403Z","kind":"agent","model":"opus","effort":"high","label":"Re-review fix 396 round 3","id":"toolu_01SxjQDxRGt54kE7DAGwyuhJ"}
+{"t":"2026-11-13T21:21:44.888Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\nold=…\"    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.acceptance]],\n\"\"\"\nnew=…    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 ","ok":true,"id":"toolu_014FZQK16HGbD5XweeGSuo4f"}
+{"t":"2026-11-13T21:22:24.209Z","kind":"test","cmd":"git status --short | head; git log --oneline -3; npm test 2>&1 | grep -E \"^not ok|# (pass|fail)\"","ok":true,"id":"toolu_013VD849wjXgeUVSAPnjaWt8"}

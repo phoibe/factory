@@ -3387,6 +3387,8 @@ test('#396: a preview check still in its time, on older code, or while an agent 
     [{ kind: 'preview', sha: 'old', at: NOW - 100 * 60_000, tries: 0 }, [L.checks]],
     [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.checks, L.running]],
     [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.acceptance]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.blocked]],
+    [{ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, [L.fixing]],
   ]) {
     const { gh, relay } = watchedPr(watch, labels);
     await relay().handle(tick);
