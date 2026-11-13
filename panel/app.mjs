@@ -224,7 +224,7 @@ async function checkProjects() {
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
 const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
-  || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
+  || pendingGo.size > 0 || pendingDrop.size > 0 || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -922,7 +922,7 @@ function ideasLane(ideas) {
 // « Garder » stays at once (nothing is lost) but is greyed during the countdown. Nothing is stored: leaving cancels it.
 const pendingDrop = new Map(); // `repo#number` → countdown, with the seconds left
 const dropKey = (i) => `${current.repo.full_name}#${i.number}`;
-const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left} s)`]);
+const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left}\u00a0s)`]);
 function dropButton(i, pick) {
   const [name, text] = dropLabel(i, pendingDrop.get(dropKey(i))?.left);
   return el('button', { type: 'button', class: pendingDrop.has(dropKey(i)) ? 'secondary undo' : 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': name, onclick: (e) => dropIdea(i, pick, e.currentTarget) }, text);
@@ -943,7 +943,7 @@ function dropIdea(i, pick, btn) {
   const key = dropKey(i);
   const running = pendingDrop.get(key);
   if (running) { running.cancel(); pendingDrop.delete(key); showDrop(i, btn); toast('« Jeter » annulé.'); return; }
-  refusedIdea().delete(i.number);
+  if (refusedIdea().delete(i.number)) { drawBoard(); btn = $('board').querySelector(`[data-key="drop-${i.number}"]`) || btn; } // the red line goes at the click
   toast("L'idée part dans 5 s.");
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
@@ -951,7 +951,8 @@ function dropIdea(i, pick, btn) {
   const handle = startCountdown({
     seconds: 5,
     tick: (n) => { const h = pendingDrop.get(key); if (h) { h.left = n; showDrop(i, btn); } },
-    done: () => { pendingDrop.delete(key); showDrop(i, btn); sortIdea(i, false, pick); },
+    // Gone from « Idées à trier » meanwhile (kept elsewhere, closed, signed out): nothing to close any more.
+    done: () => { pendingDrop.delete(key); if (current && $('board').querySelector(`.ticket.idea[data-idea="${i.number}"]`)) sortIdea(i, false, pick); },
   });
   handle.left = 5;
   handle.word = 'Jeter';
