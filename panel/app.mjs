@@ -783,10 +783,11 @@ const sentGo = new Set(); // « go » already posted this session: the card show
 // The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
 const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
 function cancelPendingGos() {
-  if (!pendingGo.size) return;
-  const words = new Set([...pendingGo.values()].map((h) => h.word));
-  for (const h of pendingGo.values()) h.cancel();
+  if (!pendingGo.size && !pendingDrop.size) return;
+  const words = new Set([...pendingGo.values(), ...pendingDrop.values()].map((h) => h.word));
+  for (const h of [...pendingGo.values(), ...pendingDrop.values()]) h.cancel();
   pendingGo.clear();
+  pendingDrop.clear();
   toast(`${words.size === 1 ? `« ${[...words][0]} » annulé` : 'Envoi annulé'} : vous avez changé de projet.`);
 }
 // What the toast says once the answer has left, by the column it answers.
@@ -914,8 +915,48 @@ function ideasLane(ideas) {
       el('h3', {}, el('a', { class: 'main', href: i.html_url, target: '_blank', rel: 'noopener', 'data-key': `idea-${i.number}` }, i.title)),
       refusedIdea().has(i.number) ? el('p', { class: 'idea-error', id: `idea-error-${i.number}`, role: announceIdea.has(i.number) ? 'alert' : null }, 'GitHub a refusé : réessayez.') : null,
       el('div', { class: 'card-actions' },
-        el('button', { type: 'button', class: 'secondary', 'data-key': `keep-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
-        el('button', { type: 'button', class: 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Jeter l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, false, pick) }, 'Jeter'))))));
+        el('button', { type: 'button', class: 'secondary', disabled: pendingDrop.has(dropKey(i)), 'data-key': `keep-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
+        dropButton(i, pick))))));
+}
+// « Jeter » waits 5 s and can be cancelled, like « go » (issue #402): a wrong touch on the phone is caught in time.
+// « Garder » stays at once (nothing is lost) but is greyed during the countdown. Nothing is stored: leaving cancels it.
+const pendingDrop = new Map(); // `repo#number` → countdown, with the seconds left
+const dropKey = (i) => `${current.repo.full_name}#${i.number}`;
+const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left} s)`]);
+function dropButton(i, pick) {
+  const [name, text] = dropLabel(i, pendingDrop.get(dropKey(i))?.left);
+  return el('button', { type: 'button', class: pendingDrop.has(dropKey(i)) ? 'secondary undo' : 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': name, onclick: (e) => dropIdea(i, pick, e.currentTarget) }, text);
+}
+// The board may be redrawn during the countdown: always write on the card's button as it is now.
+function showDrop(i, fallback) {
+  const btn = $('board').querySelector(`.ticket.idea[data-idea="${i.number}"] [data-key="drop-${i.number}"]`) || fallback;
+  const keep = btn?.closest('.ticket.idea')?.querySelector(`[data-key="keep-${i.number}"]`);
+  const left = pendingDrop.get(dropKey(i))?.left;
+  if (!btn) return;
+  const [name, text] = dropLabel(i, left);
+  btn.textContent = text;
+  btn.setAttribute('aria-label', name);
+  btn.classList.toggle('undo', left != null);
+  if (keep) keep.disabled = left != null;
+}
+function dropIdea(i, pick, btn) {
+  const key = dropKey(i);
+  const running = pendingDrop.get(key);
+  if (running) { running.cancel(); pendingDrop.delete(key); showDrop(i, btn); toast('« Jeter » annulé.'); return; }
+  refusedIdea().delete(i.number);
+  toast("L'idée part dans 5 s.");
+  // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
+  const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
+  if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
+  const handle = startCountdown({
+    seconds: 5,
+    tick: (n) => { const h = pendingDrop.get(key); if (h) { h.left = n; showDrop(i, btn); } },
+    done: () => { pendingDrop.delete(key); showDrop(i, btn); sortIdea(i, false, pick); },
+  });
+  handle.left = 5;
+  handle.word = 'Jeter';
+  pendingDrop.set(key, handle);
+  showDrop(i, btn);
 }
 // Redraws the board; the idea cards slide from where they were, and a card GitHub refused (`back`) fades in.
 function redrawIdeas(back) {

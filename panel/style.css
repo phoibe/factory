@@ -357,7 +357,7 @@ a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px
 .lane-yours .count { background: var(--text); color: var(--bg); }
 .issue-chip { border-color: var(--line); background: var(--surface-2); }
 #login-form button[type=submit] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
+button.go.undo, .ticket.idea button.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
 button.go:focus-visible { outline-color: var(--text); }
 
 /* « Plus » menu: invisible plumbing on a computer, a folding menu on a phone. */
