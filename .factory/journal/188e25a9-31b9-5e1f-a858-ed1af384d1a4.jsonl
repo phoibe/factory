@@ -21,3 +21,10 @@
 {"t":"2026-11-13T15:22:16.936Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test --test-name-pattern=\"disparaît\" e2e/relaunch.e2e.mjs 2>&1 | grep -A8 \"error: |-\" | head -12","ok":true,"id":"toolu_014bnp68PvZ9Au5YYwNzRkVa"}
 {"t":"2026-11-13T15:22:52.279Z","kind":"test","cmd":"npm ci > /dev/null 2>&1; echo $?; CHROMIUM_PATH=… timeout 300 node --test e2e/relaunch.e2e.mjs 2>&1 | grep -E \"^not ok|^ok|^# (pass|fail)\"","ok":false,"id":"toolu_019FxpEHMsTXXZyVBzwfiFS3"}
 {"t":"2026-11-13T15:23:01.338Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ndef rep(a,b):\n    global s\n    assert s.count(a)==1, a[:60]\n    s=…\nrep(\"import { waitedFor } from './waits.mjs?v=2';\",\"import { waitedFor } from './waits.mjs?v=2';\\nimport {","ok":true,"id":"toolu_01EseiqDaCPrTahiY1Bq8QD7"}
+{"t":"2026-11-13T15:26:48.216Z","kind":"test","cmd":"git add -A panel e2e test scripts docs .factory/journal && git commit -qm \"feat(panel): show « Relance prévue à HH:MM » on a card whose launch waits (#383)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@an","ok":true,"id":"toolu_01A9gF6gij5hjHpM4nqPDMGd"}
+{"t":"2026-11-13T15:27:15.696Z","kind":"test","cmd":"S=… CHROMIUM_PATH=… timeout 300 npm run test:a11y > $S/a11y.log 2>&1; echo \"a11y $?\"; grep -E \"^# (pass|fail)|^not ok\" $S/a11y.log","ok":true,"id":"toolu_016J82jjLVE8sFyJ2VxUTM7B"}
+{"t":"2026-11-13T15:27:17.038Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Ro8eW1gGvsDQQjNhzMLNBM"}
+{"t":"2026-11-13T15:29:32.569Z","kind":"agent","model":"opus","effort":"high","label":"Review relaunch feature diff","id":"toolu_01SLMtvhjeKUotknBh2bfGSE"}
+{"t":"2026-11-13T15:29:36.106Z","kind":"skill","name":"impeccable","id":"toolu_016hguxJ1KfiSh8Yfx6nSqx5"}
+{"t":"2026-11-13T15:30:08.250Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique A (review)","id":"toolu_017u2LEJFCdsrH7733cUv98P"}
+{"t":"2026-11-13T15:30:08.252Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique B (detector)","id":"toolu_01CsjNH3av3aPtrJou3dJcqc"}
