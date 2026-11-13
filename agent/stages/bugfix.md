@@ -18,8 +18,9 @@ Un bug signalé dans l'issue. Pas de grilling.
 3 ter. **Spec rangée** : seulement si l'issue contient une spec validée (commentaire `<!-- factory-spec -->`) :
    `node .factory/scripts/specs.mjs save <n>`, comme à l'étape 6 ter de `build.md`.
 3 quater. **Essai en conditions réelles**, en lecture seule, comme à l'étape 7 bis de `build.md` : rejoue le bug
-   sur les vraies données du projet (vrai GitHub, vrai site en ligne, vrai message publié) et vérifie qu'il a
-   disparu, sans rien créer, modifier, envoyer ni supprimer de réel. Le résumé de la PR contient une ligne
+   sur les vraies données du projet (vrai GitHub, vrai site en ligne, vrai message publié) : vérifie d'abord que le
+   bug s'y voit vraiment, puis que le code corrigé, nourri de ces mêmes données réelles (ou la page de la branche
+   face au vrai site), ne le montre plus. Le tout sans rien créer, modifier, envoyer ni supprimer de réel. Le résumé de la PR contient une ligne
    « Essayé en vrai : … » et, pour ce qui ne peut pas être essayé en lecture seule, « Pas vérifié en vrai : … ».
 3 quinquies. **Correction d'une livraison récente** (le bug vient d'une demande fusionnée ces derniers jours :
    regarde l'historique des fichiers touchés, `git log`, et les demandes citées dans l'issue) : ajoute au résumé

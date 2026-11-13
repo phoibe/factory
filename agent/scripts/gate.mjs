@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Claude Code hook: the lock. A build, bugfix or foundation run cannot open its PR (nor hand it to the next
-// step with factory:checks / factory:visual-review) while its journal lacks a step, and it is sent back once
+// Claude Code hook: the lock. A build, bugfix, foundation or audit run cannot open its PR (nor hand it to the next
+// step with factory:checks / factory:visual-review) while its journal lacks a step, nor open it without saying what
+// was tried in real conditions (issue #385), and it is sent back once
 // when it tries to stop early. Installed by scripts/sync.mjs. After MAX_DENIALS refusals in one run it lets
 // the agent through (the relay's catch-up run and the PR alert remain), so a run can never be stuck.
 import { execFileSync } from 'node:child_process';
@@ -14,18 +15,29 @@ import { brokenShotRows } from './shots.mjs';
 export const MAX_DENIALS = 3;
 const HEREDOC = /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g;
 
+// A command continued with a backslash is one line for the shell: join it before matching.
+const commandOf = (input) => String(input?.command || '').replace(HEREDOC, '').replace(/\\\r?\n/g, ' ');
+
+// Does this tool call open a PR? A read of the pull requests (-X GET with -f filters) does not.
+export function opensPr(tool, input = {}) {
+  if (/create_pull_request$/.test(tool || '')) return true;
+  if (tool !== 'Bash') return false;
+  const cmd = commandOf(input);
+  if (/\bgh\s+pr\s+create\b/.test(cmd)) return true;
+  const posts = /(\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b|-X\s*POST|--method\s+POST|--request\s+POST)/;
+  const reads = /(-X\s*|--method\s+|--request\s+)GET\b/;
+  // Each command of the line on its own: a read of /pulls chained with `;` or `&&` to a label call is still a read.
+  return cmd.split(/\n|;|&&|\|\|/).some((l) => /(gh\s+api|curl)\b[^\n]*\/pulls(?=$|[\s'"?])/.test(l) && posts.test(l) && !reads.test(l));
+}
+
 // Does this tool call open a PR, or hand it to the next step?
 export function handsOver(tool, input = {}) {
-  if (/create_pull_request$/.test(tool || '')) return true;
+  if (opensPr(tool, input)) return true;
   if (/(add|update)_(issue_)?labels?$|issue_write$/.test(tool || '')) return /factory:(checks|visual-review)/.test(JSON.stringify(input));
   if (tool !== 'Bash') return false;
-  // A command continued with a backslash is one line for the shell: join it before matching.
-  const cmd = String(input.command || '').replace(HEREDOC, '').replace(/\\\r?\n/g, ' ');
-  if (/\bgh\s+pr\s+create\b/.test(cmd)) return true;
+  const cmd = commandOf(input);
   if (/\bgh\s+pr\s+edit\b[^\n]*--add-label[^\n]*factory:(checks|visual-review)/.test(cmd)) return true;
-  if (/(gh\s+api|curl)\b[^\n]*\blabels\b[^\n]*factory:(checks|visual-review)/.test(cmd)) return true;
-  const posts = /(\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b|-X\s*POST|--method\s+POST|--request\s+POST)/;
-  return /(gh\s+api|curl)\b[^\n]*\/pulls(?=$|[\s'"?])/m.test(cmd) && cmd.split('\n').some((l) => /\/pulls(?=$|[\s'"?])/.test(l) && posts.test(l));
+  return /(gh\s+api|curl)\b[^\n]*\blabels\b[^\n]*factory:(checks|visual-review)/.test(cmd);
 }
 
 // The texts a tool call may post as a message: the command itself (heredocs included), the files it sends with
@@ -50,17 +62,18 @@ export function shotsRefusal(tool, input, io) {
 }
 
 // Issue #385: the PR a building run opens says what was tried in the project's real conditions, or what was not.
-const REAL_CHECK = /Essayé en vrai|Pas vérifié en vrai/i;
+// Accents are optional (« Pas verifie en vrai » counts), whatever their Unicode form.
+const REAL_CHECK = /essaye en vrai|pas verifie en vrai/i;
+const plain = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 export function realCheckRefusal(tool, input, io) {
-  if (/(add|update)_(issue_)?labels?$|issue_write$/.test(tool || '')) return null;
-  if (tool === 'Bash' && !/\/pulls(?=$|[\s'"?])|\bgh\s+pr\s+create\b/m.test(String(input?.command || '').replace(HEREDOC, ''))) return null;
-  if (postedTexts(tool, input, io).some((t) => REAL_CHECK.test(t))) return null;
+  if (!opensPr(tool, input)) return null;
+  if (postedTexts(tool, input, io).some((t) => REAL_CHECK.test(plain(t)))) return null;
   return ['Verrou de la factory : le résumé de la PR ne dit pas ce qui a été essayé en conditions réelles.',
     'Rejoue le parcours de la demande sur les vraies données du projet (vrai GitHub, vrai site en ligne, vrai message publié), '
     + 'en lecture seule : ne crée, ne modifie, n\'envoie ni ne supprime rien de réel.',
     'Puis ajoute au résumé une ligne « Essayé en vrai : … » (ce que tu as regardé et ce que tu as vu), et une ligne '
     + '« Pas vérifié en vrai : … » pour ce qui ne pouvait pas l\'être (il faudrait écrire de vraies données, un service extérieur intervient). '
-    + 'Puis réessaie.'].join('\n');
+    + 'Écris le résumé dans un fichier et envoie-le avec `-F body=@fichier` (chemin sans variable), puis réessaie.'].join('\n');
 }
 
 const entries = (text) => String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);

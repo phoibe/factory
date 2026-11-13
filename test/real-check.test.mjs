@@ -11,7 +11,7 @@ const env = (stage, files = {}) => {
   const sessionText = j({ t: '1', kind: 'run', stage }, ...['systematic-debugging', 'requesting-code-review', 'impeccable'].map((name) => ({ t: '2', kind: 'skill', name })), { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true });
   return { files: ['lib/x.mjs', '.factory/journal/s.jsonl'], read: () => sessionText, stages, sessionText, readFile: (p) => files[p] ?? null, cwd: '/w' };
 };
-const open = (body) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd: '/w', tool_input: { command: 'gh api repos/o/r/pulls -f title=x -f head=b -f base=main -F body=@pr.md' } });
+const open = () => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd: '/w', tool_input: { command: 'gh api repos/o/r/pulls -f title=x -f head=b -f base=main -F body=@pr.md' } });
 const reason = (res) => res?.out.hookSpecificOutput.permissionDecisionReason;
 
 test('a PR whose summary says nothing about the real-conditions trial is refused', () => {
@@ -29,6 +29,22 @@ test('a PR that says what was tried for real, or what could not be, goes through
   assert.ok(decide({ hook_event_name: 'PreToolUse', tool_name: 'mcp__github__create_pull_request', tool_input: { body: 'Résumé.' } }, env('build')));
 });
 
+test('reading the real pull requests is never taken for opening one', () => {
+  const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+  assert.equal(decide(bash('gh api -X GET repos/o/r/pulls -f state=closed'), env('build')), null);
+  assert.equal(decide(bash('gh api repos/o/r/pulls --method GET -f head=o:b'), env('build')), null);
+  assert.equal(decide(bash("n=$(gh api 'repos/o/r/pulls?head=o:b' --jq '.[0].number'); gh api repos/o/r/issues/$n/labels -f 'labels[]=factory:checks'"), env('build')), null);
+});
+
+test('a summary written without accents still counts', () => {
+  assert.equal(decide(open(), env('build', { '/w/pr.md': 'Pas verifie en vrai : la mise en ligne.' })), null);
+  assert.equal(decide(open(), env('build', { '/w/pr.md': 'Essaye en vrai : la page.'.normalize('NFD') })), null);
+});
+
+test('a PR body sent from a file the lock cannot read is told how to send it', () => {
+  assert.match(reason(decide(open(), env('build'))), /-F body=@/);
+});
+
 test('only opening the PR is checked, and only on runs that build', () => {
   const labels = { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'gh api repos/o/r/issues/3/labels -f "labels[]=factory:checks"' } };
   assert.equal(decide(labels, env('build')), null);
@@ -37,8 +53,8 @@ test('only opening the PR is checked, and only on runs that build', () => {
 
 const stage = (f) => readFileSync(new URL(`../agent/${f}`, import.meta.url), 'utf8');
 
-test('the build and bugfix stages ask for a read-only trial in real conditions', () => {
-  for (const f of ['stages/build.md', 'stages/bugfix.md', 'stages/foundation.md']) {
+test('the building stages ask for a read-only trial in real conditions', () => {
+  for (const f of ['stages/build.md', 'stages/bugfix.md', 'stages/foundation.md', 'stages/audit.md']) {
     const text = stage(f);
     assert.match(text, /conditions réelles/, f);
     assert.match(text, /lecture seule/, f);
@@ -55,4 +71,5 @@ test('a fix that follows a recent delivery says why it was not seen, with the te
 
 test('after publishing, the agent reads back what really arrived', () => {
   assert.match(stage('AGENT.md'), /relis ce qui est réellement arrivé/);
+  assert.match(stage('AGENT.md'), /body_html/);
 });
