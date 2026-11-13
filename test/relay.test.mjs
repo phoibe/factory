@@ -2921,3 +2921,78 @@ test('writeOutputs: the multiline delimiter is random, so a value containing __E
   assert.notEqual(d1, d2);
   assert.ok(text.includes(`a\n__EOF__\nagent=true\n${d1}\n`));
 });
+
+// The version tag (issue #372): a site whose host tells GitHub nothing says itself which commit it runs; the tick
+// points refs/factory/live at it (the panel reads that ref), and opens once a card that adds the tag when it is missing.
+const TAG_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+function tagWorld({ html = '', deployments = [], live = null, state = null, files = ['PRODUCT.md'], production = 'external', homepage = 'https://p.example', issues = [] } = {}) {
+  const world = { issues: [...issues], prs: [] };
+  const gh = fakeGh(world);
+  gh.getRepo = async () => ({ default_branch: 'main', homepage });
+  gh.getContent = async (path) => (files.includes(path) ? { content: '' } : null);
+  gh.liveDeployments = async () => deployments;
+  gh.resolveCommit = async (ref) => (TAG_SHA.startsWith(ref) ? { sha: TAG_SHA } : null);
+  gh.getLiveRef = async () => live;
+  gh.setLiveRef = async (sha) => { gh.calls.push(['liveRef', sha]); };
+  gh.getState = async (name) => (name === 'version-tag' ? state : null);
+  gh.setState = async (name, value) => { gh.calls.push(['state', name, value]); };
+  gh.createIssue = async (title, body, labels) => { world.issues.push({ number: 60, title, body, labels: [...labels] }); gh.calls.push(['create', title, body, labels]); return { number: 60 }; };
+  const fetchImpl = async (url, init) => (String(url).startsWith('https://p.example') ? { ok: true, text: async () => html } : fetchOk([])(url, init));
+  const tick = () => createRelay({ gh, repo: 'r', config: { ...config, production }, env, fetchImpl, log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  return { gh, tick };
+}
+
+test('the tag on the live site moves refs/factory/live to that commit', async () => {
+  const { gh, tick } = tagWorld({ html: '<meta name="factory-version" content="a1b2c3d">' });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
+  assert.ok(!gh.calls.some((c) => c[0] === 'create'));
+});
+
+test('an unchanged tag writes nothing', async () => {
+  const { gh, tick } = tagWorld({ html: `<meta name="factory-version" content="${TAG_SHA}">`, live: TAG_SHA });
+  await tick();
+  assert.ok(!gh.calls.some((c) => c[0] === 'liveRef'));
+});
+
+test('a tag naming a commit the repository does not know removes the ref', async () => {
+  const { gh, tick } = tagWorld({ html: '<meta name="factory-version" content="fffffff">', live: TAG_SHA, state: { card: 3 } });
+  await tick();
+  assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === null));
+});
+
+test('a silent host (no live deployment) is read too; a host that reports is not', async () => {
+  const silent = tagWorld({ production: 'auto', deployments: [{ id: 1, environment: 'Preview' }], html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await silent.tick();
+  assert.ok(silent.gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
+  const reported = tagWorld({ production: 'auto', deployments: [{ id: 2, environment: 'Production' }], html: `<meta name="factory-version" content="${TAG_SHA}">` });
+  await reported.tick();
+  assert.ok(!reported.gh.calls.some((c) => c[0] === 'liveRef' || c[0] === 'create'));
+});
+
+test('a project without a site is left alone', async () => {
+  const { gh, tick } = tagWorld({ homepage: '' });
+  await tick();
+  assert.ok(!gh.calls.some((c) => c[0] === 'liveRef' || c[0] === 'create'));
+});
+
+test('no tag: one card « Ajouter l\'étiquette de version », remembered so it is never opened twice', async () => {
+  const { gh, tick } = tagWorld({ html: '<html></html>' });
+  await tick();
+  const created = gh.calls.find((c) => c[0] === 'create');
+  assert.ok(created, 'card created');
+  assert.ok(created[3].includes(L.feature) && created[3].includes(L.kept));
+  assert.match(created[2], /factory-version/);
+  assert.ok(created[2].startsWith(AGENT_MARKER));
+  assert.ok(gh.calls.some((c) => c[0] === 'state' && c[1] === 'version-tag' && c[2]?.card === 60));
+  const again = tagWorld({ html: '<html></html>', state: { card: 60 } });
+  await again.tick();
+  assert.ok(!again.gh.calls.some((c) => c[0] === 'create'));
+});
+
+test('no tag card before the project is framed, nor while its framing is under way', async () => {
+  for (const world of [tagWorld({ files: [] }), tagWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] })]) {
+    await world.tick();
+    assert.ok(!world.gh.calls.some((c) => c[0] === 'create'));
+  }
+});

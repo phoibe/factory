@@ -1,6 +1,7 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
 import { rateLimitDelay, RateLimited, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { trustNotes } from './trust.mjs';
+import { LIVE_REF } from './version-tag.mjs';
 const HTML = 'application/vnd.github.full+json';
 
 // GitHub answers 5xx now and then (503 « Service Unavailable », 500 on pushes…). One such answer used to kill a whole
@@ -220,6 +221,22 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     checkRuns: async (sha) => (await request('GET', `/repos/{repo}/commits/${sha}/check-runs?per_page=100`))?.check_runs || [],
     deployments: (sha) => request('GET', `/repos/{repo}/deployments?sha=${sha}&per_page=20`),
     recentDeployments: () => request('GET', `/repos/{repo}/deployments?per_page=30`),
+    // A wide page: a preview deployment is made on every push, and could push the live ones out of a short one.
+    liveDeployments: () => request('GET', '/repos/{repo}/deployments?per_page=100'),
+    // The commit a site's version tag names (issue #372): a short id is resolved, an unknown one is null (404).
+    resolveCommit: async (ref) => {
+      try { return await request('GET', `/repos/{repo}/commits/${enc(ref)}`); } catch (e) { if (/-> 422/.test(String(e))) return null; throw e; }
+    },
+    // refs/factory/live: the commit the version tag says is live, read by the panel; removed when the tag is not read.
+    getLiveRef: async () => (await request('GET', `/repos/{repo}/git/ref/${LIVE_REF}`))?.object?.sha || null,
+    setLiveRef: async (sha) => {
+      if (!sha) {
+        try { await request('DELETE', `/repos/{repo}/git/refs/${LIVE_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+        return;
+      }
+      try { await request('PATCH', `/repos/{repo}/git/refs/${LIVE_REF}`, { sha, force: true }); }
+      catch (e) { if (!/404|422/.test(String(e))) throw e; await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LIVE_REF}`, sha }); }
+    },
     // The project's factory runs that failed lately, their jobs, and a re-run of their failed jobs (same event again).
     failedRuns: async (workflow) => (await request('GET', `/repos/{repo}/actions/workflows/${workflow}/runs?status=failure&per_page=100&created=${encodeURIComponent(`>${new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19)}Z`)}`))?.workflow_runs || [],
     runJobs: async (id) => (await request('GET', `/repos/{repo}/actions/runs/${id}/jobs?per_page=50`))?.jobs || [],

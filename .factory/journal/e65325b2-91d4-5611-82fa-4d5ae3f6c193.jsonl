@@ -1,0 +1,8 @@
+{"t":"2026-11-13T13:59:12.904Z","kind":"run","stage":"resume","issue":372,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-13T14:00:55.745Z","kind":"skill","name":"writing-plans","id":"toolu_016L5rfzG35wmYmY5F4kakZX"}
+{"t":"2026-11-13T14:01:09.996Z","kind":"skill","name":"executing-plans","id":"toolu_01M3a3xk7Y8caPGcRoS46zAX"}
+{"t":"2026-11-13T14:01:10.094Z","kind":"skill","name":"test-driven-development","id":"toolu_01DLEEorq8JkbLvQk2Uct1jc"}
+{"t":"2026-11-13T14:02:42.579Z","kind":"test","cmd":"cat > test/version-tag.test.mjs <<'EOF'\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { parseVersionTag, tagConcerned, readSiteTag } from '../scripts/lib/version-ta","ok":false,"id":"toolu_01Npik8LMoP9TGe22nduWpPi"}
+{"t":"2026-11-13T14:03:23.682Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)|# Subtest\" | grep -B1 \"not ok\" | head -30","ok":false,"id":"toolu_016eXGnD5xm4wwRkZDztohSH"}
+{"t":"2026-11-13T14:03:32.717Z","kind":"test","cmd":"cat > scripts/lib/version-tag.mjs <<'EOF'\n// The version tag (issue #372): a site whose host tells GitHub nothing about its publications (external production,\n// as on Pulsar Wheel, or a silent host, ","ok":true,"id":"toolu_019YF735ZzA16NDirTXb3eE3"}
+{"t":"2026-11-13T14:04:32.462Z","kind":"test","cmd":"sed -i \"3a import { LIVE_REF } from './version-tag.mjs';\" scripts/lib/github.mjs && python3 - <<'EOF'\np=…\ns=…\ns=… { trustedAuthor } from './lib/trust.mjs';\\n\",\"import { trustedAuthor } from './lib/tru","ok":true,"id":"toolu_01J5sYGKdaduC6PH8yCzBhd2"}
