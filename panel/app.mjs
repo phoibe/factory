@@ -201,10 +201,11 @@ async function checkProjects() {
   }
   if (!token || token !== session) return; // logged out meanwhile: this list belongs to the previous account
   const was = current;
-  const before = JSON.stringify(projects.map((p) => p.repo.full_name));
+  const namesOf = (list) => JSON.stringify(list.map((p) => p.repo.full_name).sort());
+  const before = namesOf(projects);
   const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
   projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
-  if (JSON.stringify(projects.map((p) => p.repo.full_name)) !== before) refreshRuns();
+  if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
   if (!projects.length) {
     current = null;
     clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
@@ -212,7 +213,7 @@ async function checkProjects() {
   }
   if (!mine) { await openProject(store.get(PROJECT_KEY)); return refreshDots(); }
   // Saved here during the check: this device's file is the newest one.
-  if (saves !== saved) rememberProjects();
+  if (saves !== saved) { known.set(was.repo.full_name, { pushed: null, etag: null, file: was.file }); rememberProjects(); }
   else if (mine.file?.sha !== was.file?.sha && !hasUnsaved()) { was.file = mine.file; await openProject(was.repo.full_name); }
   else renderProjectList();
   refreshDots();
@@ -1399,7 +1400,10 @@ async function start() {
       refreshDots();
       return checkProjects();
     }
-    projects = await loadProjects();
+    const session = token;
+    const fresh = await loadProjects();
+    if (token !== session) return; // logged out meanwhile: this list belongs to the previous account
+    projects = fresh;
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
