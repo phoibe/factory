@@ -1808,20 +1808,27 @@ $('read-token-form').addEventListener('submit', async (e) => {
   const value = $('read-token').value.trim();
   if (!value || !current) return;
   const btn = $('read-token-save');
+  const field = $('read-token');
+  const fail = (message) => { $('read-token-error').textContent = message; field.setAttribute('aria-invalid', 'true'); field.focus(); };
   btn.disabled = true;
+  btn.textContent = 'Vérification…';
+  $('read-token-form').setAttribute('aria-busy', 'true');
   $('read-token-error').textContent = '';
+  field.removeAttribute('aria-invalid');
   try {
     const problem = await checkReadToken(value);
-    if (problem) { $('read-token-error').textContent = problem; return; }
+    if (problem) return fail(problem);
     readToken = value;
     store.set(READ_TOKEN_KEY, value);
     $('read-token').value = '';
     await openChat();
     $('chat-input').focus();
   } catch {
-    $('read-token-error').textContent = 'GitHub ne répond pas, réessayez dans un instant.';
+    fail('GitHub ne répond pas, réessayez dans un instant.');
   } finally {
     btn.disabled = false;
+    btn.textContent = 'Valider le jeton';
+    $('read-token-form').removeAttribute('aria-busy');
   }
 });
 

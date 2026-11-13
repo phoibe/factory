@@ -98,7 +98,7 @@ Le ressenti visé : au clair, aux commandes, serein. Jamais noyé sous les déta
 Un papier presque blanc le jour, un anthracite profond la nuit (automatique selon le système), une encre noire, et un bleu franc.
 
 ### Primary
-- **Bleu signal** (`#1850e8`, nuit `#6c93ff`) : uniquement la carte « À vous » et son bouton « go » (exception : le bouton de connexion). Les liens sont en encre soulignée, le bouton d'envoi de la discussion est encre. Fond doux associé (`#eaf0ff`, nuit `#16213f`).
+- **Bleu signal** (`#1850e8`, nuit `#6c93ff`) : uniquement la carte « À vous » et son bouton « go » (exception : les boutons de connexion et de validation du jeton de lecture de la discussion). Les liens sont en encre soulignée, le bouton d'envoi de la discussion est encre. Fond doux associé (`#eaf0ff`, nuit `#16213f`).
 
 ### Neutral
 - **Papier** (`#fbfbfa`, nuit `#101113`) : fond de page.

@@ -63,16 +63,15 @@
       <p id="chat-badge-announce" class="visually-hidden" role="status"></p>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
       <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
-        <section id="chat-setup" class="chat-setup" aria-labelledby="chat-setup-title" hidden>
+        <section id="chat-setup" class="card narrow chat-setup" aria-labelledby="chat-setup-title" hidden>
           <h2 id="chat-setup-title">Un jeton de lecture pour discuter</h2>
           <p>La discussion utilise désormais un jeton qui ne peut que lire vos projets, pour que votre jeton complet ne quitte jamais votre navigateur.</p>
-          <p><a id="read-token-link" class="button secondary" target="_blank" rel="noopener">Créer le jeton de lecture sur GitHub<span aria-hidden="true"> ↗</span></a></p>
-          <p class="muted">Sur GitHub, choisissez « All repositories », puis « Generate token ». À faire une seule fois.</p>
+          <p><a id="read-token-link" class="button secondary" target="_blank" rel="noopener">Créer le jeton de lecture sur GitHub <span class="nowrap">(tous les dépôts)<span aria-hidden="true"> ↗</span></span></a></p>
           <form id="read-token-form">
             <label for="read-token">Jeton de lecture</label>
-            <input id="read-token" type="password" autocomplete="off" placeholder="github_pat_…" required>
-            <button id="read-token-save" type="submit">Valider le jeton</button>
+            <input id="read-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" aria-describedby="read-token-error" required>
             <p id="read-token-error" class="error" role="alert"></p>
+            <button id="read-token-save" type="submit">Valider le jeton</button>
           </form>
         </section>
         <aside class="chat-list" aria-label="Conversations">
