@@ -218,3 +218,121 @@ test('a relaunch is dropped when its card was closed meanwhile', async () => {
   await relay.retryLaunches();
   assert.equal(sent.length, 0);
 });
+
+// ---- Code review of #383 ----
+
+test('review 1: launches that would take a place count as taken; past the limit, a relaunch queues instead', async () => {
+  const gh = fakeGh({ issues: [3, 4, 5].map((n) => ({ number: n, body: '', labels: [L.feature, L.specReview] })), prs: [] });
+  const { relay, clock, sent } = make(gh, [529, 529]);
+  await relay.handle(go(3));
+  await relay.handle(go(4));
+  const third = await relay.handle(go(5));
+  assert.equal(third.action.type, 'queue', 'two builds already wait for their launch');
+  clock.t = 2 * MIN;
+  await relay.retryLaunches();
+  const building = [3, 4, 5].filter((n) => gh.calls.some((c) => c[0] === 'add' && c[1] === n && c[2] === L.building));
+  assert.deepEqual(building, [3, 4]);
+  assert.equal(sent.length, 4);
+});
+
+test('review 1: a relaunch that would exceed the places goes to the queue', async () => {
+  const saved = (n, since) => writeRelaunch('', { stage: 'build', issue: n, pr: null, then: { labels: [{ n, add: [L.building], remove: [L.specReview] }] }, since, failures: 1, next: since + 2 * MIN });
+  const gh = fakeGh({ issues: [
+    { number: 1, body: '', labels: [L.feature, L.building] },
+    { number: 2, body: '', labels: [L.feature, L.building] },
+    { number: 3, body: saved(3, 0), labels: [L.feature, L.specReview, L.relaunch] },
+  ], prs: [] });
+  const { relay, sent } = make(gh, [], { at: 5 * MIN });
+  await relay.retryLaunches();
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await labelsOf(gh, 3), [L.feature, L.queued]);
+  assert.equal(readRelaunch((await gh.getIssue(3)).body), null);
+});
+
+test('review 2: a launch that starts by another path clears the saved one', async () => {
+  const body = writeRelaunch('Ma demande', { stage: 'resume', issue: 3, pr: null, then: { comments: [{ n: 3, body: 'je reprends' }] }, since: 0, failures: 1, next: 2 * MIN });
+  const gh = fakeGh({ issues: [{ number: 3, body, labels: [L.feature, L.building, L.relaunch] }], prs: [{ number: 9, state: 'open', body: 'Closes #3', head: { sha: 'a' }, labels: [L.acceptance] }] });
+  const { relay, sent, clock } = make(gh, [], { at: MIN });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 9, labels: [L.acceptance], text: 'le bouton est trop petit', fromOwner: true });
+  assert.equal(sent.length, 1);
+  assert.equal(readRelaunch((await gh.getIssue(3)).body), null);
+  assert.ok(!(await labelsOf(gh, 3)).includes(L.relaunch));
+  clock.t = 5 * MIN;
+  await relay.retryLaunches();
+  assert.equal(sent.length, 1, 'the old launch is never started on top');
+});
+
+test('review 3: an answered blocked card whose launch waits is shown at work, without alert', async () => {
+  const { laneFor } = await import('../panel/live.mjs');
+  const { waitingCards } = await import('../scripts/lib/notify.mjs');
+  const body = writeRelaunch('', { stage: 'resume', issue: 3, since: 0, failures: 1, next: 2 * MIN });
+  assert.equal(laneFor({ column: 'blocked', body, labels: ['factory:feature', 'factory:building', 'factory:blocked', 'factory:relaunch'] }), 'working');
+  assert.deepEqual(waitingCards([{ number: 3, body, labels: [L.building, L.blocked, L.relaunch].map((name) => ({ name })) }]), []);
+  const given = writeRelaunch('', { stage: 'resume', issue: 3, since: 0, failures: 9, next: null, blocked: true });
+  assert.equal(laneFor({ column: 'blocked', body: given, labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours');
+});
+
+test('review 4: the PR of a card whose fix waits carries the relaunch time too', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, body: 'feature', labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  const { relay, clock, sent } = make(gh, [529]);
+  await relay.report({ result: 'failure', pr: 10 });
+  assert.equal(readRelaunch((await gh.getPr(10)).body)?.next, 2 * MIN);
+  clock.t = 2 * MIN;
+  await relay.retryLaunches();
+  assert.equal(sent.length, 2, 'the copy on the PR is not a second launch');
+  assert.equal(readRelaunch((await gh.getPr(10)).body), null);
+  assert.ok(!(await gh.getPr(10)).body.includes('factory-relaunch'));
+});
+
+test('review 5: a message on a waiting card that was closed meanwhile gets the usual answer', async () => {
+  const body = writeRelaunch('', { stage: 'build', issue: 3, pr: null, then: {}, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 3, body, open: false, labels: [L.feature, L.relaunch] }], prs: [] });
+  const { relay, sent } = make(gh, []);
+  await relay.handle({ ...go(3), labels: [L.feature, L.relaunch], text: 'encore une chose', closed: true });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /déjà terminée/.test(c[2])));
+});
+
+test('review 5: closing a waiting card drops its saved launch', async () => {
+  const body = writeRelaunch('Ma demande', { stage: 'build', issue: 3, pr: null, then: {}, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 3, body, labels: [L.feature, L.specReview, L.relaunch] }], prs: [] });
+  gh.closeIssue = async (n) => { gh.calls.push(['close', n]); };
+  const { relay } = make(gh, []);
+  await relay.handle({ ...go(3), labels: [L.feature, L.specReview, L.relaunch], text: 'fermer' });
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 3));
+  assert.equal(readRelaunch((await gh.getIssue(3)).body), null);
+});
+
+test('review 6: a new message that moves the card wins over the saved launch', async () => {
+  const body = writeRelaunch('', { stage: 'spec', issue: 3, pr: null, then: {}, since: 0, failures: 1, next: 2 * MIN });
+  const gh = fakeGh({ issues: [{ number: 3, body, labels: [L.feature, L.specReview, L.relaunch] }], prs: [] });
+  const { relay, sent } = make(gh, [], { at: MIN });
+  await relay.handle({ ...go(3), labels: [L.feature, L.specReview, L.relaunch], text: 'go' });
+  assert.equal(payloadOf(sent[0].body).stage, 'build');
+  assert.deepEqual(await labelsOf(gh, 3), [L.feature, L.building]);
+  assert.equal(readRelaunch((await gh.getIssue(3)).body), null);
+});
+
+test('review 10: younger waiting cards count the failures of the outage too, and are told', async () => {
+  const st = (n, since) => writeRelaunch('', { stage: 'build', issue: n, pr: null, then: {}, since, failures: 2, next: since + 12 * MIN });
+  const gh = fakeGh({ issues: [
+    { number: 4, body: st(4, 0), labels: [L.building, L.relaunch] },
+    { number: 8, body: st(8, MIN), labels: [L.building, L.relaunch] },
+  ], prs: [] });
+  const { relay } = make(gh, [503], { at: 13 * MIN });
+  await relay.retryLaunches();
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 8 && c[2].includes(RELAUNCH_TOLD)));
+  assert.equal(readRelaunch((await gh.getIssue(8)).body).failures, 3);
+});
+
+test('review 11: a setting problem at a relaunch keeps the launch for the owner\'s « réessaie »', async () => {
+  const body = writeRelaunch('', { stage: 'build', issue: 2, pr: null, then: { labels: [{ n: 2, remove: [L.queued], add: [L.building] }] }, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 2, body, labels: [L.feature, L.queued, L.relaunch] }], prs: [] });
+  const r = make(gh, [401], { at: 3 * MIN });
+  await r.relay.retryLaunches();
+  assert.ok((await labelsOf(gh, 2)).includes(L.blocked));
+  assert.equal(readRelaunch((await gh.getIssue(2)).body).blocked, true);
+  await r.relay.handle({ ...go(2), labels: await labelsOf(gh, 2), text: 'réessaie' });
+  assert.equal(payloadOf(r.sent[1].body).stage, 'build');
+  assert.deepEqual(await labelsOf(gh, 2), [L.feature, L.building]);
+});

@@ -3,7 +3,7 @@ import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=10';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=11';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
@@ -630,9 +630,9 @@ function card(c, lane, minutes, now, moved) {
   const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
-  const relaunch = !running && c.labels.includes('factory:relaunch') ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
+  const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
-  const blocked = c.column === 'blocked' && !running && !c.waits?.length;
+  const blocked = c.column === 'blocked' && !running && !c.waits?.length && !relaunch;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))

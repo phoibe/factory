@@ -196,6 +196,7 @@ test('stillWaited drops the requests already merged', () => {
 
 test('a card whose launch waits for its relaunch sits with the work in progress, not with what waits for you (#383)', () => {
   assert.equal(laneFor({ column: 'spec', labels: ['factory:feature', 'factory:spec-review', 'factory:relaunch'] }), 'working');
-  assert.equal(laneFor({ column: 'blocked', labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours', 'blocked after 3 hours: the owner answers');
+  const givenUp = '\n\n<!-- factory-relaunch {"stage":"build","blocked":true,"next":null} -->';
+  assert.equal(laneFor({ column: 'blocked', body: givenUp, labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours', 'blocked after 3 hours: the owner answers');
   assert.equal(yoursList([{ column: 'grilling', labels: ['factory:grilling', 'factory:relaunch'], updated_at: '2026-11-13' }]).length, 0);
 });

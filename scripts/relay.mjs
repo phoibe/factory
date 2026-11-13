@@ -204,7 +204,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     const open = await gh.listIssues({ labels: L.building });
     const withPr = new Set(((await gh.listPulls?.().catch(() => null)) || []).map(prIssue).filter(Boolean));
     // A card woken by this run counts even when GitHub's list still shows it blocked.
-    return (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
+    const building = (open || []).filter((i) => !i.pull_request && i.number !== freed && !withPr.has(i.number) && (woken.has(i.number) || !names(i.labels).includes(L.blocked))).length;
+    // A « go » whose launch waits for its relaunch (issue #383) holds its place too.
+    const waiting = (await waitingLaunches()).filter(({ item, saved }) => item.number !== freed && takesPlace(saved) && !names(item.labels).includes(L.building)).length;
+    return building + waiting;
   }
 
   async function lockStart(number) {
@@ -329,6 +332,8 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         return false;
       }
     }
+    // An agent now works on the card: a launch it saved earlier is superseded, never started on top of this one.
+    await clearRelaunch(issue || pr);
     await afterLaunch(then);
     return true;
   }
@@ -342,13 +347,21 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     }
   }
 
-  // Saves a launch that failed for a passing reason on its card (the issue, else the PR), with its schedule.
+  // A saved launch that would start a build takes a place, like the build itself (the owner's « go »).
+  const takesPlace = (saved) => (saved?.then?.labels || []).some((l) => (l.add || []).includes(L.building));
+
+  // Saves a launch that failed for a passing reason on its card (the issue, else the PR), with its schedule. The PR
+  // gets a copy of the time only ({ next, of }), for the board, which shows the PR in place of its request.
   // `prior`: the schedule that goes on (undefined: the card's own; null: a fresh one, after the owner's « réessaie »).
   async function waitRelaunch(saved, prior) {
     const card = saved.issue || saved.pr;
     const item = await gh.getIssue(card);
     const step = relaunchStep(prior === undefined ? readRelaunch(item?.body) : prior, { launch: saved, now: now() });
     await gh.updateIssue(card, { body: writeRelaunch(item?.body, step.state) });
+    if (saved.pr && saved.pr !== card) {
+      const pr = await gh.getPr(saved.pr);
+      if (pr) await gh.updateIssue(saved.pr, { body: writeRelaunch(pr.body, { next: step.state.next, of: card }) });
+    }
     for (const n of new Set([card, saved.pr].filter(Boolean))) await gh.addLabels(n, [L.relaunch]);
     if (step.firstInMs) outputs.relaunchInMs = step.firstInMs;
     log(`launch of #${card} (${saved.stage}) ${step.action === 'block' ? 'given up after 3 hours' : `retried at ${new Date(step.state.next).toISOString()}`}`);
@@ -361,52 +374,75 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
     return step;
   }
 
-  async function clearRelaunch(item, saved) {
-    await gh.updateIssue(item.number, { body: writeRelaunch(item.body, null) });
-    for (const n of new Set([item.number, saved?.pr].filter(Boolean))) await gh.removeLabel(n, L.relaunch);
+  // Forgets the launch saved on card `n` (and the copy on its PR). Reads the card unless given.
+  async function clearRelaunch(n, item = null) {
+    const card = item || await gh.getIssue(n);
+    const saved = readRelaunch(card?.body);
+    const labelled = names(card?.labels).includes(L.relaunch);
+    if (!saved && !labelled) return;
+    if (saved) await gh.updateIssue(n, { body: writeRelaunch(card.body, null) });
+    if (labelled) await gh.removeLabel(n, L.relaunch);
+    if (saved?.pr && saved.pr !== n) {
+      const pr = await gh.getPr(saved.pr);
+      if (pr && readRelaunch(pr.body)) await gh.updateIssue(saved.pr, { body: writeRelaunch(pr.body, null) });
+      await gh.removeLabel(saved.pr, L.relaunch);
+    }
   }
 
-  // Starts the launch saved on card `n` again. Returns 'started', 'failed' (passing failure, rescheduled) or 'dropped'
-  // (nothing to start any more, or a setting problem the owner was told about).
+  // Starts the launch saved on card `n` again. Returns 'started', 'failed' (passing failure, rescheduled), 'queued'
+  // (the factory is full: the card waits for a place like any other) or 'dropped' (nothing to start any more, an
+  // agent already on it, or a setting problem the owner was told about).
   async function retryLaunch(n) {
     const item = await gh.getIssue(n);
     const saved = readRelaunch(item?.body);
-    if (!saved || item.state === 'closed') {
-      if (saved) await clearRelaunch(item, saved);
-      return 'dropped';
-    }
-    if (names(item.labels).includes(L.running)) return 'dropped'; // an agent already works on it
+    if (!saved || saved.of) return 'dropped';
+    if (item.state === 'closed') { await clearRelaunch(n, item); return 'dropped'; }
+    const labels = names(item.labels);
+    if (labels.includes(L.running)) return 'dropped'; // an agent already works on it
     const { stage, issue, pr, extra, then } = saved;
-    if (pr && (await gh.getPr(pr))?.state === 'closed') { await clearRelaunch(item, saved); return 'dropped'; }
+    if (pr && (await gh.getPr(pr))?.state === 'closed') { await clearRelaunch(n, item); return 'dropped'; }
+    // The places may have been taken meanwhile: a build never starts past the limit, it queues (owner's rule).
+    if (takesPlace(saved) && !labels.includes(L.building) && config.maxParallel - (await inFlight(n)) <= 0) {
+      await clearRelaunch(n, item);
+      const resume = stage === 'resume';
+      for (const l of [L.blocked, ...(then?.labels || []).filter((x) => x.n === n).flatMap((x) => x.remove || [])]) if (labels.includes(l)) await gh.removeLabel(n, l);
+      await gh.addLabels(n, resume ? [L.queued, L.resumeQueued] : [L.queued]);
+      if (!labels.includes(L.queued)) await gh.comment(n, say(`C'est noté. ${config.maxParallel} feature(s) sont déjà en construction, c'est le maximum réglé pour ce projet : celle-ci est en file d'attente et démarrera toute seule dès qu'une place se libère.`));
+      log(`relaunch of #${n}: the factory is full, queued`);
+      return 'queued';
+    }
     try {
       await fireAgent({ stage, issue, pr, extra });
     } catch (e) {
       if (!e.transient) {
-        // A setting broke meanwhile: fireAgent explained it; the card waits for the owner's « réessaie ».
+        // A setting broke meanwhile: fireAgent explained it. The launch stays saved for the owner's « réessaie ».
         log(`relaunch of #${n} refused: ${e.message}`);
-        await clearRelaunch(item, saved);
+        await gh.updateIssue(n, { body: writeRelaunch(item.body, { ...saved, next: null, blocked: true }) });
         await gh.addLabels(n, [L.blocked]);
         return 'dropped';
       }
       await waitRelaunch({ stage, issue, pr, extra, then }, saved.blocked ? null : saved);
       return 'failed';
     }
-    await clearRelaunch(item, saved);
+    await clearRelaunch(n, item);
     if (saved.blocked) await gh.removeLabel(n, L.blocked);
     log(`relaunch of #${n} (${stage}) started`);
     await afterLaunch(then);
     return 'started';
   }
 
-  // The launches saved on cards, oldest first (blocked ones wait for the owner).
+  // The launches saved on cards, oldest first: not the copies on PRs, not the ones blocked (they wait for the owner),
+  // not a card an agent already works on.
   async function waitingLaunches() {
     const items = (await gh.listIssues({ labels: L.relaunch })) || [];
     return items.map((item) => ({ item, saved: readRelaunch(item.body) }))
-      .filter((x) => x.saved && !x.saved.blocked).sort((a, b) => (a.saved.since || 0) - (b.saved.since || 0));
+      .filter((x) => x.saved && !x.saved.of && !x.saved.blocked && !names(x.item.labels).includes(L.running))
+      .sort((a, b) => (a.saved.since || 0) - (b.saved.since || 0));
   }
 
   // Run by the guard at every tick, and 2 minutes after a first failure (relaunch-soon). When one is due, the oldest
-  // is tried first; if it fails again, the others are not tried during the outage: they move to its next time.
+  // is tried first; if it fails again, the others are not tried during the outage: the failure counts for them too
+  // (told at their third, blocked after 3 hours) and they move to its next time.
   async function retryLaunches() {
     const waiting = await waitingLaunches();
     if (!waiting.some((x) => x.saved.next <= now())) return;
@@ -415,24 +451,36 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       if (result !== 'failed') continue;
       const next = readRelaunch((await gh.getIssue(waiting[k].item.number))?.body)?.next;
       for (const { item, saved } of waiting.slice(k + 1)) {
-        if (next && saved.next < next) await gh.updateIssue(item.number, { body: writeRelaunch(item.body, { ...saved, next }) });
+        const { stage, issue, pr, extra, then } = saved;
+        const step = await waitRelaunch({ stage, issue, pr, extra, then }, saved);
+        if (step.action === 'wait' && next && step.state.next < next) {
+          const fresh = await gh.getIssue(item.number);
+          await gh.updateIssue(item.number, { body: writeRelaunch(fresh?.body, { ...step.state, next }) });
+        }
       }
       break;
     }
   }
 
-  // An owner's message on a card whose launch waits: started at once, with the saved launch (the agent reads his new
-  // message with the others). Returns true when the event is handled this way.
-  async function relaunchOnMessage(ev, action) {
-    if (!ev.fromOwner || ev.fromAgent || !ev.text || !(ev.labels || []).includes(L.relaunch)) return false;
+  // An owner's message on a card whose launch waits. A message that moves the card (« go », « ok ») replaces the saved
+  // launch: the usual handling goes on. Any other (« réessaie », a remark) starts the saved launch at once; the agent
+  // reads the new message with the others. Returns true when the event is handled this way.
+  async function relaunchOnMessage(ev, action, said) {
+    if (!ev.fromOwner || ev.fromAgent || !said || !(ev.labels || []).includes(L.relaunch)) return false;
     if (['drop', 'defer'].includes(action.type)) return false; // closing wins; a running agent reads it anyway
-    let card = ev.number;
-    if (ev.kind === 'pr') card = prIssue(await gh.getPr(ev.number)) || ev.number;
-    let target = card;
-    if (!readRelaunch((await gh.getIssue(card))?.body)) target = ev.number;
-    if (target !== card && !readRelaunch((await gh.getIssue(target))?.body)) return false;
-    log(`owner message on #${ev.number}: its waiting launch starts now`);
-    await retryLaunch(target);
+    let target = ev.number;
+    const own = readRelaunch((await gh.getIssue(ev.number))?.body);
+    if (own?.of) target = own.of;
+    else if (!own && ev.kind === 'pr') target = prIssue(await gh.getPr(ev.number)) || ev.number;
+    const moves = ['merge', 'queue', 'checks', 'visual-ok', 'docs-merge', 'outage-retry'].includes(action.type) || (action.type === 'fire' && action.add?.length);
+    if (moves && !isRetry(said)) {
+      log(`owner message on #${ev.number}: it replaces the waiting launch`);
+      await clearRelaunch(target);
+      return false;
+    }
+    const result = await retryLaunch(target);
+    if (result === 'dropped' && !(await liveLabels(target)).includes(L.blocked)) return false; // nothing waited: usual handling
+    log(`owner message on #${ev.number}: its waiting launch ${result}`);
     return true;
   }
 
@@ -529,7 +577,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
           continue;
         }
         commentCache.delete(item.number);
-        if (!started) continue; // its relaunch is planned: it resumes then
+        if (!started) break; // its relaunch is planned: no other card is started during the outage
         woken.add(item.number);
         if (holdsPlace) free -= 1;
       } catch (e) { log(`waits #${item.number}: ${e.message}`); }
@@ -1229,7 +1277,10 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       const saved = { labels: kinds.filter((l) => REOPEN_LABELS.includes(l)), prs: prSteps };
       await gh.updateIssue(issue, { body: `${stripReopen(it0.body)}\n\n${REOPEN_MARKER} ${JSON.stringify(saved)} -->`.replace(/^\n\n/, '') });
     }
-    const dropLabels = async (k) => { for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l); };
+    const dropLabels = async (k) => {
+      await clearRelaunch(k); // a launch that waited must never start on a closed card
+      for (const l of (await liveLabels(k)).filter((x) => [L.building, L.blocked, L.running, L.queued, L.pending, L.fixing, L.grilling, L.specReview, L.visualReview, L.checks, L.acceptance, L.close, L.resumeQueued].includes(x))) await gh.removeLabel(k, l);
+    };
     for (const p of prs) {
       await gh.closePr(p);
       await dropLabels(p);
@@ -1876,7 +1927,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       said = text;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
     }
-    if (await relaunchOnMessage(ev, action)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
+    if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
     // Also when the factory is full (the checks need no place) and when he writes it on the PR itself.
     // The PR itself has no factory label left once blocked: the owner's message there is otherwise ignored.
@@ -2287,6 +2338,7 @@ async function main() {
     const url = fromJobOutput(arg('url')) || check.url || null;
     const res = url ? readResult(arg('result-file')) : { result: 'skipped', detail: "la preview n'est pas apparue" };
     await withLock(gh.queueLock, () => relay.report({ result: 'success', pr: Number(check.pr), sha: check.sha, preview: { ...res, url, runId: process.env.GITHUB_RUN_ID } }));
+    await relay.relaunchSoon(); // a fix whose launch failed for a passing reason: first relaunch, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting());
   } else if (command === 'preview-url') {
     // The preview job waits for the preview here, without the queue lock: minutes that block no decision.

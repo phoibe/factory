@@ -147,5 +147,5 @@ test('the newest wait of a card is the one alerted, whatever order GitHub lists 
 
 test('a card whose launch waits for its relaunch sends no alert: the owner already answered (#383)', () => {
   assert.deepEqual(waitingCards([card(3, [L.specReview, L.relaunch])]), []);
-  assert.equal(waitingCards([card(4, [L.blocked, L.relaunch])]).length, 1);
+  assert.equal(waitingCards([card(4, [L.blocked, L.relaunch], { body: '<!-- factory-relaunch {"blocked":true,"next":null} -->' })]).length, 1, 'given up after 3 hours');
 });

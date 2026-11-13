@@ -1,5 +1,6 @@
 // Phone alerts (ntfy) for the cards that wait for the owner. Pure helpers, the relay does the I/O.
 import { L } from './labels.mjs';
+import { readRelaunch } from './relaunch.mjs';
 
 export const NOTIFIED_MARKER = '<!-- factory-notified -->';
 const NTFY_URL = 'https://ntfy.sh';
@@ -28,7 +29,7 @@ export function waitingCards(items) {
     const label = WAIT_LABELS.find((l) => labels.includes(l));
     if (!label) continue;
     if (label === L.specReview && labels.includes(L.autoGo)) continue;
-    if (labels.includes(L.relaunch) && !labels.includes(L.blocked)) continue; // answered: its launch is being retried
+    if (labels.includes(L.relaunch) && !readRelaunch(item.body)?.blocked) continue; // answered: its launch is being retried
     seen.add(item.number);
     out.push({ number: item.number, label, url: item.html_url, title: item.title, updated_at: item.updated_at });
   }

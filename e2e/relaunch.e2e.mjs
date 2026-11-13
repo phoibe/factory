@@ -30,3 +30,15 @@ test('une fois l\'agent relancé, la mention disparaît', async () => {
     assert.match(await c.textContent(), /Un agent travaille/);
   });
 });
+
+test('une modification dont la correction attend sa relance affiche aussi l\'heure de la relance', async () => {
+  const at = Date.now() + 10 * 60_000;
+  const request = issue(1, 'Exporter en PDF', ['factory:feature', 'factory:building', 'factory:relaunch'], { body: writeRelaunch('Ma demande', { stage: 'fix-checks', issue: 1, pr: 10, since: Date.now(), failures: 2, next: at }) });
+  const pr = issue(10, 'Exporter en PDF', ['factory:checks', 'factory:relaunch'], { pull_request: {}, body: writeRelaunch('Closes #1', { next: at, of: 1 }) });
+  await withPanel({ issues: [request, pr] }, async ({ page, url }) => {
+    await page.goto(url);
+    const line = page.locator('.ticket .relaunch');
+    await line.first().waitFor();
+    assert.equal(await line.first().textContent(), relaunchLine({ next: at }));
+  });
+});

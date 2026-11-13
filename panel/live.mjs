@@ -1,6 +1,11 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
 import { COLUMNS, columnFor } from './lib.mjs?v=25';
 import { humanMinutes, rangeText } from './eta.mjs';
+import { readRelaunch } from './relaunch.mjs?v=1';
+
+// Issue #383: the card's launch failed for a moment and the factory starts it again by itself. An answered blocked card
+// counts too; only a launch given up after 3 hours (or refused by a setting) waits for the owner.
+export const relaunchWaits = (item) => (item.labels || []).includes('factory:relaunch') && !readRelaunch(item.body)?.blocked;
 
 const STEPS = [
   { id: 'grilling', name: 'Questions' },
@@ -41,7 +46,7 @@ export function laneFor(item) {
   if (item.column === 'release') return 'working'; // issue #370: a release in progress sits with the agents' work
   if (item.labels.includes('factory:running')) return 'working';
   // Issue #383: its launch failed for a moment, the factory relaunches it alone (until blocked after 3 hours).
-  if (item.labels.includes('factory:relaunch') && item.column !== 'blocked') return 'working';
+  if (relaunchWaits(item)) return 'working';
   if (item.column === 'blocked' && item.waits?.length) return 'queued';
   return COLUMNS.find((c) => c.id === item.column)?.yours ? 'yours' : 'working';
 }
