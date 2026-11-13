@@ -28,6 +28,7 @@ export function waitingCards(items) {
     const label = WAIT_LABELS.find((l) => labels.includes(l));
     if (!label) continue;
     if (label === L.specReview && labels.includes(L.autoGo)) continue;
+    if (labels.includes(L.relaunch) && !labels.includes(L.blocked)) continue; // answered: its launch is being retried
     seen.add(item.number);
     out.push({ number: item.number, label, url: item.html_url, title: item.title, updated_at: item.updated_at });
   }

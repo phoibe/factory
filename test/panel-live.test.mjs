@@ -193,3 +193,9 @@ test('stillWaited drops the requests already merged', () => {
   assert.deepEqual(stillWaited([12], [{ number: 12, issue: 12, reason: 'Déjà réglée' }]), [12]);
   assert.deepEqual(stillWaited([30], [{ number: 30, issue: 12, reason: null }]), []);
 });
+
+test('a card whose launch waits for its relaunch sits with the work in progress, not with what waits for you (#383)', () => {
+  assert.equal(laneFor({ column: 'spec', labels: ['factory:feature', 'factory:spec-review', 'factory:relaunch'] }), 'working');
+  assert.equal(laneFor({ column: 'blocked', labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours', 'blocked after 3 hours: the owner answers');
+  assert.equal(yoursList([{ column: 'grilling', labels: ['factory:grilling', 'factory:relaunch'], updated_at: '2026-11-13' }]).length, 0);
+});

@@ -40,6 +40,8 @@ export function laneFor(item) {
   if (item.column === 'queued') return 'queued';
   if (item.column === 'release') return 'working'; // issue #370: a release in progress sits with the agents' work
   if (item.labels.includes('factory:running')) return 'working';
+  // Issue #383: its launch failed for a moment, the factory relaunches it alone (until blocked after 3 hours).
+  if (item.labels.includes('factory:relaunch') && item.column !== 'blocked') return 'working';
   if (item.column === 'blocked' && item.waits?.length) return 'queued';
   return COLUMNS.find((c) => c.id === item.column)?.yours ? 'yours' : 'working';
 }

@@ -5,6 +5,7 @@ import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } 
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=10';
 import { waitedFor } from './waits.mjs?v=2';
+import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
@@ -628,6 +629,8 @@ function card(c, lane, minutes, now, moved) {
   const e = estimate(c, live.events, typical, now, plan);
   const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
+  // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
+  const relaunch = !running && c.labels.includes('factory:relaunch') ? relaunchLine(readRelaunch(c.body)) : null;
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
   const blocked = c.column === 'blocked' && !running && !c.waits?.length;
   const status = lane === 'yours'
@@ -635,6 +638,8 @@ function card(c, lane, minutes, now, moved) {
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
     : c.column === 'release'
       ? el('p', { class: 'doing' }, el('span', { class: 'dot on', 'aria-hidden': 'true' }), releaseStep(c))
+    : lane === 'working' && relaunch
+      ? el('p', { class: 'doing relaunch' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), relaunch)
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
