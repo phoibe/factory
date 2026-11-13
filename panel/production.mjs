@@ -50,10 +50,9 @@ export function gapItems(pulls, aheadShas) {
 const count = (n) => `${n} modification${n > 1 ? 's' : ''} d'écart`;
 const unknown = (why) => ({ kind: 'unknown', text: 'En ligne : version inconnue', items: [], why });
 
-const TAG_LATER = ' : la factory ne sait pas quelle version est en ligne. Une demande pour l\'ajouter s\'ouvre dans ce projet.';
 const NO_TAG = {
-  external: `La mise en ligne de ce projet se fait hors de la factory, et le site ne donne pas encore son étiquette de version (ou elle n'a pas pu être lue)${TAG_LATER}`,
-  silent: `L'hébergeur de ce site ne prévient pas GitHub quand il publie, et le site ne donne pas encore son étiquette de version (ou elle n'a pas pu être lue)${TAG_LATER}`,
+  external: 'Mise en ligne hors de la factory, et le site ne donne pas encore son étiquette de version.',
+  silent: 'L\'hébergeur ne prévient pas GitHub, et le site ne donne pas encore son étiquette de version.',
 };
 const NONE = { kind: 'none', text: '', items: [] };
 

@@ -3010,3 +3010,21 @@ test('a site address the panel accepts (http, spaces around it) is read by the t
   await tick();
   assert.ok(gh.calls.some((c) => c[0] === 'liveRef' && c[1] === TAG_SHA));
 });
+
+test('a tag card GitHub failed to open is tried again at the next tick, unless it was opened after all', async () => {
+  const world = tagWorld({ html: '<html></html>' });
+  const states = {};
+  world.gh.getState = async (name) => states[name] ?? null;
+  world.gh.setState = async (name, value) => { states[name] = value; };
+  world.gh.createIssue = async () => { throw new Error('POST /issues -> 502'); };
+  await world.tick();
+  assert.equal(states['version-tag'] ?? null, null, 'nothing remembered: the next tick tries again');
+  const lost = tagWorld({ html: '<html></html>' });
+  const kept = {};
+  lost.gh.getState = async (name) => kept[name] ?? null;
+  lost.gh.setState = async (name, value) => { kept[name] = value; };
+  lost.gh.listIssues = async (q) => (q.labels !== L.feature ? [] : [{ number: 61, body: `${AGENT_MARKER}\n<!-- factory-version-tag -->`, labels: [{ name: L.feature }] }]);
+  lost.gh.createIssue = async () => { throw new Error('POST /issues -> 502'); };
+  await lost.tick();
+  assert.deepEqual(kept['version-tag'], { card: 61 });
+});

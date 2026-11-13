@@ -1152,7 +1152,13 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
       '- Acceptance: after the next publication, the board shows « En ligne : à jour » under the project name.'].join('\n');
     // Remembered first: a failure once the card exists must never open another one at each tick.
     await gh.setState('version-tag', { card: 'opening' });
-    const card = await gh.createIssue('Ajouter l\'étiquette de version au site', body, [L.feature, L.kept]);
+    let card;
+    try { card = await gh.createIssue('Ajouter l\'étiquette de version au site', body, [L.feature, L.kept]); } catch (e) {
+      // GitHub may have opened it all the same (the answer was lost): kept if so, otherwise tried again next tick.
+      const opened = ((await gh.listIssues({ labels: L.feature, state: 'all' }).catch(() => [])) || []).find((i) => String(i.body || '').includes(VERSION_TAG_MARKER));
+      await gh.setState('version-tag', opened ? { card: opened.number } : null).catch(() => {});
+      throw e;
+    }
     await gh.setState('version-tag', { card: card.number }).catch((e) => log(`version tag: ${e.message}`));
     log(`version tag: card #${card.number} opened`);
     const labels = await liveLabels(card.number);
