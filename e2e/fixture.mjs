@@ -27,7 +27,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `homepages`: full name → the project's « website » field on GitHub.
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [] }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -116,7 +116,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const q = new URL(req.url()).searchParams;
       // Merged PRs waiting for « Mise en production » (issue #294).
       if (path === '/repos/o/r/issues' && q.get('labels') === 'factory:awaiting-production') return json(awaiting);
-      if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? [] : issues);
+      if (path === '/repos/o/r/issues') return json(q.get('state') === 'closed' ? closed : issues);
       // The other projects' open requests (project list dots, issue #314).
       const otherThread = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(path);
       if (otherThread && repoComments[otherThread[1]]?.[otherThread[2]]) return json(repoComments[otherThread[1]][otherThread[2]]);

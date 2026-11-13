@@ -1,5 +1,5 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
-import { COLUMNS, columnFor } from './lib.mjs?v=24';
+import { COLUMNS, columnFor } from './lib.mjs?v=25';
 import { humanMinutes, rangeText } from './eta.mjs';
 
 const STEPS = [
@@ -38,6 +38,7 @@ export function progress(item) {
 // it starts again by itself, nothing is asked of the owner.
 export function laneFor(item) {
   if (item.column === 'queued') return 'queued';
+  if (item.column === 'release') return 'working'; // issue #370: a release in progress sits with the agents' work
   if (item.labels.includes('factory:running')) return 'working';
   if (item.column === 'blocked' && item.waits?.length) return 'queued';
   return COLUMNS.find((c) => c.id === item.column)?.yours ? 'yours' : 'working';
