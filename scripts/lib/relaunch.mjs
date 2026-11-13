@@ -23,7 +23,8 @@ export function relaunchStep(state, { launch, now }) {
   const prev = state || { since: now, failures: 0 };
   const failures = (prev.failures || 0) + 1;
   const base = { ...launch, since: prev.since ?? now, failures, ...(prev.told ? { told: true } : {}) };
-  if (now - base.since >= RELAUNCH_GIVE_UP_MS) return { state: null, action: 'block', tell: false, firstInMs: null };
+  // Blocked, the launch stays saved: the owner's « réessaie » starts it again.
+  if (now - base.since >= RELAUNCH_GIVE_UP_MS) return { state: { ...base, next: null, blocked: true }, action: 'block', tell: false, firstInMs: null };
   const wait = RELAUNCH_RETRIES_MS[failures - 1] ?? RELAUNCH_SLOW_MS;
   const tell = failures >= RELAUNCH_TOLD_AT && !base.told;
   return { state: { ...base, next: now + wait, ...(tell ? { told: true } : {}) }, action: 'wait', tell, firstInMs: failures === 1 ? wait : null };

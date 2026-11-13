@@ -33,6 +33,8 @@ export const L = {
   production: 'factory:production',
   // Issue #370: the release request's second step, once the new version is online and the live site is being opened.
   releaseChecking: 'factory:release-checking',
+  // Issue #383: the agent's launch failed for a passing reason; the factory starts it again by itself.
+  relaunch: 'factory:relaunch',
 };
 
 // Why the agent closed a feature or bug by itself (issue #203). The label stays on the closed issue: the board shows
@@ -72,6 +74,7 @@ export const LABEL_DEFS = [
   [L.awaitingProd, 'c5def5', 'Modification validée et intégrée : elle attend votre « Mise en production »'],
   [L.production, '0e8a16', 'Mise en production demandée depuis le tableau de bord'],
   [L.releaseChecking, '5319e7', 'Mise en production : vérification du site en ligne'],
+  [L.relaunch, 'bfdadc', "Le lancement de l'agent a échoué un instant : la factory le relance toute seule"],
   [L.skillsAlert, 'b60205', 'Un skill attendu n\'a pas été utilisé : voir la section Fabrication de la PR'],
 ];
 
