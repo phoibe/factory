@@ -336,3 +336,82 @@ test('review 11: a setting problem at a relaunch keeps the launch for the owner\
   assert.equal(payloadOf(r.sent[1].body).stage, 'build');
   assert.deepEqual(await labelsOf(gh, 2), [L.feature, L.building]);
 });
+
+// ---- Second review of #383 ----
+
+const remark = (n, labels, text) => ({ kind: 'issue', event: 'issue_comment', action: 'created', number: n, labels, text, fromOwner: true });
+
+test('review2 1a: an automatic launch never replaces nor clears a launch the owner started', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, body: 'feature', labels: [L.feature, L.building, L.blocked] }], prs: [{ number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks] }], comments: { 10: [] } });
+  const { relay, sent } = make(gh, [529, 529]);
+  await relay.handle(remark(1, [L.feature, L.building, L.blocked], 'mets le bouton en rouge'));
+  const owner = readRelaunch((await gh.getIssue(1)).body);
+  await relay.report({ result: 'failure', pr: 10 });
+  assert.equal(readRelaunch((await gh.getIssue(1)).body).stage, owner.stage, 'not replaced by the failed fix');
+  await relay.report({ result: 'failure', pr: 10 });
+  assert.equal(payloadOf(sent.at(-1).body).stage, 'fix-checks');
+  assert.equal(readRelaunch((await gh.getIssue(1)).body)?.stage, owner.stage, 'still waiting after the fix started');
+});
+
+test('review2 1b: a remark that starts another step wins over a waiting automatic launch', async () => {
+  const body = writeRelaunch('feature', { stage: 'fix-checks', issue: 1, pr: 10, then: {}, since: 0, failures: 1, next: 2 * MIN });
+  const gh = fakeGh({ issues: [{ number: 1, body, labels: [L.feature, L.building, L.blocked, L.relaunch] }], prs: [{ number: 10, state: 'open', body: 'Closes #1', head: { sha: 'abc' }, labels: [L.checks, L.relaunch] }] });
+  const { relay, sent } = make(gh, [], { at: MIN });
+  await relay.handle(remark(1, [L.feature, L.building, L.blocked, L.relaunch], 'mets le bouton en rouge'));
+  assert.equal(sent.length, 1);
+  assert.notEqual(payloadOf(sent[0].body).stage, 'fix-checks');
+});
+
+test('review2 2: a card blocked after 3 hours loses its « Bloqué » once its relaunch finally starts', async () => {
+  const body = writeRelaunch('', { stage: 'build', issue: 3, pr: null, then: { labels: [{ n: 3, add: [L.building], remove: [L.specReview] }] }, since: 0, failures: 8, blocked: true, next: null });
+  const gh = fakeGh({ issues: [{ number: 3, body, labels: [L.feature, L.specReview, L.relaunch, L.blocked] }], prs: [] });
+  const { relay, clock } = make(gh, [529], { at: 5 * 60 * MIN });
+  await relay.handle({ ...go(3), labels: [L.feature, L.specReview, L.relaunch, L.blocked], text: 'réessaie' });
+  clock.t += 2 * MIN;
+  await relay.retryLaunches();
+  assert.deepEqual(await labelsOf(gh, 3), [L.feature, L.building]);
+});
+
+test('review2 3: a second « go » on a card whose launch waits does not count against itself', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, body: '', labels: [L.feature, L.specReview] }], prs: [] });
+  const clock = { t: 0 };
+  const r = routine([529]);
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 1 }, env, fetchImpl: r.fetchImpl, log: quiet, now: () => clock.t, sleep: async () => {} });
+  await relay.handle(go(3));
+  const { action } = await relay.handle({ ...go(3), labels: [L.feature, L.specReview, L.relaunch] });
+  assert.notEqual(action.type, 'queue');
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /file d'attente/.test(c[2])));
+});
+
+test('review2 4: when the request is given up or refused, the copy on its PR says so too', async () => {
+  const body = writeRelaunch('feature', { stage: 'fix-checks', issue: 1, pr: 10, then: {}, since: 0, failures: 2, next: 0 });
+  const gh = fakeGh({ issues: [{ number: 1, body, labels: [L.feature, L.building, L.relaunch] }], prs: [{ number: 10, state: 'open', body: writeRelaunch('Closes #1', { next: 0, of: 1 }), head: { sha: 'abc' }, labels: [L.checks, L.relaunch] }] });
+  const { relay } = make(gh, [401], { at: 3 * MIN });
+  await relay.retryLaunches();
+  assert.equal(readRelaunch((await gh.getPr(10)).body)?.blocked, true);
+  assert.ok(!(await gh.getPr(10)).labels.includes(L.checks));
+});
+
+test('review2 5: a network error on the GitHub Actions dispatch is retried', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, body: '', labels: [L.feature, L.specReview] }], prs: [] });
+  gh.dispatch = async () => { throw new TypeError('fetch failed'); };
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, runner: 'github-actions' }, env: {}, log: quiet, now: () => 0 });
+  await relay.handle(go(3));
+  assert.ok((await labelsOf(gh, 3)).includes(L.relaunch));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+  const gh2 = fakeGh({ issues: [{ number: 3, body: '', labels: [L.feature, L.specReview] }], prs: [] });
+  gh2.dispatch = async () => { throw new Error('POST dispatches -> 404 Not Found'); };
+  await assert.rejects(createRelay({ gh: gh2, repo: 'phoibe/app', config: { ...config, runner: 'github-actions' }, env: {}, log: quiet }).handle(go(3)));
+  assert.ok(gh2.calls.some((c) => c[0] === 'comment'), 'a disabled workflow is a setting');
+});
+
+test('review2 6: the project foundation never queues at its relaunch', async () => {
+  const body = writeRelaunch('', { stage: 'foundation', issue: 3, pr: null, then: { labels: [{ n: 3, add: [L.building], remove: [L.specReview] }] }, since: 0, failures: 1, next: 0 });
+  const gh = fakeGh({ issues: [
+    { number: 1, body: '', labels: [L.feature, L.building] }, { number: 2, body: '', labels: [L.feature, L.building] },
+    { number: 3, body, labels: [L.project, L.specReview, L.relaunch] },
+  ], prs: [] });
+  const { relay, sent } = make(gh, [], { at: 3 * MIN });
+  await relay.retryLaunches();
+  assert.equal(payloadOf(sent[0].body).stage, 'foundation');
+});
