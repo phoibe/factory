@@ -57,3 +57,12 @@ test('je change une règle et je l\'enregistre', async () => {
     assert.equal(JSON.parse(Buffer.from(put.body.content, 'base64').toString()).stages.plan, false);
   });
 });
+
+test('si GitHub ne donne pas les modifications terminées, « Terminé » ne dit pas « Rien de livré »', async () => {
+  await withPanel({ issues: [issue(1, 'Partager une recette', ['factory:feature', 'factory:building'])], failing: new Set(['/repos/o/r/pulls']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('.ticket[data-number="1"]').waitFor();
+    await page.waitForTimeout(1000);
+    assert.equal(await page.getByText('Rien de livré pour l\'instant.').count(), 0);
+  });
+});

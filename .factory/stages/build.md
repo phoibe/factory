@@ -2,7 +2,8 @@
 
 Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`). Construis-la jusqu'à une PR.
 
-0. **Estimation de durée.** Avant de commencer, évalue honnêtement la taille de la feature (`small`, `medium` ou `large`)
+0. **Estimation de durée.** Avant de commencer, évalue honnêtement la taille de la feature (`small`, `medium` ou `large`,
+   voir « Taille d'une demande » dans AGENT.md : si le propriétaire l'a donnée ou corrigée dans l'issue, reprends la sienne)
    et le temps de travail réaliste qu'il te reste, en minutes, sous forme de fourchette (ni marge de sécurité excessive, ni
    vœu pieux ; le haut ne dépasse pas 2,5 fois le bas). Publie-la en commentaire sur l'issue, avec en 2e ligne le marqueur
    `<!-- factory-estimate size=<taille> min=<bas> max=<haut> -->` et une phrase en français pour le propriétaire
@@ -15,13 +16,20 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `PRODUCT.md` (sans fiche produit, choisis-la avec les critères de `.factory/stages/framing.md`), avec dès le
    départ les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
-3. **Plan** (si l'étape plan est active), **seulement pour une feature moyenne ou grande** (ton estimation de
-   l'étape 0) : skill `writing-plans`, plan enregistré dans `docs/plans/issue-<n>.md`. Pas de validation humaine
-   du plan : exécute-le toi-même (`executing-plans` ou `subagent-driven-development`, chaque tâche confiée à un
-   sous-agent sur `sonnet` effort `medium`, ou sur `opus` effort `high` pour une tâche d'architecture : grille
-   « Modèle et effort des sous-agents » d'AGENT.md). Une petite feature se code
-   directement, sans plan écrit ; si elle touche finalement plus de 3 fichiers de code, le verrou te demandera
-   le plan avant la PR.
+3. **Parcours selon la taille** (ton estimation de l'étape 0). Pas de validation humaine du plan. Dans tous les cas,
+   une relecture finale (étape 5, avec ses tours après correction) par un sous-agent `opus` effort `high`, et les mêmes tests, contrôles,
+   passe design et captures :
+   - **petite** : pas de plan écrit, code-la toi-même d'une traite. Si elle touche finalement plus de 3 fichiers de
+     code, elle devient moyenne : écris le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
+     `size=medium` (même format), sans déranger le propriétaire ;
+   - **moyenne** (si l'étape plan est active) : skill `writing-plans`, plan court enregistré dans
+     `docs/plans/issue-<n>.md`, puis exécute-le **toi-même, d'une traite** (skill `executing-plans`), sans confier
+     chaque tâche à un sous-agent ni la faire relire séparément ;
+   - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
+     `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
+     effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+   Si l'étape plan est désactivée, une demande moyenne ou grande se code aussi d'une traite, sans plan écrit.
+   Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
    lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD).
 4 bis. **Parcours rejoués à chaque livraison** : chaque critère d'acceptation de la spec que l'on peut vérifier
@@ -66,6 +74,23 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
+7 bis. **Essai en conditions réelles** (issue #385 : les deuxièmes demandes juste après une livraison venaient de
+   tests qui ne tournaient que sur des exemples inventés). Après les tests et avant d'ouvrir la PR, rejoue le parcours
+   de la demande sur les vraies données du projet, **en lecture seule** : le vrai dépôt GitHub (ses vraies issues, PR,
+   labels, commentaires, via `gh api` en lecture), le vrai site en ligne (ouvre-le, lis la page), le vrai message
+   déjà publié, le vrai fichier de configuration. Fais tourner ton code sur ces données réelles (par exemple ta
+   fonction appliquée à la vraie réponse de l'API, la page de la branche contre le vrai site) et compare avec ce
+   que la spec attend. Si ton code écrit quelque part, donne-lui seulement les vraies réponses déjà lues : ne le
+   laisse jamais appeler lui-même le vrai service. Ne démarre jamais l'appli ni une migration avec les réglages de
+   production (vraie base de données, vraies clés) : lis seulement ce que la production montre. **Lecture seule stricte** : ne crée, ne modifie, n'envoie ni ne supprime rien de réel pour
+   « essayer » (pas de message de test, pas de label posé pour voir, pas d'écriture en production, pas de
+   formulaire envoyé). Si l'essai montre un problème, corrige-le (avec un test qui échoue d'abord) comme un test
+   rouge, avant la PR.
+   Dans le résumé de la PR, écris une ligne **« Essayé en vrai : … »** (ce que tu as regardé, sur quelles vraies
+   données, et ce que tu as vu), et une ligne **« Pas vérifié en vrai : … »** pour chaque partie qu'on ne peut pas
+   essayer en lecture seule (il faudrait écrire de vraies données, un service extérieur intervient, la mise en
+   ligne elle-même) : le propriétaire sait ainsi quoi regarder pendant la recette. Rien à essayer (outillage pur) :
+   « Pas vérifié en vrai : rien à essayer, … » en une phrase. Le verrou refuse d'ouvrir une PR sans l'une de ces lignes.
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
    lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais.
    **Rien à tester pour lui ?** Si la PR ne change rien à l'écran ni dans l'usage de l'appli (tests, robustesse,

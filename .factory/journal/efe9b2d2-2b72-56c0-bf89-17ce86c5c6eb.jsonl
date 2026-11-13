@@ -1,0 +1,8 @@
+{"t":"2026-11-13T14:19:27.039Z","kind":"run","stage":"bugfix","issue":375,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-13T14:20:05.464Z","kind":"skill","name":"systematic-debugging","id":"toolu_01BjXD56U1xZULNSBpkGKhGC"}
+{"t":"2026-11-13T14:20:10.026Z","kind":"skill","name":"test-driven-development","id":"toolu_017SSs8oqX39EnX6etAGfU31"}
+{"t":"2026-11-13T14:21:08.286Z","kind":"test","cmd":"cat >> test/shots.test.mjs <<'EOF'\n\n// Issue #375: a comment's screenshots table, retyped by hand, showed broken links instead of the dark images.\nconst BROKEN_373 = [\n  '<!-- shots: claude/factory-as","ok":false,"id":"toolu_017NvJapf9jpJeHMNQhJKGxm"}
+{"t":"2026-11-13T14:21:31.064Z","kind":"test","cmd":"python3 - <<'PY'\np=…\ns=…\nanchor=…\nadd=…'// The table rows of a screenshots message (after its hidden shots mark) that would not show an image: the agent once\n// retyped the table by hand and the dark ","ok":true,"id":"toolu_01Q8sQDgLakTqZq55r1JgvEK"}
+{"t":"2026-11-13T14:22:18.564Z","kind":"test","cmd":"python3 - <<'PY'\np=…\ns=…\ns=… { sessionRoot } from './run-root.mjs';\",\"import { sessionRoot } from './run-root.mjs';\\nimport { brokenShotRows } from './shots.mjs';\",1)\ns=… entries = (text) =>\"\"\",\"\"\"// ","ok":true,"id":"toolu_01V4xK21mh6RgUBcV4P2rrEN"}
+{"t":"2026-11-13T14:23:01.312Z","kind":"test","cmd":"python3 - <<'PY'\np=…\ns=…\ns=…  const cmd = String(input.command || '');\n  const paths\"\"\",\"\"\"  const cmd = String(input.command || '');\n  if (!/\\\\b(gh\\\\s+(api|pr|issue)|curl)\\\\b/.test(cmd)) return [];\n ","ok":true,"id":"toolu_01Wz7VXLw8zQWZPubYTcUaCB"}
+{"t":"2026-11-13T14:24:18.065Z","kind":"skill","name":"requesting-code-review","id":"toolu_01DRxA6BWa2rcQbcaBN1bYKc"}

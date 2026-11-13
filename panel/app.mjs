@@ -1,11 +1,13 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, siteLink } from './lib.mjs?v=24';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=25';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited } from './live.mjs?v=9';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=11';
 import { waitedFor } from './waits.mjs?v=2';
+import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
+import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -290,6 +292,8 @@ async function openProject(fullName) {
   $('project-switch-name').textContent = current.repo.name;
   current.delivery = null;
   drawSub();
+  drawGap();
+  refreshGap(true).catch(() => {});
   const base = current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
@@ -310,12 +314,12 @@ async function openProject(fullName) {
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -421,8 +425,8 @@ async function refresh() {
     // More than a page of events while away: the older pages are read again, so that no step is missing.
     if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
-    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; }
-    live.doneTried = true;
+    // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
+    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
     // The cards show now; their details (preview, session, estimate) come in below, in their place.
@@ -484,14 +488,34 @@ async function refresh() {
         live.plans.set(c.number, plan);
         previewsChanged = true;
       }
+      // Issue #370: where a « Mise en production » stands, read from the relay's hidden note on its comments.
+      if (c.column === 'release') {
+        const outcome = releaseOutcome([...before.data, ...res.data]);
+        if (JSON.stringify(live.releases.get(c.number) ?? null) !== JSON.stringify(outcome)) {
+          live.releases.set(c.number, outcome);
+          previewsChanged = true;
+        }
+      }
       if (live.previews.get(c.number) !== url || live.targets.get(c.number) !== target) {
         live.previews.set(c.number, url);
         live.targets.set(c.number, target);
         previewsChanged = true;
       }
     });
+    // Issue #370: a finished « Mise en production » shows its outcome in « Terminé ». Its note lives in its comments,
+    // which the done list does not carry; read it once for each release not already cached (while it was on the board).
+    const doneReleases = async () => {
+      const need = (live.done || []).filter((d) => d.release && !live.releases.has(d.number));
+      await mapLimit(need, 6, async (d) => {
+        if (!same()) return;
+        const res = await cachedGet(`/repos/${repo}/issues/${d.number}/comments?per_page=100`).catch(quiet);
+        if (!res || !same()) return;
+        live.releases.set(d.number, releaseOutcome(res.data));
+        previewsChanged = true;
+      });
+    };
     const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
-    const [eventsChanged] = await Promise.all([deepEvents(), comments, release]);
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneReleases(), refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
@@ -568,17 +592,56 @@ const holdStatus = (hold) => hold.late
   ? el('p', { class: 'alert', 'data-time': '' }, hold.text)
   : el('p', { class: 'doing' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), hold.text);
 
+// Issue #370: a « Mise en production » card. While it runs it shows its step and the changes going live; the change
+// list comes from the relay's note once it lands, else from the request body.
+const releaseStep = (c) => (c.labels.includes('factory:release-checking') ? 'Vérification du site en ligne' : 'Mise en ligne en cours');
+const releaseChanges = (c) => (live.releases.get(c.number)?.prs?.length ? live.releases.get(c.number).prs : releaseList(c.body));
+const changeList = (changes) => (changes.length ? el('ul', { class: 'release-changes' }, changes.map((p) => el('li', {}, p.title))) : null);
+
+// Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
+// headline and whether the card is red; everything the owner needs is on the card, the title still opens GitHub.
+function releaseDoneCard(d, now) {
+  const o = live.releases.get(d.number) || { state: 'unknown' };
+  const changes = (o.prs?.length ? o.prs : d.changes) || [];
+  const red = ['failed', 'undone', 'broken', 'unpublished'].includes(o.state);
+  const when = el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`);
+  const head = (sym, text, cls = '') => el('p', { class: `finished${cls ? ` ${cls}` : ''}` }, sym ? el('span', { 'aria-hidden': 'true' }, `${sym} `) : null, text, when);
+  const body = [];
+  if (o.state === 'nothing') body.push(head('✓', 'Rien à mettre en ligne : le site est déjà à jour', 'closed'));
+  else if (o.state === 'undone') body.push(head('–', 'Annulée : le site en ligne ne marchait plus, la version d\'avant est revenue', 'broken'));
+  else if (o.state === 'broken') body.push(head('–', 'Le site en ligne ne marchait plus : une correction urgente est en cours', 'broken'));
+  else if (o.state === 'failed' || o.state === 'unpublished') body.push(head('–', 'Pas mise en production', 'broken'));
+  else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
+  else if (o.state === 'live') body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
+  else body.push(head('✓', 'Terminée')); // closed on the way (« deploying »…): never a false « En ligne »
+  if (!red && changes.length) body.push(changeList(changes));
+  if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
+  const site = o.state === 'live' && siteLink(o.site);
+  if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  if (red && (o.reason || o.todo)) body.push(el('p', { class: 'release-why' }, [o.reason, o.todo].filter(Boolean).join(' ')));
+  if (Number(o.fix) > 0) body.push(el('a', { class: 'release-fix', href: `${d.url.replace(/\/issues\/\d+$/, `/issues/${Number(o.fix)}`)}`, target: '_blank', rel: 'noopener' }, `Voir la correction (#${Number(o.fix)})`, el('span', { 'aria-hidden': 'true' }, ' ↗')));
+  return el('article', { class: `ticket done${red ? ' closed' : ''}` },
+    el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, 'Mise en production')),
+    ...body);
+}
+
 function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
+  // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
+  const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
   // Red means « waiting for you to unblock it »: not while an agent is working on it after your answer.
-  const blocked = c.column === 'blocked' && !running && !c.waits?.length;
+  const blocked = c.column === 'blocked' && !running && !c.waits?.length && !relaunch;
   const status = lane === 'yours'
     ? el('p', { class: 'cta' }, c.column === 'acceptance' && !live.previews.get(c.number) ? 'Relisez et validez' : actionFor(c.column),
       el('span', { 'aria-hidden': 'true', class: 'arrow' }, '→'))
+    : c.column === 'release'
+      ? el('p', { class: 'doing' }, el('span', { class: 'dot on', 'aria-hidden': 'true' }), releaseStep(c))
+    : lane === 'working' && relaunch
+      ? el('p', { class: 'doing relaunch' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), relaunch)
     : lane === 'working'
       ? el('p', { class: 'doing' }, el('span', { class: `dot${running || c.column === 'checks' ? ' on' : ''}`, 'aria-hidden': 'true' }),
         running ? 'Un agent travaille' : c.column === 'checks' ? 'Contrôles automatiques en cours' : 'Prise en charge imminente',
@@ -598,15 +661,17 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'modification' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, ...kindParts(kind, Boolean(c.pull_request), c.number, plan?.size).map((p) => (typeof p === 'string' ? p : el('span', { class: 'size-tag' }, p.size)))),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview && !asks ? null : status,
+    c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
-    stepTrack(c),
-    el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
+    c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    c.column === 'release' ? null : stepTrack(c),
+    // No agent works on a card whose launch waits: no estimate of its work until it starts.
+    c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
     c.labels.includes('factory:auto-picked') ? el('p', { class: 'eta' }, 'Piochée automatiquement') : null,
     // Only on a card that waits for you (as the « À vous » list always showed it): while an agent catches the step up,
     // there is nothing for you to see.
@@ -639,7 +704,8 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 const pendingGo = new Map();
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
 // Both are keyed by project and number: #12 of one project is not #12 of another.
-const goKey = (c) => `${current.repo.full_name}#${c.number}`;
+// The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
+const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
 function cancelPendingGos() {
   if (!pendingGo.size) return;
   const words = new Set([...pendingGo.values()].map((h) => h.word));
@@ -845,7 +911,7 @@ function drawBoard() {
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
   const movedSet = new Set(moved.map((m) => m.number));
   for (const m of moved) toast(`« ${m.title} » : ${COLUMNS.find((c) => c.id === m.to)?.title || m.to}`);
-  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}`).join('|') : null;
+  const doneSig = live.doneLoaded ? live.done.map((d) => `${d.number}:${d.title}${d.release ? `:${JSON.stringify(live.releases.get(d.number) ?? null)}` : ''}`).join('|') : null;
   const doneChanged = doneSig !== null && live.doneSig !== doneSig;
   if (live.doneSig != null) {
     const known = new Set(live.doneSig.split('|').map((x) => x.split(':')[0]));
@@ -888,7 +954,7 @@ function drawBoard() {
     el('section', { class: 'lane lane-done', 'aria-label': 'Terminé' },
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
-        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
+        ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
           el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
           (d.reason
             ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
@@ -1104,7 +1170,7 @@ function renderRules() {
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
-      ['external', 'Externe, faite hors de la factory : elle s\'arrête au merge']]
+      ['external', 'Externe, faite hors de la factory']]
       .map(([v, t]) => el('div', { class: 'row' },
         el('input', { type: 'radio', name: 'production', id: `production-${v}`, checked: mode === v, onchange: () => update(setPath(c, 'production', v)) }),
         el('label', { for: `production-${v}` }, t))),
@@ -1348,7 +1414,7 @@ async function refreshRuns() {
     const counts = await mapLimit(projects, 2, async (p) => {
       const events = [];
       for (let page = 1; page <= 5; page++) {
-        const batch = await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`);
+        const batch = (await api(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`)) || [];
         events.push(...batch);
         if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
       }
@@ -1375,8 +1441,107 @@ async function loadDelivery(project) {
   current.delivery = delivery;
   drawSub();
   drawRelease();
+  refreshGap(true).catch(() => {});
   if (!$('rules').contains(document.activeElement)) renderRules();
 }
+
+// ---- Écart de production (issue #369) ---------------------------------------------------------------------------
+// Under the project's name: is the live site up to date with the validated changes? A version is live only once its
+// host reported a successful publication (production.mjs). Read at most once a minute, with ETags.
+const GAP_MS = 60_000;
+const gap = { repo: null, at: 0, view: null, busy: null };
+function refreshGap(force = false) {
+  // One read at a time: opening a project and its first refresh must not fire the same requests twice.
+  if (gap.busy) return gap.busy;
+  gap.busy = readGap(force).finally(() => { gap.busy = null; });
+  return gap.busy;
+}
+async function readGap(force) {
+  const project = current;
+  const repo = project.repo.full_name;
+  if (!force && gap.repo === repo && Date.now() - gap.at < GAP_MS) return;
+  gap.at = Date.now();
+  const mode = effectiveProduction(project.config, project.delivery);
+  const hasSite = Boolean(siteLink(project.config.siteUrl, project.repo.homepage));
+  let view;
+  try {
+    // A preview deployment is created on every push: read a wide page, or the live ones may all be pushed out of it.
+    const deployments = mode === 'external' ? [] : (await cachedGet(`/repos/${repo}/deployments?per_page=100`)).data || [];
+    const statusesById = {};
+    const live = deployments.filter((d) => isLiveEnv(d.environment))
+      .sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 10);
+    for (const d of live) {
+      statusesById[d.id] = (await cachedGet(`/repos/${repo}/deployments/${d.id}/statuses?per_page=20`)).data || [];
+      if (statusesById[d.id].some((x) => x.state === 'success')) break;
+    }
+    // External production or a silent host: the site's version tag (issue #372), kept by the relay in refs/factory/live.
+    const byTag = tagged({ mode, hasSite, deployments });
+    const tagSha = byTag ? await cachedGet(`/repos/${repo}/git/ref/factory/live`)
+      .then((r) => r.data?.object?.sha || null, (e) => { if (e?.status === 404) return null; throw e; }) : null;
+    const liveSha = byTag ? tagSha : deploymentState(live, statusesById).liveSha;
+    let aheadShas = new Set();
+    let pulls = [];
+    let truncated = false;
+    if (liveSha) {
+      const preprod = mode === 'approval' && await cachedGet(`/repos/${repo}/git/ref/heads/preprod`).catch((e) => { if (e?.rateLimited) throw e; return null; });
+      const branch = preprod ? 'preprod' : project.repo.default_branch || 'main';
+      const [cmp, prs] = await Promise.all([
+        cachedGet(`/repos/${repo}/compare/${liveSha}...${encodeURIComponent(branch)}`),
+        cachedGet(`/repos/${repo}/pulls?state=closed&base=${encodeURIComponent(branch)}&sort=updated&direction=desc&per_page=50`),
+      ]);
+      aheadShas = new Set((cmp.data?.commits || []).map((c) => c.sha));
+      // GitHub stops the comparison at 250 commits, the oldest ones: the newest merges would look live.
+      truncated = Number(cmp.data?.total_commits || 0) > aheadShas.size;
+      pulls = Array.isArray(prs.data) ? prs.data : [];
+      // A PR the factory undid may have left the 50 most recently updated: read it alone, so it still comes back.
+      for (const r of pulls) {
+        const undone = Number(/^claude\/revert-pr-(\d+)$/.exec(r.head?.ref || '')?.[1]);
+        // Only a revert that is live hides a change; one still waiting changes nothing to read.
+        if (undone && r.merged_at && !aheadShas.has(r.merge_commit_sha) && !pulls.some((p) => p.number === undone)) {
+          const original = (await cachedGet(`/repos/${repo}/pulls/${undone}`).catch((e) => { if (e?.rateLimited) throw e; return null; }))?.data;
+          if (original?.number) pulls = [...pulls, original];
+        }
+      }
+    }
+    view = gapView({ mode, hasSite, deployments, statusesById, aheadShas, pulls, truncated, tagSha });
+  } catch (err) {
+    // A pause asked by GitHub belongs to the whole refresh (it backs off); the line keeps what it said.
+    if (err?.rateLimited) throw err;
+    // A project that was showing something keeps a line (« version inconnue »), it does not vanish on one failure.
+    const shown = gap.repo === repo && gap.view && gap.view.kind !== 'none';
+    view = gapView({ mode, hasSite: hasSite || shown, error: true });
+  }
+  if (current !== project) return;
+  gap.repo = repo;
+  gap.view = view;
+  drawGap();
+}
+function drawGap() {
+  const view = gap.repo === current?.repo.full_name ? gap.view : null;
+  const on = Boolean(view && view.kind !== 'none');
+  $('prod-gap').hidden = !on;
+  $('prod-gap-sep').hidden = !on;
+  if (!on) return;
+  $('prod-gap').textContent = view.text;
+  $('prod-gap').classList.toggle('failed', view.kind === 'failed');
+}
+const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+$('prod-gap').addEventListener('click', () => {
+  const view = gap.view;
+  if (!view) return;
+  const base = current.repo.html_url;
+  // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
+  const why = view.why || (view.items.length ? '' : view.kind === 'deploying' ? 'Publication en cours.' : 'Tout est en ligne.');
+  $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : view.kind === 'deploying' ? 'Publication en cours' : 'Site en ligne';
+  $('gap-why').textContent = why;
+  $('gap-why').hidden = !why;
+  $('gap-list').hidden = !view.items.length;
+  $('gap-list').replaceChildren(...view.items.map((i) => el('li', {},
+    el('a', { href: `${base}/issues/${i.issue}`, target: '_blank', rel: 'noopener' }, i.title), ' ',
+    el('span', { class: 'gap-date' }, `validée le ${gapDate(i.mergedAt)}`))));
+  $('gap-dialog').showModal();
+});
+$('gap-close').addEventListener('click', () => $('gap-dialog').close());
 
 // ---- « Mise en production » (issue #294) ----------------------------------------------------------------------
 // On a project set to « sur mon accord », validated changes are merged but wait (label factory:awaiting-production on
@@ -1418,7 +1583,9 @@ function drawRelease() {
   placeNewFeature();
   if (!on) return;
   const pending = release.repo === current.repo.full_name ? release.pending : [];
-  const b = releaseButton(pending);
+  // Issue #370: a release is on its way while its request is still open on the board (one at a time).
+  const running = (live.issues || []).some((i) => i.labels.includes('factory:production'));
+  const b = releaseButton(pending, running);
   // The count in the mono face (Mono Numbers Rule).
   const m = /^(.*) \((\d+)\)$/.exec(b.text);
   btn.replaceChildren(...(m ? [`${m[1]} `, el('span', { class: 'num' }, `(${m[2]})`)] : [b.text]));
@@ -1435,7 +1602,7 @@ async function sendRelease(pending, version) {
   drawRelease();
 }
 $('release').addEventListener('click', () => {
-  if ($('release').getAttribute('aria-disabled') === 'true') return toast('Rien en attente');
+  if ($('release').getAttribute('aria-disabled') === 'true') return toast($('release').title || 'Rien en attente');
   const n = release.pending.length;
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;
@@ -1470,7 +1637,7 @@ $('release-confirm').addEventListener('click', async () => {
   try {
     await sendRelease(release.pending.slice(), version);
     $('release-dialog').close();
-    toast('Mise en production lancée : le site en ligne se met à jour dans quelques minutes.');
+    toast('Mise en production lancée : suivez-la dans l\'onglet Suivi.');
   } catch (e) {
     // Shown inside the dialog: a toast would sit under its backdrop, out of reach of a screen reader.
     $('release-error').textContent = `L'envoi a échoué. ${errorText(e)}`;
@@ -1975,9 +2142,9 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit · en général 1 à 3 min'))
+        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
       : status === 'late'
-        ? el('li', { class: 'notice' }, 'Pas encore de réponse. L\'agent a peut-être atteint sa limite de lancements du jour : renvoyez votre message un peu plus tard.')
+        ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
     list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
     announceAnswers(chat.issue.number, messages);
