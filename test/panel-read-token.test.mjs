@@ -88,3 +88,9 @@ test('a request GitHub refused is said under the answer', () => {
 test('the write probes cover files, requests and pull requests, always with an empty body', () => {
   assert.deepEqual(WRITE_PROBES, [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']]);
 });
+
+test('la fiche produit dit que le serveur de discussion ne reçoit qu\'un jeton de lecture', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const product = await readFile(new URL('../PRODUCT.md', import.meta.url), 'utf8');
+  assert.match(product, /serveur de discussion ne reçoit qu'un jeton de lecture seule/);
+});

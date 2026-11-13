@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
   <header class="top">
@@ -63,6 +63,18 @@
       <p id="chat-badge-announce" class="visually-hidden" role="status"></p>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
       <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+        <section id="chat-setup" class="chat-setup" aria-labelledby="chat-setup-title" hidden>
+          <h2 id="chat-setup-title">Un jeton de lecture pour discuter</h2>
+          <p>La discussion utilise désormais un jeton qui ne peut que lire vos projets, pour que votre jeton complet ne quitte jamais votre navigateur.</p>
+          <p><a id="read-token-link" class="button secondary" target="_blank" rel="noopener">Créer le jeton de lecture sur GitHub<span aria-hidden="true"> ↗</span></a></p>
+          <p class="muted">Sur GitHub, choisissez « All repositories », puis « Generate token ». À faire une seule fois.</p>
+          <form id="read-token-form">
+            <label for="read-token">Jeton de lecture</label>
+            <input id="read-token" type="password" autocomplete="off" placeholder="github_pat_…" required>
+            <button id="read-token-save" type="submit">Valider le jeton</button>
+            <p id="read-token-error" class="error" role="alert"></p>
+          </form>
+        </section>
         <aside class="chat-list" aria-label="Conversations">
           <button id="chat-new" type="button">Nouvelle conversation</button>
           <ul id="chat-items"></ul>
@@ -137,6 +149,6 @@
     </div>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=52"></script>
+  <script type="module" src="app.mjs?v=53"></script>
 </body>
 </html>
