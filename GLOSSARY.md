@@ -51,3 +51,13 @@ _À éviter_ : menu déroulant, sélecteur
 **Point d'état** :
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
+
+## Lancement de l'agent
+
+**Relance automatique** :
+Le nouvel essai que fait seule la factory quand le lancement de l'agent échoue pour une raison passagère (service de Claude saturé, réseau, limite quotidienne de lancements) : 2 min, puis 10 min, puis toutes les 30 min ; la carte est mise de côté au bout de 3 h sans succès.
+_À éviter_ : retry, nouvelle tentative manuelle
+
+**Échec de réglage** :
+Un lancement qui échoue pour une raison qui ne passera pas seule (secrets de la routine absents, factory pas installée dans le projet) ; il n'y a pas de relance automatique, le propriétaire est prévenu tout de suite.
+_À éviter_ : erreur de config
