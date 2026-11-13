@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { labelIntervals, stageMinutes, estimate, etaText, humanMinutes, DEFAULT_MINUTES, parseEstimate, rangeText, buildingMinutes, BUILD_DEFAULTS } from '../panel/eta.mjs';
+import { labelIntervals, stageMinutes, estimate, etaText, humanMinutes, DEFAULT_MINUTES, parseEstimate, rangeText, buildingMinutes, BUILD_DEFAULTS, kindText, kindParts } from '../panel/eta.mjs';
 
 const T0 = Date.parse('2026-11-03T18:00:00Z');
 const at = (min) => new Date(T0 + min * 60_000).toISOString();
@@ -167,4 +167,21 @@ test('the build history counts the run that started just before the building lab
   }
   assert.equal(Math.round(stageMinutes(evs, T0 + 300 * 60_000).building), 25);
   assert.equal(Math.round(buildingMinutes(evs, T0 + 300 * 60_000, { 1: 'small', 2: 'small' }).small), 25);
+});
+
+// Issue #381: the card names the request's size as soon as the agent has estimated it.
+test('kindText names the size of a request, never of a PR', () => {
+  assert.equal(kindText('Fonctionnalité', false, 12, 'small'), 'Fonctionnalité · petite demande #12');
+  assert.equal(kindText('Fonctionnalité', false, 12, 'medium'), 'Fonctionnalité · demande moyenne #12');
+  assert.equal(kindText('Bug', false, 12, 'large'), 'Bug · grande demande #12');
+  assert.equal(kindText('Fonctionnalité', false, 12, undefined), 'Fonctionnalité · demande #12');
+  assert.equal(kindText('Fonctionnalité', false, 12, 'huge'), 'Fonctionnalité · demande #12');
+  assert.equal(kindText('Fonctionnalité', true, 13, 'small'), 'Fonctionnalité · modification #13');
+  assert.equal(kindText('Review générale', false, 14, 'large'), 'Review générale · demande #14');
+});
+
+test('kindParts sets the size apart so the card can show it as a tag', () => {
+  assert.deepEqual(kindParts('Fonctionnalité', false, 12, 'small'), ['Fonctionnalité · ', { size: 'petite demande' }, ' #12']);
+  assert.deepEqual(kindParts('Fonctionnalité', true, 13, 'small'), ['Fonctionnalité · modification #13']);
+  assert.deepEqual(kindParts('Bug', false, 14, undefined), ['Bug · demande #14']);
 });

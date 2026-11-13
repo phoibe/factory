@@ -1,7 +1,7 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=25';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes } from './eta.mjs';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=11';
 import { waitedFor } from './waits.mjs?v=2';
@@ -659,7 +659,7 @@ function card(c, lane, minutes, now, moved) {
     short ? 'Aperçu' : previewName, el('span', { 'aria-hidden': 'true' }, ' ↗')) : null;
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
-      el('span', { class: 'kind' }, `${kind} · ${c.pull_request ? 'modification' : 'demande'} #${c.number}`),
+      el('span', { class: 'kind' }, ...kindParts(kind, Boolean(c.pull_request), c.number, plan?.size).map((p) => (typeof p === 'string' ? p : el('span', { class: 'size-tag' }, p.size)))),
       e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,

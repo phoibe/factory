@@ -42,6 +42,12 @@ _À éviter_ : retard de déploiement, diff de prod
 La petite indication, invisible pour les visiteurs, qu'un site publie avec lui-même pour dire quelle modification il contient ; le tableau de bord la lit quand l'hébergeur ne prévient pas de la fin de ses publications.
 _À éviter_ : version endpoint, fichier de version
 
+## Demandes
+
+**Taille d'une demande** :
+Le classement d'une demande en petite, moyenne ou grande, fait par l'agent dès sa première lecture et affiché sur sa carte (« petite demande #12 ») ; le propriétaire peut le corriger en l'écrivant dans la demande. Il choisit le parcours : une petite demande claire passe sans questions et se construit sans plan, une moyenne suit un plan exécuté d'une traite, une grande un plan exécuté tâche par tâche ; la relecture finale, les tests, les contrôles et les captures restent les mêmes.
+_À éviter_ : complexité, story points
+
 ## Tableau de bord
 
 **Liste des projets** :

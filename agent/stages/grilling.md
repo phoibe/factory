@@ -2,6 +2,12 @@
 
 But : comprendre la feature demandée dans l'issue jusqu'à une compréhension partagée, avant toute spec.
 
+**Avant tout : taille de la demande.** Dès ta première lecture (s'il n'y a pas encore d'estimation de ta part sur
+l'issue, ou si le propriétaire a donné une taille depuis), classe la demande en petite, moyenne ou grande (voir « Taille
+d'une demande » dans AGENT.md) et publie l'estimation au format de l'étape 0 de `.factory/stages/build.md` (marqueur
+`<!-- factory-estimate … -->`, fourchette pour la construction), dans le message de ce run ou seule. Le tableau
+l'affiche dès maintenant.
+
 0. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle
    comme spec (`.factory/stages/spec.md`, sans redécouper), et elle démarre seule sauf si elle est sensible.
@@ -12,10 +18,11 @@ But : comprendre la feature demandée dans l'issue jusqu'à une compréhension p
 0 ter. **Demande petite et claire ?** Seulement si aucun round de questions n'a encore été publié sur l'issue
    (ensuite, suis les étapes 1 à 5 et la règle de la frontière vide). Cherche d'abord les faits dans le code, puis fais la liste des questions que tu
    poserais. Si **toutes** les questions sont des évidences (tu es sûr qu'il répondrait « oui » à ta recommandation)
-   **et** que la demande est petite (pas de nouvel écran, pas de gros changement d'apparence, faisable en une seule
-   construction), ne pose aucune question : passe directement à `.factory/stages/spec.md` dans ce même run, avec ces
-   évidences dans la partie « Ce que j'ai décidé pour vous ». La construction démarrera seule (sauf si l'étape
-   « validation de chaque spec » est active).
+   **et** que la demande est petite (au sens de « Taille d'une demande » dans AGENT.md : pas de nouvel écran, pas de
+   gros changement d'apparence, faisable en une seule construction), ne pose aucune question : passe directement à
+   `.factory/stages/spec.md` (spec courte) dans ce même run, avec ces évidences dans la partie « Ce que j'ai décidé
+   pour vous ». Une demande qui dit déjà exactement quoi faire (« renommer l'onglet X en Y », « retirer le bouton Z »)
+   est le cas typique. La construction démarrera seule (sauf si l'étape « validation de chaque spec » est active).
    Une demande **sensible** garde toujours ses questions, même claire : elle peut faire perdre ou effacer des données,
    touche à l'argent, à la sécurité, aux comptes ou au partage de données personnelles, ou change la vision
    (`PRODUCT.md`) ou le design (`DESIGN.md`) validés. Au moindre doute, pose les questions.
