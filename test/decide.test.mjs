@@ -369,13 +369,8 @@ test('a stack sheet card from the panel is built right away, or queued when the 
   assert.equal(decide(ev, cfg, { inFlight: 2 }).type, 'queue');
 });
 
-test('an idea kept by the owner advances the queue: it starts at once when a place is free (issue #406)', () => {
-  const kept = ev({ event: 'issues', action: 'labeled', addedLabel: L.kept, labels: [L.feature, L.kept] });
-  assert.deepEqual([decide(kept, config, ctx).type, decide(kept, config, ctx).candidate], ['dequeue', true]);
-  assert.equal(decide({ ...kept, labels: [L.bug, L.kept] }, config, ctx).type, 'dequeue');
-});
-
 test('every label the factory reacts to when it is added gets through the workflow filter (issue #406)', async () => {
+  // `kept` needs no decision of its own: every event that gets through fills the free places (relay handle()).
   const { readFileSync } = await import('node:fs');
   const yml = readFileSync(new URL('../.github/workflows/factory.yml', import.meta.url), 'utf8');
   const issuesFilter = yml.split('\n').find((l) => l.includes("github.event_name != 'issues' || github.event.action != 'labeled'"));
@@ -386,5 +381,5 @@ test('every label the factory reacts to when it is added gets through the workfl
     return a.type !== 'ignore' || b.type !== 'ignore';
   });
   assert.ok(reacting.length > 0);
-  for (const label of reacting) assert.ok(allowed.has(label), `${label} is ignored by .github/workflows/factory.yml`);
+  for (const label of [...reacting, L.kept]) assert.ok(allowed.has(label), `${label} is ignored by .github/workflows/factory.yml`);
 });

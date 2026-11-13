@@ -1683,7 +1683,7 @@ export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now
         if (ev.kind === 'tick') await heal(ownerLogin).catch((e) => log(`guard: ${e.message}`));
         // A PR merged by hand (not by the factory): its issue kept factory:building and held a place until the next
         // tick, hours later (yoldmewhen2 #56, 2026-11-06). Tidy it now, before the places are counted.
-        let freed = ev.kind === 'issue' && !action.candidate ? n : null;
+        let freed = ev.kind === 'issue' ? n : null;
         if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.action === 'closed') {
           const pr = await gh.getPr(n);
           if (pr?.merged_at) {

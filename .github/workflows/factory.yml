@@ -30,6 +30,7 @@ permissions:
 jobs:
   factory:
     # Cheap filters, so that label changes and the agent's own messages cost no Actions minutes.
+    # « Garder » (kept) and a blocked card let a waiting card take a free place now: every event fills the free places (issue #406).
     if: >-
       (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature' || github.event.label.name == 'factory:bug' || github.event.label.name == 'factory:project' || github.event.label.name == 'factory:question' || github.event.label.name == 'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked') &&
       (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'factory:checks') &&

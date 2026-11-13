@@ -808,7 +808,8 @@ function leaveIdea(n, keep) {
   }, 200);
 }
 async function sortIdea(i, keep, pick) {
-  const repo = current.repo.full_name;
+  const target = current.repo; // the owner may switch project before GitHub answers
+  const repo = target.full_name;
   refusedIdea(repo).delete(i.number);
   sortingIdea(repo).set(i.number, 'sending');
   leaveIdea(i.number, keep);
@@ -821,7 +822,7 @@ async function sortIdea(i, keep, pick) {
     sortingIdea(repo).set(i.number, 'sent');
     // Kept with automatic pick on: it may take a free place now. Older project workflows ignore the kept label,
     // so the board wakes the factory itself (issue #406).
-    if (keep && pick && current.repo.full_name === repo) wakeFactory(current.repo);
+    if (keep && pick) wakeFactory(target);
     if (live.repo === repo) refresh();
   } catch (e) {
     console.warn(`Idea #${i.number} not sorted`, e);
