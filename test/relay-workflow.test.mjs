@@ -56,3 +56,14 @@ test('the stack sheet check starts from the PR\'s own base branch, not the defau
   const run = step.slice(step.indexOf('run: |'), step.indexOf('uses: actions/checkout'));
   assert.doesNotMatch(run, /\$\{\{/);
 });
+
+// Issue #384: the jobs that run a relay command under the queue lock may write it (a ref of the repository) and wait
+// for it (up to 13 min, scripts/lib/lock.mjs) without being cut by their own time limit.
+test('every job that takes the queue lock can write it and wait for it', () => {
+  for (const name of ['decide', 'release', 'report', 'preview', 'production']) {
+    const text = job(name);
+    assert.match(text, /^\s+contents: write\b/m, `${name}: contents: write`);
+    assert.ok(Number(/timeout-minutes: (\d+)/.exec(text)?.[1]) >= 15, `${name}: timeout`);
+  }
+  assert.match(job('release'), /FACTORY_ROUTINE_URL: \$\{\{ secrets\.FACTORY_ROUTINE_URL \}\}/);
+});
