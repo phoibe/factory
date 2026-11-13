@@ -312,7 +312,7 @@ main { max-width: 1100px; padding: 24px 16px 96px; }
 .you-card .headline { font-size: 1.75rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; color: var(--text); }
 button.go { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 1.125rem; min-height: 48px; padding: 12px 24px; }
 button.go:hover { filter: brightness(1.08); border-color: var(--accent); }
-button.go:disabled { opacity: .6; cursor: default; }
+button.go:disabled, .ticket.idea button:disabled { opacity: .6; cursor: default; }
 #chat-send { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .ticket { box-shadow: none; }
 .ticket:hover { border-color: var(--muted); transform: none; }
