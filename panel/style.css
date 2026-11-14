@@ -251,6 +251,14 @@ html { touch-action: manipulation; }
 .bubble.typing span:nth-child(2) { animation-delay: .2s; }
 .bubble.typing span:nth-child(3) { animation-delay: .4s; }
 .notice { align-self: center; max-width: 520px; text-align: center; font-size: .8125rem; color: var(--muted); background: var(--surface-2); border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px; }
+/* Issue #395: without the read-only token, the « Agent » tab shows only this card. */
+#chat.needs-token:not([hidden]) { display: block; height: auto; background: none; border: 0; box-shadow: none; overflow: visible; }
+#chat.needs-token > .chat-list, #chat.needs-token > .chat-thread { display: none; }
+.chat-setup p { margin: 0 0 16px; }
+.chat-setup .error { margin: 8px 0 0; }
+.chat-setup .error:empty { min-height: 0; margin: 0; }
+#read-token-save { margin-top: 8px; }
+.nowrap { white-space: nowrap; }
 .chat-intro { margin: auto; max-width: 520px; text-align: center; display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
 .intro-title { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -.01em; }
 .examples { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
@@ -356,7 +364,7 @@ a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px
 .cta { color: var(--text); }
 .lane-yours .count { background: var(--text); color: var(--bg); }
 .issue-chip { border-color: var(--line); background: var(--surface-2); }
-#login-form button[type=submit] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+#login-form button[type=submit], #read-token-save { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.go.undo { background: var(--surface); color: var(--text); border-color: var(--text); }
 button.go:focus-visible { outline-color: var(--text); }
 

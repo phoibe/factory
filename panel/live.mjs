@@ -1,5 +1,5 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
-import { COLUMNS, columnFor } from './lib.mjs?v=25';
+import { COLUMNS, columnFor } from './lib.mjs?v=26';
 import { humanMinutes, rangeText } from './eta.mjs';
 import { readRelaunch } from './relaunch.mjs?v=1';
 

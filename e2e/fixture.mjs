@@ -19,8 +19,12 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
 // `repoIssues`: the open requests of the other projects (full name → list); `repoComments`: their threads
 // (full name → { number: comments }).
-// `chatServer`: { delay, answer } turns on the instant chat: its server answers `answer` after `delay` ms and
-// saves the conversation on the `factory-chat` branch the panel reads.
+// `chatServer`: { delay, answer, issues, refuse } turns on the instant chat: its server answers `answer` after `delay` ms,
+// proposing `issues` ([{kind, title, body}]); `refuse` makes it answer that HTTP status instead. It never writes: the
+// panel saves the conversation on the `factory-chat` branch and creates the issues (issue #395). `chatCalls` lists the
+// token each message was sent with. `readToken`: the chat's read-only token already stored (default: with a chat server).
+// GitHub's `/user` knows the tokens « test » (the panel's, can write), « lecture » (read-only), « ecriture » (can write)
+// and « autre » (another account).
 // `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
@@ -32,7 +36,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' } }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, readToken = Boolean(chatServer) }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -46,10 +50,12 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
   try {
     const context = await browser.newContext();
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
+    if (token && readToken) await context.addInitScript(() => { if (!sessionStorage.getItem('fixture.read')) { sessionStorage.setItem('fixture.read', '1'); localStorage.setItem('factory.chatToken', 'lecture'); } });
     await context.route('https://github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
     const page = await context.newPage();
     if (viewport) await page.setViewportSize(viewport);
     const chatBranch = { index: [], chats: {} };
+    const chatCalls = [];
     if (chatServer) {
       const CHAT = 'http://localhost:7777';
       const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' };
@@ -58,16 +64,12 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         const req = route.request();
         if (req.method() === 'OPTIONS' || !req.url().endsWith('/chat')) return route.fulfill({ status: 204, headers: cors });
         const { conversation, message } = req.postDataJSON();
+        chatCalls.push({ token: req.headers().authorization, message });
+        if (chatServer.refuse) return route.fulfill({ status: chatServer.refuse, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Jeton refusé par GitHub.' }) });
         if (chatServer.delay) await new Promise((r) => setTimeout(r, chatServer.delay));
-        const id = conversation || `c${chatBranch.index.length + 1}`;
-        const updated = new Date().toISOString();
-        const conv = chatBranch.chats[id] || { id, title: message.slice(0, 40), state: 'open', messages: [] };
-        conv.messages.push({ who: 'me', text: message, at: updated }, { who: 'agent', text: chatServer.answer, at: updated });
-        conv.updated = updated;
-        chatBranch.chats[id] = conv;
-        chatBranch.index = [{ id, title: conv.title, updated, state: 'open' }, ...chatBranch.index.filter((c) => c.id !== id)];
-        const events = [{ type: 'delta', text: chatServer.answer }, { type: 'answer', text: chatServer.answer, issues: [] },
-          { type: 'done', saved: true, conversation: { id, title: conv.title, updated, state: 'open' } }];
+        const id = conversation || `c${Object.keys(chatBranch.chats).length + chatCalls.length}`;
+        const title = chatBranch.chats[id]?.title || message.slice(0, 40);
+        const events = [{ type: 'delta', text: chatServer.answer }, { type: 'answer', text: chatServer.answer, issues: chatServer.issues || [], conversation: { id, title } }, { type: 'done' }];
         return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/x-ndjson' }, body: events.map((e) => JSON.stringify(e)).join('\n') + '\n' });
       });
     }
@@ -88,6 +90,37 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const lag = slowReads.find(([pattern]) => pattern.test(req.url()))?.[1];
       if (lag && req.method() === 'GET') await new Promise((r) => setTimeout(r, lag));
       if (req.method() === 'GET') reads.push(path);
+      const auth = req.headers().authorization;
+      if (path === '/user') {
+        const login = { 'Bearer test': 'o', 'Bearer lecture': 'o', 'Bearer ecriture': 'o', 'Bearer autre': 'x' }[auth];
+        return login ? json({ login }) : json({ message: 'Bad credentials' }, 401);
+      }
+      // Write probes (an empty body): GitHub refuses a read-only token before reading the body, a writer gets a 422.
+      if (req.method() !== 'GET' && req.postData() === '{}') return json({ message: 'probe' }, ['Bearer test', 'Bearer ecriture'].includes(auth) ? 422 : 403);
+      // The panel reads with the read token only to check it can see the project.
+      if (chatServer && auth !== 'Bearer test') {
+        if (req.method() === 'GET' && path === '/repos/o/r/contents/factory.config.json') return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
+        return json({ message: 'Resource not accessible by personal access token' }, 403);
+      }
+      if (chatServer && req.method() === 'PUT' && req.postDataJSON()?.branch === 'factory-chat') {
+        writes.push({ method: 'PUT', path, body: req.postDataJSON() });
+        if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
+        const name = /^\/repos\/o\/r\/contents\/(?:chats\/(.+)\.json|index\.json)$/.exec(path);
+        // As GitHub: a write with a stale sha (or none on an existing file) is refused.
+        const stored = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index.length ? chatBranch.index : null);
+        if (stored && req.postDataJSON().sha !== `s${JSON.stringify(stored).length}`) return json({ message: 'sha mismatch' }, 409);
+        const data = JSON.parse(Buffer.from(req.postDataJSON().content, 'base64').toString());
+        if (name?.[1]) chatBranch.chats[name[1]] = data; else if (name) chatBranch.index = data;
+        return json({ content: { sha: 'n' } });
+      }
+      if (chatServer && req.method() === 'POST' && path === '/repos/o/r/issues') {
+        const made = req.postDataJSON();
+        writes.push({ method: 'POST', path, body: made });
+        const number = 100 + issues.length;
+        // The factory then queues a new feature (the board shows it in « File d'attente »).
+        issues.push(issue(number, made.title, made.labels.includes('factory:feature') ? [...made.labels, 'factory:queued'] : made.labels, { body: made.body }));
+        return json({ number, html_url: `https://github.com/o/r/issues/${number}` }, 201);
+      }
       if (req.method() !== 'GET') {
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
         if (writeDelay) await new Promise((r) => setTimeout(r, writeDelay));
@@ -104,8 +137,13 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (chatServer && new URL(req.url()).searchParams.get('ref') === 'factory-chat') {
         const name = /^\/repos\/o\/r\/contents\/(?:chats\/(.+)\.json|index\.json)$/.exec(path);
         const data = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index);
-        return data ? json(data) : json({ message: 'Not Found' }, 404);
+        if (!data) return json({ message: 'Not Found' }, 404);
+        if (req.headers().accept === 'application/vnd.github.raw') return json(data);
+        // GitHub lets the browser keep a contents answer for 60 s.
+        return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'private, max-age=60' },
+          body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), encoding: 'base64', sha: `s${JSON.stringify(data).length}` }) });
       }
+      if (chatServer && path === '/repos/o/r/branches/factory-chat') return json({ name: 'factory-chat' });
       if (path.endsWith('/contents/factory.config.json')) return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: configMeta.sha });
       if (path.endsWith('/contents/PRODUCT.md')) return framedRepos.some((r) => path === `/repos/${r}/contents/PRODUCT.md`) ? json({ content: '', encoding: 'base64', sha: 'p' }) : json({}, 404);
       if (failing && failing.has(path)) return json({ message: 'Server Error' }, 500);
@@ -150,7 +188,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
-    await journey({ page, writes, reads, url: `http://localhost:${server.address().port}/` });
+    await journey({ page, writes, reads, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
   } finally {
     await browser.close();
     server.close();
