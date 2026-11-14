@@ -97,6 +97,7 @@ function toast(msg) {
 
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
+  dropCountdowns();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -215,6 +216,7 @@ async function checkProjects() {
   projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
   if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
   if (!projects.length) {
+    dropCountdowns();
     current = null;
     clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
     return show('empty');
@@ -229,7 +231,7 @@ async function checkProjects() {
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
 const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
-  || pendingGo.size > 0 || Boolean(chat.live) || chat.files.length > 0;
+  || pendingGo.size > 0 || pendingDrop.size > 0 || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -654,7 +656,7 @@ const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
 const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : isSent(c) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
 // An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
 const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
-const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left}s)` : isSent(c) ? 'Envoi…' : goText(c));
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -787,11 +789,16 @@ const sentGo = new Set(); // « go » already posted this session: the card show
 // Both are keyed by project and number: #12 of one project is not #12 of another.
 // The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
 const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
-function cancelPendingGos() {
-  if (!pendingGo.size) return;
-  const words = new Set([...pendingGo.values()].map((h) => h.word));
-  for (const h of pendingGo.values()) h.cancel();
+// Signed out, or no project left: the countdowns stop quietly, nothing is sent.
+function dropCountdowns() {
+  for (const h of [...pendingGo.values(), ...pendingDrop.values()]) h.cancel();
   pendingGo.clear();
+  pendingDrop.clear();
+}
+function cancelPendingGos() {
+  if (!pendingGo.size && !pendingDrop.size) return;
+  const words = new Set([...pendingGo.values(), ...pendingDrop.values()].map((h) => h.word));
+  dropCountdowns();
   toast(`${words.size === 1 ? `« ${[...words][0]} » annulé` : 'Envoi annulé'} : vous avez changé de projet.`);
 }
 // What the toast says once the answer has left, by the column it answers.
@@ -834,13 +841,13 @@ function answerGo(c, btn) {
   const running = pendingGo.get(key);
   if (running) { running.cancel(); pendingGo.delete(key); toast(`« ${goWord(c)} » annulé.`); btn.textContent = goText(c); btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
-  toast(`« ${goWord(c)} » part dans 5 s.`);
+  toast(`« ${goWord(c)} » part dans 5s.`);
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
   const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le ${goWord(c)} pour #${c.number} ${c.title}`); },
+    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n}s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le ${goWord(c)} pour #${c.number} ${c.title}`); },
     done: () => { pendingGo.delete(key); const b = goBtn(c, null); if (!b) return; sentGo.add(key); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b, repo, key); },
   });
   handle.left = 5;
@@ -919,8 +926,49 @@ function ideasLane(ideas) {
       el('h3', {}, el('a', { class: 'main', href: i.html_url, target: '_blank', rel: 'noopener', 'data-key': `idea-${i.number}` }, i.title)),
       refusedIdea().has(i.number) ? el('p', { class: 'idea-error', id: `idea-error-${i.number}`, role: announceIdea.has(i.number) ? 'alert' : null }, 'GitHub a refusé : réessayez.') : null,
       el('div', { class: 'card-actions' },
-        el('button', { type: 'button', class: 'secondary', 'data-key': `keep-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
-        el('button', { type: 'button', class: 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Jeter l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, false, pick) }, 'Jeter'))))));
+        el('button', { type: 'button', class: 'secondary', disabled: pendingDrop.has(dropKey(i)), 'data-key': `keep-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': `Garder l'idée #${i.number} ${i.title}`, onclick: () => sortIdea(i, true, pick) }, 'Garder'),
+        dropButton(i, pick))))));
+}
+// « Jeter » waits 5 s and can be cancelled, like « go » (issue #402): a wrong touch on the phone is caught in time.
+// « Garder » stays at once (nothing is lost) but is greyed during the countdown. Nothing is stored: leaving cancels it.
+const pendingDrop = new Map(); // `repo#number` → countdown, with the seconds left
+const dropKey = (i) => `${current.repo.full_name}#${i.number}`;
+const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left}s)`]);
+function dropButton(i, pick) {
+  const [name, text] = dropLabel(i, pendingDrop.get(dropKey(i))?.left);
+  return el('button', { type: 'button', class: pendingDrop.has(dropKey(i)) ? 'secondary undo' : 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': name, onclick: (e) => dropIdea(i, pick, e.currentTarget) }, text);
+}
+// The board may be redrawn during the countdown: always write on the card's button as it is now.
+function showDrop(i, fallback) {
+  const btn = $('board').querySelector(`.ticket.idea[data-idea="${i.number}"] [data-key="drop-${i.number}"]`) || fallback;
+  const keep = btn?.closest('.ticket.idea')?.querySelector(`[data-key="keep-${i.number}"]`);
+  const left = pendingDrop.get(dropKey(i))?.left;
+  if (!btn) return;
+  const [name, text] = dropLabel(i, left);
+  btn.textContent = text;
+  btn.setAttribute('aria-label', name);
+  btn.classList.toggle('undo', left != null);
+  if (keep) keep.disabled = left != null;
+}
+function dropIdea(i, pick, btn) {
+  const key = dropKey(i);
+  const running = pendingDrop.get(key);
+  if (running) { running.cancel(); pendingDrop.delete(key); showDrop(i, btn); toast('« Jeter » annulé.'); return; }
+  if (refusedIdea().delete(i.number)) { drawBoard(); btn = $('board').querySelector(`[data-key="drop-${i.number}"]`) || btn; } // the red line goes at the click
+  toast("L'idée part dans 5s.");
+  // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
+  const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
+  if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
+  const handle = startCountdown({
+    seconds: 5,
+    tick: (n) => { const h = pendingDrop.get(key); if (h) { h.left = n; showDrop(i, btn); } },
+    // Gone from « Idées à trier » meanwhile (kept elsewhere, closed, signed out): nothing to close any more.
+    done: () => { pendingDrop.delete(key); if (current && dropKey(i) === key && $('board').querySelector(`.ticket.idea[data-idea="${i.number}"]`)) sortIdea(i, false, pick); },
+  });
+  handle.left = 5;
+  handle.word = 'Jeter';
+  pendingDrop.set(key, handle);
+  showDrop(i, btn);
 }
 // Redraws the board; the idea cards slide from where they were, and a card GitHub refused (`back`) fades in.
 function redrawIdeas(back) {

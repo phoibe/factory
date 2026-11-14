@@ -142,7 +142,7 @@ test('le bouton bleu et les deux boutons discrets d\'une carte tiennent sur une 
       assert.equal(await actions.locator('> *').count(), 3);
       assert.equal(await rows(), 1, `${viewport.width}px: « Ok », « Aperçu » and « Recette » share one row`);
       await actions.locator('button.go').click();
-      assert.match(await actions.locator('button.go').textContent(), /Annuler \(\d s\)/);
+      assert.match(await actions.locator('button.go').textContent(), /Annuler \(\ds\)/);
       assert.equal(await rows(), 1, `${viewport.width}px: still one row during the countdown`);
       await actions.locator('button.go').click(); // cancel
     });
@@ -173,7 +173,7 @@ test('le compte à rebours de « go » continue quand le tableau se redessine', 
     await page.locator('.ticket.yours button.go[data-go="1"]').click();
     await page.waitForTimeout(1200);
     await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // redraws the board
-    assert.match(await page.locator('.ticket.yours button.go[data-go="1"]').textContent(), /Annuler \(\d s\)/);
+    assert.match(await page.locator('.ticket.yours button.go[data-go="1"]').textContent(), /Annuler \(\ds\)/);
     const sent = () => writes.filter((w) => w.path.endsWith('/issues/1/comments')).map((w) => w.body.body);
     for (let i = 0; i < 100 && !sent().length; i++) await page.waitForTimeout(100);
     await page.waitForTimeout(500);

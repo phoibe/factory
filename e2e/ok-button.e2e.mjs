@@ -21,11 +21,11 @@ test('une carte « Captures à valider » montre « Ok » en bleu puis « Captur
   });
 });
 
-test('un clic sur « Ok » affiche « Annuler (5 s) », un second clic annule et rien n\'est envoyé', async () => {
+test('un clic sur « Ok » affiche « Annuler (5s) », un second clic annule et rien n\'est envoyé', async () => {
   await withPanel({ issues: [visual] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').click();
-    assert.match(await page.locator('button.go[data-go="10"]').textContent(), /Annuler \(\d s\)/);
+    assert.match(await page.locator('button.go[data-go="10"]').textContent(), /Annuler \(\ds\)/);
     await page.locator('button.go[data-go="10"]').click();
     await page.waitForTimeout(6000);
     assert.deepEqual(sentOn(writes, 10)(), []);
