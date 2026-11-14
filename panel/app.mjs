@@ -1,6 +1,6 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=25';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList } from './chat.mjs?v=15';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -53,12 +53,17 @@ const CHECKS = [
 ];
 
 // A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
+// The link also carries the chat's read-only token (issue #395).
 const linked = tokenFromHash(location.hash);
 if (linked) {
   store.set(TOKEN_KEY, linked);
+  const read = readTokenFromHash(location.hash);
+  if (read) store.set(READ_TOKEN_KEY, read); else store.del(READ_TOKEN_KEY);
   history.replaceState(null, '', location.pathname + location.search);
 }
 let token = store.get(TOKEN_KEY);
+// The only token the chat server ever receives: it can read the projects, never change them (issue #395).
+let readToken = store.get(READ_TOKEN_KEY);
 // Ask the browser not to clear the token when it tidies its storage (mobile browsers do).
 if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
@@ -93,7 +98,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   dropCountdowns();
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -1891,7 +1896,7 @@ function loadScript(src) {
 }
 
 async function openPhone() {
-  const link = phoneLink(location.href, token);
+  const link = phoneLink(location.href, token, readToken);
   if (!window.qrcode) await loadScript('vendor/qrcode.js');
   const qr = window.qrcode(0, 'M');
   qr.addData(link);
@@ -2100,9 +2105,75 @@ async function chatGet(path) {
   return data;
 }
 
+// Instant mode needs the read-only token: without it the « Agent » tab shows only the card that asks for it.
+const needsReadToken = () => Boolean(chat.server) && !readToken;
+function drawReadTokenCard() {
+  const needed = needsReadToken();
+  $('chat').classList.toggle('needs-token', needed);
+  $('chat-setup').hidden = !needed;
+  $('read-token-link').href = READ_TOKEN_URL;
+  return needed;
+}
+
+// Forgets a read token the chat server refused (expired, deleted, or one that can write) and asks for a new one.
+function readTokenRefused(message) {
+  store.del(READ_TOKEN_KEY);
+  readToken = null;
+  drawReadTokenCard();
+  $('read-token-error').textContent = message;
+}
+
+// Checks a pasted read token with GitHub: it belongs to the owner, reads the project, and cannot write.
+async function checkReadToken(value) {
+  if (value === token) return readTokenProblem({ same: true });
+  const call = (path, init = {}) => fetch(API + path, { ...init, cache: 'no-store', headers: { authorization: `Bearer ${value}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) } });
+  const down = (r) => githubBusy(r.status, r.headers);
+  const user = await call('/user');
+  if (down(user)) throw new Error('github');
+  const owner = current.repo.owner?.login || current.repo.full_name.split('/')[0];
+  if (user.status === 401) return readTokenProblem({ status: 401, owner });
+  if (!user.ok) throw new Error('github');
+  const { login } = await user.json();
+  const repo = current.repo.full_name;
+  const [file, ...probes] = await Promise.all([call(`/repos/${repo}/contents/factory.config.json`),
+    ...WRITE_PROBES.map(([method, path]) => call(`/repos/${repo}/${path}`, { method, body: '{}' }))]);
+  if ([file, ...probes].some(down)) throw new Error('github');
+  return readTokenProblem({ status: user.status, login, owner, readable: file.ok, writable: probes.some((p) => probeSaysWritable(p.status)) });
+}
+
+$('read-token-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const value = $('read-token').value.trim();
+  if (!value || !current) return;
+  const btn = $('read-token-save');
+  const field = $('read-token');
+  const fail = (message) => { $('read-token-error').textContent = message; field.setAttribute('aria-invalid', 'true'); field.focus(); };
+  btn.disabled = true;
+  btn.textContent = 'Vérification…';
+  $('read-token-form').setAttribute('aria-busy', 'true');
+  $('read-token-error').textContent = '';
+  field.removeAttribute('aria-invalid');
+  try {
+    const problem = await checkReadToken(value);
+    if (problem) return fail(problem);
+    readToken = value;
+    store.set(READ_TOKEN_KEY, value);
+    $('read-token').value = '';
+    await openChat();
+    $('chat-input').focus();
+  } catch {
+    fail('GitHub ne répond pas, réessayez dans un instant.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Valider le jeton';
+    $('read-token-form').removeAttribute('aria-busy');
+  }
+});
+
 async function openChat() {
   if (!current) return;
   if (chat.repo !== current.repo.full_name) return resetChat();
+  if (drawReadTokenCard()) return;
   // Wakes the chat server up while the owner types (it sleeps when unused).
   if (chat.server && Date.now() - chat.warmed > 60_000) { chat.warmed = Date.now(); fetch(`${chat.server}/health`).catch(() => {}); }
   drawChat();
@@ -2127,7 +2198,8 @@ async function refreshServerChat() {
   const id = chat.open;
   if (id && id !== 'new' && !chat.live) {
     const conv = await branchJson(`chats/${id}.json`);
-    if (chat.repo === repo && chat.open === id && !chat.live) chat.conv = conv;
+    // An answer that could not be saved stays on screen (issue #395): the stored version does not have it.
+    if (chat.repo === repo && chat.open === id && !chat.live && !(chat.conv?.unsaved && chat.conv.id === id)) chat.conv = conv;
     const entry = chat.list.find((c) => c.id === id);
     if (chat.repo === repo && chat.open === id && conv && entry && threadShown()) markServerSeen(id, entry.updated);
   }
@@ -2493,7 +2565,7 @@ async function sendToServer(text, files, withImages) {
   const btn = $('chat-send');
   const run = chat.run = {};
   // The owner switched project: the answer is still read to the end (the server stops the agent when the panel hangs
-  // up, and saves nothing), but nothing is shown or restored on the other project.
+  // up), then saved on the project it belongs to, but nothing is shown or restored on the other project.
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
@@ -2509,12 +2581,19 @@ async function sendToServer(text, files, withImages) {
   let answer = null;
   try {
     const paths = await uploadImages(repo, files);
+    // Never the full token: without the read-only one there is no chat (issue #395).
+    if (!readToken) throw Object.assign(new Error('Créez d\'abord le jeton de lecture avec le bouton ci-dessus.'), { readToken: true });
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${readToken}`, 'content-type': 'application/json' },
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
     });
-    if (!res.ok) throw saidError((await res.json().catch(() => ({}))).error || `Le serveur de l'agent a répondu ${res.status}.`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 401) throw Object.assign(saidError('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
+      if (body.code === 'writable') throw Object.assign(saidError(WRITABLE_TOKEN), { readToken: true });
+      throw saidError(body.error || `Le serveur de l'agent a répondu ${res.status}.`);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -2529,28 +2608,33 @@ async function sendToServer(text, files, withImages) {
         else if (e.type === 'draft') live.text = e.text;
         else if (e.type === 'reset') live.text = '';
         else if (e.type === 'answer') answer = e;
-        else if (e.type === 'error') throw new Error(e.message);
-        else if (e.type === 'done' && !gone()) {
-          const c = e.conversation;
-          chat.conv = chat.conv || { id: c.id, title: c.title, messages: [] };
-          chat.conv.messages.push({ who: 'me', text, images: paths, at: new Date().toISOString() },
-            { who: 'agent', text: answer?.text || '', issues: answer?.issues || [], at: c.updated });
-          for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
-          if (e.saved === false) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
-          else if (chat.repo === repo) {
-            chat.open = c.id;
-            chat.list = serverList([{ ...c }, ...(chat.list || []).filter((x) => x.id !== c.id)]);
-            // Watched as it was written: seen. Finished while the owner was on another tab: the badge lights up.
-            if (threadShown()) markServerSeen(c.id, c.updated);
-            else if (!serverUnread(c, chat.seen)) markServerSeen(c.id, new Date(0).toISOString());
-          }
-        }
+        else if (e.type === 'error') throw saidError(e.message);
       }
       if (!gone()) drawLive();
     }
     if (!answer) throw saidError('La réponse a été coupée.');
+    // The answer is complete: from here on nothing may make the owner resend it (the issues would be made twice).
+    live.status = 'Enregistre…';
+    if (!gone()) drawLive();
+    const id = conversationId(answer.conversation?.id, isNew ? null : chat.open);
+    const { conv, saved, created } = await finishExchange(repo, id, { text, images: paths }, answer);
+    answer.issues = created;
+    if (!gone()) {
+      for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
+      chat.conv = conv;
+      chat.open = conv.id;
+      if (!saved) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+      else {
+        const c = { id: conv.id, title: conv.title, updated: conv.updated, state: 'open' };
+        chat.list = serverList([c, ...(chat.list || []).filter((x) => x.id !== c.id)]);
+        // Watched as it was written: seen. Finished while the owner was on another tab: the badge lights up.
+        if (threadShown()) markServerSeen(c.id, c.updated);
+        else if (!serverUnread(c, chat.seen)) markServerSeen(c.id, new Date(0).toISOString());
+      }
+    }
   } catch (e) {
     if (gone()) return;
+    if (e.readToken) readTokenRefused(e.message);
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
@@ -2567,9 +2651,89 @@ async function sendToServer(text, files, withImages) {
   }
 }
 
+const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+const SAVE_TRIES = 5;
+
+// After an answer: the panel creates the issues the agent proposed, then saves the exchange on `factory-chat`, with
+// the full token (the chat server never writes). Never throws: a failure is said under the answer or in a toast.
+async function finishExchange(repo, cid, mine, answer) {
+  const created = [];
+  let refused = 0;
+  for (const wanted of wantedIssues(answer.issues)) {
+    try {
+      const made = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(wanted)) });
+      created.push({ ...wanted, url: made.html_url, number: made.number });
+    } catch {
+      refused += 1; // going on: the others are still created, once
+    }
+  }
+  const text = (answer.text || '') + notCreatedNote(refused);
+  const at = stamp();
+  const base = newConversation(cid, mine.text || answer.conversation?.title || '', at);
+  try {
+    return { conv: await saveExchange(repo, cid, base, mine, text, at, created), saved: true, created };
+  } catch {
+    const conv = addExchange(chat.conv?.id === cid ? structuredClone(chat.conv) : base, mine, `${text}\n\n_Cette réponse n'a pas pu être enregistrée._`, at, created);
+    conv.unsaved = true;
+    return { conv, saved: false, created };
+  }
+}
+
+// A JSON file of `factory-chat` with its sha (null when missing). Over 1 MB the contents API sends no content.
+async function chatFile(repo, path) {
+  // Never from the browser's cache (GitHub allows 60 s): an old sha would make every write of the retry fail.
+  const meta = await api(`/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
+  if (!meta) return { data: null, sha: null };
+  if (meta.content) return { data: JSON.parse(fromBase64(meta.content)), sha: meta.sha };
+  const res = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' } });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return { data: await res.json(), sha: meta.sha };
+}
+
+// Writes `make(latest)` with the sha just read: GitHub refuses it if another save landed in between (another device,
+// « Terminer »), and it starts again from the latest version.
+async function writeChatFile(repo, path, make, message) {
+  for (let attempt = 0; ; attempt++) {
+    const { data, sha } = await chatFile(repo, path);
+    let written;
+    const next = make(data);
+    try {
+      written = await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message, branch: CHAT_BRANCH, content: toBase64(JSON.stringify(next, null, 1) + '\n'), ...(sha ? { sha } : {}) }) });
+      if (!written) throw new Error('404'); // the branch vanished: not saved
+      return next;
+    } catch (e) {
+      if (![409, 422].includes(e.status) || attempt >= SAVE_TRIES - 1) throw e;
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1) * Math.random()));
+    }
+  }
+}
+
+async function ensureChatBranch(repo) {
+  if (await api(`/repos/${repo}/branches/${CHAT_BRANCH}`)) return;
+  const tree = await api(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
+    { path: 'README.md', mode: '100644', type: 'blob', content: "# Discussions\n\nConversations du chat du tableau de suivi avec l'agent. Ne pas fusionner.\n" },
+    { path: 'vercel.json', mode: '100644', type: 'blob', content: '{ "git": { "deploymentEnabled": false } }\n' },
+  ] }) });
+  const commit = await api(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message: `chore(factory): ${CHAT_BRANCH} branch`, tree: tree.sha, parents: [] }) });
+  await api(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${CHAT_BRANCH}`, sha: commit.sha }) }).catch((e) => {
+    if (e.status !== 422) throw e; // 422: created meanwhile
+  });
+}
+
+async function saveExchange(repo, cid, base, mine, text, at, created) {
+  await ensureChatBranch(repo);
+  const conv = await writeChatFile(repo, `chats/${cid}.json`, (latest) => {
+    const next = addExchange(latest || structuredClone(base), mine, text, at, created);
+    next.id = cid; // a stored id is never trusted
+    return next;
+  }, `chore(factory): chat ${cid}`);
+  await writeChatFile(repo, 'index.json', (index) => upsertIndex(index, conv), 'chore(factory): chat index');
+  return conv;
+}
+
 // In server mode, « Terminer » only marks the conversation in the branch's index.
 async function closeServerConversation() {
-  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`);
+  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
   const index = JSON.parse(fromBase64(meta.content)).map((c) => (c.id === chat.open ? { ...c, state: 'closed' } : c));
   await api(`/repos/${chat.repo}/contents/index.json`, { method: 'PUT', body: JSON.stringify({
     message: 'chore(factory): chat index', branch: CHAT_BRANCH, sha: meta.sha, content: toBase64(JSON.stringify(index, null, 1) + '\n') }) });
