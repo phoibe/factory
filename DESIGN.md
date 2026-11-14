@@ -170,5 +170,5 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ## Issue 123 additions
 - **Téléphone** : en haut, seulement le nom du projet, l'état du site en ligne (« En ligne : à jour », « En ligne : 2 modifications d'écart »… sur une ligne discrète, en rouge quand la dernière publication a échoué), « Nouvelle fonctionnalité », « Plus » (menu qui replie les actions secondaires) puis la carte « À vous ». Sur un projet mis en production « sur accord », « Mise en production » prend la place de « Nouvelle fonctionnalité », qui devient la première ligne de « Plus » : toujours une seule ligne de boutons, le « go » ne bouge jamais. Sur ordinateur tout reste affiché.
-- **« go » annulable** : un toucher le transforme en « Annuler (5 s) » ; il part à 0, sans fenêtre de confirmation.
+- **« go » annulable** : un toucher le transforme en « Annuler (5s) » ; il part à 0, sans fenêtre de confirmation.
 - **Chargement** : cartes grises calmes, sans animation. **Erreur de discussions** : message permanent + « Réessayer ».

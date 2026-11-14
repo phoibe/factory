@@ -651,7 +651,7 @@ const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
 const goName = (c) => `${pendingGo.has(goKey(c)) ? `Annuler le ${goWord(c)}` : isSent(c) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
 // An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
 const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
-const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left} s)` : isSent(c) ? 'Envoi…' : goText(c));
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: pendingGo.has(goKey(c)) ? 'go undo' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, pendingGo.has(goKey(c)) ? `Annuler (${pendingGo.get(goKey(c)).left}s)` : isSent(c) ? 'Envoi…' : goText(c));
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -836,13 +836,13 @@ function answerGo(c, btn) {
   const running = pendingGo.get(key);
   if (running) { running.cancel(); pendingGo.delete(key); toast(`« ${goWord(c)} » annulé.`); btn.textContent = goText(c); btn.classList.remove('undo'); btn.setAttribute('aria-label', goName(c)); return; }
   btn.classList.add('undo');
-  toast(`« ${goWord(c)} » part dans 5 s.`);
+  toast(`« ${goWord(c)} » part dans 5s.`);
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
   const handle = startCountdown({
     seconds: 5,
-    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n} s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le ${goWord(c)} pour #${c.number} ${c.title}`); },
+    tick: (n) => { const h = pendingGo.get(key); if (h) h.left = n; const b = goBtn(c, btn); b.textContent = `Annuler (${n}s)`; b.classList.add('undo'); b.setAttribute('aria-label', `Annuler le ${goWord(c)} pour #${c.number} ${c.title}`); },
     done: () => { pendingGo.delete(key); const b = goBtn(c, null); if (!b) return; sentGo.add(key); b.disabled = true; b.classList.remove('undo'); b.textContent = 'Envoi…'; b.setAttribute('aria-label', goName(c)); sendGo(c, b, repo, key); },
   });
   handle.left = 5;
@@ -928,7 +928,7 @@ function ideasLane(ideas) {
 // « Garder » stays at once (nothing is lost) but is greyed during the countdown. Nothing is stored: leaving cancels it.
 const pendingDrop = new Map(); // `repo#number` → countdown, with the seconds left
 const dropKey = (i) => `${current.repo.full_name}#${i.number}`;
-const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left}\u00a0s)`]);
+const dropLabel = (i, left) => (left == null ? [`Jeter l'idée #${i.number} ${i.title}`, 'Jeter'] : [`Annuler « Jeter » pour l'idée #${i.number} ${i.title}`, `Annuler (${left}s)`]);
 function dropButton(i, pick) {
   const [name, text] = dropLabel(i, pendingDrop.get(dropKey(i))?.left);
   return el('button', { type: 'button', class: pendingDrop.has(dropKey(i)) ? 'secondary undo' : 'secondary', 'data-key': `drop-${i.number}`, 'aria-describedby': refusedIdea().has(i.number) ? `idea-error-${i.number}` : null, 'aria-label': name, onclick: (e) => dropIdea(i, pick, e.currentTarget) }, text);
@@ -950,7 +950,7 @@ function dropIdea(i, pick, btn) {
   const running = pendingDrop.get(key);
   if (running) { running.cancel(); pendingDrop.delete(key); showDrop(i, btn); toast('« Jeter » annulé.'); return; }
   if (refusedIdea().delete(i.number)) { drawBoard(); btn = $('board').querySelector(`[data-key="drop-${i.number}"]`) || btn; } // the red line goes at the click
-  toast("L'idée part dans 5 s.");
+  toast("L'idée part dans 5s.");
   // The countdown must stay readable: bring the button up when it sits under the toast or off screen.
   const b = btn.getBoundingClientRect(), t = $('toast').getBoundingClientRect();
   if (b.top < 0 || b.bottom > innerHeight || (b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right)) btn.scrollIntoView({ block: 'center' });
