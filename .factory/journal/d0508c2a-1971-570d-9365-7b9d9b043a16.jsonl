@@ -1,0 +1,9 @@
+{"t":"2026-11-15T18:48:35.653Z","kind":"run","stage":"bugfix","issue":427,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-15T18:48:44.623Z","kind":"skill","name":"systematic-debugging","id":"toolu_01Qcrokqn7m1Mtt4GCrjPweX"}
+{"t":"2026-11-15T18:50:59.173Z","kind":"skill","name":"test-driven-development","id":"toolu_01AvJm7G8W6vjFp1uG3fkaKB"}
+{"t":"2026-11-15T18:51:19.795Z","kind":"test","cmd":"node --test test/panel-trigger.test.mjs 2>&1 | grep -E \"^# (pass|fail)|ERR_MODULE\" | head","ok":false,"id":"toolu_01DmtVqHUEWYw2GwEk5yZeMM"}
+{"t":"2026-11-15T18:51:31.963Z","kind":"test","cmd":"node --test test/panel-trigger.test.mjs 2>&1 | grep -E \"^# (pass|fail)|not ok|expected|actual\" | head","ok":true,"id":"toolu_0124ZzyViyYmf1BkS7eP9hsm"}
+{"t":"2026-11-15T18:52:20.001Z","kind":"test","cmd":"ls node_modules/playwright >/dev/null 2>&1 || npm ci >/dev/null 2>&1; CHROMIUM_PATH=… timeout 300 node --test e2e/project-trigger.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)|^not ok|^ok\" ","ok":false,"id":"toolu_017rhmg9r2YefWCCFRfBmqZJ"}
+{"t":"2026-11-15T18:52:56.042Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… « Garder » and other label events. The panel adds the missing labels with the owner's token, once per visit (issue #427).\nconst triggersChecked = new Set();\nasync functio","ok":true,"id":"toolu_018X5SATzs9jrAZKEJMufXcB"}
+{"t":"2026-11-15T18:58:38.362Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head; CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head","ok":true,"id":"toolu_01FUMRPdrt2r1BBPYskkrph8"}
+{"t":"2026-11-15T18:59:15.909Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head; npm run lint 2>&1 | tail -3; npm run typecheck 2>&1 | tail -2","ok":true,"id":"toolu_01SYopGhWisrvyexph4rvQbC"}

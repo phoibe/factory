@@ -18,6 +18,7 @@ import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
+import { TRIGGER_FILE, upgradeTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
 
@@ -98,6 +99,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   dropCountdowns();
+  updateTrigger.done?.clear();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -385,6 +387,7 @@ async function openProject(fullName) {
   drawRelease();
   refreshRelease().catch(() => {});
   loadDelivery(current).catch(() => {});
+  updateTrigger(current.repo).catch((e) => console.warn('Trigger not checked', e));
   await renderBoard();
   if (!live.tick) startLive();
 }
@@ -1471,10 +1474,33 @@ async function writeProjectRules() {
 }
 
 // Asks the factory to look at its free places now rather than at its next regular check (« tick »).
+// A refused wake-up is said, never silent (issue #427): the card would otherwise wait for the next scheduled round.
 function wakeFactory(repo) {
   api(`/repos/${repo.full_name}/actions/workflows/factory.yml/dispatches`, {
     method: 'POST', body: JSON.stringify({ ref: repo.default_branch, inputs: { payload: '{"tick":true}' } }),
-  }).catch(() => {});
+  }).catch((e) => { if (e.status !== 401) toast(wakeErrorText(e)); });
+}
+
+// The project's trigger is copied at install and never synced by the factory (GitHub forbids it): an old one drops
+// « Garder » and other label events. The panel adds the missing labels with the owner's token, once per session (issue #427):
+// after a refusal, the next try comes with the next login (a new token).
+async function updateTrigger(repo) {
+  const done = (updateTrigger.done ??= new Set());
+  if (done.has(repo.full_name)) return;
+  done.add(repo.full_name);
+  const file = await api(`/repos/${repo.full_name}/contents/${TRIGGER_FILE}`);
+  const text = file?.content ? fromBase64(file.content) : null;
+  const upgraded = upgradeTrigger(text);
+  if (!upgraded) return;
+  try {
+    await api(`/repos/${repo.full_name}/contents/${TRIGGER_FILE}`, {
+      method: 'PUT',
+      body: JSON.stringify({ message: 'chore(factory): let every factory label wake the factory (from the panel)', content: toBase64(upgraded), sha: file.sha }),
+    });
+  } catch (e) {
+    if (e.status === 403 || e.status === 404) toast(TRIGGER_REFUSED);
+    throw e;
+  }
 }
 
 function selectTab(name) {
