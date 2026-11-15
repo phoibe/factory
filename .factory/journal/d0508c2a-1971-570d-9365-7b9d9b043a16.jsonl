@@ -7,3 +7,12 @@
 {"t":"2026-11-15T18:52:56.042Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… « Garder » and other label events. The panel adds the missing labels with the owner's token, once per visit (issue #427).\nconst triggersChecked = new Set();\nasync functio","ok":true,"id":"toolu_018X5SATzs9jrAZKEJMufXcB"}
 {"t":"2026-11-15T18:58:38.362Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head; CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head","ok":true,"id":"toolu_01FUMRPdrt2r1BBPYskkrph8"}
 {"t":"2026-11-15T18:59:15.909Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head; npm run lint 2>&1 | tail -3; npm run typecheck 2>&1 | tail -2","ok":true,"id":"toolu_01SYopGhWisrvyexph4rvQbC"}
+{"t":"2026-11-15T18:59:23.915Z","kind":"skill","name":"requesting-code-review","id":"toolu_01AKae7zDkZxfdJVhxAh8pif"}
+{"t":"2026-11-15T18:59:39.404Z","kind":"agent","model":"opus","effort":"high","label":"Review issue 427 fix","id":"toolu_012NMq8Mukat6bAraAbgvTvd"}
+{"t":"2026-11-15T19:01:08.013Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_01Mf7WJZw7EynQRPfwtK9GYL"}
+{"t":"2026-11-15T19:01:15.410Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/project-trigger.e2e.mjs 2>&1 | tail -20","ok":true,"id":"toolu_019MMwBjAmzpGdRbf7sRjnBo"}
+{"t":"2026-11-15T19:01:51.501Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-15T19:01:57.541Z","kind":"skill","name":"impeccable","id":"toolu_0169VZm4tDiVTWiuefg99qUW"}
+{"t":"2026-11-15T19:02:11.158Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: design review","id":"toolu_019G38NbLVW7FKRUSXziHdN6"}
+{"t":"2026-11-15T19:02:16.591Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01BqsCzAVfgCRxP4xyVTHfrD"}
+{"t":"2026-11-15T19:04:50.264Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\np=…\ns=…\na=… What the owner reads when the token may not update\")\ns=… What the owner reads when the token may not update the trigger (it lacks the « Workflows » right).\nexpo","ok":true,"id":"toolu_01PFN4xQr2VhhnrJd266sCQ2"}

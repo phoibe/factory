@@ -44,7 +44,7 @@ test('un déclencheur à jour n\'est pas réécrit', async () => {
 test('si le jeton ne peut pas mettre le déclencheur à jour, le panneau le dit en clair', async () => {
   await withPanel({ files: { [FILE]: OLD }, forbidden: new Set([PATH]) }, async ({ page, url }) => {
     await page.goto(url);
-    await page.waitForFunction(() => /Workflows/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 5000 });
+    await page.waitForFunction(() => /pas à jour/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await toastText(page), /nouveau jeton/);
   });
 });
@@ -53,7 +53,7 @@ test('si GitHub refuse le réveil après « Garder », le panneau le dit au lieu
   await withPanel({ issues: [idea(5, 'Importer depuis un site')], config: { autoPick: true }, forbidden: new Set(['/repos/o/r/actions/workflows/factory.yml/dispatches']) }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
-    await page.waitForFunction(() => /réveillée/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 5000 });
+    await page.waitForFunction(() => /démarrera plus tard/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await toastText(page), /Actions/);
   });
 });

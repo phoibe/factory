@@ -34,14 +34,13 @@ export function upgradeTrigger(text) {
 }
 
 // What the owner reads when the token may not update the trigger (it lacks the « Workflows » right).
-export const TRIGGER_REFUSED = 'Ce projet a une ancienne version du déclencheur de la factory : garder une idée n\'y lance rien tout de suite. Votre jeton n\'a pas le droit « Workflows » pour le mettre à jour : déconnectez-vous puis créez un nouveau jeton avec le bouton.';
+export const TRIGGER_REFUSED = 'Ce projet n\'est pas à jour : « Garder » n\'y démarre rien tout de suite. Reconnectez-vous avec un nouveau jeton.';
 
-// What the owner reads when the board could not wake the factory itself.
+// What the owner reads when the board could not wake the factory itself: one cause, one action, then when the card starts.
 export function wakeErrorText(err) {
-  const later = 'la carte démarrera à la prochaine ronde de la factory.';
   if (err?.status === 403 || (err?.status === 404 && err?.write)) {
-    return `La factory n'a pas pu être réveillée : votre jeton n'a pas le droit « Actions ». Déconnectez-vous puis créez un nouveau jeton avec le bouton. En attendant, ${later}`;
+    return 'La carte démarrera plus tard : votre jeton n\'a pas le droit « Actions ». Reconnectez-vous avec un nouveau jeton.';
   }
-  if (err?.status) return `GitHub n'a pas réveillé la factory (erreur ${err.status}) : ${later}`;
-  return `La factory n'a pas pu être réveillée (connexion coupée ?) : ${later}`;
+  if (err?.status) return `GitHub n'a pas répondu (erreur ${err.status}) : la carte démarrera un peu plus tard.`;
+  return 'Pas de connexion : la carte démarrera un peu plus tard.';
 }

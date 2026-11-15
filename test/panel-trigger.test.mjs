@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { WAKE_LABELS, missingWakeLabels, upgradeTrigger, wakeErrorText, TRIGGER_FILE } from '../panel/trigger.mjs';
+import { WAKE_LABELS, missingWakeLabels, upgradeTrigger, wakeErrorText, TRIGGER_FILE, TRIGGER_REFUSED } from '../panel/trigger.mjs';
 
 const factoryTrigger = readFileSync(new URL('../.github/workflows/factory.yml', import.meta.url), 'utf8');
 
@@ -60,6 +60,8 @@ test('a refused wake-up says plainly why and what to do', () => {
   assert.match(wakeErrorText({ status: 403 }), /Actions/);
   assert.match(wakeErrorText({ status: 404, write: true }), /jeton/);
   assert.match(wakeErrorText({ status: 500 }), /GitHub/);
-  assert.match(wakeErrorText(new TypeError('Failed to fetch')), /réseau|connexion/);
-  for (const s of [403, 500]) assert.match(wakeErrorText({ status: s }), /prochaine ronde|tout à l'heure|plus tard/);
+  assert.match(wakeErrorText(new TypeError('Failed to fetch')), /connexion/);
+  assert.match(TRIGGER_REFUSED, /nouveau jeton/);
+  for (const t of [TRIGGER_REFUSED, wakeErrorText({ status: 403 }), wakeErrorText({ status: 500 })]) assert.ok(t.length <= 130, `short enough to read at once: ${t}`);
+  for (const s of [403, 500]) assert.match(wakeErrorText({ status: s }), /plus tard/);
 });
