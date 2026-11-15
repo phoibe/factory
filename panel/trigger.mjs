@@ -10,27 +10,36 @@ export const TRIGGER_FILE = '.github/workflows/factory.yml';
 export const WAKE_LABELS = ['factory:feature', 'factory:bug', 'factory:project', 'factory:question', 'factory:audit', 'factory:stack', 'factory:kept', 'factory:blocked'];
 
 const clause = (label) => `github.event.label.name == '${label}'`;
-// The one line that filters labeled issue events (not the pull request one).
-const filterLine = (text) => String(text || '').split('\n').findIndex((l) => l.includes("github.event_name != 'issues'") && l.includes("github.event.action != 'labeled'"));
+const OPENING = "github.event_name != 'issues' || github.event.action != 'labeled'";
+
+// Where the filter of labeled issue events sits: from its opening parenthesis to the matching closing one.
+function issuesClause(text) {
+  const t = String(text || '');
+  const at = t.indexOf(OPENING);
+  const open = at < 0 ? -1 : t.lastIndexOf('(', at);
+  if (open < 0) return null;
+  for (let i = open, depth = 0; i < t.length; i++) {
+    if (t[i] === '(') depth++;
+    else if (t[i] === ')' && --depth === 0) return { open, close: i, body: t.slice(open, i) };
+  }
+  return null;
+}
 
 // The waking labels this trigger drops. None when the panel does not recognise the file.
 export function missingWakeLabels(text) {
-  const i = filterLine(text);
-  if (i < 0) return [];
-  const line = String(text).split('\n')[i];
-  return WAKE_LABELS.filter((l) => !line.includes(clause(l)));
+  const c = issuesClause(text);
+  return c ? WAKE_LABELS.filter((l) => !c.body.includes(clause(l))) : [];
 }
+
+// A trigger the panel recognises (it has the filter of labeled issue events).
+export const knownTrigger = (text) => issuesClause(text) != null;
 
 // The trigger with the missing labels added to its filter, nothing else changed; null when there is nothing to do.
 export function upgradeTrigger(text) {
   const missing = missingWakeLabels(text);
   if (!missing.length) return null;
-  const lines = String(text).split('\n');
-  const i = filterLine(text);
-  const at = lines[i].lastIndexOf(')');
-  if (at < 0) return null;
-  lines[i] = `${lines[i].slice(0, at)}${missing.map((l) => ` || ${clause(l)}`).join('')}${lines[i].slice(at)}`;
-  return lines.join('\n');
+  const { close } = issuesClause(text);
+  return `${text.slice(0, close)}${missing.map((l) => ` || ${clause(l)}`).join('')}${text.slice(close)}`;
 }
 
 // What the owner reads when the token may not update the trigger (it lacks the « Workflows » right).

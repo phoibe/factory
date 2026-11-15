@@ -31,6 +31,25 @@ test('ouvrir un projet au déclencheur ancien le met à jour : « Garder » y r�
   });
 });
 
+test('la branche preprod reçoit la même mise à jour, pour que main y passe encore', async () => {
+  await withPanel({ files: { [FILE]: OLD }, refFiles: { preprod: { [FILE]: OLD } } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    const puts = () => writes.filter((w) => w.method === 'PUT' && w.path === PATH);
+    await until(page, () => puts().length >= 2);
+    const pre = puts().find((w) => w.body.branch === 'preprod');
+    assert.ok(pre, 'preprod written');
+    assert.equal(pre.body.sha, 's-preprod');
+    assert.match(Buffer.from(pre.body.content, 'base64').toString(), /'factory:kept'/);
+    assert.ok(puts().some((w) => !w.body.branch || w.body.branch === 'main'), 'the default branch written too');
+  });
+  await withPanel({ files: { [FILE]: OLD }, refFiles: {} }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await until(page, () => writes.some((w) => w.path === PATH));
+    await page.waitForTimeout(500);
+    assert.equal(writes.filter((w) => w.path === PATH).length, 1, 'no preprod branch: one write');
+  });
+});
+
 test('un déclencheur à jour n\'est pas réécrit', async () => {
   const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked')");
   await withPanel({ files: { [FILE]: fresh } }, async ({ page, writes, url }) => {
@@ -55,6 +74,18 @@ test('si GitHub refuse le réveil après « Garder », le panneau le dit au lieu
     await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
     await page.waitForFunction(() => /démarrera plus tard/.test(document.querySelector('#toast.show')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await toastText(page), /Actions/);
+  });
+});
+
+test('sur un projet au déclencheur à jour, « Garder » suffit : pas d\'alerte même si le réveil de secours est refusé', async () => {
+  const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked')");
+  await withPanel({ files: { [FILE]: fresh }, issues: [idea(5, 'Importer depuis un site')], config: { autoPick: true }, forbidden: new Set(['/repos/o/r/actions/workflows/factory.yml/dispatches']) }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForTimeout(800);
+    await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
+    await until(page, () => writes.some((w) => w.path.endsWith('/issues/5/labels')));
+    await page.waitForTimeout(800);
+    assert.doesNotMatch(await toastText(page), /plus tard/);
   });
 });
 

@@ -18,7 +18,7 @@ import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey } from './machine.mjs';
-import { TRIGGER_FILE, upgradeTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
+import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
 
@@ -88,6 +88,9 @@ function el(tag, attrs = {}, ...children) {
   return n;
 }
 
+// The projects whose trigger the panel checked this session, and those known up to date (issue #427, see updateTrigger).
+const triggers = { done: new Set(), fresh: new Set() };
+
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
@@ -99,7 +102,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   dropCountdowns();
-  updateTrigger.done?.clear();
+  triggers.done.clear(); triggers.fresh.clear();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -1021,7 +1024,7 @@ async function sortIdea(i, keep, pick) {
     sortingIdea(repo).set(i.number, 'sent');
     // Kept with automatic pick on: it may take a free place now. Older project workflows ignore the kept label,
     // so the board wakes the factory itself (issue #406).
-    if (keep && pick) wakeFactory(target);
+    if (keep && pick) wakeFactory(target, { say: true });
     if (live.repo === repo) refresh();
   } catch (e) {
     console.warn(`Idea #${i.number} not sorted`, e);
@@ -1474,31 +1477,43 @@ async function writeProjectRules() {
 }
 
 // Asks the factory to look at its free places now rather than at its next regular check (« tick »).
-// A refused wake-up is said, never silent (issue #427): the card would otherwise wait for the next scheduled round.
-function wakeFactory(repo) {
+// A refused wake-up after « Garder » is said, never silent (issue #427), unless the project's own trigger is known to be
+// up to date: the kept label already woke the factory there.
+function wakeFactory(repo, { say = false } = {}) {
   api(`/repos/${repo.full_name}/actions/workflows/factory.yml/dispatches`, {
     method: 'POST', body: JSON.stringify({ ref: repo.default_branch, inputs: { payload: '{"tick":true}' } }),
-  }).catch((e) => { if (e.status !== 401) toast(wakeErrorText(e)); });
+  }).catch((e) => { if (say && e.status !== 401 && !triggers.fresh.has(repo.full_name)) toast(wakeErrorText(e)); });
 }
 
 // The project's trigger is copied at install and never synced by the factory (GitHub forbids it): an old one drops
-// « Garder » and other label events. The panel adds the missing labels with the owner's token, once per session (issue #427):
-// after a refusal, the next try comes with the next login (a new token).
+// « Garder » and other label events. The panel adds the missing labels with the owner's token (issue #427), on the
+// default branch and on preprod (main is merged into preprod by the factory, whose token may not carry a workflow
+// change). Once per session and project, after a clear outcome: written, already up to date, or refused.
 async function updateTrigger(repo) {
-  const done = (updateTrigger.done ??= new Set());
-  if (done.has(repo.full_name)) return;
-  done.add(repo.full_name);
-  const file = await api(`/repos/${repo.full_name}/contents/${TRIGGER_FILE}`);
-  const text = file?.content ? fromBase64(file.content) : null;
-  const upgraded = upgradeTrigger(text);
-  if (!upgraded) return;
-  try {
-    await api(`/repos/${repo.full_name}/contents/${TRIGGER_FILE}`, {
+  const name = repo.full_name;
+  if (triggers.done.has(name)) return;
+  const session = token;
+  const upgrade = async (branch) => {
+    const file = await api(`/repos/${name}/contents/${TRIGGER_FILE}${branch ? `?ref=${branch}` : ''}`, { cache: 'no-store' });
+    const text = file?.content ? fromBase64(file.content) : null;
+    const upgraded = upgradeTrigger(text);
+    if (!upgraded) return text != null && knownTrigger(text);
+    if (token !== session) return false;
+    await api(`/repos/${name}/contents/${TRIGGER_FILE}`, {
       method: 'PUT',
-      body: JSON.stringify({ message: 'chore(factory): let every factory label wake the factory (from the panel)', content: toBase64(upgraded), sha: file.sha }),
+      body: JSON.stringify({ message: 'chore(factory): let every factory label wake the factory (from the panel)', content: toBase64(upgraded), sha: file.sha, ...(branch ? { branch } : {}) }),
     });
+    return true;
+  };
+  try {
+    const fresh = await upgrade(null);
+    if (token !== session) return;
+    if (fresh) triggers.fresh.add(name);
+    await upgrade('preprod');
+    triggers.done.add(name);
   } catch (e) {
-    if (e.status === 403 || e.status === 404) toast(TRIGGER_REFUSED);
+    if (token !== session) return;
+    if (e.status === 403 || e.status === 404) { triggers.done.add(name); toast(TRIGGER_REFUSED); }
     throw e;
   }
 }
