@@ -28,6 +28,30 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
      `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
      effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+     **Tâches parallélisables** : dans le plan, marque chaque tâche « parallélisable » (elle n'attend aucune autre
+     tâche et ne touche ni les mêmes fichiers ni les mêmes tests que les autres tâches encore à faire) ou
+     « séquentielle (après la tâche N) ». Puis, avec le skill `dispatching-parallel-agents` :
+     - committe tout avant de lancer (une copie ne voit que le travail committé), en ajoutant tes fichiers par leur
+       nom : jamais `git add -A` ni `git add .` tant que des copies existent, sinon elles partiraient dans la PR. Puis
+       lance ensemble les tâches parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec
+       `isolation: "worktree"` (sa propre copie du projet, c'est ce que le journal compte) et
+       `run_in_background: true` (pour qu'une place libérée serve aussitôt). Donne à chacun le dernier commit de la
+       branche de la demande : sa copie doit en partir (sinon il s'y replace avec `git reset --hard <commit>` avant
+       de commencer). Dis-lui aussi d'installer les dépendances dans sa copie avant de tester, et de committer son
+       travail sur la branche de sa copie. Cette
+       règle remplace, pour ces tâches seulement, l'interdiction du skill `subagent-driven-development` de lancer
+       plusieurs sous-agents de construction en même temps ;
+     - quand l'un revient : fais relire sa tâche comme d'habitude, sur la branche de sa copie (du commit où elle est
+       partie jusqu'à son dernier commit) ; les corrections se committent sur cette même branche (un nouveau
+       sous-agent de correction part du dernier commit de cette branche, pas de celle de la demande). Puis fusionne-la
+       dans la branche de la demande (`git merge`) et retire la copie (`git worktree remove`) ; la tâche prête suivante
+       prend sa place. Une tâche séquentielle ne part qu'une fois la tâche dont elle dépend relue et fusionnée ;
+     - **conflit à la fusion** : règle-le toi-même s'il est simple ; sinon abandonne cette fusion et refais la tâche
+       en cause après l'autre, de façon séquentielle. Ne dérange jamais le propriétaire pour ça ;
+     - après la dernière fusion, relance toute la suite de tests sur l'ensemble ; un test rouge se corrige (cause
+       trouvée) avant la relecture finale ;
+     - plan sans tâche parallélisable : tout s'enchaîne l'une après l'autre, comme avant. Grille des modèles et
+       montée d'un cran inchangées. Petites et moyennes demandes : jamais de parallèle.
    Si l'étape plan est désactivée, une demande moyenne ou grande se code aussi d'une traite, sans plan écrit.
    Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
