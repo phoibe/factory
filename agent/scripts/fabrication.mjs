@@ -112,12 +112,44 @@ export function agentsLine(runs) {
   return `**Sous-agents** : ${parts.join(', ')}`;
 }
 
+// Issue #417: the independent tasks of a large plan are built at the same time, each by a sub-agent in its own copy
+// (isolation « worktree »), at most MAX_PARALLEL at once. Copies launched within WAVE_MS of a wave's first launch
+// were sent together: they form one wave. A task started later (a place freed up) opens a new wave.
+export const MAX_PARALLEL = 3;
+const WAVE_MS = 120_000;
+export function parallelWaves(runs, { windowMs = WAVE_MS } = {}) {
+  const copies = runs.flatMap((r) => r.agents || []).filter((a) => a.copy === true)
+    .map((a) => ({ ...a, ms: Date.parse(a.t) })).sort((a, b) => (a.ms || 0) - (b.ms || 0));
+  const waves = [];
+  for (const a of copies) {
+    const wave = waves[waves.length - 1];
+    if (wave && Number.isFinite(a.ms) && Number.isFinite(wave[0].ms) && a.ms - wave[0].ms <= windowMs) wave.push(a);
+    else waves.push([a]);
+  }
+  return waves;
+}
+
+const MAX_WAVES_SHOWN = 3;
+export function parallelLine(runs) {
+  const waves = parallelWaves(runs);
+  if (!waves.length) return null;
+  const count = waves.reduce((n, w) => n + w.length, 0);
+  const names = waves.slice(0, MAX_WAVES_SHOWN).map((w) => w.map((a) => a.label || 'sans nom').join(' + ')).join(', puis ')
+    + (waves.length > MAX_WAVES_SHOWN ? ', …' : '');
+  const most = Math.max(...waves.map((w) => w.length));
+  const tasks = count > 1 ? `${count} tâches construites` : '1 tâche construite';
+  const launched = waves.length > 1 ? `lancées en ${waves.length} vagues` : count > 1 ? 'lancées ensemble' : 'lancée seule';
+  return `**Tâches en parallèle** : ${tasks} chacune dans sa copie, ${launched} (${names}), au plus ${most} à la fois`;
+}
+
 // Issue #381: the route a build followed, read from the journal (never from the size the agent declared): a plan
 // executed by one sub-agent per task (subagent-driven-development) is the large route, any other plan the medium one,
 // no plan on a small change the small one. A bigger change without a plan claims nothing more (the plan alert says it).
 export function routeLine(runs, { small = false } = {}) {
   if (!runs.some((r) => r.stage === 'build')) return null;
-  if (runs.some((r) => used(r, 'subagent-driven-development'))) return '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue';
+  const large = runs.some((r) => used(r, 'subagent-driven-development'));
+  if (large && parallelWaves(runs).length) return `**Parcours** : grande demande, plan exécuté tâche par tâche, tâches indépendantes construites en même temps (${MAX_PARALLEL} au plus), chaque tâche relue`;
+  if (large) return '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue';
   if (runs.some((r) => used(r, 'writing-plans'))) return "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale";
   if (small) return "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale";
   return "**Parcours** : sans plan écrit, construite d'une traite avec une seule relecture finale";
@@ -142,6 +174,9 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
       if (exp.tdd && used(run, exp.skill) && !redThenGreen(run)) alerts.push(`${name} : pas de preuve TDD (aucun test rouge suivi d'un test vert).`);
     }
   }
+  for (const wave of parallelWaves(runs)) {
+    if (wave.length > MAX_PARALLEL) alerts.push(`Tâches en parallèle : ${wave.length} sous-agents lancés ensemble, plus que les ${MAX_PARALLEL} permis.`);
+  }
   const missing = missingSkills(runs, { stages, ui, small });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
   // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
@@ -150,6 +185,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
   const tdd = runs.filter((r) => expectations(r.stage, stages, ui).some((e) => e.tdd));
   const proof = tdd.length && tdd.every(redThenGreen) ? 'oui ✅ (un test a d\'abord échoué, puis est passé)' : tdd.length ? 'non ⚠️' : '—';
   const route = routeLine(runs, { small });
+  const parallel = parallelLine(runs);
   const body = [
     FABRICATION_MARKER,
     '## Fabrication',
@@ -159,6 +195,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
     ...lines.map((l) => `- ${l}`),
     '',
     ...(route ? [route, ''] : []),
+    ...(parallel ? [parallel, ''] : []),
     `**Preuve TDD** : ${proof}`,
     '',
     agentsLine(runs),

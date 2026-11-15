@@ -28,6 +28,23 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
      `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
      effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+     **Tâches parallélisables** (voir le glossaire de la factory) : dans le plan, marque chaque tâche
+     « parallélisable » (elle n'attend aucune autre tâche et ne touche ni les mêmes fichiers ni les mêmes tests que
+     les autres tâches encore à faire) ou « séquentielle (après la tâche N) ». Puis, avec le skill
+     `dispatching-parallel-agents` :
+     - lance ensemble les tâches parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec
+       `isolation: "worktree"` (sa propre copie du projet, c'est ce que le journal compte) et la consigne de
+       committer son travail dans sa copie. Cette règle remplace, pour ces tâches seulement, l'interdiction du skill
+       `subagent-driven-development` de lancer plusieurs sous-agents de construction en même temps ;
+     - quand l'un revient : fais relire sa tâche comme d'habitude, puis fusionne sa branche dans celle de la demande
+       (`git merge`) ; la tâche prête suivante prend sa place. Une tâche séquentielle ne part qu'une fois la tâche
+       dont elle dépend relue et fusionnée ;
+     - **conflit à la fusion** : règle-le toi-même s'il est simple ; sinon abandonne cette fusion et refais la tâche
+       en cause après l'autre, de façon séquentielle. Ne dérange jamais le propriétaire pour ça ;
+     - après la dernière fusion, relance toute la suite de tests sur l'ensemble ; un test rouge se corrige (cause
+       trouvée) avant la relecture finale ;
+     - plan sans tâche parallélisable : tout s'enchaîne l'une après l'autre, comme avant. Grille des modèles et
+       montée d'un cran inchangées. Petites et moyennes demandes : jamais de parallèle.
    Si l'étape plan est désactivée, une demande moyenne ou grande se code aussi d'une traite, sans plan écrit.
    Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
 4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :

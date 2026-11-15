@@ -45,12 +45,14 @@ export function runFromPrompt(prompt = '') {
   return null;
 }
 
-// A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on. No model
-// means it inherited the session's.
+// A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on, and whether
+// it worked in its own copy. No model means it inherited the session's.
 export function agentEntry(input) {
   if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
   const i = input.tool_input || {};
-  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+  const entry = { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+  // Issue #417: a task of a large plan built at the same time as others works in its own copy (git worktree).
+  return i.isolation === 'worktree' ? { ...entry, copy: true } : entry;
 }
 
 function responseFailed(res) {

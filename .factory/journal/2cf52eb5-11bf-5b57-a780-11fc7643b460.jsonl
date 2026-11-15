@@ -1,0 +1,7 @@
+{"t":"2026-11-15T13:42:35.395Z","kind":"run","stage":"build","issue":417,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-15T13:43:49.611Z","kind":"skill","name":"writing-plans","id":"toolu_01RemBQWZuVUATfCZ248tSrA"}
+{"t":"2026-11-15T13:44:18.216Z","kind":"skill","name":"executing-plans","id":"toolu_015kpSXsEW7tZ9fzssiHmRc4"}
+{"t":"2026-11-15T13:44:18.450Z","kind":"skill","name":"test-driven-development","id":"toolu_01WDkzDMMrrBkbAd3ZMwi689"}
+{"t":"2026-11-15T13:45:10.182Z","kind":"test","cmd":"cat >> test/subagents.test.mjs <<'EOF'\n\n// Issue #417: the independent tasks of a large plan run at the same time, each in its own copy (worktree).\nconst copies = (...ts) => ts.map(([t, label]) => JSO","ok":false,"id":"toolu_01HaKGqDFhwQF3rbS6vrxTtW"}
+{"t":"2026-11-15T13:46:04.794Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"  const i = input.tool_input || {};\n  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.descr","ok":true,"id":"toolu_011jaQryMpP38xTYBnM33G1P"}
+{"t":"2026-11-15T13:47:04.887Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\"; for s in typecheck lint build; do npm run -s $s >/dev/null 2>&1; echo \"$s: $?\"; done; node .factory/scripts/specs.mjs save 417 && ls docs/specs | grep","ok":true,"id":"toolu_011Spt3q1WGFYfiF8KMB3MBX"}
