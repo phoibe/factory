@@ -18,23 +18,26 @@
    tests (ou une base jetable démarrée sur la machine), crée un compte de démonstration, puis capture les écrans
    connectés en passant le cookie de session à l'outil (`--cookie <nom>=<valeur>` sur les commandes `capture`).
    Fais pareil pour « avant ». N'ajoute pas de page de test dans l'appli pour ça.
-3. **Heure fixe de l'appli** : lance chaque appli (« après » comme « avant ») **à travers l'outil, dans la même
-   commande** : `node "$PWD/.factory/scripts/shots.mjs" run -- npm run start -- -p 3000` (ou `… run -- npm run dev`),
-   en arrière-plan. Une appli Node.js démarre alors à la même date et à la même heure fixes que le navigateur des
-   captures (l'horloge avance ensuite normalement) : les données d'exemple qu'elle date au démarrage portent la même
-   heure avant et après (issue #422). Pour « avant », lancé depuis `/tmp/before`, donne le chemin complet de l'outil
-   dans le dossier du projet (pas `$PWD`, qui serait alors `/tmp/before`, dont l'outil ne l'a peut-être pas encore).
-   Une donnée datée plus tard (à la première visite d'une page) peut encore différer de quelques secondes : c'est le
-   rôle du filet. Pour une appli dans un autre langage, fais pareil avec son moyen
-   habituel (variable d'heure de test de l'appli, `faketime` s'il est installé), sinon le filet de l'étape 4 bis reste là.
+3. **Heure fixe de l'appli** : construis et lance chaque appli (« après » comme « avant ») **à travers l'outil, dans
+   une seule commande**, en arrière-plan : `node <outil> run -- sh -c 'npm run build && npm run start -- -p 3000'`
+   (ou `node <outil> run -- npm run dev`), où `<outil>` est le chemin complet de `.factory/scripts/shots.mjs` **dans le
+   dossier du projet** (celui de la branche, même pour « avant » : la copie de `{{base}}` n'a peut-être pas encore
+   l'outil, ou une version sans `run`). La construction et l'appli Node.js tournent alors à la même date et à la même
+   heure fixes que le navigateur des captures (l'horloge avance ensuite normalement) : les données d'exemple datées à
+   la construction ou au démarrage portent la même heure avant et après (issue #422). Une donnée datée plus tard (à la
+   première visite d'une page) peut encore différer de quelques secondes : c'est le rôle du filet de l'étape 4 bis.
+   Pour une appli dans un autre langage, fais pareil avec son moyen habituel (variable d'heure de test de l'appli,
+   `faketime` s'il est installé), sinon le filet reste là.
    **Si l'heure fixe casse l'appli** (écrans connectés renvoyés vers la page de connexion, erreurs d'un service
    extérieur ou de la base, qui gardent l'heure réelle) : relance les deux applis sans `run`, avant comme après, et
-   compte sur le filet de l'étape 4 bis.
-   **Après** : lance l'appli de la branche (`npm run build`, puis `node "$PWD/.factory/scripts/shots.mjs" run -- npm run start -- -p 3000`),
-   puis `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
+   compte sur le filet. Regarde toujours qu'avec l'heure fixe les écrans connectés montrent bien l'appli connectée :
+   deux pages de connexion identiques donneraient à tort « aucun écran n'a changé ».
+   **Après** : une fois l'appli de la branche lancée sur le port 3000 comme ci-dessus,
+   `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
-4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, lance sur le port 3001 (avec la même heure fixe), puis la même commande
-   (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `{{base}}` n'a pas encore d'appli,
+4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, puis depuis `/tmp/before` lance
+   `node <outil> run -- sh -c 'npm run build && npm run start -- -p 3001'` (même `<outil>` qu'à l'étape 3), puis la même
+   commande `capture` (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `{{base}}` n'a pas encore d'appli,
    pas de « avant ». Un écran ou un thème sombre absent de « avant » s'affiche « nouvel écran » côté avant.
    L'outil fige l'écran avant chaque photo (date et heure fixes, animations arrêtées, curseur caché), « avant » comme
    « après » : un écran identique donne la même image et n'est pas montré. Il reste montré au moindre point de

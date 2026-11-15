@@ -138,6 +138,18 @@ test('a set-aside file that is not valid JSON is refused in plain French', () =>
 test('the screenshots stage launches each app through shots run and says when to do without the fixed time', async () => {
   const { readFileSync } = await import('node:fs');
   const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
-  assert.match(s, /shots\.mjs"? run -- npm run start -- -p 3000/);
+  assert.match(s, /node <outil> run -- /);
   assert.match(s, /page de connexion/);
+});
+
+test('the build also runs on the fixed time (pages pre-rendered at build), and signed-in captures are checked', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.match(s, /run -- sh -c 'npm run build && npm run start -- -p 3000'/);
+  assert.match(s, /-p 3001/);
+  assert.match(s, /écrans connectés montrent bien l'appli connectée/);
+});
+
+test('a reason cannot hide the rest of the trace line', () => {
+  assert.doesNotMatch(setAsideScreens(['a--desktop.png'], { a: 'heure <!-- x' }).setAside[0].reason, /</);
 });

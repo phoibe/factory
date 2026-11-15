@@ -203,7 +203,7 @@ export function setAsideScreens(files, aside = {}, { newScreens = [] } = {}) {
   const set = [];
   for (const [key, raw] of Object.entries(aside || {})) {
     // One short line: the reason is written inside the italic trace line the factory's bot posts.
-    const reason = String(raw ?? '').replace(/[\s_*`|]+/g, ' ').trim().slice(0, 200).trim();
+    const reason = String(raw ?? '').replace(/[\s_*`|<>]+/g, ' ').trim().slice(0, 200).trim();
     if (!reason) throw new Error(`Écran « ${key} » écarté sans raison : écris pourquoi il n'a pas de changement visible.`);
     const hits = files.filter((f) => { const stem = f.replace(/\.png$/, ''); return stem === key || stem.split('--')[0] === key; });
     if (!hits.length) throw new Error(`Écran « ${key} » à écarter introuvable parmi les écrans qui ont changé : ${files.map((f) => f.replace(/\.png$/, '')).join(', ') || 'aucun'}.`);
@@ -322,7 +322,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
     console.log(await publish({ pr: args.pr, before: args.before, after: args.after, aside }));
   } else {
-    console.error('usage: shots.mjs capture|publish|check|env ...');
+    console.error('usage: shots.mjs capture|publish|check|run|env ...');
     process.exit(2);
   }
 }

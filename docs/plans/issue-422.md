@@ -37,7 +37,8 @@ nothing is left to show, the output is the existing « nothing changed » messag
   `now()` and no-argument constructor return `start + (real now − real now at install)`. Auto-installed on import
   when `FACTORY_FROZEN_TIME` is set.
 - `frozenEnv(): { FACTORY_FROZEN_TIME, NODE_OPTIONS }` with `NODE_OPTIONS` = existing value + `--import=<file URL>`.
-  `shots.mjs env` prints `export KEY='value'` lines (used as `eval "$(node .factory/scripts/shots.mjs env)"`).
+  `shots.mjs run -- <command>` launches the app (and its build) with that environment in one command; `shots.mjs env`
+  prints `export KEY='value'` lines. (Ruling after review: `eval` alone was lost between separate shell calls.)
 - Tests: a child process run with `frozenEnv()` prints a year 2026-01-15 date; `new Date(0)` unchanged; sync copies the file.
 
 ### Task 2: set-aside with reason, trace line, nothing left to show

@@ -1,7 +1,7 @@
 // Starts the app's clock on the captures' fixed date and time (issue #422): the browser's clock is frozen by the
 // screenshots tool, but an app that dates its sample data when it starts would show another time « before » and
 // « after » (they are launched minutes apart), and the screen would be shown as changed. Loaded with
-// `node --import`, through the environment printed by `shots.mjs env`; it does nothing without FACTORY_FROZEN_TIME.
+// `node --import`, through `shots.mjs run -- <command>` (or the environment printed by `shots.mjs env`); it does nothing without FACTORY_FROZEN_TIME.
 // The clock keeps ticking from that time (timers and timeouts work as usual); only the starting point is fixed.
 // No dependency on purpose: it is loaded inside the project's own app.
 
