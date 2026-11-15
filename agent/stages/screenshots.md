@@ -19,7 +19,7 @@
    connectés en passant le cookie de session à l'outil (`--cookie <nom>=<valeur>` sur les commandes `capture`).
    Fais pareil pour « avant ». N'ajoute pas de page de test dans l'appli pour ça.
 3. **Heure fixe de l'appli** : construis et lance chaque appli (« après » comme « avant ») **à travers l'outil, dans
-   une seule commande**, en arrière-plan : `node <outil> run -- sh -c 'npm run build && npm run start -- -p 3000'`
+   une seule commande**, en arrière-plan : `node <outil> run -- sh -c 'npm run build && exec npm run start -- -p 3000'`
    (ou `node <outil> run -- npm run dev`), où `<outil>` est le chemin complet de `.factory/scripts/shots.mjs` **dans le
    dossier du projet** (celui de la branche, même pour « avant » : la copie de `{{base}}` n'a peut-être pas encore
    l'outil, ou une version sans `run`). La construction et l'appli Node.js tournent alors à la même date et à la même
@@ -30,14 +30,20 @@
    `faketime` s'il est installé), sinon le filet reste là.
    **Si l'heure fixe casse l'appli** (écrans connectés renvoyés vers la page de connexion, erreurs d'un service
    extérieur ou de la base, qui gardent l'heure réelle) : relance les deux applis sans `run`, avant comme après, et
-   compte sur le filet. Regarde toujours qu'avec l'heure fixe les écrans connectés montrent bien l'appli connectée :
+   compte sur le filet. Avant d'y renoncer, crée aussi le compte de démonstration (script ou commande de l'étape 2)
+   à travers `node <outil> run -- …` : un compte daté de l'heure réelle peut être refusé par une appli à l'heure fixe.
+   Arrête toujours une appli en arrêtant sa commande `run` (elle arrête tout ce qu'elle a lancé), sinon l'ancienne
+   garde le port. Regarde toujours qu'avec l'heure fixe les écrans connectés montrent bien l'appli connectée :
    deux pages de connexion identiques donneraient à tort « aucun écran n'a changé ».
-   **Après** : une fois l'appli de la branche lancée sur le port 3000 comme ci-dessus,
+   **Après** : une fois l'appli de la branche lancée sur le port 3000 comme ci-dessus, attends qu'elle réponde
+   (`curl -sf --retry 60 --retry-delay 5 --retry-connrefused http://localhost:3000 >/dev/null`) et vérifie dans la
+   sortie de la tâche qu'elle a bien démarré (pas d'erreur de port déjà pris), puis
    `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
-4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, puis depuis `/tmp/before` lance
-   `node <outil> run -- sh -c 'npm run build && npm run start -- -p 3001'` (même `<outil>` qu'à l'étape 3), puis la même
-   commande `capture` (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `{{base}}` n'a pas encore d'appli,
+4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, `cd /tmp/before && npm ci`, puis
+   `cd /tmp/before && node <outil> run -- sh -c 'npm run build && exec npm run start -- -p 3001'` (même `<outil>`
+   qu'à l'étape 3 ; le `cd` dans la même commande, car il ne passe pas d'une commande à l'autre), attends qu'elle
+   réponde sur le port 3001 comme à l'étape 3, puis la même commande `capture` (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `{{base}}` n'a pas encore d'appli,
    pas de « avant ». Un écran ou un thème sombre absent de « avant » s'affiche « nouvel écran » côté avant.
    L'outil fige l'écran avant chaque photo (date et heure fixes, animations arrêtées, curseur caché), « avant » comme
    « après » : un écran identique donne la même image et n'est pas montré. Il reste montré au moindre point de

@@ -145,11 +145,44 @@ test('the screenshots stage launches each app through shots run and says when to
 test('the build also runs on the fixed time (pages pre-rendered at build), and signed-in captures are checked', async () => {
   const { readFileSync } = await import('node:fs');
   const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
-  assert.match(s, /run -- sh -c 'npm run build && npm run start -- -p 3000'/);
-  assert.match(s, /-p 3001/);
+  assert.match(s, /run -- sh -c 'npm run build && exec npm run start -- -p 3000'/);
   assert.match(s, /écrans connectés montrent bien l'appli connectée/);
 });
 
 test('a reason cannot hide the rest of the trace line', () => {
   assert.doesNotMatch(setAsideScreens(['a--desktop.png'], { a: 'heure <!-- x' }).setAside[0].reason, /</);
+});
+
+test('stopping shots run stops the app, even behind a shell', async () => {
+  const { spawn } = await import('node:child_process');
+  const script = new URL('../agent/scripts/shots.mjs', import.meta.url).pathname;
+  const dir = mkdtempSync(join(tmpdir(), 'r-'));
+  const flag = join(dir, 'alive');
+  const app = `setInterval(() => require('fs').writeFileSync(${JSON.stringify(flag)}, String(Date.now())), 100)`;
+  const run = spawn(process.execPath, [script, 'run', '--', 'sh', '-c', `true && ${process.execPath} -e "${app.replace(/"/g, '\\"')}"`], { stdio: 'ignore' });
+  const { readFileSync, existsSync } = await import('node:fs');
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 50 && !existsSync(flag); i++) await wait(100);
+  assert.ok(existsSync(flag), 'app started');
+  run.kill('SIGTERM');
+  await new Promise((r) => run.on('exit', r));
+  await wait(300);
+  const last = readFileSync(flag, 'utf8');
+  await wait(500);
+  assert.equal(readFileSync(flag, 'utf8'), last, 'the app behind the shell kept running');
+});
+
+test('a reason written by an older tool is cleaned when the trace line is built', () => {
+  const md = markdownTable({ repo: 'o/r', dir: 'd', files: [], setAside: [{ file: 'a--desktop.png', reason: 'heure\n_<!-- x' }] });
+  assert.match(md, /a · desktop \(heure !-- x\)\._$/);
+  assert.doesNotMatch(md.split('\n').pop(), /</);
+});
+
+test('the screenshots stage waits for the app, changes folder explicitly and dates the demo account on the fixed time', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.match(s, /&& exec npm run start -- -p 3000'/);
+  assert.match(s, /cd \/tmp\/before && node <outil> run -- sh -c 'npm run build && exec npm run start -- -p 3001'/);
+  assert.match(s, /curl -sf --retry 60 --retry-delay 5 --retry-connrefused http:\/\/localhost:3000/);
+  assert.match(s, /compte de démonstration[^.]*run/);
 });

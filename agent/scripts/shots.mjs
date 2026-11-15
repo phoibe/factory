@@ -5,7 +5,7 @@
 //        [--cookie session=abc123[,other=v]]                 (screens behind a sign-in: the session cookie to send)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
 //        [--set-aside aside.json]  ({"screener": "seule l'heure du dernier passage diffère"}: changed screens not shown, issue #422)
-//   node .factory/scripts/shots.mjs run -- npm run start -- -p 3000   (the app starts on the captures' fixed time)
+//   node .factory/scripts/shots.mjs run -- sh -c 'npm run build && exec npm run start -- -p 3000'   (app on the fixed time)
 //   eval "$(node .factory/scripts/shots.mjs env)"   (the same environment, for a shell that launches the app itself)
 //   node .factory/scripts/shots.mjs check comment.md   (exit 1 when a table row is not a displayed image)
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
@@ -78,7 +78,8 @@ export const FROZEN_CONTEXT = { reducedMotion: 'reduce' };
 export const FROZEN_SHOT = { fullPage: true, animations: 'disabled', caret: 'hide' };
 
 // The environment the app is launched with for the captures (issue #422): a Node app starts its clock on FROZEN_TIME,
-// so the sample data it dates when it starts reads the same « before » and « after ». Printed by `shots.mjs env`.
+// so the sample data it dates when it starts reads the same « before » and « after ». Applied by `shots.mjs run`,
+// printed by `shots.mjs env`.
 export function frozenEnv(env = process.env) {
   const clock = pathToFileURL(join(fileURLToPath(new URL('.', import.meta.url)), 'frozen-clock.mjs')).href;
   return { FACTORY_FROZEN_TIME: FROZEN_TIME, NODE_OPTIONS: [env.NODE_OPTIONS, `--import=${clock}`].filter(Boolean).join(' ') };
@@ -202,8 +203,7 @@ export function screensToShow(before, after, aside = {}) {
 export function setAsideScreens(files, aside = {}, { newScreens = [] } = {}) {
   const set = [];
   for (const [key, raw] of Object.entries(aside || {})) {
-    // One short line: the reason is written inside the italic trace line the factory's bot posts.
-    const reason = String(raw ?? '').replace(/[\s_*`|<>]+/g, ' ').trim().slice(0, 200).trim();
+    const reason = cleanReason(raw);
     if (!reason) throw new Error(`Écran « ${key} » écarté sans raison : écris pourquoi il n'a pas de changement visible.`);
     const hits = files.filter((f) => { const stem = f.replace(/\.png$/, ''); return stem === key || stem.split('--')[0] === key; });
     if (!hits.length) throw new Error(`Écran « ${key} » à écarter introuvable parmi les écrans qui ont changé : ${files.map((f) => f.replace(/\.png$/, '')).join(', ') || 'aucun'}.`);
@@ -214,10 +214,15 @@ export function setAsideScreens(files, aside = {}, { newScreens = [] } = {}) {
   return { files: files.filter((f) => !set.some((s) => s.file === f)), setAside: set };
 }
 
+// One short line: the reason is written inside the italic trace line the factory's bot posts. Cleaned again when the
+// line is built, for a shots.json written by an older copy of this tool.
+const cleanReason = (raw) => [...String(raw ?? '').replace(/[\s_*`|<>()]+/g, ' ').trim()].slice(0, 200).join('').trim();
+
 // « Écrans sans changement visible, non montrés : a · desktop, a · mobile (raison) », one group per reason.
 function setAsideLine(setAside) {
-  const reasons = [...new Set(setAside.map((s) => s.reason))];
-  const groups = reasons.map((r) => `${orderFiles(setAside.filter((s) => s.reason === r).map((s) => s.file)).map(label).join(', ')} (${r})`);
+  const clean = setAside.map((s) => ({ file: String(s.file), reason: cleanReason(s.reason) }));
+  const reasons = [...new Set(clean.map((s) => s.reason))];
+  const groups = reasons.map((r) => `${orderFiles(clean.filter((s) => s.reason === r).map((s) => s.file)).map(label).join(', ')} (${r})`);
   return `_Écrans sans changement visible, non montrés : ${groups.join(' ; ')}._`;
 }
 
@@ -305,9 +310,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const command = at > 0 ? process.argv.slice(at + 1) : [];
     if (!command.length) { console.error('usage: shots.mjs run -- <commande qui lance l\'appli>'); process.exit(2); }
     const { spawn } = await import('node:child_process');
-    const child = spawn(command[0], command.slice(1), { stdio: 'inherit', env: { ...process.env, ...frozenEnv() } });
-    // Stopping this command stops the app too (no server left running on the port).
-    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => child.kill(sig));
+    // Its own process group, so that stopping this command stops the whole app, even behind `sh -c` or npm (a shell
+    // does not pass the signal on): no server left running on the port.
+    const child = spawn(command[0], command.slice(1), { stdio: 'inherit', detached: true, env: { ...process.env, ...frozenEnv() } });
+    const stop = (sig) => { try { process.kill(-child.pid, sig); } catch { child.kill(sig); } };
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => stop(sig));
     child.on('error', (e) => { console.error(`impossible de lancer ${command[0]} : ${e.message}`); process.exit(127); });
     child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   } else if (cmd === 'env') {

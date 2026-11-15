@@ -5,7 +5,7 @@
 **Goal:** a screen that only differs by data that changes on its own (a time, a date) is no longer shown in the screenshots review.
 
 **Architecture:** (1) at the source, the app launched for the captures starts on the same fixed date/time as the
-browser: a Node preload (`agent/scripts/frozen-clock.mjs`, enabled by `shots.mjs env`) shifts `Date` so that it
+browser: a Node preload (`agent/scripts/frozen-clock.mjs`, enabled by `shots.mjs run -- <command>`) shifts `Date` so that it
 starts at `FROZEN_TIME`; (2) a safety net: `shots.mjs publish --set-aside <file.json>` lets the agent set aside a
 differing screen with a written reason; (3) every set-aside screen is listed in one line with its reason; (4) when
 nothing is left to show, the output is the existing « nothing changed » message (marker included) plus that line.
