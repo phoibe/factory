@@ -18,27 +18,46 @@
    tests (ou une base jetable démarrée sur la machine), crée un compte de démonstration, puis capture les écrans
    connectés en passant le cookie de session à l'outil (`--cookie <nom>=<valeur>` sur les commandes `capture`).
    Fais pareil pour « avant ». N'ajoute pas de page de test dans l'appli pour ça.
-3. **Après** : lance l'appli de la branche (`npm run build && npm run start -- -p 3000`, ou `npm run dev`),
+3. **Heure fixe de l'appli** : avant de lancer chaque appli (« après » comme « avant »), dans le même terminal, lance
+   `eval "$(node .factory/scripts/shots.mjs env)"`. Une appli Node.js démarre alors à la même date et à la même heure
+   fixes que le navigateur des captures (l'horloge avance ensuite normalement) : les données d'exemple qu'elle date au
+   démarrage portent la même heure avant et après, et l'écran n'apparaît plus comme changé (issue #422). Pour une appli
+   dans un autre langage, fais pareil avec son moyen habituel (variable d'heure de test de l'appli, `faketime` s'il est
+   installé), sinon le filet de l'étape 4 bis reste là.
+   **Après** : lance l'appli de la branche (`npm run build && npm run start -- -p 3000`, ou `npm run dev`),
    puis `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
-4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, lance sur le port 3001, puis la même commande
+4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, lance sur le port 3001 (avec la même heure fixe), puis la même commande
    (mêmes options) avec `--base-url http://localhost:3001 --out /tmp/shots/before`. Si `{{base}}` n'a pas encore d'appli,
    pas de « avant ». Un écran ou un thème sombre absent de « avant » s'affiche « nouvel écran » côté avant.
    L'outil fige l'écran avant chaque photo (date et heure fixes, animations arrêtées, curseur caché), « avant » comme
    « après » : un écran identique donne la même image et n'est pas montré. Il reste montré au moindre point de
-   différence (aucune tolérance) : si un écran que tu n'as pas touché change quand même (tirage au hasard, données
-   d'internet), dis-le en une phrase dans le commentaire.
+   différence (aucune tolérance) : si un écran que tu n'as pas touché change quand même, vois l'étape 4 bis.
    L'heure ne s'écoule pas pendant la photo : si un écran paraît inachevé ou vide alors que l'appli réelle va bien,
    il attend sans doute que le temps passe ; dis-le aussi dans le commentaire.
+4 bis. **Le filet : écarter un écran sans changement visible.** Regarde les captures avant/après de chaque écran que
+   la demande ne devait pas toucher et qui a changé quand même (les images qui diffèrent entre `/tmp/shots/before` et
+   `/tmp/shots/after`, à ouvrir avec l'outil Read). Si la **seule** différence est une donnée qui change
+   d'elle-même (une heure, une date, un tirage au hasard, une donnée venue d'internet), écarte-le : écris un fichier
+   JSON `{"<écran>": "<raison>"}` (l'écran est le nom de la route dans les captures, comme `screener`, pour toutes ses
+   tailles et thèmes, ou un nom précis comme `screener--mobile--sombre`), par exemple
+   `{"screener": "seule l'heure du dernier passage diffère"}`, et ajoute `--set-aside <fichier>` à la commande `publish`.
+   L'écran n'est pas montré, mais une ligne sous les captures le cite avec sa raison, pour que le propriétaire puisse le
+   réclamer. N'écarte **jamais** un écran que la demande devait changer, un nouvel écran, un écran où une donnée change
+   parce que la demande la change volontairement, ni un écran où la différence touche autre chose (texte, mise en page,
+   couleurs) : au moindre doute, l'écran est montré. La raison est écrite pour le propriétaire, en français simple.
 5. `node .factory/scripts/shots.mjs publish --pr <numéro> --before /tmp/shots/before --after /tmp/shots/after > /tmp/shots.md`
-   (sans `--before` s'il n'y en a pas). Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
+   (sans `--before` s'il n'y en a pas ; avec `--set-aside <fichier>` si tu as écarté des écrans à l'étape 4 bis).
+   Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
    **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
    poussées, dès que la PR porte `factory:visual-review` (un tableau envoyé depuis ta session peut arriver abîmé sur
    GitHub, issue #378). Ne recopie aucun lien d'image dans tes messages.
-6. **Aucun écran n'a changé** : la sortie de l'outil contient alors `<!-- factory-shots-unchanged -->` et la phrase
-   « J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence. ».
+6. **Aucun écran n'a changé** (ou tous ceux qui différaient ont été écartés à l'étape 4 bis) : la sortie de l'outil
+   contient alors `<!-- factory-shots-unchanged -->` et la phrase
+   « J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence. », suivie de la ligne des
+   écrans écartés s'il y en a (garde-la telle quelle dans ton commentaire).
    - Si la demande prévoyait justement un changement d'apparence, revérifie d'abord tes captures (bonne page, bon état
      d'écran, bonne option de thème sombre) et refais-les si l'une était mal prise.
    - Si c'est confirmé, commente la PR : `<!-- factory-agent -->`, puis la sortie de l'outil telle quelle (avec ses marques

@@ -122,8 +122,14 @@ export function eventsPart(ctx) {
     if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return;
     const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
     let unchanged = [];
-    try { unchanged = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')).unchanged || []; } catch { /* an older tool wrote no list: the identical screens are just not named */ }
-    const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)) });
+    let setAside = [];
+    try {
+      const parsed = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8'));
+      unchanged = parsed.unchanged || [];
+      // Changed screens the agent set aside, each with its reason (issue #422): named so that the owner can claim one.
+      setAside = (parsed.setAside || []).filter((s) => s && typeof s.file === 'string' && typeof s.reason === 'string' && !files.includes(s.file));
+    } catch { /* an older tool wrote no list: the identical screens are just not named */ }
+    const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)), setAside });
     await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
     log(`captures of #${n} posted from ${dir}`);
   }
