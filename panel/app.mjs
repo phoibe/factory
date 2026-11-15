@@ -1510,7 +1510,7 @@ async function updateTrigger(repo) {
     if (token !== session) return;
     if (fresh) triggers.fresh.add(name);
     await upgrade('preprod');
-    triggers.done.add(name);
+    if (token === session) triggers.done.add(name);
   } catch (e) {
     if (token !== session) return;
     if (e.status === 403 || e.status === 404) { triggers.done.add(name); toast(TRIGGER_REFUSED); }
