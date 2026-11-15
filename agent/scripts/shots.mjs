@@ -5,7 +5,8 @@
 //        [--cookie session=abc123[,other=v]]                 (screens behind a sign-in: the session cookie to send)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
 //        [--set-aside aside.json]  ({"screener": "seule l'heure du dernier passage diffère"}: changed screens not shown, issue #422)
-//   eval "$(node .factory/scripts/shots.mjs env)"   (before launching the app: it starts on the captures' fixed time)
+//   node .factory/scripts/shots.mjs run -- npm run start -- -p 3000   (the app starts on the captures' fixed time)
+//   eval "$(node .factory/scripts/shots.mjs env)"   (the same environment, for a shell that launches the app itself)
 //   node .factory/scripts/shots.mjs check comment.md   (exit 1 when a table row is not a displayed image)
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
 // Publish builds one side-by-side image (before left, after right) per screen, size and theme.
@@ -201,7 +202,8 @@ export function screensToShow(before, after, aside = {}) {
 export function setAsideScreens(files, aside = {}, { newScreens = [] } = {}) {
   const set = [];
   for (const [key, raw] of Object.entries(aside || {})) {
-    const reason = String(raw ?? '').trim();
+    // One short line: the reason is written inside the italic trace line the factory's bot posts.
+    const reason = String(raw ?? '').replace(/[\s_*`|]+/g, ' ').trim().slice(0, 200).trim();
     if (!reason) throw new Error(`Écran « ${key} » écarté sans raison : écris pourquoi il n'a pas de changement visible.`);
     const hits = files.filter((f) => { const stem = f.replace(/\.png$/, ''); return stem === key || stem.split('--')[0] === key; });
     if (!hits.length) throw new Error(`Écran « ${key} » à écarter introuvable parmi les écrans qui ont changé : ${files.map((f) => f.replace(/\.png$/, '')).join(', ') || 'aucun'}.`);
@@ -297,10 +299,27 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const broken = brokenShotRows(readFileSync(args._[1], 'utf8'));
     for (const row of broken) console.error(`ligne cassée : ${row}`);
     if (broken.length) process.exit(1);
+  } else if (cmd === 'run') {
+    // One command, so that the fixed time cannot be lost between two shell calls (the app then runs on the real clock).
+    const at = process.argv.indexOf('--');
+    const command = at > 0 ? process.argv.slice(at + 1) : [];
+    if (!command.length) { console.error('usage: shots.mjs run -- <commande qui lance l\'appli>'); process.exit(2); }
+    const { spawn } = await import('node:child_process');
+    const child = spawn(command[0], command.slice(1), { stdio: 'inherit', env: { ...process.env, ...frozenEnv() } });
+    // Stopping this command stops the app too (no server left running on the port).
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => child.kill(sig));
+    child.on('error', (e) => { console.error(`impossible de lancer ${command[0]} : ${e.message}`); process.exit(127); });
+    child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   } else if (cmd === 'env') {
     for (const [k, v] of Object.entries(frozenEnv())) console.log(`export ${k}=${shellQuote(v)}`);
   } else if (cmd === 'publish') {
-    const aside = typeof args['set-aside'] === 'string' ? JSON.parse(readFileSync(args['set-aside'], 'utf8')) : {};
+    let aside = {};
+    if (typeof args['set-aside'] === 'string') {
+      try { aside = JSON.parse(readFileSync(args['set-aside'], 'utf8')); } catch (e) {
+        console.error(`Le fichier ${args['set-aside']} n'est pas un JSON valide ({"écran": "raison"}) : ${e.message}`);
+        process.exit(2);
+      }
+    }
     console.log(await publish({ pr: args.pr, before: args.before, after: args.after, aside }));
   } else {
     console.error('usage: shots.mjs capture|publish|check|env ...');

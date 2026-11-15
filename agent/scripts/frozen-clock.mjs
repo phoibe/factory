@@ -11,16 +11,24 @@ export function installFrozenClock(start, realNow = Date.now) {
   if (!Number.isFinite(startAt)) throw new Error(`frozen-clock: invalid time ${start}`);
   const offset = startAt - realNow();
   const now = () => realNow() + offset;
+  let FrozenDateFn;
   class FrozenDate extends RealDate {
     constructor(...args) {
       super(...(args.length ? args : [now()]));
     }
     static now() { return now(); }
-    // A date made before the install (or by a library holding the real Date) is still a Date.
-    static [Symbol.hasInstance](x) { return x instanceof RealDate; }
+    // A date made before the install (or by Node itself, or by a library holding the real Date) is still a Date;
+    // a subclass of Date (inherits this method) keeps the usual check.
+    static [Symbol.hasInstance](x) {
+      return this === FrozenDate || this === FrozenDateFn ? x instanceof RealDate : Function.prototype[Symbol.hasInstance].call(this, x);
+    }
   }
+  // Looks like the real Date: name, arity, and `new Date().constructor === Date` (logs and equality checks rely on them).
+  Object.defineProperty(FrozenDate, 'name', { value: 'Date' });
+  Object.defineProperty(FrozenDate, 'length', { value: 7 });
   // Date() called without `new` returns a string of the current time.
-  const FrozenDateFn = new Proxy(FrozenDate, { apply: () => new RealDate(now()).toString() });
+  FrozenDateFn = new Proxy(FrozenDate, { apply: () => new RealDate(now()).toString() });
+  Object.defineProperty(FrozenDate.prototype, 'constructor', { value: FrozenDateFn, writable: true, configurable: true });
   globalThis.Date = FrozenDateFn;
   return () => { globalThis.Date = RealDate; };
 }

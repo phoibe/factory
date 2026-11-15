@@ -104,8 +104,40 @@ test('the list of set-aside screens is left next to the images for the factory',
 test('the screenshots stage launches both apps on the fixed time and frames the safety net', async () => {
   const { readFileSync } = await import('node:fs');
   const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
-  assert.match(s, /eval "\$\(node \.factory\/scripts\/shots\.mjs env\)"/);
   assert.match(s, /--set-aside/);
   assert.match(s, /au moindre doute, l'écran est montré/i);
   assert.match(s, /que la demande devait changer/);
+});
+
+test('shots run launches the app with the fixed time in one command, and fails loudly when the app fails', () => {
+  const script = new URL('../agent/scripts/shots.mjs', import.meta.url).pathname;
+  const out = execFileSync(process.execPath, [script, 'run', '--', process.execPath, '-e', 'console.log(new Date().toISOString().slice(0, 10))']).toString().trim();
+  assert.equal(out, '2026-01-15');
+  assert.throws(() => execFileSync(process.execPath, [script, 'run', '--', process.execPath, '-e', 'process.exit(3)'], { stdio: 'pipe' }), (e) => e.status === 3);
+  assert.throws(() => execFileSync(process.execPath, [script, 'run'], { stdio: 'pipe' }), (e) => e.status === 2);
+});
+
+test('the frozen Date still looks like Date and leaves Date subclasses alone', () => {
+  const out = JSON.parse(runNode('class My extends Date {}; const d = new Date(); console.log(JSON.stringify([d.constructor === Date, Date.name, Date.length, d instanceof My, new My() instanceof My, require("util").inspect(new Date(0))]))', frozenEnv()));
+  assert.deepEqual(out, [true, 'Date', 7, false, true, '1970-01-01T00:00:00.000Z']);
+});
+
+test('a reason is kept on one short line that cannot break the trace line', () => {
+  const res = setAsideScreens(['a--desktop.png'], { a: "seule l'heure\n_diffère_ " + 'x'.repeat(300) });
+  assert.doesNotMatch(res.setAside[0].reason, /[\n_]/);
+  assert.ok(res.setAside[0].reason.length <= 200);
+});
+
+test('a set-aside file that is not valid JSON is refused in plain French', () => {
+  const dir = mkdtempSync(join(tmpdir(), 's-'));
+  writeFileSync(join(dir, 'aside.json'), '{screener: heure}');
+  const script = new URL('../agent/scripts/shots.mjs', import.meta.url).pathname;
+  assert.throws(() => execFileSync(process.execPath, [script, 'publish', '--pr', '1', '--after', dir, '--set-aside', join(dir, 'aside.json')], { stdio: 'pipe' }), (e) => /n'est pas un JSON valide/.test(e.stderr.toString()));
+});
+
+test('the screenshots stage launches each app through shots run and says when to do without the fixed time', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.match(s, /shots\.mjs"? run -- npm run start -- -p 3000/);
+  assert.match(s, /page de connexion/);
 });

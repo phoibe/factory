@@ -18,13 +18,19 @@
    tests (ou une base jetable démarrée sur la machine), crée un compte de démonstration, puis capture les écrans
    connectés en passant le cookie de session à l'outil (`--cookie <nom>=<valeur>` sur les commandes `capture`).
    Fais pareil pour « avant ». N'ajoute pas de page de test dans l'appli pour ça.
-3. **Heure fixe de l'appli** : avant de lancer chaque appli (« après » comme « avant »), dans le même terminal, lance
-   `eval "$(node .factory/scripts/shots.mjs env)"`. Une appli Node.js démarre alors à la même date et à la même heure
-   fixes que le navigateur des captures (l'horloge avance ensuite normalement) : les données d'exemple qu'elle date au
-   démarrage portent la même heure avant et après, et l'écran n'apparaît plus comme changé (issue #422). Pour une appli
-   dans un autre langage, fais pareil avec son moyen habituel (variable d'heure de test de l'appli, `faketime` s'il est
-   installé), sinon le filet de l'étape 4 bis reste là.
-   **Après** : lance l'appli de la branche (`npm run build && npm run start -- -p 3000`, ou `npm run dev`),
+3. **Heure fixe de l'appli** : lance chaque appli (« après » comme « avant ») **à travers l'outil, dans la même
+   commande** : `node "$PWD/.factory/scripts/shots.mjs" run -- npm run start -- -p 3000` (ou `… run -- npm run dev`),
+   en arrière-plan. Une appli Node.js démarre alors à la même date et à la même heure fixes que le navigateur des
+   captures (l'horloge avance ensuite normalement) : les données d'exemple qu'elle date au démarrage portent la même
+   heure avant et après (issue #422). Pour « avant », lancé depuis `/tmp/before`, donne le chemin complet de l'outil
+   dans le dossier du projet (pas `$PWD`, qui serait alors `/tmp/before`, dont l'outil ne l'a peut-être pas encore).
+   Une donnée datée plus tard (à la première visite d'une page) peut encore différer de quelques secondes : c'est le
+   rôle du filet. Pour une appli dans un autre langage, fais pareil avec son moyen
+   habituel (variable d'heure de test de l'appli, `faketime` s'il est installé), sinon le filet de l'étape 4 bis reste là.
+   **Si l'heure fixe casse l'appli** (écrans connectés renvoyés vers la page de connexion, erreurs d'un service
+   extérieur ou de la base, qui gardent l'heure réelle) : relance les deux applis sans `run`, avant comme après, et
+   compte sur le filet de l'étape 4 bis.
+   **Après** : lance l'appli de la branche (`npm run build`, puis `node "$PWD/.factory/scripts/shots.mjs" run -- npm run start -- -p 3000`),
    puis `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
 4. **Avant** : `git worktree add /tmp/before origin/{{base}}`, installe, lance sur le port 3001 (avec la même heure fixe), puis la même commande

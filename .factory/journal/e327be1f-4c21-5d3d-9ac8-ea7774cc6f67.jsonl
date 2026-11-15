@@ -14,3 +14,9 @@
 {"t":"2026-11-15T17:12:59.507Z","kind":"test","cmd":"npm ci >/dev/null 2>&1; CHROMIUM_PATH=… timeout 300 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_017HW6XAhNdgUWEiAjmYuk1B"}
 {"t":"2026-11-15T17:13:35.482Z","kind":"skill","name":"requesting-code-review","id":"toolu_01DiBDQN6mHeMsbkgW9vjkpW"}
 {"t":"2026-11-15T17:13:48.269Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #422","id":"toolu_01JtDm7kxvRUEzFip5BXfFRL"}
+{"t":"2026-11-15T17:16:37.293Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_01RyUjgFWTCS32ifvESXuH73"}
+{"t":"2026-11-15T17:18:47.484Z","kind":"skill","name":"receiving-code-review","id":"toolu_01SkCrwhWoMKNhY867ADqBii"}
+{"t":"2026-11-15T17:19:36.185Z","kind":"test","cmd":"cat >> test/shots-stable.test.mjs <<'EOF'\n\ntest('shots run launches the app with the fixed time in one command, and fails loudly when the app fails', () => {\n  const script = new URL('../agent/scripts","ok":false,"id":"toolu_019FYtygSmH1SoERsRvsTLY4"}
+{"t":"2026-11-15T17:20:25.450Z","kind":"test","cmd":"sed -i '107d' test/shots-stable.test.mjs && python3 - <<'EOF'\np=…\ns=…\nold=…  class FrozenDate\"):s.index(\"  globalThis.Date = FrozenDateFn;\")]\nnew=…\"  let FrozenDateFn;\n  class FrozenDate extends RealD","ok":false,"id":"toolu_01WXCVTuaAtBBMqk3RpmYgES"}
+{"t":"2026-11-15T17:21:17.516Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\na=… **Heure fixe de l'appli**\"); b=…   **Après** :\")\ns=… **Heure fixe de l'appli** : lance chaque appli (« après » comme « avant ») **à travers l'outil, dans la même\n   comma","ok":false,"id":"toolu_01CBSrTzUEzjZfVUqo5JKzVF"}
+{"t":"2026-11-15T17:22:03.740Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… « avant », utilise l'outil de la branche (chemin complet), pas celui de la\n   copie de `{{base}}`, qui ne l'a peut-être pas encore.\"\"\",\"\"\"Pour « avant », lancé depuis `/t","ok":true,"id":"toolu_019vSDWDFfBxFqkhPptDGAW5"}
