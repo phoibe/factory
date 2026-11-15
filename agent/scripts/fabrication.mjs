@@ -139,13 +139,18 @@ const MAX_WAVES_SHOWN = 3;
 export function parallelLine(runs) {
   const waves = parallelWaves(runs);
   if (!waves.length) return null;
-  const count = waves.reduce((n, w) => n + w.length, 0);
+  // A task sent again later (a retry on a stronger model) is still one task.
+  const all = waves.flat();
+  const count = new Set(all.filter((a) => a.label).map((a) => a.label)).size + all.filter((a) => !a.label).length;
   const names = waves.slice(0, MAX_WAVES_SHOWN).map((w) => w.map((a) => a.label || 'sans nom').join(' + ')).join(', puis ')
     + (waves.length > MAX_WAVES_SHOWN ? ', …' : '');
+  // Measured at launch: how many were sent together, not how long each one ran.
   const most = Math.max(...waves.map((w) => w.length));
-  const tasks = count > 1 ? `${count} tâches construites chacune dans sa copie` : '1 tâche construite dans sa propre copie';
-  const launched = waves.length > 1 ? `lancées en ${waves.length} vagues` : count > 1 ? 'lancées ensemble' : 'lancée seule';
-  return `**Tâches en parallèle** : ${tasks}, ${launched} (${names}), au plus ${most} à la fois`;
+  if (count === 1) return `**Tâches en parallèle** : 1 tâche construite dans sa propre copie, lancée seule (${names})`;
+  const tasks = `${count} tâches construites chacune dans sa copie`;
+  if (most === 1) return `**Tâches en parallèle** : ${tasks}, jamais lancées ensemble (${names})`;
+  const launched = waves.length > 1 ? `lancées en ${waves.length} vagues` : 'lancées ensemble';
+  return `**Tâches en parallèle** : ${tasks}, ${launched} (${names}), au plus ${most} lancées ensemble`;
 }
 
 // Issue #381: the route a build followed, read from the journal (never from the size the agent declared): a plan

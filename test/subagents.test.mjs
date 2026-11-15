@@ -82,7 +82,7 @@ test('sub-agents launched together in their own copies form one wave; a later la
 test('the fabrication section shows which tasks ran at the same time', async () => {
   const { parallelLine } = await import('../scripts/lib/fabrication.mjs');
   const runs = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'Tâche 1'], ['2026-11-15T10:01:01Z', 'Tâche 2'], ['2026-11-15T10:20:00Z', 'Tâche 4']))]);
-  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 3 tâches construites chacune dans sa copie, lancées en 2 vagues (Tâche 1 + Tâche 2, puis Tâche 4), au plus 2 à la fois');
+  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 3 tâches construites chacune dans sa copie, lancées en 2 vagues (Tâche 1 + Tâche 2, puis Tâche 4), au plus 2 lancées ensemble');
   const { body, alerts } = summarize(runs, { stages: { plan: false, tdd: false, review: false } });
   assert.match(body, /\*\*Tâches en parallèle\*\* : 3 tâches/);
   assert.match(body, /\*\*Parcours\*\* : grande demande, plan exécuté tâche par tâche, tâches indépendantes construites en même temps \(3 au plus\), chaque tâche relue/);
@@ -122,7 +122,7 @@ test('a task sent again in the same wave counts once; only launches close togeth
 test('a single task in its own copy is not called parallel work', async () => {
   const { parallelLine } = await import('../scripts/lib/fabrication.mjs');
   const runs = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'Tâche 1']))]);
-  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 1 tâche construite dans sa propre copie, lancée seule (Tâche 1), au plus 1 à la fois');
+  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 1 tâche construite dans sa propre copie, lancée seule (Tâche 1)');
   assert.match(summarize(runs, { stages: {} }).body, /\*\*Parcours\*\* : grande demande, plan exécuté tâche par tâche, chaque tâche relue/);
 });
 
@@ -131,4 +131,12 @@ test('outside a large build, a sub-agent in its own copy shows nothing about par
   const medium = parseJournal([[JSON.stringify({ t: '2026-11-15T10:00:00Z', kind: 'run', stage: 'build' }),
     JSON.stringify({ t: '2026-11-15T10:00:30Z', kind: 'skill', name: 'writing-plans' }), ...copies(['2026-11-15T10:01:00Z', 'Relecture'], ['2026-11-15T10:01:01Z', 'Autre'])].join('\n')]);
   assert.equal(parallelLine(medium), null);
+});
+
+test('a task sent again later counts once, and tasks never launched together say so', async () => {
+  const { parallelLine } = await import('../scripts/lib/fabrication.mjs');
+  const runs = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'Tâche 1'], ['2026-11-15T10:01:01Z', 'Tâche 2'], ['2026-11-15T10:10:00Z', 'Tâche 1']))]);
+  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 2 tâches construites chacune dans sa copie, lancées en 2 vagues (Tâche 1 + Tâche 2, puis Tâche 1), au plus 2 lancées ensemble');
+  const apart = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'A'], ['2026-11-15T10:05:00Z', 'B']))]);
+  assert.equal(parallelLine(apart), '**Tâches en parallèle** : 2 tâches construites chacune dans sa copie, jamais lancées ensemble (A, puis B)');
 });

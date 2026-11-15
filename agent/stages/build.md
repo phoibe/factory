@@ -31,11 +31,14 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
      **Tâches parallélisables** : dans le plan, marque chaque tâche « parallélisable » (elle n'attend aucune autre
      tâche et ne touche ni les mêmes fichiers ni les mêmes tests que les autres tâches encore à faire) ou
      « séquentielle (après la tâche N) ». Puis, avec le skill `dispatching-parallel-agents` :
-     - committe tout avant de lancer (une copie ne voit que le travail committé), puis lance ensemble les tâches
-       parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec `isolation: "worktree"` (sa propre
-       copie du projet, c'est ce que le journal compte) et `run_in_background: true` (pour qu'une place libérée serve
-       aussitôt). Dis à chacun de vérifier que sa copie part de la branche de la demande (le plan y est), d'installer
-       les dépendances dans sa copie avant de tester, et de committer son travail sur la branche de sa copie. Cette
+     - committe tout avant de lancer (une copie ne voit que le travail committé), en ajoutant tes fichiers par leur
+       nom : jamais `git add -A` ni `git add .` tant que des copies existent, sinon elles partiraient dans la PR. Puis
+       lance ensemble les tâches parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec
+       `isolation: "worktree"` (sa propre copie du projet, c'est ce que le journal compte) et
+       `run_in_background: true` (pour qu'une place libérée serve aussitôt). Donne à chacun le dernier commit de la
+       branche de la demande : sa copie doit en partir (sinon il s'y replace avec `git reset --hard <commit>` avant
+       de commencer). Dis-lui aussi d'installer les dépendances dans sa copie avant de tester, et de committer son
+       travail sur la branche de sa copie. Cette
        règle remplace, pour ces tâches seulement, l'interdiction du skill `subagent-driven-development` de lancer
        plusieurs sous-agents de construction en même temps ;
      - quand l'un revient : fais relire sa tâche comme d'habitude, sur la branche de sa copie (du commit où elle est
