@@ -76,7 +76,9 @@ export function entryFor(input, now = new Date()) {
     const name = i.skill || i.name || i.command;
     return name ? { t, kind: 'skill', name: String(name) } : null;
   }
-  if (ev === 'PostToolUse') {
+  // A sub-agent is stamped at launch (PreToolUse): a foreground one only reaches PostToolUse when it has finished,
+  // which would hide that several ran at the same time. PostToolUse stays as a fallback; the id keeps the first.
+  if (ev === 'PreToolUse' || ev === 'PostToolUse') {
     const agent = agentEntry(input);
     if (agent) return { t, ...agent };
   }

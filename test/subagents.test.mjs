@@ -12,7 +12,6 @@ test('the journal records each sub-agent with its model, effort and task', () =>
   // Older Claude Code calls the tool Task; a call without a model inherits the session's.
   assert.deepEqual(agentEntry({ tool_name: 'Task', tool_input: { description: 'Search' } }), { kind: 'agent', model: null, effort: null, label: 'Search' });
   assert.equal(agentEntry({ tool_name: 'Bash', tool_input: {} }), null);
-  assert.equal(entryFor({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { model: 'opus' } }, now), null);
 });
 
 test('the transcript fallback recovers the sub-agents too', () => {
@@ -101,4 +100,35 @@ test('without any task in its own copy, nothing about parallel tasks is shown', 
   const runs = parseJournal([journal([{ model: 'sonnet', label: 'Tâche 1' }])]);
   assert.equal(parallelLine(runs), null);
   assert.doesNotMatch(summarize(runs, { stages: {} }).body, /parallèle|en même temps/);
+});
+
+// Review of #417: a sub-agent is stamped when it is launched (PreToolUse), not when a foreground one finishes.
+test('the journal stamps a sub-agent at launch, before it runs', async () => {
+  assert.deepEqual(entryFor({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { description: 'Tâche 1', model: 'sonnet', isolation: 'worktree' } }, now),
+    { t: now.toISOString(), kind: 'agent', model: 'sonnet', effort: null, label: 'Tâche 1', copy: true });
+  const { withJournalHook } = await import('../scripts/sync.mjs');
+  const pre = withJournalHook({}).hooks.PreToolUse;
+  assert.ok(pre.some((g) => /Agent/.test(g.matcher) && /journal\.mjs/.test(g.hooks[0].command)));
+});
+
+test('a task sent again in the same wave counts once; only launches close together share a wave', async () => {
+  const { parallelWaves } = await import('../scripts/lib/fabrication.mjs');
+  const runs = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'Tâche 1'], ['2026-11-15T10:01:01Z', 'Tâche 2'], ['2026-11-15T10:01:02Z', 'Tâche 3'],
+    ['2026-11-15T10:01:20Z', 'Tâche 1'], ['2026-11-15T10:02:30Z', 'Tâche 4']))]);
+  assert.deepEqual(parallelWaves(runs).map((w) => w.map((a) => a.label)), [['Tâche 1', 'Tâche 2', 'Tâche 3'], ['Tâche 4']]);
+  assert.deepEqual(summarize(runs, { stages: {} }).alerts.filter((a) => a.includes('parallèle')), []);
+});
+
+test('a single task in its own copy is not called parallel work', async () => {
+  const { parallelLine } = await import('../scripts/lib/fabrication.mjs');
+  const runs = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'Tâche 1']))]);
+  assert.equal(parallelLine(runs), '**Tâches en parallèle** : 1 tâche construite dans sa propre copie, lancée seule (Tâche 1), au plus 1 à la fois');
+  assert.match(summarize(runs, { stages: {} }).body, /\*\*Parcours\*\* : grande demande, plan exécuté tâche par tâche, chaque tâche relue/);
+});
+
+test('outside a large build, a sub-agent in its own copy shows nothing about parallel tasks', async () => {
+  const { parallelLine } = await import('../scripts/lib/fabrication.mjs');
+  const medium = parseJournal([[JSON.stringify({ t: '2026-11-15T10:00:00Z', kind: 'run', stage: 'build' }),
+    JSON.stringify({ t: '2026-11-15T10:00:30Z', kind: 'skill', name: 'writing-plans' }), ...copies(['2026-11-15T10:01:00Z', 'Relecture'], ['2026-11-15T10:01:01Z', 'Autre'])].join('\n')]);
+  assert.equal(parallelLine(medium), null);
 });

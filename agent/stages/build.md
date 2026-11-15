@@ -28,17 +28,20 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
      `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
      effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
-     **Tâches parallélisables** (voir le glossaire de la factory) : dans le plan, marque chaque tâche
-     « parallélisable » (elle n'attend aucune autre tâche et ne touche ni les mêmes fichiers ni les mêmes tests que
-     les autres tâches encore à faire) ou « séquentielle (après la tâche N) ». Puis, avec le skill
-     `dispatching-parallel-agents` :
-     - lance ensemble les tâches parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec
-       `isolation: "worktree"` (sa propre copie du projet, c'est ce que le journal compte) et la consigne de
-       committer son travail dans sa copie. Cette règle remplace, pour ces tâches seulement, l'interdiction du skill
-       `subagent-driven-development` de lancer plusieurs sous-agents de construction en même temps ;
-     - quand l'un revient : fais relire sa tâche comme d'habitude, puis fusionne sa branche dans celle de la demande
-       (`git merge`) ; la tâche prête suivante prend sa place. Une tâche séquentielle ne part qu'une fois la tâche
-       dont elle dépend relue et fusionnée ;
+     **Tâches parallélisables** : dans le plan, marque chaque tâche « parallélisable » (elle n'attend aucune autre
+     tâche et ne touche ni les mêmes fichiers ni les mêmes tests que les autres tâches encore à faire) ou
+     « séquentielle (après la tâche N) ». Puis, avec le skill `dispatching-parallel-agents` :
+     - committe tout avant de lancer (une copie ne voit que le travail committé), puis lance ensemble les tâches
+       parallélisables prêtes, **3 sous-agents au plus à la fois**, chacun avec `isolation: "worktree"` (sa propre
+       copie du projet, c'est ce que le journal compte) et `run_in_background: true` (pour qu'une place libérée serve
+       aussitôt). Dis à chacun de vérifier que sa copie part de la branche de la demande (le plan y est), d'installer
+       les dépendances dans sa copie avant de tester, et de committer son travail sur la branche de sa copie. Cette
+       règle remplace, pour ces tâches seulement, l'interdiction du skill `subagent-driven-development` de lancer
+       plusieurs sous-agents de construction en même temps ;
+     - quand l'un revient : fais relire sa tâche comme d'habitude, sur la branche de sa copie (du commit où elle est
+       partie jusqu'à son dernier commit) ; les corrections se committent sur cette même branche. Puis fusionne-la
+       dans la branche de la demande (`git merge`) et retire la copie (`git worktree remove`) ; la tâche prête suivante
+       prend sa place. Une tâche séquentielle ne part qu'une fois la tâche dont elle dépend relue et fusionnée ;
      - **conflit à la fusion** : règle-le toi-même s'il est simple ; sinon abandonne cette fusion et refais la tâche
        en cause après l'autre, de façon séquentielle. Ne dérange jamais le propriétaire pour ça ;
      - après la dernière fusion, relance toute la suite de tests sur l'ensemble ; un test rouge se corrige (cause

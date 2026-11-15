@@ -113,21 +113,27 @@ export function agentsLine(runs) {
 }
 
 // Issue #417: the independent tasks of a large plan are built at the same time, each by a sub-agent in its own copy
-// (isolation « worktree »), at most MAX_PARALLEL at once. Copies launched within WAVE_MS of a wave's first launch
-// were sent together: they form one wave. A task started later (a place freed up) opens a new wave.
+// (isolation « worktree »), at most MAX_PARALLEL at once. Sub-agents are stamped at launch: copies launched within
+// WAVE_MS of a wave's first launch were sent together and form one wave; a task sent again in that wave (it came back
+// at once and was re-sent) counts once. A task started later (a place freed up) opens a new wave. Only a large build
+// (plan executed by subagent-driven-development) has parallel tasks: elsewhere a copy is not a task.
 export const MAX_PARALLEL = 3;
-const WAVE_MS = 120_000;
+const WAVE_MS = 30_000;
+const largeBuild = (runs) => runs.some((r) => used(r, 'subagent-driven-development'));
 export function parallelWaves(runs, { windowMs = WAVE_MS } = {}) {
-  const copies = runs.flatMap((r) => r.agents || []).filter((a) => a.copy === true)
+  if (!largeBuild(runs)) return [];
+  const copies = runs.filter((r) => r.stage === 'build').flatMap((r) => r.agents || []).filter((a) => a.copy === true)
     .map((a) => ({ ...a, ms: Date.parse(a.t) })).sort((a, b) => (a.ms || 0) - (b.ms || 0));
   const waves = [];
   for (const a of copies) {
     const wave = waves[waves.length - 1];
-    if (wave && Number.isFinite(a.ms) && Number.isFinite(wave[0].ms) && a.ms - wave[0].ms <= windowMs) wave.push(a);
-    else waves.push([a]);
+    if (wave && Number.isFinite(a.ms) && Number.isFinite(wave[0].ms) && a.ms - wave[0].ms <= windowMs) {
+      if (!a.label || !wave.some((b) => b.label === a.label)) wave.push(a);
+    } else waves.push([a]);
   }
   return waves;
 }
+const ranTogether = (waves) => waves.some((w) => w.length > 1);
 
 const MAX_WAVES_SHOWN = 3;
 export function parallelLine(runs) {
@@ -137,9 +143,9 @@ export function parallelLine(runs) {
   const names = waves.slice(0, MAX_WAVES_SHOWN).map((w) => w.map((a) => a.label || 'sans nom').join(' + ')).join(', puis ')
     + (waves.length > MAX_WAVES_SHOWN ? ', …' : '');
   const most = Math.max(...waves.map((w) => w.length));
-  const tasks = count > 1 ? `${count} tâches construites` : '1 tâche construite';
+  const tasks = count > 1 ? `${count} tâches construites chacune dans sa copie` : '1 tâche construite dans sa propre copie';
   const launched = waves.length > 1 ? `lancées en ${waves.length} vagues` : count > 1 ? 'lancées ensemble' : 'lancée seule';
-  return `**Tâches en parallèle** : ${tasks} chacune dans sa copie, ${launched} (${names}), au plus ${most} à la fois`;
+  return `**Tâches en parallèle** : ${tasks}, ${launched} (${names}), au plus ${most} à la fois`;
 }
 
 // Issue #381: the route a build followed, read from the journal (never from the size the agent declared): a plan
@@ -147,8 +153,8 @@ export function parallelLine(runs) {
 // no plan on a small change the small one. A bigger change without a plan claims nothing more (the plan alert says it).
 export function routeLine(runs, { small = false } = {}) {
   if (!runs.some((r) => r.stage === 'build')) return null;
-  const large = runs.some((r) => used(r, 'subagent-driven-development'));
-  if (large && parallelWaves(runs).length) return `**Parcours** : grande demande, plan exécuté tâche par tâche, tâches indépendantes construites en même temps (${MAX_PARALLEL} au plus), chaque tâche relue`;
+  const large = largeBuild(runs);
+  if (large && ranTogether(parallelWaves(runs))) return `**Parcours** : grande demande, plan exécuté tâche par tâche, tâches indépendantes construites en même temps (${MAX_PARALLEL} au plus), chaque tâche relue`;
   if (large) return '**Parcours** : grande demande, plan exécuté tâche par tâche, chaque tâche relue';
   if (runs.some((r) => used(r, 'writing-plans'))) return "**Parcours** : demande moyenne, plan exécuté d'une traite avec une seule relecture finale";
   if (small) return "**Parcours** : petite demande, sans plan, construite d'une traite avec une seule relecture finale";
