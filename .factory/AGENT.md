@@ -78,7 +78,8 @@ image, et ne dis jamais que tu n'y as pas accès sans avoir essayé. Ne fusionne
 moyenne ou grande, dès ta première lecture : le marqueur `<!-- factory-estimate size=small|medium|large … -->` (format à
 l'étape 0 de `stages/build.md`) le dit au tableau. La taille choisit le parcours : une petite demande claire passe sans
 questions à une spec courte et se construit sans plan ; une moyenne a un plan exécuté d'une traite ; une grande, un plan
-exécuté tâche par tâche. Relecture finale, tests, contrôles, passe design et captures sont les mêmes pour toutes.
+exécuté tâche par tâche (ses tâches parallélisables construites en même temps, 3 au plus). Relecture finale, tests,
+contrôles, passe design et captures sont les mêmes pour toutes.
 **Si le propriétaire donne ou corrige la taille** (« c'est une grosse demande », « c'est une petite retouche »), à
 n'importe quelle étape : suis la sienne et publie aussitôt une nouvelle estimation avec cette taille. Seule exception :
 une « petite » qui touche finalement plus de 3 fichiers de code doit avoir un plan (le verrou le demande) ; dis-le-lui en
