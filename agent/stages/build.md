@@ -42,7 +42,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
        règle remplace, pour ces tâches seulement, l'interdiction du skill `subagent-driven-development` de lancer
        plusieurs sous-agents de construction en même temps ;
      - quand l'un revient : fais relire sa tâche comme d'habitude, sur la branche de sa copie (du commit où elle est
-       partie jusqu'à son dernier commit) ; les corrections se committent sur cette même branche. Puis fusionne-la
+       partie jusqu'à son dernier commit) ; les corrections se committent sur cette même branche (un nouveau
+       sous-agent de correction part du dernier commit de cette branche, pas de celle de la demande). Puis fusionne-la
        dans la branche de la demande (`git merge`) et retire la copie (`git worktree remove`) ; la tâche prête suivante
        prend sa place. Une tâche séquentielle ne part qu'une fois la tâche dont elle dépend relue et fusionnée ;
      - **conflit à la fusion** : règle-le toi-même s'il est simple ; sinon abandonne cette fusion et refais la tâche

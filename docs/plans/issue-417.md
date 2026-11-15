@@ -36,7 +36,7 @@
 **Interfaces:**
 - `agentEntry(input)` → adds `copy: true` when `tool_input.isolation === 'worktree'`; `entryFor` journals Agent calls at `PreToolUse` too (launch time; the id dedupe keeps it), and `scripts/sync.mjs` installs that hook.
 - `parallelWaves(runs, { windowMs = 30000 }) -> Array<Array<entry>>`: only for a large build (subagent-driven-development used); copy agents of build runs, sorted by `t`, a new wave when the gap to the wave's first launch exceeds `windowMs`; a label already in the wave counts once.
-- `parallelLine(runs) -> string|null`: null without waves; else `**Tâches en parallèle** : N tâches construites chacune dans sa copie, lancées en W vagues (a + b, puis c), au plus M à la fois` (singular: « 1 tâche construite dans sa propre copie, lancée seule »).
+- `parallelLine(runs) -> string|null`: null without waves; else `**Tâches en parallèle** : N tâches construites chacune dans sa copie, lancées en W vagues (a + b, puis c), au plus M lancées ensemble`; « jamais lancées ensemble » when no wave has 2+ (singular: « 1 tâche construite dans sa propre copie, lancée seule »).
 - `MAX_PARALLEL = 3`; `summarize` adds the line after the route and an alert « Tâches en parallèle : X sous-agents lancés ensemble, plus que les 3 permis. » when a wave exceeds 3.
 - `routeLine`: large route with a wave of 2 or more → `**Parcours** : grande demande, plan exécuté tâche par tâche, tâches indépendantes construites en même temps (3 au plus), chaque tâche relue`.
 
