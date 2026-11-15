@@ -4,6 +4,9 @@
 //        [--dark-class dark | --dark-attr data-theme=dark]   (only for a dark theme switched by the app, not by the browser)
 //        [--cookie session=abc123[,other=v]]                 (screens behind a sign-in: the session cookie to send)
 //   node .factory/scripts/shots.mjs publish --pr 12 [--before /tmp/shots/before] --after /tmp/shots/after
+//        [--set-aside aside.json]  ({"screener": "seule l'heure du dernier passage diffère"}: changed screens not shown, issue #422)
+//   node .factory/scripts/shots.mjs run -- sh -c 'npm run build && exec npm run start -- -p 3000'   (app on the fixed time)
+//   eval "$(node .factory/scripts/shots.mjs env)"   (the same environment, for a shell that launches the app itself)
 //   node .factory/scripts/shots.mjs check comment.md   (exit 1 when a table row is not a displayed image)
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
 // Publish builds one side-by-side image (before left, after right) per screen, size and theme.
@@ -12,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
 export const ASSETS_BRANCH = 'claude/factory-assets';
@@ -73,6 +76,15 @@ export function differs(a, b) {
 export const FROZEN_TIME = '2026-01-15T10:30:00.000Z';
 export const FROZEN_CONTEXT = { reducedMotion: 'reduce' };
 export const FROZEN_SHOT = { fullPage: true, animations: 'disabled', caret: 'hide' };
+
+// The environment the app is launched with for the captures (issue #422): a Node app starts its clock on FROZEN_TIME,
+// so the sample data it dates when it starts reads the same « before » and « after ». Applied by `shots.mjs run`,
+// printed by `shots.mjs env`.
+export function frozenEnv(env = process.env) {
+  const clock = pathToFileURL(join(fileURLToPath(new URL('.', import.meta.url)), 'frozen-clock.mjs')).href;
+  return { FACTORY_FROZEN_TIME: FROZEN_TIME, NODE_OPTIONS: [env.NODE_OPTIONS, `--import=${clock}`].filter(Boolean).join(' ') };
+}
+const shellQuote = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
 
 export async function capture({ baseUrl, routes, out, toggle, cookies = [] }) {
   const { chromium } = loadPlaywright();
@@ -175,27 +187,62 @@ export function sameScreens(before, after, files) {
 
 // Which screens to show and which ones only to list. No capture at all is a mistake (a wrong folder, a capture that
 // failed), never « nothing changed »: that would skip the owner's review without anything having been compared.
-export function screensToShow(before, after) {
+export function screensToShow(before, after, aside = {}) {
   const all = readdirSync(after).filter((f) => f.endsWith('.png')).sort();
   if (!all.length) throw new Error(`Aucune capture dans ${after} : relance la commande capture avant de publier.`);
   const unchanged = sameScreens(before, after, all);
-  return { files: all.filter((f) => !unchanged.includes(f)), unchanged };
+  const changed = all.filter((f) => !unchanged.includes(f));
+  const newScreens = changed.filter((f) => !before || !existsSync(join(before, f)));
+  return { ...setAsideScreens(changed, aside, { newScreens }), unchanged };
 }
 
-export function markdownTable({ repo, dir, files, unchanged = [] }) {
+// The safety net of issue #422: changed screens the agent sets aside because their only difference is data that
+// changes on its own (a random draw, data from the internet). Each key is a route slug (all its sizes and themes) or
+// one file name without « .png »; each value is the reason, shown to the owner. A key matching no changed screen is a
+// typo and a new screen is a real change: both are refused rather than silently ignored.
+export function setAsideScreens(files, aside = {}, { newScreens = [] } = {}) {
+  const set = [];
+  for (const [key, raw] of Object.entries(aside || {})) {
+    const reason = cleanReason(raw);
+    if (!reason) throw new Error(`Écran « ${key} » écarté sans raison : écris pourquoi il n'a pas de changement visible.`);
+    const hits = files.filter((f) => { const stem = f.replace(/\.png$/, ''); return stem === key || stem.split('--')[0] === key; });
+    if (!hits.length) throw new Error(`Écran « ${key} » à écarter introuvable parmi les écrans qui ont changé : ${files.map((f) => f.replace(/\.png$/, '')).join(', ') || 'aucun'}.`);
+    const fresh = hits.filter((f) => newScreens.includes(f));
+    if (fresh.length) throw new Error(`« ${key} » est un nouvel écran (absent avant) : il est toujours montré.`);
+    for (const f of hits) if (!set.some((s) => s.file === f)) set.push({ file: f, reason });
+  }
+  return { files: files.filter((f) => !set.some((s) => s.file === f)), setAside: set };
+}
+
+// One short line: the reason is written inside the italic trace line the factory's bot posts. Cleaned again when the
+// line is built, for a shots.json written by an older copy of this tool.
+const cleanReason = (raw) => [...String(raw ?? '').replace(/[\s_*`|<>()]+/g, ' ').trim()].slice(0, 200).join('').trim();
+
+// « Écrans sans changement visible, non montrés : a · desktop, a · mobile (raison) », one group per reason.
+function setAsideLine(setAside) {
+  const clean = setAside.map((s) => ({ file: String(s.file), reason: cleanReason(s.reason) }));
+  const reasons = [...new Set(clean.map((s) => s.reason))];
+  const groups = reasons.map((r) => `${orderFiles(clean.filter((s) => s.reason === r).map((s) => s.file)).map(label).join(', ')} (${r})`);
+  return `_Écrans sans changement visible, non montrés : ${groups.join(' ; ')}._`;
+}
+
+export function markdownTable({ repo, dir, files, unchanged = [], setAside = [] }) {
   const url = (f) => `https://github.com/${repo}/blob/${ASSETS_BRANCH}/${dir}/compare/${f}?raw=true`;
   const rows = orderFiles(files).map((f) => `| ${label(f)} | ![avant · après](${url(f)}) |`);
   const table = rows.length ? ['| Écran | Avant (gauche) · Après (droite) |', '| --- | --- |', ...rows].join('\n') : NO_CHANGE_SENTENCE;
   // The hidden mark names the assets branch even when no image is shown: the factory reads it as « captures shown ».
   const mark = `<!-- shots: ${ASSETS_BRANCH} -->${rows.length ? '' : `\n${NO_CHANGE_MARKER}`}`;
-  if (!unchanged.length) return `${mark}\n${table}`;
-  return `${mark}\n${table}\n\n_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._`;
+  const notes = [
+    unchanged.length ? `_Écrans identiques avant et après, non montrés : ${orderFiles(unchanged).map(label).join(', ')}._` : '',
+    setAside.length ? setAsideLine(setAside) : '',
+  ].filter(Boolean);
+  return [`${mark}\n${table}`, ...notes].join('\n\n');
 }
 
 // Written next to the images: the factory posts the table itself from that folder (issue #378), and only this file
 // tells it which screens were identical before and after.
 export const SHOTS_META = 'shots.json';
-export const shotsMeta = ({ files, unchanged = [] }) => JSON.stringify({ files, unchanged }, null, 2);
+export const shotsMeta = ({ files, unchanged = [], setAside = [] }) => JSON.stringify(setAside.length ? { files, unchanged, setAside } : { files, unchanged }, null, 2);
 
 // The table rows of a screenshots message (after its hidden shots mark) that would not show an image: the agent once
 // retyped the table by hand and the dark rows became broken links (issue #375). Empty when every row is an image
@@ -208,7 +255,7 @@ export function brokenShotRows(text) {
   return rows.filter((l) => !/^\|\s*Écran\s*\|/.test(l) && !/^\|[\s|:-]+\|$/.test(l) && !SHOT_ROW.test(l));
 }
 
-async function publish({ pr, before, after }) {
+async function publish({ pr, before, after, aside = {} }) {
   const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const { repoFromRemote } = await import('./specs.mjs');
   const repo = repoFromRemote(git(['config', '--get', 'remote.origin.url']));
@@ -226,10 +273,10 @@ async function publish({ pr, before, after }) {
   // Always removed, even on a failure: a leftover worktree holds the branch and makes the next try fail.
   try {
     const from = before && existsSync(before) ? before : null;
-    const { files, unchanged } = screensToShow(from, after);
+    const { files, unchanged, setAside } = screensToShow(from, after, aside);
     if (files.length) {
       await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
-      writeFileSync(join(wt, dir, SHOTS_META), shotsMeta({ files, unchanged }));
+      writeFileSync(join(wt, dir, SHOTS_META), shotsMeta({ files, unchanged, setAside }));
       git(['add', '.'], wt);
       git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
       // Another PR may have pushed its captures meanwhile: each PR writes its own folder, so a rebase never conflicts.
@@ -240,7 +287,7 @@ async function publish({ pr, before, after }) {
         }
       }
     }
-    return markdownTable({ repo, dir, files, unchanged });
+    return markdownTable({ repo, dir, files, unchanged, setAside });
   } finally {
     try { git(['worktree', 'remove', '--force', wt]); } catch { rmSync(wt, { recursive: true, force: true }); }
   }
@@ -257,10 +304,32 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const broken = brokenShotRows(readFileSync(args._[1], 'utf8'));
     for (const row of broken) console.error(`ligne cassée : ${row}`);
     if (broken.length) process.exit(1);
+  } else if (cmd === 'run') {
+    // One command, so that the fixed time cannot be lost between two shell calls (the app then runs on the real clock).
+    const at = process.argv.indexOf('--');
+    const command = at > 0 ? process.argv.slice(at + 1) : [];
+    if (!command.length) { console.error('usage: shots.mjs run -- <commande qui lance l\'appli>'); process.exit(2); }
+    const { spawn } = await import('node:child_process');
+    // Its own process group, so that stopping this command stops the whole app, even behind `sh -c` or npm (a shell
+    // does not pass the signal on): no server left running on the port.
+    const child = spawn(command[0], command.slice(1), { stdio: 'inherit', detached: true, env: { ...process.env, ...frozenEnv() } });
+    const stop = (sig) => { try { process.kill(-child.pid, sig); } catch { child.kill(sig); } };
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => stop(sig));
+    child.on('error', (e) => { console.error(`impossible de lancer ${command[0]} : ${e.message}`); process.exit(127); });
+    child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+  } else if (cmd === 'env') {
+    for (const [k, v] of Object.entries(frozenEnv())) console.log(`export ${k}=${shellQuote(v)}`);
   } else if (cmd === 'publish') {
-    console.log(await publish({ pr: args.pr, before: args.before, after: args.after }));
+    let aside = {};
+    if (typeof args['set-aside'] === 'string') {
+      try { aside = JSON.parse(readFileSync(args['set-aside'], 'utf8')); } catch (e) {
+        console.error(`Le fichier ${args['set-aside']} n'est pas un JSON valide ({"écran": "raison"}) : ${e.message}`);
+        process.exit(2);
+      }
+    }
+    console.log(await publish({ pr: args.pr, before: args.before, after: args.after, aside }));
   } else {
-    console.error('usage: shots.mjs capture|publish|check ...');
+    console.error('usage: shots.mjs capture|publish|check|run|env ...');
     process.exit(2);
   }
 }

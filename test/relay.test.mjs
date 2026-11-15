@@ -3179,6 +3179,13 @@ test('captures to validate: the factory posts the table of the latest captures, 
   assert.ok(body.startsWith(AGENT_MARKER));
 });
 
+test('the screens the agent set aside are named with their reason under the captures the factory posts (#422)', async () => {
+  const gh = shotsGh({ meta: { unchanged: [], setAside: [{ file: 'screener--mobile.png', reason: "seule l'heure diffère" }] } });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  const body = gh.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  assert.match(body, /Écrans sans changement visible, non montrés : screener · mobile \(seule l'heure diffère\)/);
+});
+
 test('the same captures are never posted twice, and nothing is posted outside the captures step (#378)', async () => {
   const relayFor = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
   const first = shotsGh();
