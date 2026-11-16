@@ -110,6 +110,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const dup = id ? seen.includes(`"id":${JSON.stringify(id)}`) : entry.kind === 'run' && seen.split('\n').some((l) => l.includes('"kind":"run"') && l.includes(`"stage":${JSON.stringify(entry.stage)}`));
       if (!dup) appendFileSync(file, JSON.stringify(id ? { ...entry, id } : entry) + '\n');
     }
+    // The agent's sign of life on the card, so the factory does not take a long run for a dead one (alive.mjs).
+    if (input.hook_event_name !== 'UserPromptSubmit') {
+      const session = String(input.session_id || 'session').replace(/[^\w-]/g, '').slice(0, 36);
+      const root = sessionRoot(session, process.env.CLAUDE_PROJECT_DIR || input.cwd || '.');
+      // Loaded here, so a project whose copy lacks it still keeps its journal.
+      const { heartbeat } = await import('./alive.mjs');
+      heartbeat({ session, journalFile: join(root, '.factory/journal', `${session}.jsonl`) });
+    }
   } catch { /* never block the agent */ }
   process.exit(0);
 }

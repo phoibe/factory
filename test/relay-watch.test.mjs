@@ -98,6 +98,36 @@ test('a build that stopped without a PR is relaunched once, quietly, at the tick
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('<!-- factory-heal -->')));
 });
 
+// yolivesound #115: a routine session has no time limit. Past 150 min, a recent sign of life keeps the lock.
+const sessionNote = (aliveAgo, login = 'github-actions[bot]') => [{ id: 1, user: { login }, body: `<!-- factory-session -->\nDernier lancement${aliveAgo == null ? '' : `\n<!-- factory-alive ${minutesAgo(aliveAgo)} -->`}` }];
+const longBuild = (labeledAgo, comments) => fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building, L.running] }], prs: [], events: { 7: runEvents(labeledAgo) }, comments: { 7: comments } });
+
+test('a long build that still gives signs of life keeps its lock: no second agent', async () => {
+  const gh = longBuild(170, sessionNote(5));
+  const { relay, sent } = onTick(gh);
+  await relay.handle(tick);
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[2] === L.running));
+});
+
+test('a long build whose signs of life stopped, or that has none, is taken for dead as before', async () => {
+  for (const comments of [sessionNote(45), sessionNote(null), sessionNote(5, 'stranger')]) {
+    const gh = longBuild(170, comments);
+    const { relay, sent } = onTick(gh);
+    await relay.handle(tick);
+    assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.running));
+    assert.equal(payloadOf(sent[0].body).relaunch, true);
+  }
+});
+
+test('a sign of life older than the lock does not count, and no lock lasts past six hours', async () => {
+  for (const [labeledAgo, aliveAgo] of [[170, 175], [370, 2]]) {
+    const gh = longBuild(labeledAgo, sessionNote(aliveAgo));
+    await onTick(gh).relay.handle(tick);
+    assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.running), `${labeledAgo}/${aliveAgo}`);
+  }
+});
+
 test('a build that stopped only a few minutes ago is not relaunched yet', async () => {
   const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.building] }], prs: [], events: { 7: runEvents(30, 10) } });
   const { relay, sent } = onTick(gh);
