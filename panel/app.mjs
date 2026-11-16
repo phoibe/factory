@@ -1105,7 +1105,7 @@ function drawBoard() {
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
-          el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener' }, d.title)),
+          el('h3', {}, el('a', { class: 'main', href: d.url, target: '_blank', rel: 'noopener', title: d.title }, d.title)),
           (d.reason
             ? el('p', { class: 'finished closed' }, el('span', { 'aria-hidden': 'true' }, '– '), 'Fermée · ', el('span', { class: 'reason' }, d.reason), el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))
             : el('p', { class: 'finished' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Terminée', el('span', { class: 'when', 'data-time': '' }, ` · ${doneAgo(d.mergedAt, now)}`))))))
