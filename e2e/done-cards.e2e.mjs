@@ -87,3 +87,23 @@ test('une carte « En ligne (vérification impossible) » sur deux lignes garde 
     });
   }
 });
+
+test('avec des cartes plus remplies, déplier « N modifications » ne fait bouger aucune autre carte', async () => {
+  const undone = issue(51, 'Mise en production', ['factory:production'], { state: 'closed', closed_at: closedAt(6), comments: 1, body: '' });
+  const tall = { 50: [botComment(note({ state: 'live', unchecked: true, version: '0.19.0', prs: changes, site: 'https://site.example' }))], 51: [botComment(note({ state: 'undone', fix: 60, reason: 'la page d\'accueil répond « erreur 500 » depuis la mise en ligne' }))] };
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await withPanel({ config: approval, viewport, closed: [...closed, undone], comments: tall }, async ({ page, url }) => {
+      await page.goto(url);
+      await cards(page).filter({ hasText: 'Voir la correction' }).waitFor();
+      const before = await heights(page);
+      await releaseCard(page).getByText('6 modifications').click();
+      await releaseCard(page).getByText('Modification 6').waitFor();
+      const open = await cards(page).evaluateAll((list) => list.map((c) => Math.round(c.getBoundingClientRect().height)));
+      assert.ok(open[0] > before[0] + 20, `la carte dépliée grandit (${before[0]} → ${open[0]})`);
+      assert.deepEqual(open.slice(1), before.slice(1));
+      await releaseCard(page).getByText('6 modifications').click();
+      await releaseCard(page).getByText('Modification 6').waitFor({ state: 'hidden' });
+      same(await heights(page));
+    });
+  }
+});
