@@ -66,3 +66,13 @@ test('déplier « N modifications » ne fait grandir que cette carte, et la repl
     assert.deepEqual(await cards(page).evaluateAll((list) => list.map((c) => Math.round(c.getBoundingClientRect().height))), before);
   });
 });
+
+test('une carte « Mise en production » plus remplie que d\'habitude garde la même hauteur que les autres', async () => {
+  const undone = issue(51, 'Mise en production', ['factory:production'], { state: 'closed', closed_at: closedAt(6), comments: 1, body: '' });
+  const tall = { ...comments, 51: [botComment(note({ state: 'undone', fix: 60, reason: 'la page d\'accueil répond « erreur 500 » depuis la mise en ligne' }))] };
+  await withPanel({ config: approval, viewport: { width: 1280, height: 900 }, closed: [...closed, undone], comments: tall }, async ({ page, url }) => {
+    await page.goto(url);
+    await cards(page).filter({ hasText: 'Voir la correction' }).waitFor();
+    same(await heights(page));
+  });
+});

@@ -11,3 +11,12 @@
 {"t":"2026-11-16T15:07:54.988Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":true,"id":"toolu_01Vve4DGYa8dJThbjNWSdHFP"}
 {"t":"2026-11-16T15:08:01.898Z","kind":"skill","name":"test-driven-development","id":"toolu_01NmFvC9MrpRcve1GTXYLCW5"}
 {"t":"2026-11-16T15:11:17.328Z","kind":"test","cmd":"git stash push panel/style.css panel/app.mjs -q && CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; git stash pop -q && git status --short","ok":false,"id":"toolu_01GJw83LyEH5QVRzCcc5Pb5p"}
+{"t":"2026-11-16T15:11:22.130Z","kind":"skill","name":"requesting-code-review","id":"toolu_01RUf5Z7YAVMNxn2LyDqRUXV"}
+{"t":"2026-11-16T15:11:35.481Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #435","id":"toolu_01MPcaGCKrpVTY1rG8gMRSfN"}
+{"t":"2026-11-16T15:11:36.323Z","kind":"skill","name":"impeccable","id":"toolu_01WHm2DppTZs1BToYMGWBtWe"}
+{"t":"2026-11-16T15:12:01.576Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/done-cards.e2e.mjs 2>&1 | tail -30","ok":true,"id":"toolu_01FEsS1Y8wd8mMaqWRcAUFYg"}
+{"t":"2026-11-16T15:12:09.390Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A design review","id":"toolu_01HeNG5p7caqARBLAaGXBtHd"}
+{"t":"2026-11-16T15:12:16.506Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B detector evidence","id":"toolu_01MduycsyUfYoox5BTzafDxT"}
+{"t":"2026-11-16T15:12:47.829Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\nold=…\nnew=…\".lane-done { --done-card-height: calc(118px + 1.02rem * 1.35 + 1.5rem + 2 * .8125rem * 1.5); }\n.lane-done .ticket { min-height: var(--done-card-height); align-se","ok":true,"id":"toolu_011Bu7WzHUL3TKqq21bb7bAT"}
+{"t":"2026-11-16T15:13:20.710Z","kind":"test","cmd":"cat >> e2e/done-cards.e2e.mjs <<'EOF'\n\ntest('une carte « Mise en production » plus remplie que d\\'habitude garde la même hauteur que les autres', async () => {\n  const undone = issue(51, 'Mise en prod","ok":false,"id":"toolu_014hUj3me686h4UTjgLVUWaG"}
+{"t":"2026-11-16T15:13:39.662Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\nold=…\"/* Issue #435: every card of « Terminé » is as tall as a folded « Mise en production » (its padding, gaps, fold row and link\n   targets in px, its lines of text in rem","ok":true,"id":"toolu_01YHrhmjNaC89tx88zCHodYP"}
