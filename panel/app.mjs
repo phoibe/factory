@@ -687,6 +687,17 @@ const releaseStep = (c) => (c.labels.includes('factory:release-checking') ? 'Vé
 const releaseChanges = (c) => (live.releases.get(c.number)?.prs?.length ? live.releases.get(c.number).prs : releaseList(c.body));
 const changeList = (changes) => (changes.length ? el('ul', { class: 'release-changes' }, changes.map((p) => el('li', {}, p.title))) : null);
 
+// Issue #430: in « Terminé » the list of changes folds behind « N modifications », so a big release no longer stretches
+// its row. Folded on every load; one the owner opened stays open across board redraws (kept in memory only).
+const openReleases = new Set();
+const foldedChanges = (key, changes) => el('details', {
+  class: 'release-fold',
+  open: openReleases.has(key) || null,
+  ontoggle: (e) => { if (e.target.open) openReleases.add(key); else openReleases.delete(key); },
+},
+el('summary', {}, `${changes.length} modification${changes.length > 1 ? 's' : ''}`),
+changeList(changes));
+
 // Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
 // headline and whether the card is red; everything the owner needs is on the card, the title still opens GitHub.
 function releaseDoneCard(d, now) {
@@ -703,7 +714,7 @@ function releaseDoneCard(d, now) {
   else if (o.state === 'unknown') body.push(head('✓', 'Terminée')); // an old release with no readable outcome: no false « En ligne ✅ »
   else if (o.state === 'live') body.push(head('', o.unchecked ? 'En ligne (vérification impossible)' : 'En ligne ✅'));
   else body.push(head('✓', 'Terminée')); // closed on the way (« deploying »…): never a false « En ligne »
-  if (!red && changes.length) body.push(changeList(changes));
+  if (!red && changes.length) body.push(foldedChanges(d.url, changes));
   if (o.state === 'live' && o.version) body.push(el('p', { class: 'release-meta' }, `Version ${o.version}`));
   const site = o.state === 'live' && siteLink(o.site);
   if (site) body.push(el('a', { class: 'release-site', href: site, target: '_blank', rel: 'noopener' }, 'Voir le site en ligne', el('span', { 'aria-hidden': 'true' }, ' ↗')));

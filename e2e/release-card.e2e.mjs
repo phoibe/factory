@@ -46,6 +46,7 @@ test('une mise en production réussie finit dans « Terminé » avec « En ligne
     await page.goto(url);
     const done = page.locator('.lane-done .ticket', { hasText: 'Mise en production' }).first();
     await done.getByText('En ligne ✅').waitFor();
+    await done.getByText('2 modifications').click();
     await done.getByText('Ajout du mode sombre').waitFor();
     await done.getByText('Correction du menu').waitFor();
     const site = done.getByRole('link', { name: /Voir le site en ligne/ });
@@ -99,6 +100,7 @@ test('une mise en production fermée en cours de route (dernière note « en cou
   await withPanel({ config: approval, closed: [closedRelease()], comments: { 50: [botComment(note({ state: 'deploying', prs: [{ number: 11, title: 'Ajout du mode sombre' }] }))] } }, async ({ page, url }) => {
     await page.goto(url);
     const done = page.locator('.lane-done .ticket', { hasText: 'Mise en production' }).first();
+    await done.getByText('1 modification', { exact: true }).click();
     await done.getByText('Ajout du mode sombre').waitFor();
     assert.equal(await done.getByText(/En ligne/).count(), 0);
     await done.getByText('Terminée').waitFor();
