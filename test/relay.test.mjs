@@ -45,7 +45,7 @@ test('« Mise en production » with a version cuts the CHANGELOG on preprod, sen
   assert.deepEqual(gh.calls.find((c) => c[0] === 'tag'), ['tag', 'v0.18.0', 'm2']);
   assert.deepEqual(gh.calls.find((c) => c[0] === 'tagRef'), ['tagRef', 'v0.18.0', 'tagobj']);
   assert.deepEqual(gh.calls.find((c) => c[0] === 'release'), ['release', 'v0.18.0', '- Ajout du mode sombre']);
-  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /Version 0\.18\.0 : le tag `v0\.18\.0` est posé/);
+  assert.match(gh.calls.find((c) => c[0] === 'comment' && c[1] === 50)[2], /^Version 0\.18\.0 envoyée : /m);
 });
 
 test('a version number that does not fit (or whose tag exists) is refused: nothing cut, merged or tagged', async () => {
@@ -3067,7 +3067,7 @@ test('a release whose live site cannot be checked (no deployment, no address) st
   gh.recentDeployments = async () => [];
   await askRelease(relay);
   const msg = said50(gh).at(-1);
-  assert.match(msg, /En production ✅/);
+  assert.doesNotMatch(msg, /En production ✅/, 'issue #440: the ✅ only once the site was checked');
   assert.equal(noteOf(msg).state, 'live');
   assert.equal(noteOf(msg).unchecked, true);
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
@@ -3450,8 +3450,8 @@ test('#396: a release check still in its time is left alone; after the last try 
   await relay().handle(tick);
   assert.deepEqual(prodChecksOf(gh), []);
   const msg = gh.calls.filter((c) => c[0] === 'comment' && c[1] === 50).map((c) => c[2]).at(-1);
-  assert.match(msg, /En production ✅/);
-  assert.match(msg, /pas pu vérifier le site en ligne/);
+  assert.doesNotMatch(msg, /En production ✅/);
+  assert.match(msg, /pas pu vérifier le site moi-même/);
   assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 50));
 });
 
@@ -3528,4 +3528,62 @@ test('#396: after « ok » on the captures, a preview check that never reported 
   const { gh, relay } = watchedPr({ kind: 'preview', sha: 'abc', at: NOW - 100 * 60_000, tries: 0 }, []);
   await relay().handle(tick);
   assert.deepEqual(previewChecks(gh), [{ pr: 10, sha: 'abc' }]);
+});
+
+// ---- Issue #440: an honest release message, each change once, in French ----
+function honestRelease({ body = 'Version : 0.18.0', deployments = [] } = {}) {
+  const made = versionGh({ body });
+  made.gh.awaitingExtra = [
+    { number: 12, title: 'feat: TBIL reserve orders on the market side', body: 'Some PR text', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T11:00:00Z' },
+    { number: 13, title: 'Réserve : plus d\'ordres (#482)', body: 'Résumé\n\nCloses #60', state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T12:00:00Z' },
+  ];
+  const getIssue = made.gh.getIssue;
+  made.gh.getIssue = async (n) => (n === 60 ? { number: 60, title: 'Tolérance sur les ordres de réserve', labels: [] } : getIssue(n));
+  made.gh.recentDeployments = async () => deployments;
+  return made;
+}
+
+test('#440: a release whose site cannot be checked says « Version … envoyée », no ✅, no tag jargon, and how to check', async () => {
+  const { gh, relay } = honestRelease();
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /^Version 0\.18\.0 envoyée : ces 3 modifications partent en ligne\.$/m);
+  assert.doesNotMatch(msg, /En production ✅/);
+  assert.doesNotMatch(msg, /\btag\b/);
+  assert.match(msg, /Je ne peux pas vérifier le site moi-même\. Pour vous en assurer, ouvrez-le dans quelques minutes : vous devriez y voir ces changements\./);
+  assert.equal(noteOf(msg).unchecked, true);
+});
+
+test('#440: each change appears once, as one link, titled by its request or by its cleaned title', async () => {
+  const { gh, relay } = honestRelease({ body: 'Demandé depuis le tableau de bord.' });
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /^Envoyé : ces 3 modifications partent en ligne\.$/m);
+  const lines = msg.split('\n').filter((l) => l.startsWith('- '));
+  assert.deepEqual(lines, [
+    '- [Ajout du mode sombre](https://github.com/r/pull/11)',
+    '- [TBIL reserve orders on the market side](https://github.com/r/pull/12)',
+    '- [Tolérance sur les ordres de réserve](https://github.com/r/pull/13)',
+  ]);
+  assert.doesNotMatch(msg.replace(/<!--[\s\S]*?-->/g, ''), /#\d/, 'no number left in the visible text');
+});
+
+test('#440: the tag that could not be set is still told; the « site checked ✅ » message shows the same clean list', async () => {
+  const failed = honestRelease();
+  failed.gh.createTagObject = async () => { throw new Error('boom'); };
+  await askRelease(failed.relay);
+  assert.match(said50(failed.gh).at(-1), /n'a pas pu être posé/);
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }, { number: 60, title: 'Tolérance sur les ordres de réserve' }] });
+  gh.getPr = async (n) => ({ number: n, title: n === 11 ? 'fix(menu): menu' : 'Réserve (#482)', body: n === 11 ? '' : 'Closes #60' });
+  await relay().prodReport({ pr: 12, sha: 'a2', url: 'https://site.example', result: 'passed', detail: 'ok', release: { from: 'm0', prs: [11, 12], issue: 50, version: '1.2.0' } });
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /En production ✅/);
+  assert.deepEqual(msg.split('\n').filter((l) => l.startsWith('- ')), ['- [menu](https://github.com/r/pull/11)', '- [Tolérance sur les ordres de réserve](https://github.com/r/pull/12)']);
+  const skipped = prodGh({ branches: { main: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  skipped.gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: '' });
+  await skipped.relay().prodReport({ pr: 11, sha: 'a2', result: 'skipped', detail: "l'hébergeur n'a pas signalé la nouvelle version", release: { from: 'm0', prs: [11], issue: 50, version: '1.2.0' } });
+  const unchecked = said50(skipped.gh).at(-1);
+  assert.doesNotMatch(unchecked, /En production ✅/);
+  assert.match(unchecked, /^Version 1\.2\.0 envoyée : cette modification part en ligne\.$/m);
+  assert.match(unchecked, /Pour vous en assurer, ouvrez-le dans quelques minutes/);
 });

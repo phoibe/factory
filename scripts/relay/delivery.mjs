@@ -9,7 +9,7 @@ import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from '../lib/version-tag.mjs';
 import { siteLink } from '../../panel/lib.mjs';
-import { PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, updateMark, branchUpdates, REVERT_REDO, REDO_OF, RECHECK_MARKER, REDO_STUCK_MS, STILL_LIVE, redoOf, isLiveEnv, prIssue, say, names, isDocFile } from './shared.mjs';
+import { PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, updateMark, branchUpdates, REVERT_REDO, REDO_OF, RECHECK_MARKER, REDO_STUCK_MS, STILL_LIVE, redoOf, isLiveEnv, prIssue, plainTitle, sentLine, CHECK_IT_YOURSELF, say, names, isDocFile } from './shared.mjs';
 
 export function deliveryPart(ctx) {
   const { gh, repo, config, fetchImpl, now, log, sleep } = ctx;
@@ -207,7 +207,8 @@ export function deliveryPart(ctx) {
     await gh.updateRef(branch, commit.sha);
     return null;
   }
-  // Tags the commit that went live and publishes its notes (the CHANGELOG section). The sentence for the owner.
+  // Tags the commit that went live and publishes its notes (the CHANGELOG section). A warning for the owner when the
+  // tag could not be set, else null: the version number is already in the message's first line (issue #440).
   async function tagRelease(version, head, ref) {
     const tag = `v${version}`;
     try {
@@ -215,11 +216,23 @@ export function deliveryPart(ctx) {
       const obj = await gh.createTagObject(tag, `Version ${version}`, head);
       await gh.createTagRef(tag, obj.sha);
       await gh.createRelease(tag, tag, notes.slice(0, 120000));
-      return `Version ${version} : le tag \`${tag}\` est posé sur ce qui part, et ses notes sont publiées dans les versions du projet.`;
+      return null;
     } catch (e) {
       log(`release: tag ${tag} failed (${String(e.message || e).slice(0, 120)})`);
       return `⚠️ Le tag \`${tag}\` n'a pas pu être posé (GitHub répond : « ${String(e.message || e).slice(0, 160)} »).`;
     }
+  }
+
+  // The released changes for the owner (issue #440): one line each, one link, titled by the request it delivers (the
+  // owner's words, in French), else by its own title without its technical prefix (« feat: », « fix(x): »…).
+  async function releaseList(prs) {
+    const lines = [];
+    for (const p of prs) {
+      const asked = prIssue(p);
+      const title = (asked && (await gh.getIssue(asked).catch(() => null))?.title) || plainTitle(p.title);
+      lines.push(`- [${title.replace(/[[\]]/g, '')}](https://github.com/${repo}/pull/${p.number})`);
+    }
+    return lines.join('\n');
   }
 
   const mergedAt = (p) => Date.parse(p.pull_request?.merged_at || p.merged_at || p.closed_at || 0);
@@ -277,7 +290,7 @@ export function deliveryPart(ctx) {
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
     const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null, ...(version ? { version } : {}) };
     const checking = await checkLive(pending.at(-1).number, head, { release }).catch((e) => { log(`live check not started: ${e.message}`); return false; });
-    const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+    const list = await releaseList(pending);
     const n = pending.length;
     const prs = pending.map((p) => ({ number: p.number, title: p.title }));
     const extra = { ...(version ? { version } : {}) };
@@ -286,11 +299,11 @@ export function deliveryPart(ctx) {
     if (checking) {
       // Noted on the request, so that the tick checks the site again if that check never reports (issue #396).
       await noteWatch(issueNumber, { kind: 'production', check: checking, at: now(), tries: 0 }).catch((e) => log(`release watch: ${e.message}`));
-      await gh.comment(issueNumber, say(`${n === 1 ? 'Cette modification part' : `Ces ${n} modifications partent`} en ligne :\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite, et je vous dis ici quand c'est fait.${tagged ? `\n\n${tagged}` : ''}\n\n${releaseNote({ state: 'deploying', prs, ...extra })}`));
+      await gh.comment(issueNumber, say(`${sentLine(n, version)}\n\n${list}\n\nLe site se met à jour dans quelques minutes ; je le vérifie ensuite, et je vous dis ici quand c'est fait.${tagged ? `\n\n${tagged}` : ''}\n\n${releaseNote({ state: 'deploying', prs, ...extra })}`));
       return;
     }
     // Nothing tells when the new version is online (no deployment, no site address): it cannot be checked.
-    await endRelease(issueNumber, `En production ✅ : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.\n\n${list}\n\nJe ne peux pas vérifier le site en ligne : l'hébergeur ne dit pas quand la nouvelle version est publiée.${tagged ? `\n\n${tagged}` : ''}`,
+    await endRelease(issueNumber, `${sentLine(n, version)}\n\n${list}\n\nJe ne peux pas vérifier le site moi-même. ${CHECK_IT_YOURSELF}${tagged ? `\n\n${tagged}` : ''}`,
       { state: 'live', prs, ...extra, unchecked: true });
   }
 
@@ -315,10 +328,17 @@ export function deliveryPart(ctx) {
   // The live site works (or could not be opened) after a release: « En production ✅ », only now.
   async function releaseLive({ release, url, result, detail }) {
     const prs = [];
-    for (const n of release.prs || []) prs.push({ number: n, title: (await gh.getPr(n).catch(() => null))?.title || 'Modification' });
-    const list = prs.map((p) => `- ${p.title} (#${p.number})`).join('\n');
+    const full = [];
+    for (const n of release.prs || []) {
+      const pr = await gh.getPr(n).catch(() => null);
+      prs.push({ number: n, title: pr?.title || 'Modification' });
+      full.push({ ...pr, number: n, title: pr?.title || 'Modification' });
+    }
+    const list = await releaseList(full);
     const checked = result === 'passed';
-    const text = `En production ✅ : ${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\n${checked ? 'J\'ai vérifié le site en ligne : il marche.' : `Je n'ai pas pu vérifier le site en ligne (${detail || 'vérification sautée'}).`}${url ? ` [Voir le site en ligne](${url})` : ''}`;
+    const text = checked
+      ? `En production ✅ : ${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\nJ'ai vérifié le site en ligne : il marche.${url ? ` [Voir le site en ligne](${url})` : ''}`
+      : `${sentLine(prs.length, release.version)}\n\n${list}\n\nJe n'ai pas pu vérifier le site moi-même (${detail || 'vérification sautée'}). ${url ? `Pour vous en assurer, [ouvrez-le](${url}) dans quelques minutes : vous devriez y voir ces changements.` : CHECK_IT_YOURSELF}`;
     await endRelease(release.issue, text, { state: 'live', prs, ...(release.version ? { version: release.version } : {}), ...(url ? { site: url } : {}), ...(checked ? {} : { unchecked: true }) }, { checking: true });
   }
 
@@ -741,5 +761,5 @@ export function deliveryPart(ctx) {
   }
 
 
-  return { mergeDocsPr, mergePr, readDelivery, afterMerge, moveProduction, followMain, holdForApproval, ensurePreprod, syncPreprod, findChangelog, cutChangelog, tagRelease, mergedAt, releaseToProduction, endRelease, releaseChecking, releaseLive, rollbackRelease, checkLive, redoAfterRevert, startRedo, liveUrl, deployFailed, prodReport, redoBody, findRedo, settledPr, syncVersionTag, ensureVersionTagCard, ensureStackSheet, ensureDeliveryLine, unstickRedos, startUndoneRedo, recheckedRedo };
+  return { mergeDocsPr, mergePr, readDelivery, afterMerge, moveProduction, followMain, holdForApproval, ensurePreprod, syncPreprod, findChangelog, cutChangelog, tagRelease, releaseList, mergedAt, releaseToProduction, endRelease, releaseChecking, releaseLive, rollbackRelease, checkLive, redoAfterRevert, startRedo, liveUrl, deployFailed, prodReport, redoBody, findRedo, settledPr, syncVersionTag, ensureVersionTagCard, ensureStackSheet, ensureDeliveryLine, unstickRedos, startUndoneRedo, recheckedRedo };
 }
