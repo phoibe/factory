@@ -18,7 +18,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `events`: the issue events GitHub returns (labels put on or taken off), first page only.
 // `files`: project files GitHub serves (path → text), with the date of their last commit in `fileDates`.
 // `repoIssues`: the open requests of the other projects (full name → list); `repoComments`: their threads
-// (full name → { number: comments }).
+// (full name → { number: comments }); `repoClosed`: their closed issues (full name → list).
 // `chatServer`: { delay, answer, issues, refuse } turns on the instant chat: its server answers `answer` after `delay` ms,
 // proposing `issues` ([{kind, title, body}]); `refuse` makes it answer that HTTP status instead. It never writes: the
 // panel saves the conversation on the `factory-chat` branch and creates the issues (issue #395). `chatCalls` lists the
@@ -36,7 +36,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer) }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer) }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -186,7 +186,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const otherThread = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(path);
       if (otherThread && repoComments[otherThread[1]]?.[otherThread[2]]) return json(repoComments[otherThread[1]][otherThread[2]]);
       const other = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(path)?.[1];
-      if (other && repoIssues[other]) return json(q.get('state') === 'closed' ? [] : repoIssues[other]);
+      if (other && repoIssues[other]) return json(q.get('state') === 'closed' ? repoClosed[other] || [] : repoIssues[other]);
       // The other projects have no file (a PRODUCT.md only when framed, above).
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);

@@ -107,3 +107,25 @@ test('avec des cartes plus remplies, déplier « N modifications » ne fait boug
     });
   }
 });
+
+test('une liste ouverte dans deux projets : chaque projet garde la hauteur de ses propres cartes', async () => {
+  const tallNote = (n) => [botComment(note({ state: 'undone', fix: 60, reason: 'la page d\'accueil répond « erreur 500 » depuis la mise en ligne, la version d\'avant est revenue toute seule' }))];
+  const alphaRelease = issue(80, 'Mise en production', ['factory:production'], { state: 'closed', closed_at: closedAt(1), comments: 1, body: '', html_url: 'https://github.com/o/alpha/issues/80' });
+  const alphaUndone = issue(81, 'Mise en production', ['factory:production'], { state: 'closed', closed_at: closedAt(2), comments: 1, body: '', html_url: 'https://github.com/o/alpha/issues/81' });
+  const alpha = { 80: [botComment(note({ state: 'live', version: '1.0.0', prs: changes, site: 'https://alpha.example' }))], 81: tallNote(81) };
+  await withPanel({ config: approval, viewport: { width: 1280, height: 900 }, repos: ['o/r', 'o/alpha'], closed, comments, repoIssues: { 'o/alpha': [issue(70, 'Carte alpha', ['factory:feature', 'factory:queued'])] }, repoClosed: { 'o/alpha': [alphaRelease, alphaUndone] }, repoComments: { 'o/alpha': alpha } }, async ({ page, url }) => {
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+    await page.goto(url);
+    const before = await heights(page);
+    await releaseCard(page).getByText('6 modifications').click();
+    await page.locator('#projects .project-item', { hasText: 'alpha' }).click();
+    await cards(page).filter({ hasText: 'Voir la correction' }).waitFor();
+    await releaseCard(page).getByText('6 modifications').click();
+    await releaseCard(page).getByText('Modification 6').waitFor();
+    await page.locator('#projects .project-item[data-repo="o/r"]').click();
+    await cards(page).filter({ hasText: 'Encore une' }).waitFor();
+    await releaseCard(page).getByText('Modification 6').waitFor();
+    const back = await cards(page).evaluateAll((list) => list.map((c) => Math.round(c.getBoundingClientRect().height)));
+    assert.deepEqual(back.slice(1), before.slice(1));
+  });
+});

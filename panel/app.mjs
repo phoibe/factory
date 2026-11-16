@@ -102,7 +102,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   dropCountdowns();
-  triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.px = null;
+  triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -691,15 +691,15 @@ const changeList = (changes) => (changes.length ? el('ul', { class: 'release-cha
 // its row. Folded on every load; one the owner opened stays open across board redraws (kept in memory only).
 const openReleases = new Set();
 // Issue #435: while nothing is open the « Terminé » rows share the tallest card's height. Opening a list ends that rule,
-// so the height the cards had just before is kept (also across redraws) and the other cards do not move.
-const doneHeight = { px: null };
+// so the height the cards had just before is kept (also across redraws, one per project) and the other cards do not move.
+const doneHeight = new Map();
 const foldedChanges = (key, changes) => el('details', {
   class: 'release-fold',
   open: openReleases.has(key) || null,
   ontoggle: (e) => {
     if (e.target.open) openReleases.add(key); else openReleases.delete(key);
     const lane = e.target.closest('.lane-done');
-    if (lane && !lane.querySelector('.release-fold[open]')) { doneHeight.px = null; lane.style.removeProperty('--done-card-height'); }
+    if (lane && !lane.querySelector('.release-fold[open]')) { doneHeight.delete(current?.repo.full_name); lane.style.removeProperty('--done-card-height'); }
   },
 },
 el('summary', {
@@ -707,8 +707,9 @@ el('summary', {
   onclick: (e) => {
     const lane = e.currentTarget.closest('.lane-done');
     if (!lane || lane.querySelector('.release-fold[open]')) return;
-    doneHeight.px = Math.max(...[...lane.querySelectorAll('.ticket')].map((t) => t.getBoundingClientRect().height));
-    lane.style.setProperty('--done-card-height', `${doneHeight.px}px`);
+    const px = Math.max(...[...lane.querySelectorAll('.ticket')].map((t) => t.getBoundingClientRect().height));
+    doneHeight.set(current?.repo.full_name, px);
+    lane.style.setProperty('--done-card-height', `${px}px`);
   },
 }, el('span', {}, `${changes.length} modification${changes.length > 1 ? 's' : ''}`)),
 changeList(changes));
@@ -1116,7 +1117,7 @@ function drawBoard() {
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
         : el('p', { class: 'lane-empty' }, empty))),
     ideasLane(ideas),
-    el('section', { class: 'lane lane-done', 'aria-label': 'Terminé', style: doneHeight.px && doneShown.shown.some((d) => openReleases.has(d.url)) ? `--done-card-height: ${doneHeight.px}px` : null },
+    el('section', { class: 'lane lane-done', 'aria-label': 'Terminé', style: doneHeight.has(current?.repo.full_name) && doneShown.shown.some((d) => openReleases.has(d.url)) ? `--done-card-height: ${doneHeight.get(current?.repo.full_name)}px` : null },
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
