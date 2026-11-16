@@ -10,3 +10,5 @@
 {"t":"2026-11-16T18:05:45.769Z","kind":"skill","name":"requesting-code-review","id":"toolu_014jAbD4EUdDXZykMjjQ8KUA"}
 {"t":"2026-11-16T18:05:57.431Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #440","id":"toolu_01YKpFXwAPeAgq97JUD57bik"}
 {"t":"2026-11-16T18:07:26.033Z","kind":"test","cmd":"(npm test 2>&1 | tail -15) ; ls docs/specs | grep 440; gh issue view 440 -R phoibe/factory 2>&1 | head -60","ok":true,"id":"toolu_01XC5yExN8VBNPUb6WRqAMih"}
+{"t":"2026-11-16T18:08:38.021Z","kind":"test","cmd":"cat >> test/relay.test.mjs <<'EOF'\n\ntest('#440 review: while the site goes live, the message has the same first line and clean list, titled by the branch request too', async () => {\n  const { gh, rela","ok":false,"id":"toolu_016AUq46i6QTgQtXajULNwyZ"}
+{"t":"2026-11-16T18:09:24.448Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\na=…\nassert a in s\ns=… '').replace(/^(?:feat(?:ure)?|fix|chore|docs|refactor|test|perf|style|build|ci|revert)\\\\s*(\\\\([^)]*\\\\))?\\\\s*!?\\\\s*:\\\\s*/i, '')\")\ns=… A change's title wi","ok":true,"id":"toolu_01VKgoFBr4quYmfjpsodyEQZ"}

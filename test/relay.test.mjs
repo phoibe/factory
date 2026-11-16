@@ -3587,3 +3587,33 @@ test('#440: the tag that could not be set is still told; the « site checked ✅
   assert.match(unchecked, /^Version 1\.2\.0 envoyée : cette modification part en ligne\.$/m);
   assert.match(unchecked, /Pour vous en assurer, ouvrez-le dans quelques minutes/);
 });
+
+test('#440 review: while the site goes live, the message has the same first line and clean list, titled by the branch request too', async () => {
+  const { gh, relay } = honestRelease({ deployments: [{ id: 1, environment: 'Production' }] });
+  gh.getPr = async (n) => ({ number: n, title: 'feat: TBIL reserve orders on the market side', body: '', head: { ref: n === 12 ? 'claude/issue-61-tbil' : 'x' } });
+  const getIssue = gh.getIssue;
+  gh.getIssue = async (n) => (n === 61 ? { number: 61, title: 'Ordres de réserve TBIL côté marché', labels: [] } : getIssue(n));
+  await askRelease(relay);
+  const msg = said50(gh).at(-1);
+  assert.match(msg, /^Version 0\.18\.0 envoyée : ces 3 modifications partent en ligne\.$/m);
+  assert.match(msg, /Le site se met à jour dans quelques minutes/);
+  assert.ok(msg.split('\n').includes('- [Ordres de réserve TBIL côté marché](https://github.com/r/pull/12)'), msg);
+});
+
+test('#440 review: link text is escaped and French-spaced or bracketed prefixes are cleaned', async () => {
+  const { plainTitle } = await import('../scripts/relay/shared.mjs');
+  assert.equal(plainTitle('feat : réserve'), 'réserve');
+  assert.equal(plainTitle('[WIP] fix(menu) : menu'), 'menu');
+  const { gh, relay } = honestRelease({ body: '' });
+  gh.awaitingExtra = [{ number: 14, title: 'a <!-- b `c` d\\', body: '', head: { ref: 'x' }, state: 'closed', labels: [L.awaitingProd], merged_at: '2026-11-08T13:00:00Z' }];
+  await askRelease(relay);
+  const line = said50(gh).at(-1).split('\n').find((l) => l.endsWith('/pull/14)'));
+  assert.equal(line, '- [a \\<!-- b \\`c\\` d\\\\](https://github.com/r/pull/14)');
+});
+
+test('#440 review: the « site checked ✅ » message names the version', async () => {
+  const { gh, relay } = prodGh({ branches: { main: 'a2', production: 'a2' }, issues: [{ number: 50, labels: [L.production, L.releaseChecking] }] });
+  gh.getPr = async (n) => ({ number: n, title: 'Ajout du mode sombre', body: '' });
+  await relay().prodReport({ pr: 11, sha: 'a2', url: 'https://site.example', result: 'passed', detail: 'ok', release: { from: 'm0', prs: [11], issue: 50, version: '1.2.0' } });
+  assert.match(said50(gh).at(-1), /^En production ✅ : version 1\.2\.0, cette modification est en ligne\.$/m);
+});

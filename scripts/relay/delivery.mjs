@@ -9,7 +9,7 @@ import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from '../lib/version-tag.mjs';
 import { siteLink } from '../../panel/lib.mjs';
-import { PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, updateMark, branchUpdates, REVERT_REDO, REDO_OF, RECHECK_MARKER, REDO_STUCK_MS, STILL_LIVE, redoOf, isLiveEnv, prIssue, plainTitle, sentLine, CHECK_IT_YOURSELF, say, names, isDocFile } from './shared.mjs';
+import { PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, updateMark, branchUpdates, REVERT_REDO, REDO_OF, RECHECK_MARKER, REDO_STUCK_MS, STILL_LIVE, redoOf, isLiveEnv, prIssue, linkedIssue, plainTitle, linkText, sentLine, CHECK_IT_YOURSELF, say, names, isDocFile } from './shared.mjs';
 
 export function deliveryPart(ctx) {
   const { gh, repo, config, fetchImpl, now, log, sleep } = ctx;
@@ -227,10 +227,12 @@ export function deliveryPart(ctx) {
   // owner's words, in French), else by its own title without its technical prefix (« feat: », « fix(x): »…).
   async function releaseList(prs) {
     const lines = [];
-    for (const p of prs) {
+    for (const item of prs) {
+      // A change listed through the issues API has no branch: its PR tells the request its branch was made for.
+      const p = linkedIssue(item.body) || item.head ? item : { ...item, ...(await gh.getPr(item.number).catch(() => null)), number: item.number };
       const asked = prIssue(p);
       const title = (asked && (await gh.getIssue(asked).catch(() => null))?.title) || plainTitle(p.title);
-      lines.push(`- [${title.replace(/[[\]]/g, '')}](https://github.com/${repo}/pull/${p.number})`);
+      lines.push(`- [${linkText(title)}](https://github.com/${repo}/pull/${p.number})`);
     }
     return lines.join('\n');
   }
@@ -337,7 +339,7 @@ export function deliveryPart(ctx) {
     const list = await releaseList(full);
     const checked = result === 'passed';
     const text = checked
-      ? `En production ✅ : ${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\nJ'ai vérifié le site en ligne : il marche.${url ? ` [Voir le site en ligne](${url})` : ''}`
+      ? `En production ✅ : ${release.version ? `version ${release.version}, ` : ''}${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\nJ'ai vérifié le site en ligne : il marche.${url ? ` [Voir le site en ligne](${url})` : ''}`
       : `${sentLine(prs.length, release.version)}\n\n${list}\n\nJe n'ai pas pu vérifier le site moi-même (${detail || 'vérification sautée'}). ${url ? `Pour vous en assurer, [ouvrez-le](${url}) dans quelques minutes : vous devriez y voir ces changements.` : CHECK_IT_YOURSELF}`;
     await endRelease(release.issue, text, { state: 'live', prs, ...(release.version ? { version: release.version } : {}), ...(url ? { site: url } : {}), ...(checked ? {} : { unchecked: true }) }, { checking: true });
   }
