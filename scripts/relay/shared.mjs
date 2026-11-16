@@ -12,6 +12,10 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Just under the checks job's timeout-minutes (30) in relay.yml.
 export const CHECKS_TIMEOUT_MS = 28 * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
+// A routine session has no time limit (yolivesound #115): past LOCK_MINUTES, the lock holds while the agent's sign of
+// life (agent/scripts/alive.mjs, renewed every 10 min while it works) is under ALIVE_MINUTES old, up to LOCK_MAX_MINUTES.
+export const ALIVE_MINUTES = 30;
+export const LOCK_MAX_MINUTES = 360;
 export const PROJECT_WORKFLOW = 'factory.yml';
 // The branch the host publishes on projects whose production waits for the owner (issue #294).
 export const PROD_BRANCH = 'production';

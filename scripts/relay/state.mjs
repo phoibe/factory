@@ -1,8 +1,9 @@
 // Part of the relay engine (scripts/relay.mjs): the state of one relay run (outputs, comment cache, places in use, card locks).
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
-import { L } from '../lib/labels.mjs';
+import { L, SESSION_MARKER } from '../lib/labels.mjs';
 import { trustedAuthor } from '../lib/trust.mjs';
-import { SHOTS_BRANCH, LOCK_MINUTES, prIssue, names } from './shared.mjs';
+import { SHOTS_BRANCH, LOCK_MINUTES, ALIVE_MINUTES, LOCK_MAX_MINUTES, prIssue, names } from './shared.mjs';
+import { aliveAt } from '../../agent/scripts/alive.mjs';
 
 export function statePart(ctx) {
   const { gh, repo, now } = ctx;
@@ -53,9 +54,22 @@ export function statePart(ctx) {
   async function lockFresh(number, labels) {
     if (!labels.includes(L.running)) return false;
     const start = await lockStart(number);
-    return start !== null && now() - start < LOCK_MINUTES * 60_000;
+    if (start === null) return false;
+    const age = now() - start;
+    if (age < LOCK_MINUTES * 60_000) return true;
+    if (age >= LOCK_MAX_MINUTES * 60_000) return false;
+    return (await signOfLife(number, start)) !== null;
+  }
+
+  // The agent's last sign of life on the card since its lock was taken, while recent, or null (agent/scripts/alive.mjs).
+  // Only the factory's own « Dernier lancement » comment counts: nobody else can edit it.
+  async function signOfLife(number, start) {
+    const owner = String(repo || '').split('/')[0];
+    const note = ((await gh.listComments(number)) || []).find((c) => (c.body || '').includes(SESSION_MARKER) && trustedAuthor(c, owner));
+    const at = aliveAt(note?.body);
+    return at !== null && at >= start && now() - at < ALIVE_MINUTES * 60_000 ? at : null;
   }
 
 
-  return { outputs, liveLabels, postedCaptures, fromFork, woken, commentCache, cardComments, inFlight, lockStart, lockFresh };
+  return { outputs, liveLabels, postedCaptures, fromFork, woken, commentCache, cardComments, inFlight, lockStart, lockFresh, signOfLife };
 }
