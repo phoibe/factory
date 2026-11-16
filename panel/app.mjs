@@ -695,7 +695,7 @@ const foldedChanges = (key, changes) => el('details', {
   open: openReleases.has(key) || null,
   ontoggle: (e) => { if (e.target.open) openReleases.add(key); else openReleases.delete(key); },
 },
-el('summary', { 'data-key': `fold-${key}` }, `${changes.length} modification${changes.length > 1 ? 's' : ''}`),
+el('summary', { 'data-key': `fold-${key}` }, el('span', {}, `${changes.length} modification${changes.length > 1 ? 's' : ''}`)),
 changeList(changes));
 
 // Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
