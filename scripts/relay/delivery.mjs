@@ -229,7 +229,7 @@ export function deliveryPart(ctx) {
     const lines = [];
     for (const item of prs) {
       // A change listed through the issues API has no branch: its PR tells the request its branch was made for.
-      const p = linkedIssue(item.body) || item.head ? item : { ...item, ...(await gh.getPr(item.number).catch(() => null)), number: item.number };
+      const p = (linkedIssue(item.body) || item.head) ? item : { ...item, ...(await gh.getPr(item.number).catch(() => null)), number: item.number };
       const asked = prIssue(p);
       const title = (asked && (await gh.getIssue(asked).catch(() => null))?.title) || plainTitle(p.title);
       lines.push(`- [${linkText(title)}](https://github.com/${repo}/pull/${p.number})`);
@@ -292,11 +292,11 @@ export function deliveryPart(ctx) {
     for (const p of pending) await gh.removeLabel(p.number, L.awaitingProd);
     const release = { from, prs: pending.map((p) => p.number), issue: issueNumber || null, ...(version ? { version } : {}) };
     const checking = await checkLive(pending.at(-1).number, head, { release }).catch((e) => { log(`live check not started: ${e.message}`); return false; });
-    const list = await releaseList(pending);
     const n = pending.length;
     const prs = pending.map((p) => ({ number: p.number, title: p.title }));
     const extra = { ...(version ? { version } : {}) };
     if (!issueNumber) return;
+    const list = await releaseList(pending);
     // The request stays open (the board's card « en cours ») until the live site is checked: prodReport ends it.
     if (checking) {
       // Noted on the request, so that the tick checks the site again if that check never reports (issue #396).
@@ -340,7 +340,7 @@ export function deliveryPart(ctx) {
     const checked = result === 'passed';
     const text = checked
       ? `En production ✅ : ${release.version ? `version ${release.version}, ` : ''}${prs.length === 1 ? 'cette modification est' : `ces ${prs.length} modifications sont`} en ligne.\n\n${list}\n\nJ'ai vérifié le site en ligne : il marche.${url ? ` [Voir le site en ligne](${url})` : ''}`
-      : `${sentLine(prs.length, release.version)}\n\n${list}\n\nJe n'ai pas pu vérifier le site moi-même (${detail || 'vérification sautée'}). ${url ? `Pour vous en assurer, [ouvrez-le](${url}) dans quelques minutes : vous devriez y voir ces changements.` : CHECK_IT_YOURSELF}`;
+      : `${sentLine(prs.length, release.version)}\n\n${list}\n\nJe n'ai pas pu vérifier le site moi-même (${detail || 'vérification sautée'}). ${url ? `Pour vous en assurer, [ouvrez-le](${url}) : vous devriez y voir ces changements.` : CHECK_IT_YOURSELF}`;
     await endRelease(release.issue, text, { state: 'live', prs, ...(release.version ? { version: release.version } : {}), ...(url ? { site: url } : {}), ...(checked ? {} : { unchecked: true }) }, { checking: true });
   }
 

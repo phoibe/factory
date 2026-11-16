@@ -89,7 +89,7 @@ export function vercelPreview(comments) {
 // Files a documentation PR may carry: the glossary and the decision records, nothing else.
 export const isDocFile = (f) => /^(GLOSSARY(-MAP)?\.md|docs\/adr\/[^/]+\.md)$/.test(f);
 // A change's title without its leading tags (« [WIP] ») and technical prefix (« feat: », « fix(menu) : ») nor a trailing « (#12) » (issue #440).
-export const plainTitle = (title) => String(title || 'Modification').replace(/^\s*(?:\[[^\]]*\]\s*)*/, '').replace(/^(?:feat(?:ure)?|fix|chore|docs|refactor|test|perf|style|build|ci|revert)\s*(\([^)]*\))?\s*!?\s*:\s*/i, '').replace(/\s*\(#\d+\)\s*$/, '').trim() || 'Modification';
+export const plainTitle = (title) => String(title || 'Modification').replace(/^\s*(?:\[[^\]]*\]\s*)*/, '').replace(/^(?:(?:feat|fix)\s*(?:\([^)]*\))?\s*!?\s*:|(?:feat|fix|chore|docs|refactor|test|perf|style|build|ci|revert)(?:\([^)]*\))?!?:)\s*/i, '').replace(/\s*\(#\d+\)\s*$/, '').trim() || 'Modification';
 // The first line of a release message: what left, with its version number when it has one (issue #440).
 export const sentLine = (n, version) => `${version ? `Version ${version} envoyée` : 'Envoyé'} : ${n === 1 ? 'cette modification part' : `ces ${n} modifications partent`} en ligne.`;
 export const CHECK_IT_YOURSELF = 'Pour vous en assurer, ouvrez-le dans quelques minutes : vous devriez y voir ces changements.';

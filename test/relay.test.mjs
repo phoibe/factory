@@ -3617,3 +3617,9 @@ test('#440 review: the « site checked ✅ » message names the version', async 
   await relay().prodReport({ pr: 11, sha: 'a2', url: 'https://site.example', result: 'passed', detail: 'ok', release: { from: 'm0', prs: [11], issue: 50, version: '1.2.0' } });
   assert.match(said50(gh).at(-1), /^En production ✅ : version 1\.2\.0, cette modification est en ligne\.$/m);
 });
+
+test('#440 review: a French title that merely starts with an ordinary word keeps it', async () => {
+  const { plainTitle } = await import('../scripts/relay/shared.mjs');
+  assert.equal(plainTitle('Style : nouvelles couleurs'), 'Style : nouvelles couleurs');
+  assert.equal(plainTitle('docs(readme): x'), 'x');
+});
