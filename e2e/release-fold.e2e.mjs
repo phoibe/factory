@@ -50,7 +50,9 @@ test('au clavier, Tab puis Entrée déplie la liste', async () => {
     await page.goto(url);
     const done = doneCard(page);
     await done.getByText('9 modifications').waitFor();
-    await done.locator('summary').focus();
+    await done.getByRole('link', { name: 'Mise en production' }).focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent), '9 modifications');
     await page.keyboard.press('Enter');
     await done.getByText('Capital max alloué').waitFor();
   });

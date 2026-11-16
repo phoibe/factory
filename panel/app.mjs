@@ -102,7 +102,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   dropCountdowns();
-  triggers.done.clear(); triggers.fresh.clear();
+  triggers.done.clear(); triggers.fresh.clear(); openReleases.clear();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -695,7 +695,7 @@ const foldedChanges = (key, changes) => el('details', {
   open: openReleases.has(key) || null,
   ontoggle: (e) => { if (e.target.open) openReleases.add(key); else openReleases.delete(key); },
 },
-el('summary', {}, `${changes.length} modification${changes.length > 1 ? 's' : ''}`),
+el('summary', { 'data-key': `fold-${key}` }, `${changes.length} modification${changes.length > 1 ? 's' : ''}`),
 changeList(changes));
 
 // Issue #370: a finished « Mise en production » in « Terminé ». Its outcome (read from the relay's note) decides the
