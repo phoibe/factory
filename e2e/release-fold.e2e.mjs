@@ -58,15 +58,18 @@ test('au clavier, Tab puis Entrée déplie la liste', async () => {
   });
 });
 
-test('la carte repliée reste à peu près aussi haute que ses voisines', async () => {
-  const merged = Array.from({ length: 2 }, (_, i) => issue(60 + i, `Demande livrée ${i}`, [], { state: 'closed', closed_at: '2026-11-09T11:00:00Z', pull_request: { merged_at: '2026-11-09T11:00:00Z' } }));
-  await withPanel({ config: approval, closed: [closedRelease, ...merged], comments: liveNote(prs) }, async ({ page, url }) => {
-    await page.goto(url);
-    const done = doneCard(page);
-    await done.getByText('9 modifications').waitFor();
-    const box = await done.boundingBox();
-    assert.ok(box.height < 260, `release card height ${box.height}`);
-  });
+test('la carte repliée garde la même hauteur avec 1 ou 9 modifications', async () => {
+  const height = async (list) => {
+    let h;
+    await withPanel({ config: approval, viewport: { width: 390, height: 844 }, closed: [closedRelease], comments: liveNote(list) }, async ({ page, url }) => {
+      await page.goto(url);
+      await doneCard(page).locator('summary').waitFor();
+      h = (await doneCard(page).boundingBox()).height;
+    });
+    return h;
+  };
+  const [one, nine] = [await height(prs.slice(0, 1)), await height(prs)];
+  assert.ok(Math.abs(nine - one) <= 1, `1 modification: ${one}px, 9 modifications: ${nine}px`);
 });
 
 test('une carte ouverte reste ouverte quand le tableau se redessine (changement de projet aller-retour)', async () => {

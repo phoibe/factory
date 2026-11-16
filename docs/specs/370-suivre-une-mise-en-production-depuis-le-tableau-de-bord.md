@@ -1,6 +1,8 @@
 # 370 · Suivre une mise en production depuis le tableau de bord
 
 > Demande [#370](https://github.com/phoibe/factory/issues/370) · 2026-11-13
+>
+> Modifiée par la demande n° [#430](https://github.com/phoibe/factory/issues/430)
 
 **En une phrase** : chaque mise en production lancée depuis le tableau de bord devient une carte dans l'onglet « Suivi », qui montre en direct où elle en est, puis son résultat (ce qui est en ligne, ou pourquoi ça n'a pas marché).
 

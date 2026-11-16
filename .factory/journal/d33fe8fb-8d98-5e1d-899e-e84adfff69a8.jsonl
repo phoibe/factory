@@ -16,3 +16,10 @@
 {"t":"2026-11-16T10:23:43.390Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #430","id":"toolu_01RMNywmxF5VoCKtz6gnmPgt"}
 {"t":"2026-11-16T10:24:46.518Z","kind":"skill","name":"receiving-code-review","id":"toolu_01MbQ9Kvikes9Vxb17z1hMDm"}
 {"t":"2026-11-16T10:25:26.480Z","kind":"test","cmd":"timeout 280 env CHROMIUM_PATH=… node --test e2e/release-fold.e2e.mjs e2e/release-card.e2e.mjs 2>&1 | grep -E \"^(not )?ok|# (pass|fail)\"","ok":true,"id":"toolu_01BTHwNJ56kS6aWWTnet2AV2"}
+{"t":"2026-11-16T10:25:38.221Z","kind":"agent","model":"opus","effort":"high","label":"Second review round #430","id":"toolu_01CC3nkVUmbwPQTtGUnb213S"}
+{"t":"2026-11-16T10:26:42.922Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 250 node --test e2e/release-fold.e2e.mjs 2>&1 | tail -25","ok":true,"id":"toolu_012Q22SwQFWgSDDZ5CkJAnfH"}
+{"t":"2026-11-16T10:27:32.872Z","kind":"skill","name":"impeccable","id":"toolu_01WawyJcSLRPsZ2AXupWucXC"}
+{"t":"2026-11-16T10:28:02.003Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: design review","id":"toolu_019iB9d55svtkWK9CpdaFF9h"}
+{"t":"2026-11-16T10:28:11.817Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01WVQ9BAnWmE5jBjADHq4tTq"}
+{"t":"2026-11-16T10:28:25.473Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\na=… carte repliée reste à peu près\"); b=… carte ouverte reste ouverte\")\ns=… carte repliée garde la même hauteur avec 1 ou 9 modifications', async () => {\n  const height = as","ok":true,"id":"toolu_01CiAZgJPnKzCDYkupCtUqmr"}
+{"t":"2026-11-16T10:28:31.364Z","kind":"test","cmd":"cp panel/app.mjs /tmp/att/app.bak && sed -i 's/  open: openReleases.has(key) || null,/  open: true,/' panel/app.mjs && timeout 200 env CHROMIUM_PATH=… node --test --test-name-pattern=\"même hauteur\" e2","ok":false,"id":"toolu_0157WjJih8cHFNrE1C5G1LoC"}
