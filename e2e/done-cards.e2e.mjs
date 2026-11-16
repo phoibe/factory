@@ -76,3 +76,14 @@ test('une carte « Mise en production » plus remplie que d\'habitude garde la m
     same(await heights(page));
   });
 });
+
+test('une carte « En ligne (vérification impossible) » sur deux lignes garde la même hauteur que les autres, sur téléphone aussi', async () => {
+  const unchecked = { 50: [botComment(note({ state: 'live', unchecked: true, version: '0.19.0', prs: changes, site: 'https://site.example' }))] };
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await withPanel({ config: approval, viewport, closed, comments: unchecked }, async ({ page, url }) => {
+      await page.goto(url);
+      await releaseCard(page).getByText('En ligne (vérification impossible)').waitFor();
+      same(await heights(page));
+    });
+  }
+});

@@ -112,10 +112,12 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .release-site, .release-fix { position: relative; z-index: 1; align-self: flex-start; display: inline-block; margin-top: 4px; padding: 10px 0; font-size: .8125rem; font-weight: 500; text-underline-offset: 3px; }
 .release-why { margin: 8px 0 0; color: var(--text); font-size: .8125rem; }
 .lane-empty { color: var(--muted); margin: 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); }
-/* Issue #435: every card of « Terminé » is at least as tall as a folded « Mise en production » (its padding, gaps, fold row
-   and link targets in px, its lines of text in rem), content at the top. While no list is open, all rows also take the
-   tallest card's height (a fuller card never stands out); an opened « N modifications » grows its own card only. */
-.lane-done { --done-card-height: calc(118px + 1.02rem * 1.35 + 1.5rem + 2 * .8125rem * 1.5); }
+/* Issue #435: every card of « Terminé » is at least as tall as a folded « Mise en production », content at the top. Its
+   height: padding + border 30px, 4 gaps 32px, fold row 32px (44px - 12px of negative margin), site link padding + margin
+   24px, the headline's 24px line (body 16px/1.5), and in rem the title line and the version and link lines. While no list
+   is open, all rows also take the tallest card's height (a fuller card never stands out); an opened « N modifications »
+   grows its own card only. */
+.lane-done { --done-card-height: calc(142px + 1.02rem * 1.35 + 2 * .8125rem * 1.5); }
 .lane-done .ticket { min-height: var(--done-card-height); align-self: start; }
 .lane-done .tickets:not(:has(.release-fold[open])) { grid-auto-rows: 1fr; }
 .lane-done .tickets:not(:has(.release-fold[open])) > .ticket { align-self: stretch; }
