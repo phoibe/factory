@@ -23,9 +23,17 @@ export function specFileName(n, title) {
   return s ? `${n}-${s}.md` : `${n}.md`;
 }
 
-// The latest comment carrying the spec marker, or null.
-export function latestSpec(comments) {
-  return [...(comments || [])].filter((c) => /^<!-- factory-spec -->\s*$/m.test(String(c.body || ''))).at(-1) || null;
+// The latest comment carrying the spec marker, or null. Given the project's owner, only a trusted author's spec counts:
+// on a public project anyone can post the marker (issue #339). Same rule as scripts/lib/trust.mjs, inlined because this
+// script is copied alone into each project.
+const trusted = (c, owner) => {
+  const login = String(c?.user?.login || '').toLowerCase();
+  return Boolean(login) && (login === String(owner).toLowerCase() || ['github-actions[bot]', 'claude[bot]'].includes(login)
+    || ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(c?.author_association));
+};
+export function latestSpec(comments, owner = null) {
+  return [...(comments || [])].filter((c) => /^<!-- factory-spec -->\s*$/m.test(String(c.body || '')))
+    .filter((c) => owner == null || trusted(c, owner)).at(-1) || null;
 }
 
 // The spec's content only: no markers, version heading, signatures, glossary sentence, nor the closing request for
@@ -122,7 +130,7 @@ function defaultGh(path) {
 
 export async function saveSpec({ dir, repo, n, gh = defaultGh }) {
   const issue = await gh(`repos/${repo}/issues/${n}`);
-  const spec = latestSpec(await gh(`repos/${repo}/issues/${n}/comments`));
+  const spec = latestSpec(await gh(`repos/${repo}/issues/${n}/comments`), repo.split('/')[0]);
   if (!spec) throw new Error(`la demande #${n} n'a aucune spec validée (commentaire ${SPEC_MARK})`);
   const existing = findSpecFile(dir, n);
   const keep = existing ? parseSpec(readFileSync(join(dir, DIR, existing), 'utf8')).modifiedBy : [];

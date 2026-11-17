@@ -23,6 +23,7 @@ test('installs default skills and agent instructions', () => {
     assert.ok(!readFileSync(join(dir, '.factory/stages', f), 'utf8').includes('{{'), f);
   }
   assert.ok(existsSync(join(dir, '.factory/scripts/shots.mjs')));
+  assert.ok(existsSync(join(dir, '.factory/scripts/frozen-clock.mjs')), 'the app clock of the captures (#422)');
 });
 
 test('re-sync removes only skills the factory installed and the owner disabled', () => {

@@ -40,7 +40,7 @@ export function branchFiles(git) {
 }
 
 const JOURNAL = /^\.factory\/journal\/[^/]+\.jsonl$/;
-const GATED = ['build', 'bugfix', 'foundation', 'audit'];
+export const GATED = ['build', 'bugfix', 'foundation', 'audit'];
 
 // What this branch still lacks, as lines « étape : comment la faire ». `stage` is the current run's stage:
 // a build, bugfix or foundation run must show every step; a catch-up run only the ones it is there for;
@@ -103,7 +103,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
     // Hooks are not loaded when the routine serves several projects: rebuild the journal from the transcript.
     const remote = (() => { try { return git(['remote', 'get-url', 'origin']).trim(); } catch { return ''; } })();
-    const repo = (/github\.com[/:]([^/]+\/[^/.\s]+)/.exec(remote) || [])[1];
+    const { repoFromRemote } = await import('./specs.mjs');
+    const repo = (() => { try { return repoFromRemote(remote); } catch { return null; } })();
     if (repo) {
       const { importTranscript } = await import('./transcript.mjs');
       const file = importTranscript(root, repo);

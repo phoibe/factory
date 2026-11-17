@@ -254,3 +254,39 @@ test("the comments and reviews the relay reads lose the factory notes of strange
     assert.equal(got[1].body.includes('<!-- factory-'), false);
   }
 });
+
+// Issue #372: refs/factory/live, the commit the site's version tag names, and the tag's short id resolved.
+test('the live ref is created, moved and removed; a missing one reads as null', async () => {
+  const refs = {};
+  const seen = [];
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname.replace('/repos/o/r', '');
+      const body = init.body ? JSON.parse(init.body) : null;
+      seen.push(`${init.method} ${path}`);
+      if (init.method === 'POST' && path === '/git/refs') { refs[body.ref.replace('refs/', '')] = body.sha; return answer(201, {}); }
+      const ref = path.replace(/^\/git\/refs?\//, '');
+      if (init.method === 'PATCH') { if (!refs[ref]) return answer(422); refs[ref] = body.sha; return answer(200, {}); }
+      if (init.method === 'DELETE') { if (!refs[ref]) return answer(422); delete refs[ref]; return answer(204); }
+      return refs[ref] ? answer(200, { object: { sha: refs[ref] } }) : answer(404);
+    },
+  });
+  assert.equal(await gh.getLiveRef(), null);
+  await gh.setLiveRef('aaa');
+  assert.equal(await gh.getLiveRef(), 'aaa');
+  assert.ok(seen.includes('POST /git/refs'));
+  await gh.setLiveRef('bbb');
+  assert.equal(await gh.getLiveRef(), 'bbb');
+  await gh.setLiveRef(null);
+  assert.equal(await gh.getLiveRef(), null);
+  await gh.setLiveRef(null); // already gone: no error
+  assert.ok(seen.includes('GET /git/ref/factory/live'));
+});
+
+test('a version tag naming a commit GitHub does not know resolves to null (404 or 422), other errors throw', async () => {
+  assert.deepEqual(await client([answer(200, { sha: 'full' })]).resolveCommit('abc1234'), { sha: 'full' });
+  assert.equal(await client([answer(422)]).resolveCommit('fffffff'), null);
+  assert.equal(await client([answer(404)]).resolveCommit('fffffff'), null);
+  await assert.rejects(client([answer(403)]).resolveCommit('abc1234'));
+});

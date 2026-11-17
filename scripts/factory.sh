@@ -93,14 +93,34 @@ install_into_existing() {
   elif ! grep -q '.factory/AGENT.md' "$work/repo/CLAUDE.md"; then
     { printf '\n'; gh api -H 'Accept: application/vnd.github.raw' "repos/$TEMPLATE/contents/CLAUDE.md" | sed '1d'; } >> "$work/repo/CLAUDE.md"
   fi
-  (
-    cd "$work/repo"
-    git add -A
-    if git diff --cached --quiet; then echo "  (la factory était déjà installée)"; exit 0; fi
-    git -c user.name="$OWNER_LOGIN" -c user.email="$OWNER_LOGIN@users.noreply.github.com" \
-      commit --quiet -m "chore: install the software factory"
-    git push --quiet origin "HEAD:$branch"
-  )
+  # Decide here, not inside a subshell: an `exit` there would only leave the subshell, and the
+  # « ajoutés » line below would still be printed after « déjà installée ».
+  git -C "$work/repo" add -A
+  if git -C "$work/repo" diff --cached --quiet; then
+    rm -rf "$work"
+    ok "La factory était déjà installée sur la branche $branch : rien à ajouter"
+    return
+  fi
+  git -C "$work/repo" -c user.name="$OWNER_LOGIN" -c user.email="$OWNER_LOGIN@users.noreply.github.com" \
+    commit --quiet -m "chore: install the software factory"
+  local err
+  if ! err=$(git -C "$work/repo" push --quiet origin "HEAD:$branch" 2>&1); then
+    rm -rf "$work"
+    case "$err" in
+      *GH006*|*[Pp]rotected\ branch*)
+        die "GitHub a refusé l'envoi : la branche $branch de $REPO est protégée. Rien n'a été modifié.
+   Sur https://github.com/$REPO/settings/branches (Settings → Branches), supprimez un instant la règle de $branch
+   (ou décochez « Require a pull request before merging »), relancez l'outil, puis remettez la règle." ;;
+      *GH013*|*[Rr]ule\ violation*|*[Rr]uleset*)
+        die "GitHub a refusé l'envoi : une règle protège la branche $branch de $REPO. Rien n'a été modifié.
+   Sur https://github.com/$REPO/settings/rules (Settings → Rules → Rulesets), mettez la règle de $branch
+   en pause (« Disabled ») un instant, relancez l'outil, puis réactivez-la (« Active »)." ;;
+      *)
+        die "L'envoi des fichiers de la factory vers GitHub a échoué. Rien n'a été modifié.
+   Vérifiez votre connexion internet et que vous avez bien le droit de modifier $REPO, puis relancez l'outil.
+   (Détail technique : $err)" ;;
+    esac
+  fi
   rm -rf "$work"
   ok "Fichiers de la factory ajoutés sur la branche $branch (votre code n'est pas modifié)"
 }

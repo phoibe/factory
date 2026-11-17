@@ -11,7 +11,7 @@ const MIN = 60_000;
 
 // The `if:` of the project's factory.yml (checked against the file itself by the rehearsal).
 export const FILTER = {
-  issueLabeled: [L.feature, L.bug, L.project, L.question, L.audit, L.stack],
+  issueLabeled: [L.feature, L.bug, L.project, L.question, L.audit, L.stack, L.kept, L.blocked],
   prLabeled: [L.checks],
   unlabeled: [L.running, L.building],
 };
@@ -253,6 +253,8 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
       openIssue: async (o) => { const n = openIssue('owner', o); await settle(); return n; },
       say: async (n, text) => { comment('owner', n, text); await settle(); },
       sayNoSettle: (n, text) => comment('owner', n, text),
+      // « Garder » on the board: the panel adds the kept label with the owner's token.
+      keep: async (n) => { addLabels('owner', n, [L.kept]); await settle(); },
     },
     // Time passes: the 5-minute safety tick runs at each step.
     wait: async (minutes) => {
@@ -262,6 +264,8 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
         await settle();
       }
     },
+    // An idea the agent files during a build or a general review: it waits for the owner's sorting.
+    agentIdea: async (o) => { const n = openIssue('agent', { ...o, body: `${AGENT_MARKER}\n${o.body || ''}` }); await settle(); return n; },
     settle,
     // Agents started from now on wait until `resume` (to write while an agent works).
     pauseAgents: () => { paused = true; },

@@ -21,7 +21,7 @@ function run(args, answers, extraEnv = {}) {
   // Async, so the tests run side by side: `script` alone waits about 2 s before it exits.
   return new Promise((done, fail) => {
     const child = execFile('script', ['-qec', `bash ${SCRIPT} ${args.join(' ')}`.trim(), '/dev/null'], { env, encoding: 'utf8', timeout: 60_000 }, (err, out, stderr) => {
-      if (err) return fail(Object.assign(err, { stdout: out, stderr }));
+      if (err) return fail(Object.assign(err, { stdout: out, stderr, remote }));
       done({ out, log: readFileSync(log, 'utf8'), remote, cfg: join(dir, 'cfg') });
     });
     child.stdin.end(answers.join('\n') + '\n');
@@ -43,6 +43,34 @@ test('adopter installs the factory files, secrets, sync and framing issue', asyn
   assert.match(log, /workflow run factory-sync.yml -R phoibe\/mon-appli/);
   assert.match(log, /issue create -R phoibe\/mon-appli --title Cadrage : mon-appli --label factory:project/);
   assert.match(readFileSync(join(cfg, 'factory/routines/phoibe_mon-appli'), 'utf8'), /FACTORY_ROUTINE_TOKEN=sk-secret/);
+});
+
+test('adopting a project that already has the factory says so once, never « ajoutés »', async () => {
+  const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_ALREADY_INSTALLED: '1' });
+  assert.equal(out.match(/déjà installée/g)?.length, 1, 'exactly one message about the install');
+  assert.doesNotMatch(out, /Fichiers de la factory ajoutés/);
+  assert.match(out, /C'est prêt/);
+});
+
+test('when GitHub refuses the push (protected branch), it explains in French what to do and stops', async () => {
+  const err = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_PUSH_REJECTED: '1' }).then(() => null, (e) => e);
+  assert.ok(err, 'the install must stop');
+  const out = err.stdout + err.stderr;
+  assert.match(out, /GitHub a refusé l'envoi : la branche main de phoibe\/mon-appli est protégée\. Rien n'a été modifié/);
+  assert.match(out, /Settings → Branches/);
+  assert.doesNotMatch(out, /GH006|remote: error/, 'no raw English git error');
+  assert.doesNotMatch(out, /Fichiers de la factory ajoutés|C'est prêt/);
+  // The remote never received a branch: GitHub is left untouched.
+  assert.equal(execFileSync('git', ['--git-dir', err.remote, 'branch', '--list'], { encoding: 'utf8' }), '', 'nothing reached GitHub');
+});
+
+test('when the push fails for another reason, it never blames branch protection', async () => {
+  const err = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_PUSH_REJECTED: 'other' }).then(() => null, (e) => e);
+  assert.ok(err, 'the install must stop');
+  const out = err.stdout + err.stderr;
+  assert.match(out, /L'envoi des fichiers de la factory vers GitHub a échoué\. Rien n'a été modifié/);
+  assert.match(out, /Détail technique : .*Permission/);
+  assert.doesNotMatch(out, /protégée|Settings → Branches|C'est prêt/);
 });
 
 test('nouveau creates the repository from the template', async () => {

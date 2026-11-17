@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=49">
 </head>
 <body>
   <header class="top">
@@ -24,7 +24,7 @@
   <main id="app">
     <section id="login" class="card narrow" hidden>
       <h1>Connectez le panneau à GitHub</h1>
-      <p><a class="button secondary" href="https://github.com/settings/personal-access-tokens/new?name=factory+panneau&amp;expires_in=365&amp;contents=write&amp;issues=write&amp;pull_requests=write" target="_blank" rel="noopener">Créer le jeton sur GitHub (tous les dépôts)<span aria-hidden="true"> ↗</span></a></p>
+      <p><a class="button secondary" href="https://github.com/settings/personal-access-tokens/new?name=factory+panneau&amp;expires_in=365&amp;contents=write&amp;issues=write&amp;pull_requests=write&amp;actions=write&amp;workflows=write" target="_blank" rel="noopener">Créer le jeton sur GitHub (tous les dépôts)<span aria-hidden="true"> ↗</span></a></p>
       <form id="login-form">
         <label for="token">Jeton</label>
         <input id="token" type="password" autocomplete="off" placeholder="github_pat_…" required>
@@ -42,7 +42,7 @@
       <div class="project-head">
         <div>
           <h1 class="project-title"><span id="project-name"></span><button id="project-switch" type="button" class="project-switch" aria-haspopup="dialog"><span id="project-switch-name"></span><span class="switch-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><span id="switch-dot" class="pdot" hidden></span></span></button></h1>
-          <p id="project-sub" class="muted"></p>
+          <p class="project-sub-line muted"><span id="project-sub"></span><span id="prod-gap-sep" class="sep" aria-hidden="true" hidden>·</span><button id="prod-gap" type="button" class="prod-gap" aria-haspopup="dialog" hidden></button></p>
           <p class="site-line" data-menu><a id="site" rel="noopener"></a><span class="sep" aria-hidden="true">·</span><a id="issues-link" class="quiet-link" target="_blank" rel="noopener">Voir les demandes sur GitHub</a><span id="runs-sep" class="sep" aria-hidden="true" hidden>·</span><a id="runs" class="quiet-link" href="https://claude.ai/code/routines" target="_blank" rel="noopener" hidden></a></p>
         </div>
         <div class="actions">
@@ -63,6 +63,17 @@
       <p id="chat-badge-announce" class="visually-hidden" role="status"></p>
       <div id="board" role="tabpanel" aria-labelledby="tab-board"></div>
       <div id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+        <section id="chat-setup" class="card narrow chat-setup" aria-labelledby="chat-setup-title" hidden>
+          <h2 id="chat-setup-title">Un jeton de lecture pour discuter</h2>
+          <p>La discussion utilise désormais un jeton qui ne peut que lire vos projets, pour que votre jeton complet ne quitte jamais votre navigateur.</p>
+          <p><a id="read-token-link" class="button secondary" target="_blank" rel="noopener">Créer le jeton de lecture sur GitHub <span class="nowrap">(tous les dépôts)<span aria-hidden="true"> ↗</span></span></a></p>
+          <form id="read-token-form">
+            <label for="read-token">Jeton de lecture</label>
+            <input id="read-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" aria-describedby="read-token-error" required>
+            <p id="read-token-error" class="error" role="alert"></p>
+            <button id="read-token-save" type="submit">Valider le jeton</button>
+          </form>
+        </section>
         <aside class="chat-list" aria-label="Conversations">
           <button id="chat-new" type="button">Nouvelle conversation</button>
           <ul id="chat-items"></ul>
@@ -136,7 +147,15 @@
       <button id="release-confirm" type="button" class="ink">Confirmer</button>
     </div>
   </dialog>
+  <dialog id="gap-dialog" aria-labelledby="gap-title">
+    <h2 id="gap-title">Pas encore en ligne</h2>
+    <p id="gap-why" class="muted"></p>
+    <ul id="gap-list" class="release-list gap-list"></ul>
+    <div class="dialog-actions">
+      <button id="gap-close" type="button">Fermer</button>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=52"></script>
+  <script type="module" src="app.mjs?v=68"></script>
 </body>
 </html>

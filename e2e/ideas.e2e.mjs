@@ -26,12 +26,12 @@ test('un clic sur « Garder » fait disparaître la carte en douceur, et les sui
   });
 });
 
-test('même chose avec « Jeter »', async () => {
+test('même chose avec « Jeter », une fois ses 5 s d\'annulation passées (issue #402)', async () => {
   await withPanel({ issues: IDEAS(), writeDelay: SLOW }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.waitForSelector('.lane-ideas .ticket.idea');
     await page.getByRole('button', { name: /Jeter l'idée #6/ }).click();
-    await page.waitForFunction(() => !document.querySelector('[data-idea="6"]'), null, { timeout: 1500 });
+    await page.waitForFunction(() => !document.querySelector('[data-idea="6"]'), null, { timeout: 6500 });
     assert.deepEqual(await shown(page), ['Importer depuis un site', 'Mode sombre']);
     assert.deepEqual(writes.find((w) => w.path.endsWith('/issues/6'))?.body, { state: 'closed', state_reason: 'not_planned' });
   });
@@ -42,7 +42,7 @@ test('le nombre à côté de « Idées à trier » baisse au clic', async () => 
     await page.goto(url);
     await page.waitForSelector('.lane-ideas .ticket.idea');
     assert.equal(await page.locator('.lane-ideas .count').textContent(), '3');
-    await page.getByRole('button', { name: /Jeter l'idée #7/ }).click();
+    await page.getByRole('button', { name: /Garder l'idée #7/ }).click();
     assert.equal(await page.locator('.lane-ideas .count').textContent(), '2');
   });
 });
@@ -53,7 +53,7 @@ test('je peux trier plusieurs cartes à la suite sans attendre', async () => {
     await page.waitForSelector('.lane-ideas .ticket.idea');
     const t0 = Date.now();
     await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
-    await page.getByRole('button', { name: /Jeter l'idée #6/ }).click();
+    await page.getByRole('button', { name: /Garder l'idée #6/ }).click();
     await page.waitForFunction(() => !document.querySelector('[data-idea="5"]') && !document.querySelector('[data-idea="6"]'));
     assert.ok(Date.now() - t0 < SLOW, 'no waiting for GitHub');
     assert.deepEqual(await shown(page), ['Mode sombre']);
@@ -67,7 +67,7 @@ test('après le tri de la dernière idée, la section disparaît', async () => {
     await page.goto(url);
     await page.waitForSelector('.lane-ideas .ticket.idea');
     await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
-    await page.waitForFunction(() => !document.querySelector('.lane-ideas'), null, { timeout: 1000 });
+    await page.waitForFunction(() => !document.querySelector('.lane-ideas'), null, { timeout: 6500 });
   });
 });
 
@@ -133,5 +133,24 @@ test('si GitHub refuse la dernière idée, la section revient avec son nombre', 
     await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
     await page.waitForSelector('[data-idea="5"] .idea-error');
     assert.equal(await page.locator('.lane-ideas .count').textContent(), '1');
+  });
+});
+
+test('« Garder » réveille la factory quand elle prend les demandes seule, pour qu’une place libre serve aussitôt (issue #406)', async () => {
+  await withPanel({ issues: IDEAS(), config: { autoPick: true } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
+    const tick = () => writes.find((w) => w.method === 'POST' && w.path.endsWith('/actions/workflows/factory.yml/dispatches'));
+    for (let i = 0; i < 30 && !tick(); i++) await page.waitForTimeout(100);
+    assert.deepEqual(tick()?.body?.inputs, { payload: '{"tick":true}' });
+  });
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Garder l'idée #5/ }).click();
+    for (let i = 0; i < 20 && !writes.some((w) => w.path.endsWith('/issues/5/labels')); i++) await page.waitForTimeout(100);
+    await page.waitForTimeout(300);
+    assert.ok(!writes.some((w) => w.path.includes('/dispatches')), 'without automatic pick the idea waits for a message: nothing to wake');
   });
 });

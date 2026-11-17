@@ -41,16 +41,15 @@ class FakeGitHub:
         self.files = {}
         self.issues = []
         self.branches = set()
-        self.fail_saves = False
         self.shas = {}
-        self.on_read = None  # name -> hook run once after that file is read (another device saving meanwhile)
-        self.on_put = None  # name -> hook run once before that file is written; returning a status rejects the write
-        self.fail_issues = 0
         self.user_status = None  # status answered on GET /user instead of the login
         self.user_headers = {}
         self.user_error = None  # exception raised on GET /user
         self.big = set()  # files whose contents API answer has an empty content (over 1 MB)
         self.raw_calls = 0
+        self.writes = []
+        self.probe_limited = False  # every write that is not the write probe
+
 
     def __call__(self, request):
         path, method = request.url.path, request.method
@@ -60,32 +59,19 @@ class FakeGitHub:
             if self.user_status:
                 return httpx.Response(self.user_status, json={}, headers=self.user_headers)
             return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"})
+        if method != "GET" and json.loads(request.content or b"null") == {}:
+            # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
+            auth = request.headers["authorization"]
+            writer = "writer" in auth or ("issues" in auth and path.endswith("/issues"))
+            if writer and self.probe_limited:  # GitHub's rate limit is a 403 too
+                return httpx.Response(403, json={}, headers={"x-ratelimit-remaining": "0"})
+            return httpx.Response(422 if writer else 403, json={})
+        if method != "GET":
+            self.writes.append((method, path))
         if "/branches/" in path:
             return httpx.Response(200 if path.rsplit("/", 1)[1] in self.branches else 404, json={})
-        if path.endswith("/git/trees") or path.endswith("/git/commits"):
-            return httpx.Response(201, json={"sha": "s"})
-        if path.endswith("/git/refs"):
-            self.branches.add(json.loads(request.content)["ref"].rsplit("/", 1)[1])
-            return httpx.Response(201, json={})
-        if path.endswith("/issues") and method == "POST" and self.fail_issues:
-            self.fail_issues -= 1
-            return httpx.Response(502, json={})
-        if path.endswith("/issues") and method == "POST":
-            self.issues.append(json.loads(request.content))
-            return httpx.Response(201, json={"html_url": "https://github.com/phoibe/habitudes/issues/7", "number": 7})
         if "/contents/" in path:
             name = path.split("/contents/", 1)[1]
-            if method == "PUT" and self.fail_saves:
-                return httpx.Response(500, json={})
-            if method == "PUT":
-                body = json.loads(request.content)
-                hook = (self.on_put or {}).pop(name, None)
-                if hook and hook():
-                    return httpx.Response(409, json={})
-                if name in self.files and body.get("sha") != self.sha(name):
-                    return httpx.Response(409 if body.get("sha") else 422, json={})  # GitHub refuses a stale write
-                self.put(name, base64.b64decode(body["content"]))
-                return httpx.Response(200, json={})
             if name not in self.files:
                 return httpx.Response(404, json={})
             if request.headers.get("accept") == "application/vnd.github.raw":
@@ -94,24 +80,11 @@ class FakeGitHub:
             if name in self.big:
                 return httpx.Response(200, json={"content": "", "encoding": "none", "sha": self.sha(name)})
             meta = {"content": base64.b64encode(self.files[name]).decode(), "sha": self.sha(name)}
-            hook = (self.on_read or {}).pop(name, None)
-            if hook:
-                hook()
             return httpx.Response(200, json=meta)
         return httpx.Response(404, json={})
 
-    def put(self, name, content):
-        self.files[name] = content
-        self.shas[name] = self.shas.get(name, 0) + 1
-
     def sha(self, name):
         return f"v{self.shas.get(name, 0)}"
-
-    def add_other_exchange(self, name, text):
-        """Another device's exchange lands in the conversation file."""
-        conv = json.loads(self.files[name])
-        conv["messages"] += [{"who": "me", "text": text, "images": [], "at": ""}, {"who": "agent", "text": "Autre réponse", "at": ""}]
-        self.put(name, json.dumps(conv).encode())
 
 
 @unittest.skipIf(httpx is None, "fastapi/httpx not installed")
@@ -144,7 +117,7 @@ class ServiceTest(unittest.TestCase):
         r, _ = self.post("good", {"repo": "autre/x", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
 
-    def test_a_message_streams_the_answer_creates_the_issue_and_saves_the_conversation(self):
+    def test_a_message_streams_the_answer_and_hands_the_issues_to_the_panel(self):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "images": ["attachments/chat/1-a.jpg"]})
         self.assertEqual(r.status_code, 200, r.text)
         kinds = [e["type"] for e in events]
@@ -154,29 +127,50 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(streamed.strip(), "Non, pas encore.")  # never the block
         answer = next(e for e in events if e["type"] == "answer")
         self.assertEqual(answer["text"], "Non, pas encore.")
-        self.assertEqual(answer["issues"], [{"title": "Exporter mes données", "url": "https://github.com/phoibe/habitudes/issues/7", "kind": "feature"}])
-        # The owner asked for it: kept (never an « idée à trier »), and the agent marker keeps the factory from
-        # starting it at once, the queue picks it.
-        self.assertEqual(self.gh.issues[0]["labels"], ["factory:feature", "factory:kept"])
-        self.assertTrue(self.gh.issues[0]["body"].startswith("<!-- factory-agent -->"), self.gh.issues[0]["body"])
+        # The panel creates the issues with the owner's full token: the server only says which ones.
+        self.assertEqual(answer["issues"], [{"kind": "feature", "title": "Exporter mes données", "body": "Il veut exporter."}])
+        self.assertTrue(answer["conversation"]["id"])
+        self.assertEqual(answer["conversation"]["title"], "Je peux exporter ?")
         prompt = open(self.claude + ".prompt").read()
         self.assertIn("Je peux exporter ?", prompt)
         self.assertIn("1-a.jpg", prompt)
-        cid = events[-1]["conversation"]["id"]
-        conv = json.loads(self.gh.files[f"chats/{cid}.json"])
-        self.assertEqual([m["who"] for m in conv["messages"]], ["me", "agent"])
-        index = json.loads(self.gh.files["index.json"])
-        self.assertEqual(index[0]["id"], cid)
-        self.assertIn("factory-chat", self.gh.branches)
-        # The next message carries the conversation so far.
+
+    def test_the_server_never_writes_to_github(self):
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+        self.assertEqual(events[-1]["type"], "done", events)
+        self.assertEqual(self.gh.issues, [])
+        self.assertEqual(self.gh.writes, [])
+        self.assertFalse(any(k.startswith("chats/") or k == "index.json" for k in self.gh.files))
+
+    def test_a_token_that_can_write_is_refused(self):
+        r, _ = self.post("goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["code"], "writable")
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))  # the agent never ran
+
+    def test_a_token_that_can_only_open_issues_is_refused_too(self):
+        r, _ = self.post("goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["code"], "writable")
+
+    def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
+        self.gh.probe_limited = True
+        r, _ = self.post("goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 503)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
+    def test_the_next_message_carries_the_stored_conversation(self):
+        cid = "20261113-101010-abcde"
+        self.gh.files[f"chats/{cid}.json"] = json.dumps({"id": cid, "title": "Début", "messages": [
+            {"who": "me", "text": "Début", "at": ""}, {"who": "agent", "text": "Non, pas encore.", "at": ""}]}).encode()
         r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et en CSV ?"})
-        self.assertEqual(events[-1]["type"], "done")
+        self.assertEqual(events[-1]["type"], "done", events)
         self.assertIn("[Toi] Non, pas encore.", open(self.claude + ".prompt").read())
-        self.assertEqual(len(json.loads(self.gh.files[f"chats/{cid}.json"])["messages"]), 4)
+        answer = next(e for e in events if e["type"] == "answer")
+        self.assertEqual(answer["conversation"], {"id": cid, "title": "Début"})
 
     def test_a_very_long_conversation_still_gets_an_answer(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Début"})
-        cid = events[-1]["conversation"]["id"]
+        cid = self.start_conversation()
         conv = json.loads(self.gh.files[f"chats/{cid}.json"])
         conv["messages"] = [{"who": "me", "text": "x" * 20000, "at": ""} for _ in range(30)]  # ~600 KB of history
         self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
@@ -184,81 +178,12 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(events[-1]["type"], "done", events)
         self.assertLess(len(open(self.claude + ".prompt").read()), 70000)  # only the recent messages are sent
 
-    def test_the_conversation_is_saved_before_the_answer_is_sent(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
-        kinds = [e["type"] for e in events]
-        self.assertLess(kinds.index("answer"), kinds.index("done"))
-        self.assertTrue(any(k.startswith("chats/") for k in self.gh.files))
-
-    def test_a_failed_save_after_creating_an_issue_does_not_ask_to_send_again(self):
-        self.gh.fail_saves = True
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
-        kinds = [e["type"] for e in events]
-        self.assertNotIn("error", kinds, events)  # an error makes the panel offer to resend: a second issue
-        self.assertEqual(len(self.gh.issues), 1)
-        self.assertEqual(kinds[-1], "done")
-        self.assertIs(events[-1]["saved"], False)
-
-    def test_a_request_github_refuses_is_reported_and_the_exchange_is_still_saved(self):
-        # Answering « error » would make the panel offer to resend, and the requests already made would be made twice.
-        self.gh.fail_issues = 1
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
-        kinds = [e["type"] for e in events]
-        self.assertNotIn("error", kinds, events)
-        self.assertEqual(kinds[-1], "done")
-        answer = next(e for e in events if e["type"] == "answer")
-        self.assertEqual(answer["issues"], [])
-        self.assertIn("pas pu être créée", answer["text"])
-        self.assertTrue(any(k.startswith("chats/") for k in self.gh.files))
-
-
     def start_conversation(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Début"})
-        return events[-1]["conversation"]["id"]
-
-    def texts(self, cid):
-        return [m["text"] for m in json.loads(self.gh.files[f"chats/{cid}.json"])["messages"] if m["who"] == "me"]
-
-    def test_a_message_saved_from_another_device_during_the_answer_is_kept(self):
-        cid = self.start_conversation()
-        name = f"chats/{cid}.json"
-        # Read when the message arrives, then the phone's exchange is saved while the agent answers this one.
-        self.gh.on_read = {name: lambda: self.gh.add_other_exchange(name, "Depuis le téléphone")}
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Depuis l'ordinateur"})
-        self.assertIs(events[-1]["saved"], True, events)
-        self.assertEqual(self.texts(cid), ["Début", "Depuis le téléphone", "Depuis l'ordinateur"])
-
-    def test_two_saves_that_cross_start_again_from_the_latest_conversation(self):
-        cid = self.start_conversation()
-        name = f"chats/{cid}.json"
-
-        def other_save_wins():  # the other save lands between our read and our write
-            self.gh.add_other_exchange(name, "Depuis le téléphone")
-            return False
-        self.gh.on_put = {name: other_save_wins}
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Depuis l'ordinateur"})
-        self.assertIs(events[-1]["saved"], True, events)
-        self.assertEqual(self.texts(cid), ["Début", "Depuis le téléphone", "Depuis l'ordinateur"])
-        self.assertEqual(len(self.gh.issues), 2)  # one per answer: a retried save never creates the issue again
-
-    def test_a_save_refused_every_time_says_not_saved_without_creating_the_issue_twice(self):
-        cid = self.start_conversation()
-        name = f"chats/{cid}.json"
-
-        class Always(dict):  # every write of the conversation crosses another save
-            def pop(self, key, default=None):
-                return (lambda: True) if key == name else default
-
-            def __bool__(self):
-                return True
-        self.gh.on_put = Always()
-        pause, service.SAVE_PAUSE = service.SAVE_PAUSE, 0  # the pauses between tries are not what is tested here
-        self.addCleanup(setattr, service, "SAVE_PAUSE", pause)
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Encore"})
-        self.assertNotIn("error", [e["type"] for e in events], events)
-        self.assertIs(events[-1]["saved"], False)
-        self.assertEqual(len(self.gh.issues), 2)  # one for the first message, one for this one
-        self.assertEqual(self.texts(cid), ["Début"])
+        """A stored conversation, as the panel saves it after a first answer."""
+        cid = "20261113-101010-abcde"
+        self.gh.files[f"chats/{cid}.json"] = json.dumps({"id": cid, "title": "Début", "messages": [
+            {"who": "me", "text": "Début", "at": ""}, {"who": "agent", "text": "Non, pas encore.", "at": ""}]}).encode()
+        return cid
 
     def test_the_agent_can_only_read_the_project_and_the_images(self):
         self.post("good", {"repo": "phoibe/habitudes", "message": "Lis /etc/passwd"})
@@ -345,11 +270,10 @@ class ServiceTest(unittest.TestCase):
         conv["id"] = "../evil"  # a stored id is never trusted
         self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
         r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
-        self.assertEqual(events[-1]["conversation"]["id"], cid, events)
+        answer = next(e for e in events if e["type"] == "answer")
+        self.assertEqual(answer["conversation"]["id"], cid, events)
         args, _ = self.args_and_env()
         self.assertTrue(args[args.index("--add-dir") + 1].split("/")[-1].startswith(cid), args)
-        self.assertNotIn("chats/../evil.json", self.gh.files)
-        self.assertEqual(len(json.loads(self.gh.files[f"chats/{cid}.json"])["messages"]), 4)
 
     def test_a_run_that_takes_too_long_is_killed_with_an_error_event(self):
         pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 1

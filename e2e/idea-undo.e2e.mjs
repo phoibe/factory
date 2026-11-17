@@ -1,0 +1,120 @@
+// « Jeter » on an idea waits 5 s and can be cancelled, like « go » (issue #402).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { withPanel, issue } from './fixture.mjs';
+
+const idea = (n, title) => issue(n, title, ['factory:feature'], { body: '<!-- factory-agent -->\nIdée' });
+const IDEAS = () => [idea(5, 'Importer depuis un site'), idea(6, 'Exporter en PDF')];
+const closes = (writes, n) => writes.filter((w) => w.path.endsWith(`/issues/${n}`) && w.method === 'PATCH');
+const toastSays = (page, text) => page.waitForFunction((t) => document.querySelector('#toast.show')?.textContent === t, text, { timeout: 2000 });
+
+test('quand je touche « Jeter », le bouton affiche « Annuler (5s) » et décompte, « Garder » est grisé et le message « L\'idée part dans 5s » apparaît', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    const drop = page.locator('[data-idea="5"] [data-key="drop-5"]');
+    assert.equal((await drop.textContent()).trim(), 'Annuler (5s)');
+    assert.equal(await drop.getAttribute('aria-label'), "Annuler « Jeter » pour l'idée #5 Importer depuis un site");
+    assert.equal(await page.locator('[data-idea="5"] [data-key="keep-5"]').isDisabled(), true);
+    await toastSays(page, "L'idée part dans 5s.");
+    await page.waitForFunction(() => document.querySelector('[data-key="drop-5"]')?.textContent.trim() === 'Annuler (4s)', null, { timeout: 2000 });
+    assert.equal(await page.locator('[data-idea="5"]').count(), 1, 'the card stays during the countdown');
+    assert.deepEqual(closes(writes, 5), []);
+    // The other card is untouched.
+    assert.equal(await page.locator('[data-key="keep-6"]').isDisabled(), false);
+  });
+});
+
+test('quand je touche « Annuler » avant la fin, la carte reste, le message « Jeter annulé » apparaît et l\'idée n\'est pas fermée', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.getByRole('button', { name: /Annuler « Jeter » pour l'idée #5/ }).click();
+    await toastSays(page, '« Jeter » annulé.');
+    await page.waitForTimeout(5500);
+    assert.deepEqual(closes(writes, 5), []);
+    assert.equal(await page.locator('[data-idea="5"]').count(), 1);
+    assert.equal((await page.locator('[data-key="drop-5"]').textContent()).trim(), 'Jeter');
+    assert.equal(await page.locator('[data-key="keep-5"]').isDisabled(), false);
+    assert.equal(await page.locator('.lane-ideas .count').textContent(), '2');
+  });
+});
+
+test('quand je touche « Jeter » et attends 5 s, la carte disparaît et l\'idée est fermée', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.waitForTimeout(3000);
+    assert.equal(await page.locator('[data-idea="5"]').count(), 1);
+    await page.waitForFunction(() => !document.querySelector('[data-idea="5"]'), null, { timeout: 4000 });
+    for (let i = 0; i < 20 && !closes(writes, 5).length; i++) await page.waitForTimeout(100);
+    assert.deepEqual(closes(writes, 5).map((w) => w.body), [{ state: 'closed', state_reason: 'not_planned' }]);
+  });
+});
+
+test('quand je touche « Garder » sur une autre idée, elle part tout de suite, comme avant', async () => {
+  await withPanel({ issues: IDEAS(), config: { autoPick: true } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.getByRole('button', { name: /Garder l'idée #6/ }).click();
+    await page.waitForFunction(() => !document.querySelector('[data-idea="6"]'), null, { timeout: 1500 });
+    assert.equal(await page.locator('[data-idea="5"]').count(), 1, 'the countdown on the other card goes on');
+    assert.match(await page.locator('[data-key="drop-5"]').textContent(), /Annuler \(\ds\)/);
+    for (let i = 0; i < 20 && !writes.some((w) => w.path.endsWith('/issues/6/labels')); i++) await page.waitForTimeout(100);
+    assert.ok(writes.some((w) => w.path.endsWith('/issues/6/labels')));
+  });
+});
+
+test('pendant le décompte, « Garder » est grisé à l\'écran, pas seulement inactif', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    const color = (n) => page.locator(`[data-key="keep-${n}"]`).evaluate((b) => getComputedStyle(b).color);
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    assert.notEqual(await color(5), await color(6), 'the greyed « Garder » does not look like an active one');
+  });
+});
+
+test('si l\'idée est gardée ailleurs pendant le décompte, elle n\'est pas fermée', async () => {
+  const ideas = IDEAS();
+  await withPanel({ issues: ideas }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.waitForTimeout(4000); // the next read of GitHub falls inside the countdown
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    ideas[0].labels.push({ name: 'factory:kept' }); // kept from the phone, or by the factory
+    await page.waitForFunction(() => !document.querySelector('[data-idea="5"]'), null, { timeout: 8000 });
+    await page.waitForTimeout(5000);
+    assert.deepEqual(closes(writes, 5), []);
+  });
+});
+
+test('après un refus de GitHub, retoucher « Jeter » enlève la ligne rouge tout de suite', async () => {
+  await withPanel({ issues: IDEAS(), failing: new Set(['/repos/o/r/issues/5']) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.waitForSelector('[data-idea="5"] .idea-error', { timeout: 8000 });
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    assert.equal(await page.locator('[data-idea="5"] .idea-error').count(), 0);
+    assert.match(await page.locator('[data-key="drop-5"]').textContent(), /Annuler \(5s\)/);
+  });
+});
+
+test('se déconnecter pendant le décompte l\'annule, sans erreur ni idée fermée', async () => {
+  await withPanel({ issues: IDEAS() }, async ({ page, writes, url }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(url);
+    await page.waitForSelector('.lane-ideas .ticket.idea');
+    await page.getByRole('button', { name: /Jeter l'idée #5/ }).click();
+    await page.locator('#logout').click();
+    await page.waitForTimeout(5500);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(closes(writes, 5), []);
+  });
+});

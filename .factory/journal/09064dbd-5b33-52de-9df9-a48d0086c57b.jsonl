@@ -1,0 +1,3 @@
+{"t":"2026-11-13T13:59:27.248Z","kind":"run","stage":"update-branch","issue":370,"pr":373,"repo":"phoibe/factory"}
+{"t":"2026-11-13T14:00:25.160Z","kind":"test","cmd":"npm run typecheck 2>&1 | tail -3 && npm run lint 2>&1 | tail -3 && npm test 2>&1 | grep -E '^# (pass|fail)|not ok' | head && npm run build 2>&1 | tail -3","ok":true,"id":"toolu_0153rYQQyVruWry97mgdws72"}
+{"t":"2026-11-13T14:02:53.831Z","kind":"test","cmd":"npm run typecheck 2>&1 | grep -iv notice | tail -5; echo \"rc=$?\"; ls node_modules/playwright >/dev/null 2>&1 || npm ci >/dev/null 2>&1; CHROMIUM_PATH=… timeout 300 npm run test:e2e 2>&1 | grep -E '^# ","ok":true,"id":"toolu_016gaRtttSjnv8oeBzRd5Y4D"}

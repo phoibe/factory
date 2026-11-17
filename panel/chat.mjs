@@ -213,3 +213,75 @@ export function serverMessages(conv) {
 
 export const serverList = (index) => [...(index || [])]
   .sort((a, b) => (b.state === 'open') - (a.state === 'open') || Date.parse(b.updated) - Date.parse(a.updated));
+
+// ---- Read-only token (issue #395) -----------------------------------------------------------------
+// The chat server only ever receives a second token that can read the projects, never change them. The panel
+// does the writes (conversation, issues) with the full token, which never leaves the browser.
+export const READ_TOKEN_KEY = 'factory.chatToken';
+export const READ_TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=factory+discussion+lecture&description=Lecture+seule+pour+la+discussion+avec+l%27agent&expires_in=365&contents=read';
+export const WRITABLE_TOKEN = 'Ce jeton peut modifier vos projets : créez-en un en lecture seule avec le bouton ci-dessus.';
+// Writes with an empty body: GitHub refuses a read-only token (403) before reading the body; a token that may write
+// gets a 422 (invalid body). Nothing is ever written. Same probes as the server's (files, requests, pull requests).
+export const WRITE_PROBES = [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']];
+export const probeSaysWritable = (status) => ![401, 403, 404, 410].includes(status);
+// GitHub is unavailable or limiting us: its rate limit is a 403 too, which must never read as « cannot write ».
+export const githubBusy = (status, headers) => status >= 500 || status === 429
+  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after')));
+
+// The requests proposed in one answer, as the panel will create them with the full token: never more than the
+// server's limit, never anything but a bug or a feature with a title (the chat server is not trusted with writes).
+const MAX_ISSUES = 3;
+export const wantedIssues = (list) => (Array.isArray(list) ? list : [])
+  .filter((i) => i && typeof i.title === 'string' && i.title.trim())
+  .slice(0, MAX_ISSUES)
+  .map((i) => ({ kind: i.kind === 'bug' ? 'bug' : 'feature', title: i.title.trim().slice(0, 200), body: String(i.body ?? '').slice(0, 60000) }));
+
+// Why a pasted read token is refused, or null when it is fine.
+export function readTokenProblem({ same, status, login, owner, readable, writable }) {
+  if (same || writable) return WRITABLE_TOKEN;
+  if (status === 401) return 'GitHub ne reconnaît pas ce jeton : vérifiez que vous l\'avez collé en entier.';
+  if (String(login || '').toLowerCase() !== String(owner || '').toLowerCase()) return 'Ce jeton appartient à un autre compte GitHub que celui du panneau.';
+  if (!readable) return 'Ce jeton ne peut pas lire ce projet : sur GitHub, choisissez « All repositories » avant de le créer.';
+  return null;
+}
+
+// The stored conversation, in the format the chat server used to write (server/chat/core.py).
+export const newConversation = (id, firstText, now = '') => ({ id, title: titleFrom(firstText || 'Image envoyée'), state: 'open', created: now, updated: now, messages: [] });
+
+export function addExchange(conv, mine, answer, now = '', issues = []) {
+  conv.messages.push({ who: 'me', text: mine.text || '', images: [...(mine.images || [])], at: now });
+  const agent = { who: 'agent', text: answer, at: now };
+  if (issues.length) agent.issues = issues.map((i) => ({ title: i.title, url: i.url, kind: i.kind }));
+  conv.messages.push(agent);
+  conv.updated = now;
+  conv.state = 'open';
+  return conv;
+}
+
+export function upsertIndex(index, conv) {
+  const entry = { id: conv.id, title: conv.title, updated: conv.updated, state: conv.state || 'open' };
+  return [entry, ...(index || []).filter((e) => e.id !== conv.id)].sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || '')));
+}
+
+// An issue the agent proposed. A feature the owner asked for is kept (never an « idée à trier »), and the agent
+// marker leaves it to the queue instead of starting it at once; a bug starts right away.
+export function issueRequest({ kind, title, body }) {
+  const text = `${body}\n\n_Demandé depuis le chat du tableau de suivi._`;
+  return kind === 'bug'
+    ? { title, labels: ['factory:bug'], body: text }
+    : { title, labels: ['factory:feature', 'factory:kept'], body: `${AGENT_MARKER}\n${text}` };
+}
+
+export const notCreatedNote = (n) => (!n ? '' : n === 1
+  ? '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._'
+  : `\n\n_${n} demandes n'ont pas pu être créées sur GitHub : redemandez dans un moment._`);
+
+// The conversation id that names `chats/<id>.json`, written with the full token: never taken unchecked from the chat
+// server (a path there would aim the owner's full token at another GitHub endpoint). Same rule as the server's.
+const CID = /^[A-Za-z0-9_-]{1,64}$/;
+export function conversationId(fromServer, current, now = new Date()) {
+  if (CID.test(String(current ?? ''))) return current;
+  if (CID.test(String(fromServer ?? ''))) return fromServer;
+  const at = now.toISOString().replace(/\D/g, '');
+  return `${at.slice(0, 8)}-${at.slice(8, 14)}-${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`;
+}

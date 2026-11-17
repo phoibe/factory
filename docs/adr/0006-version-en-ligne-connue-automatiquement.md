@@ -1,0 +1,3 @@
+# Savoir automatiquement quelle version est en ligne
+
+Pour afficher l'écart de production, la factory ne considère une version comme en ligne que si l'hébergeur signale la fin réussie de sa publication, ou, quand il ne prévient pas (hébergeur muet, mise en ligne externe), si l'étiquette de version publiée par le site la nomme. Le propriétaire a refusé un bouton « C'est en ligne » à déclarer soi-même (il veut que ce soit automatique), et une simple vérification que le site répond ne suffit pas : après une publication ratée, l'ancienne version répond aussi. Faute de preuve, le tableau affiche « version inconnue » plutôt que de supposer.

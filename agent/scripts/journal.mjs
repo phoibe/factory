@@ -45,12 +45,14 @@ export function runFromPrompt(prompt = '') {
   return null;
 }
 
-// A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on. No model
-// means it inherited the session's.
+// A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on, and whether
+// it worked in its own copy. No model means it inherited the session's.
 export function agentEntry(input) {
   if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
   const i = input.tool_input || {};
-  return { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+  const entry = { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+  // Issue #417: a task of a large plan built at the same time as others works in its own copy (git worktree).
+  return i.isolation === 'worktree' ? { ...entry, copy: true } : entry;
 }
 
 function responseFailed(res) {
@@ -74,7 +76,9 @@ export function entryFor(input, now = new Date()) {
     const name = i.skill || i.name || i.command;
     return name ? { t, kind: 'skill', name: String(name) } : null;
   }
-  if (ev === 'PostToolUse') {
+  // A sub-agent is stamped at launch (PreToolUse): a foreground one only reaches PostToolUse when it has finished,
+  // which would hide that several ran at the same time. PostToolUse stays as a fallback; the id keeps the first.
+  if (ev === 'PreToolUse' || ev === 'PostToolUse') {
     const agent = agentEntry(input);
     if (agent) return { t, ...agent };
   }
@@ -105,6 +109,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       try { seen = readFileSync(file, 'utf8'); } catch { /* new file */ }
       const dup = id ? seen.includes(`"id":${JSON.stringify(id)}`) : entry.kind === 'run' && seen.split('\n').some((l) => l.includes('"kind":"run"') && l.includes(`"stage":${JSON.stringify(entry.stage)}`));
       if (!dup) appendFileSync(file, JSON.stringify(id ? { ...entry, id } : entry) + '\n');
+    }
+    // The agent's sign of life on the card, so the factory does not take a long run for a dead one (alive.mjs).
+    if (input.hook_event_name !== 'UserPromptSubmit') {
+      const session = String(input.session_id || 'session').replace(/[^\w-]/g, '').slice(0, 36);
+      const root = sessionRoot(session, process.env.CLAUDE_PROJECT_DIR || input.cwd || '.');
+      // Loaded here, so a project whose copy lacks it still keeps its journal.
+      const { heartbeat } = await import('./alive.mjs');
+      heartbeat({ session, journalFile: join(root, '.factory/journal', `${session}.jsonl`) });
     }
   } catch { /* never block the agent */ }
   process.exit(0);

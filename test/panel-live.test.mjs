@@ -91,11 +91,17 @@ test('the live status line is never empty, so the cards do not jump when its tex
   assert.match(statusText(2, 0), /Connexion à GitHub perdue/);
 });
 
+test('a project never read yet does not say « à jour » (issue #397)', () => {
+  assert.equal(statusText(0, null), 'En direct · mise à jour…');
+  assert.match(statusText(1, null), /Connexion à GitHub perdue/);
+});
+
 test('the « À vous » card is drawn with its status text already filled (no growth after the cards are measured)', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
   const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
-  assert.match(line, /statusText\(/);
+  assert.match(line, /liveText\(\)/);
+  assert.match(src, /const liveText = \(\) => statusText\(/);
 });
 
 test('a card only slides when it really moved: a few pixels of text reflow stay still', async () => {
@@ -192,4 +198,11 @@ test('stillWaited drops the requests already merged', () => {
   assert.deepEqual(stillWaited([12, 15], [{ number: 30, issue: 12, reason: null }]), [15]);
   assert.deepEqual(stillWaited([12], [{ number: 12, issue: 12, reason: 'Déjà réglée' }]), [12]);
   assert.deepEqual(stillWaited([30], [{ number: 30, issue: 12, reason: null }]), []);
+});
+
+test('a card whose launch waits for its relaunch sits with the work in progress, not with what waits for you (#383)', () => {
+  assert.equal(laneFor({ column: 'spec', labels: ['factory:feature', 'factory:spec-review', 'factory:relaunch'] }), 'working');
+  const givenUp = '\n\n<!-- factory-relaunch {"stage":"build","blocked":true,"next":null} -->';
+  assert.equal(laneFor({ column: 'blocked', body: givenUp, labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours', 'blocked after 3 hours: the owner answers');
+  assert.equal(yoursList([{ column: 'grilling', labels: ['factory:grilling', 'factory:relaunch'], updated_at: '2026-11-13' }]).length, 0);
 });

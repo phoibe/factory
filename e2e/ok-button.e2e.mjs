@@ -21,11 +21,11 @@ test('une carte « Captures à valider » montre « Ok » en bleu puis « Captur
   });
 });
 
-test('un clic sur « Ok » affiche « Annuler (5 s) », un second clic annule et rien n\'est envoyé', async () => {
+test('un clic sur « Ok » affiche « Annuler (5s) », un second clic annule et rien n\'est envoyé', async () => {
   await withPanel({ issues: [visual] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').click();
-    assert.match(await page.locator('button.go[data-go="10"]').textContent(), /Annuler \(\d s\)/);
+    assert.match(await page.locator('button.go[data-go="10"]').textContent(), /Annuler \(\ds\)/);
     await page.locator('button.go[data-go="10"]').click();
     await page.waitForTimeout(6000);
     assert.deepEqual(sentOn(writes, 10)(), []);
@@ -129,5 +129,20 @@ test('jeton sans droit d\'écrire sur les PR : le « ok » part sur la demande l
     await waitFor(() => sentOn(writes, 3)().length, page);
     assert.deepEqual(sentOn(writes, 3)(), ['<!-- factory-answer-pr:10 -->\nok']);
     await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Captures validées'));
+  });
+});
+
+test('après « Ok » sur les captures, la même modification arrivée en recette montre un « Ok » prêt, sans recharger', async () => {
+  const card = pr(10, 'Partager une recette', ['factory:visual-review']);
+  await withPanel({ issues: [card] }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="10"]').click();
+    await waitFor(() => sentOn(writes, 10)().length, page);
+    card.labels = [{ name: 'factory:feature' }, { name: 'factory:acceptance' }];
+    card.updated_at = new Date().toISOString();
+    const ok = page.locator('.ticket.yours[data-number="10"] button.go');
+    await ok.waitFor({ timeout: 30_000 });
+    await page.waitForFunction(() => document.querySelector('.ticket.yours[data-number="10"] button.go')?.textContent === 'Ok', null, { timeout: 30_000 });
+    assert.equal(await ok.isDisabled(), false);
   });
 });

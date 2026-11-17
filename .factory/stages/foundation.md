@@ -14,7 +14,7 @@ Pose les fondations de l'appli jusqu'à une PR. Pas de feature métier ici : seu
 3. Pour chaque changement qui demande du code (nouvelle feature, design à appliquer aux écrans, changement
    de stack), ouvre une issue comme à l'étape 9 ci-dessous ; une feature déjà couverte par une issue
    ouverte n'en a pas besoin, complète plutôt cette issue d'un commentaire.
-4. PR comme à l'étape 7 (résumé « La fiche produit mise à jour : … »), sans captures : mets directement
+4. PR comme à l'étape 7 (résumé « La fiche produit mise à jour : … », avec « Pas vérifié en vrai : rien à essayer, seuls les documents changent »), sans captures : mets directement
    `factory:checks` sur la PR. Poste sur l'issue le lien de la PR et la liste des issues créées.
 
 **Adoption d'un projet commencé sans la factory** (du code existe mais pas de fiche produit sur `main`) :
@@ -85,8 +85,12 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
 5 bis. **Fiche stack** : écris `STACK.md` à la racine d'après le squelette, au format de `.factory/stages/stack.md`.
 6. **Revue de code** et **passe design** comme dans `.factory/stages/build.md` (étapes 5 et 6 ; la passe design critique et corrige la page d'accueil), puis vérifie
    localement que les six scripts passent. **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
-7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »),
-   puis `Closes #<n>`, puis les détails techniques en anglais.
+6 bis. **Essai en conditions réelles**, en lecture seule, comme à l'étape 7 bis de `build.md` : ouvre la page
+   d'accueil construite et, si l'appli est déjà en ligne, le vrai site, sans rien créer, modifier, envoyer ni
+   supprimer de réel.
+7. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français (« Les fondations de l'appli : … »), avec la
+   ligne « Essayé en vrai : … » et, pour ce qui ne peut pas l'être (l'hébergeur pas encore branché, un service à
+   créer), « Pas vérifié en vrai : … » ; puis `Closes #<n>`, puis les détails techniques en anglais.
    **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
    aucun déploiement GitHub du dépôt (`gh api repos/<dépôt>/deployments`), aucun commentaire de son bot sur
    les PR précédentes) : ne bloque rien, ouvre la PR quand même. Ajoute au

@@ -7,7 +7,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SKIP = new Set(['node_modules', '.git', 'vendor', 'packs']);
+const SKIP = new Set(['node_modules', '.git', 'vendor', 'packs', '.claude', '.factory']);
 
 export function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {

@@ -19,7 +19,9 @@ test('files read by the owner never use « tu »', () => {
 });
 
 test('messages posted by the factory (relay) never use « tu »', () => {
-  const quoted = read('scripts/relay.mjs').split('\n').filter((l) => /say\(|fail\(|\+ ["'`]/.test(l) && TU.test(l));
+  // The relay engine is split into scripts/relay/ (issue #401): every part is checked.
+  const parts = readdirSync(new URL('../scripts/relay/', import.meta.url)).map((f) => `scripts/relay/${f}`);
+  const quoted = ['scripts/relay.mjs', ...parts].flatMap((f) => read(f).split('\n')).filter((l) => /say\(|fail\(|\+ ["'`]/.test(l) && TU.test(l));
   assert.deepEqual(quoted, []);
 });
 

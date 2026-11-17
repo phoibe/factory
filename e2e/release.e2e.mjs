@@ -117,13 +117,13 @@ test('repasser le projet en « automatique » avec une modification en attente l
   });
 });
 
-test('si l\'envoi échoue, la fenêtre reste ouverte et dit « L\'envoi a échoué. Réessayez. »', async () => {
+test('si l\'envoi échoue, la fenêtre reste ouverte et dit « L\'envoi a échoué » avec quoi faire', async () => {
   await withPanel({ config: approval, awaiting: pending, forbidden: new Set(['/repos/o/r/issues']) }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('button', { name: 'Mise en production (2)' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Confirmer' }).click();
-    await dialog.getByRole('alert').filter({ hasText: 'L\'envoi a échoué. Réessayez.' }).waitFor();
+    await dialog.getByRole('alert').filter({ hasText: 'L\'envoi a échoué. Le jeton n\'a pas accès à ce projet\u00a0: créez-en un qui y a accès.' }).waitFor();
     assert.equal(await dialog.isVisible(), true);
   });
 });

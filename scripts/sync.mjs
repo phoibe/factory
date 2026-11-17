@@ -18,7 +18,7 @@ const STAGE_LABELS = {
 // The journal records what the agent does; the gate refuses to let a PR move on while a step is missing.
 const FACTORY_HOOKS = [
   ['UserPromptSubmit', null, 'journal.mjs'], ['PostToolUse', 'Skill|Bash|Agent|Task', 'journal.mjs'], ['PostToolUseFailure', 'Bash', 'journal.mjs'],
-  ['PreToolUse', 'Bash|mcp__github__.*', 'gate.mjs'], ['Stop', null, 'gate.mjs'],
+  ['PreToolUse', 'Bash|mcp__github__.*', 'gate.mjs'], ['PreToolUse', 'Agent|Task', 'journal.mjs'], ['Stop', null, 'gate.mjs'],
 ];
 const isFactoryHook = (g) => (g.hooks || []).some((h) => /\.factory\/scripts\/(journal|gate)\.mjs/.test(String(h.command || '')));
 
@@ -110,7 +110,7 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
     writeFileSync(join(outDir, 'stages', f), render(readFileSync(join(factoryDir, 'agent/stages', f), 'utf8'), vars));
   }
   cpSync(join(factoryDir, 'agent/scripts/shots.mjs'), join(outDir, 'scripts/shots.mjs'));
-  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs', 'specs.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
+  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs', 'specs.mjs', 'frozen-clock.mjs', 'alive.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
   writeFileSync(donePath, JSON.stringify({ done: evaluated || done.length ? [...new Set([...done, ...MIGRATIONS.map((m) => m.id)])] : done }, null, 2) + '\n');
