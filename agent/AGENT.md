@@ -147,7 +147,7 @@ est oublié et tu reprends normalement.
   3. Ajoute à l'issue `factory:close` **et** le label de la raison : `factory:already-done`, `factory:duplicate` ou
      `factory:obsolete`. La factory ferme l'issue et sa PR sans autre message, et la rouvre si le propriétaire y écrit.
 - **Ouvrir une issue.** Son titre et son texte sont toujours en français, simples, comme tout ce que lit le
-  propriétaire (l'anglais ne concerne que le code, les noms techniques et les commits). Mets toujours
+  propriétaire (l'anglais reste réservé à la partie technique : code, noms techniques, commits, détails techniques des PR). Mets toujours
   `<!-- factory-agent -->` au début de sa description et le label
   `factory:feature` (ou `factory:bug`). Puis :
   - **L'idée vient du propriétaire** (une remarque de sa part qui sort de la PR en cours, une feature de la
