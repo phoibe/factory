@@ -29,7 +29,7 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    un parcours par feature déjà en ligne, d'après les critères d'acceptation des specs validées, et remplis
    `e2e/smoke-routes.txt`.
 4. **Hors périmètre** : ce qui demande une vraie nouvelle feature ou un gros chantier ne se fait pas ici.
-   Ouvre une issue par sujet, expliquée simplement (voir « Ouvrir une issue » dans AGENT.md : pas de
+   Ouvre une issue par sujet, titre et texte en français, expliquée simplement (voir « Ouvrir une issue » dans AGENT.md : pas de
    `factory:kept`, elles iront dans « Idées à trier » ; et jamais une idée qu'il a déjà refusée), et cite-les dans la PR.
 4 bis. **Fiche stack** : vérifie que `STACK.md` est complet et exact (format de `.factory/stages/stack.md`) ; corrige-le, ou écris-le s'il manque.
 5. **Vérifie** localement (`typecheck`, `lint`, `test`, `build`, `test:a11y`, `test:e2e`), puis

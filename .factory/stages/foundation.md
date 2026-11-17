@@ -31,7 +31,7 @@ ne refais **pas** l'appli et ne change pas son comportement.
    `build`, `test:a11y` et `test:e2e` existent et passent (configuration, un premier test de la page d'accueil).
    Si la fiche retient un hébergeur et que le dépôt n'y est pas encore déployé, fais comme à l'étape 5
    ci-dessous (puce « l'hébergeur retenu dans la fiche ») ; sinon ne touche pas à l'hébergement.
-   Si un contrôle échoue à cause du code existant, corrige ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème et explique-le dans la PR.
+   Si un contrôle échoue à cause du code existant, corrige ce qui est petit ; pour le reste, ouvre une issue `factory:bug` par problème (titre et texte en français) et explique-le dans la PR.
 4 bis. **Fiche stack** : écris `STACK.md` à la racine d'après le code existant, au format de `.factory/stages/stack.md`.
 5. Issues des **Prochaines features** comme à l'étape 9 ci-dessous.
 6. PR comme à l'étape 7 (résumé « L'entrée du projet dans la factory : … »). Sans changement visible, mets
@@ -99,7 +99,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    leur aperçu.
 8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:visual-review`
    puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
-9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue (titre
+9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue, titre et texte en français (titre
    « Feature : … », description en deux ou trois phrases tirées de la fiche) avec `<!-- factory-agent -->` en
    tête et les labels `factory:feature` et `factory:kept` (il les a validées dans la fiche). Elles démarrent quand il y écrit,
    ou d'elles-mêmes quand une place est libre si la prise automatique est active.

@@ -162,7 +162,9 @@ est oublié et tu reprends normalement.
      là où elle en était. »
   3. Ajoute à l'issue `factory:close` **et** le label de la raison : `factory:already-done`, `factory:duplicate` ou
      `factory:obsolete`. La factory ferme l'issue et sa PR sans autre message, et la rouvre si le propriétaire y écrit.
-- **Ouvrir une issue.** Mets toujours `<!-- factory-agent -->` au début de sa description et le label
+- **Ouvrir une issue.** Son titre et son texte sont toujours en français, simples, comme tout ce que lit le
+  propriétaire (l'anglais reste réservé à la partie technique : code, noms techniques, commits, détails techniques des PR). Mets toujours
+  `<!-- factory-agent -->` au début de sa description et le label
   `factory:feature` (ou `factory:bug`). Puis :
   - **L'idée vient du propriétaire** (une remarque de sa part qui sort de la PR en cours, une feature de la
     fiche produit qu'il a validée) : ajoute aussi le label `factory:kept`. Elle suit alors son parcours habituel.
@@ -180,7 +182,8 @@ est oublié et tu reprends normalement.
 
 ## Code et Git
 
-- Code, noms, commits et descriptions techniques en anglais.
+- Code, noms techniques, commits et détails techniques des PR en anglais ; jamais le titre ni le texte d'une issue,
+  toujours en français (voir « Ouvrir une issue »).
 - Branche : `claude/issue-<n>-<mot-clé>`. Jamais de push sur `main` ni sur `preprod`. Tu ne fusionnes jamais une PR :
   la factory le fait après les contrôles et la recette.
 - La PR contient `Closes #<n>` dans sa description, et un résumé en français pour le propriétaire en tête.
