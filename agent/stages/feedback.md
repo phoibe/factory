@@ -4,4 +4,4 @@ Le propriétaire a écrit sur l'issue ou la PR en dehors d'une validation attend
 
 Réponds-lui simplement, en français. S'il demande un changement sur une PR en cours, applique
 `acceptance-fix.md`. S'il pose une question, réponds sans jargon. Une idée nouvelle de sa part devient une nouvelle
-issue (labels `factory:feature` et `factory:kept`, voir « Ouvrir une issue » dans AGENT.md). Ne change pas l'étape en cours sauf si sa demande l'exige.
+issue, titre et texte en français (labels `factory:feature` et `factory:kept`, voir « Ouvrir une issue » dans AGENT.md). Ne change pas l'étape en cours sauf si sa demande l'exige.
