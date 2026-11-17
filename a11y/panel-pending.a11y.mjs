@@ -167,31 +167,11 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
     assert.notEqual(dark[0], dark[1]);
     await page.emulateMedia({ colorScheme: 'light' });
     await page.mouse.move(0, 0);
-    // With the keyboard: « go » starts the countdown, keeps the focus across redraws, and Enter cancels it.
-    await go.focus();
-    // The « go » sits at the very bottom of the screen, where the toast shows.
-    await page.evaluate(() => { const b = document.querySelector('.pending-zone button.go[data-go="1"]').getBoundingClientRect(); scrollBy(0, b.bottom - innerHeight + 2); });
-    await page.keyboard.press('Enter');
-    await page.waitForFunction(() => /Annuler/.test(document.querySelector('.pending-zone button.go[data-go="1"]')?.textContent || ''));
-    // The countdown stays readable: on screen, not under the toast, and named « Annuler » for screen readers.
-    const seen = await page.evaluate(() => {
-      const b = document.querySelector('.pending-zone button.go[data-go="1"]').getBoundingClientRect();
-      const t = document.getElementById('toast').getBoundingClientRect();
-      return { onScreen: b.top >= 0 && b.bottom <= innerHeight, underToast: b.bottom > t.top && b.top < t.bottom && b.right > t.left && b.left < t.right };
-    });
-    assert.deepEqual(seen, { onScreen: true, underToast: false });
-    assert.match(await page.locator('.pending-zone button.go[data-go="1"]').getAttribute('aria-label'), /^Annuler le go pour #1/);
-    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // forces a redraw while the countdown runs
-    await page.waitForTimeout(300);
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset?.go), '1', 'focus stays on « go »');
-    await page.keyboard.press('Enter');
-    assert.equal(await page.locator('.pending-zone button.go[data-go="1"]').textContent(), 'go');
-    await page.waitForTimeout(5500);
-    assert.deepEqual(posted, [], 'a cancelled « go » sends nothing');
-    assert.match(await page.locator('.pending-zone button.go[data-go="1"]').getAttribute('aria-label'), /^go pour #1/);
+    // With the keyboard: Enter on « go » sends it at once (issue #450, no countdown).
     // Sent: « Envoi… » stays readable on the waiting card (not faded).
     // The button turns to « Envoi… » just before the request leaves: wait for the request itself.
-    await page.locator('.pending-zone button.go[data-go="1"]').click();
+    await go.focus();
+    await page.keyboard.press('Enter');
     for (let t = Date.now(); !posted.length && Date.now() - t < 10000;) await page.waitForTimeout(50);
     assert.deepEqual(posted, ['/repos/o/r/issues/1/comments']);
     // Read on the live button: a redraw may replace it right after the request.

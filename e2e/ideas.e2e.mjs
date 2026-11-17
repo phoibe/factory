@@ -26,12 +26,12 @@ test('un clic sur « Garder » fait disparaître la carte en douceur, et les sui
   });
 });
 
-test('même chose avec « Jeter », une fois ses 5 s d\'annulation passées (issue #402)', async () => {
+test('même chose avec « Jeter », qui part aussi au toucher (issue #450)', async () => {
   await withPanel({ issues: IDEAS(), writeDelay: SLOW }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.waitForSelector('.lane-ideas .ticket.idea');
     await page.getByRole('button', { name: /Jeter l'idée #6/ }).click();
-    await page.waitForFunction(() => !document.querySelector('[data-idea="6"]'), null, { timeout: 6500 });
+    await page.waitForFunction(() => !document.querySelector('[data-idea="6"]'), null, { timeout: 1500 });
     assert.deepEqual(await shown(page), ['Importer depuis un site', 'Mode sombre']);
     assert.deepEqual(writes.find((w) => w.path.endsWith('/issues/6'))?.body, { state: 'closed', state_reason: 'not_planned' });
   });

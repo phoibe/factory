@@ -56,15 +56,14 @@ test('a project with a broken settings file still opens, with the default settin
   });
 });
 
-test('a « go » counting down is cancelled when another project is opened', async () => {
+test('a « go » sent before opening another project is posted once, on its own project', async () => {
   await withPanel({ a: '{}', b: '{}' }, async ({ context, page, posts, url }) => {
     await context.addInitScript(() => { localStorage.setItem('factory.token', 'test'); localStorage.setItem('factory.project', 'o/a'); });
     await page.goto(url);
     await page.locator('button.go[data-go="1"]').click();
     await page.locator('#projects .project-item', { hasText: /^b$/ }).click();
     await page.waitForFunction(() => document.querySelector('#project-name').textContent === 'b');
-    await page.waitForTimeout(6500);
-    assert.deepEqual(posts.filter((p) => p.endsWith('/comments')), []);
-    assert.equal(await page.locator('button.go[data-go="1"]').textContent(), 'go');
+    await page.waitForTimeout(1000);
+    assert.deepEqual(posts.filter((p) => p.endsWith('/comments')), ['/repos/o/a/issues/1/comments']);
   });
 });
