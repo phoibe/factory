@@ -369,7 +369,7 @@ button.go:focus-visible { outline-color: var(--text); }
 /* Keyboard focus is always visible, also on the tabs and the conversations. */
 .tabs button:focus-visible, .conv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-/* ---- Issue 123: phone header, cancellable go, reserved blue, calm loading ---- */
+/* ---- Issue 123: phone header, reserved blue, calm loading ---- */
 /* Blue is for what waits for an answer: links are ink and underlined, focus rings are ink. */
 a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 a.button { text-decoration: none; }
@@ -517,6 +517,8 @@ details summary { color: var(--text); }
    SHORT_LABELS); the blue button stays first and keeps its width when it reads « Envoi… ». */
 .ticket.yours .card-actions { gap: 8px; }
 .ticket.yours .card-actions button.go { flex: 0 0 auto; width: auto; min-width: 8.25em; padding-inline: 8px; font-weight: 600; white-space: nowrap; }
+/* Issue #450: « Envoi… » shows at once after the touch; it stays crisp (muted, not faded), like on a waiting card. */
+.ticket.yours .card-actions button.go:disabled { opacity: 1; background: var(--surface); border-color: var(--line); color: var(--muted); }
 .ticket.yours .card-actions > :not(.go) { flex: 0 1 auto; white-space: nowrap; overflow-wrap: normal; }
 .ticket.yours .card-actions .button::after, .ticket.yours .card-actions button::after { content: ""; position: absolute; inset: -7px -5px; }
 

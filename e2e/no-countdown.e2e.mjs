@@ -41,3 +41,13 @@ test('dans « Idées à trier », toucher « Jeter » fait disparaître l\'idée
     assert.doesNotMatch(await page.locator('#toast').textContent(), /part dans/);
   });
 });
+
+test('après « go », « Envoi… » reste net à l\'écran, pas pâli', async () => {
+  await withPanel({ issues: [issue(1, 'Partager une recette', ['factory:feature', 'factory:spec-review'])], writeDelay: 3000 }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('.ticket.yours button.go[data-go="1"]').click();
+    const b = page.locator('.ticket.yours button.go[data-go="1"]');
+    assert.equal((await b.textContent()).trim(), 'Envoi…');
+    assert.equal(await b.evaluate((n) => getComputedStyle(n).opacity), '1');
+  });
+});

@@ -1499,7 +1499,7 @@ async function checkVersion() {
   if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
-  // Nothing in flight is lost either: a « go » counting down, an answer still arriving, images waiting to be sent.
+  // Nothing in flight is lost either: an answer still arriving, images waiting to be sent.
   if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;

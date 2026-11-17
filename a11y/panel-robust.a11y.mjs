@@ -63,7 +63,8 @@ test('a « go » sent before opening another project is posted once, on its own 
     await page.locator('button.go[data-go="1"]').click();
     await page.locator('#projects .project-item', { hasText: /^b$/ }).click();
     await page.waitForFunction(() => document.querySelector('#project-name').textContent === 'b');
-    await page.waitForTimeout(1000);
+    for (let t = Date.now(); !posts.some((p) => p.endsWith('/comments')) && Date.now() - t < 5000;) await page.waitForTimeout(50);
+    await page.waitForTimeout(300); // nothing more is posted afterwards
     assert.deepEqual(posts.filter((p) => p.endsWith('/comments')), ['/repos/o/a/issues/1/comments']);
   });
 });

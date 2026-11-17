@@ -77,7 +77,7 @@ test('a plate acted on leaves « À vous de jouer » for the waiting zone, and s
   }
 });
 
-test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one keeps « Bloqué »', async () => {
+test('a waiting « go » card keeps a grey « go » that sends at the touch; a blocked one keeps « Bloqué »', async () => {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -87,7 +87,7 @@ test('a waiting « go » card keeps a grey, cancellable « go »; a blocked one 
   }).listen(0);
   const browser = await launchBrowser(server);
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 480 } }); // short screen: the « go » sits low, where the toast shows
+    const context = await browser.newContext({ viewport: { width: 1280, height: 480 } }); // short screen
     await context.addInitScript(() => {
       localStorage.setItem('factory.token', 'test');
       const now = Date.now();
