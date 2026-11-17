@@ -9,3 +9,4 @@
 {"t":"2026-11-17T12:22:28.326Z","kind":"test","cmd":"timeout 300 npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":true,"id":"toolu_01N5Pqt5QcHCbiTKLn76bM2K"}
 {"t":"2026-11-17T12:22:52.599Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #447","id":"toolu_018WkKShYGnZdoVbJZp28owq"}
 {"t":"2026-11-17T12:23:32.367Z","kind":"test","cmd":"git status --short | head; python3 - <<'EOF'\np=…; t=…\nold=…\nassert old in t\nt=… reste réservé à la partie technique : code, noms techniques, commits, détails techniques des PR)\")\nopen(p,'w').write(t)\n","ok":true,"id":"toolu_0138F72UsFrJG4mM9LBYTHyH"}
+{"t":"2026-11-17T12:24:29.861Z","kind":"test","cmd":"git checkout --theirs docs/specs/README.md && node .factory/scripts/specs.mjs index && grep -c \"447\" docs/specs/README.md && git add docs/specs/README.md .factory/journal && git commit -qm \"Merge orig","ok":true,"id":"toolu_012dSzkg4aS2wVgm6R7SsgwK"}
