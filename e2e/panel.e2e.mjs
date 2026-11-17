@@ -11,26 +11,15 @@ test('sans jeton, je vois la page de connexion et le lien pour créer le jeton',
   });
 });
 
-test('une spec à valider est en tête, et « go » part après 5 secondes', async () => {
+test('une spec à valider est en tête, et « go » part dès le toucher', async () => {
   await withPanel({ issues: [issue(1, 'Partager une recette', ['factory:feature', 'factory:spec-review'])] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="1"]').click();
-    assert.match(await page.locator('button.go[data-go="1"]').textContent(), /Annuler/);
+    assert.doesNotMatch(await page.locator('button.go[data-go="1"]').textContent(), /Annuler/);
     // The button reads « Envoi… » a moment before the comment leaves: wait for the comment itself.
     const sent = () => writes.filter((w) => w.path.endsWith('/issues/1/comments')).map((w) => w.body.body);
     for (let i = 0; i < 100 && !sent().length; i++) await page.waitForTimeout(100);
     assert.deepEqual(sent(), ['go']);
-  });
-});
-
-test('« go » annulé à temps : rien n\'est envoyé', async () => {
-  await withPanel({ issues: [issue(1, 'Partager une recette', ['factory:feature', 'factory:spec-review'])] }, async ({ page, writes, url }) => {
-    await page.goto(url);
-    await page.locator('button.go[data-go="1"]').click();
-    await page.locator('button.go[data-go="1"]').click();
-    await page.waitForTimeout(6000);
-    assert.equal(writes.filter((w) => w.path.endsWith('/comments')).length, 0);
-    assert.equal(await page.locator('button.go[data-go="1"]').textContent(), 'go');
   });
 });
 

@@ -1,4 +1,4 @@
-// « Ok » on the « Captures à valider » and « Tester » cards (issue #257): 5 s to cancel, then the « ok » leaves.
+// « Ok » on the « Captures à valider » and « Tester » cards (issue #257): the « ok » leaves at the touch (issue #450).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withPanel, issue } from './fixture.mjs';
@@ -21,19 +21,7 @@ test('une carte « Captures à valider » montre « Ok » en bleu puis « Captur
   });
 });
 
-test('un clic sur « Ok » affiche « Annuler (5s) », un second clic annule et rien n\'est envoyé', async () => {
-  await withPanel({ issues: [visual] }, async ({ page, writes, url }) => {
-    await page.goto(url);
-    await page.locator('button.go[data-go="10"]').click();
-    assert.match(await page.locator('button.go[data-go="10"]').textContent(), /Annuler \(\ds\)/);
-    await page.locator('button.go[data-go="10"]').click();
-    await page.waitForTimeout(6000);
-    assert.deepEqual(sentOn(writes, 10)(), []);
-    assert.equal(await page.locator('button.go[data-go="10"]').textContent(), 'Ok');
-  });
-});
-
-test('sans annuler, le « ok » part et le message « Captures validées » apparaît', async () => {
+test('le « ok » part et le message « Captures validées » apparaît', async () => {
   await withPanel({ issues: [visual] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="10"]').click();
@@ -65,7 +53,7 @@ test('sans aperçu, une carte « Tester » montre seulement « Ok » et « Recet
   });
 });
 
-test('sur une carte « Tester », « Ok » laissé jusqu\'au bout annonce la mise en ligne', async () => {
+test('sur une carte « Tester », « Ok » annonce la mise en ligne', async () => {
   await withPanel({ issues: [{ ...acceptance, comments: 0 }] }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.locator('button.go[data-go="11"]').click();
@@ -73,16 +61,6 @@ test('sur une carte « Tester », « Ok » laissé jusqu\'au bout annonce la mis
     assert.deepEqual(sentOn(writes, 11)(), ['ok']);
     await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Recette validée'));
     assert.equal(await page.locator('#toast').textContent(), '« ok » envoyé. Recette validée : la mise en ligne se fait maintenant.');
-  });
-});
-
-test('changer de projet pendant le décompte annule l\'envoi', async () => {
-  await withPanel({ issues: [visual], repos: ['o/r', 'o/autre'] }, async ({ page, writes, url }) => {
-    await page.goto(url);
-    await page.locator('button.go[data-go="10"]').click();
-    await page.locator('#projects .project-item', { hasText: 'autre' }).click();
-    await page.waitForTimeout(6000);
-    assert.equal(writes.filter((w) => w.path.endsWith('/comments')).length, 0);
   });
 });
 
