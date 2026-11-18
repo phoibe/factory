@@ -82,6 +82,10 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
    « Textes à l'écran » de `design-pass.md`.
 6 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
+6 quater. **Présentation du projet** (`README.md`) : relis-la dans cette PR et mets-la à jour si la feature change
+   quelque chose de visible (une possibilité, la page d'accueil, l'adresse du site, la façon de lancer), au modèle de
+   `.factory/stages/readme.md` (en français, courte, capture de la page d'accueil, jamais de licence ajoutée). Une
+   présentation pas encore au modèle est remise à niveau d'un coup. Cela ne bloque jamais la PR.
 6 ter. **Spec rangée** : la spec validée devient un document du projet, dans cette PR (elle arrive dans le projet à
    la fusion ; une demande abandonnée n'en laisse donc aucune). Lance `node .factory/scripts/specs.mjs save <n>`
    depuis le dossier du projet : il range la dernière spec validée de l'issue dans `docs/specs/<n>-<titre>.md`
