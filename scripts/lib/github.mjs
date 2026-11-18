@@ -30,11 +30,16 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     const res = await sendRaw(method, url, init);
     tally(method, url, res);
     if (!key) return res;
-    if (res.status === 304 && kept) return { ok: true, status: 200, headers: res.headers, json: async () => structuredClone(kept.body), text: async () => JSON.stringify(kept.body) };
+    // GitHub's 304 has no Link header: the « next page » link kept with the answer is served again, or a long list
+    // read twice would stop at its first page.
+    if (res.status === 304 && kept) {
+      const headers = { get: (h) => (/^link$/i.test(h) ? kept.link : res.headers.get(h)) };
+      return { ok: true, status: 200, headers, json: async () => structuredClone(kept.body), text: async () => JSON.stringify(kept.body) };
+    }
     const etag = res.headers?.get?.('etag');
     if (res.status !== 200 || !etag) { cache.delete(key); return res; }
     const body = await res.json();
-    cache.set(key, { etag, body: structuredClone(body) });
+    cache.set(key, { etag, link: res.headers.get('link') ?? null, body: structuredClone(body) });
     return { ok: true, status: 200, headers: res.headers, json: async () => body, text: async () => JSON.stringify(body) };
   }
   // GitHub's usage seen by this client: counted reads per kind of address, free « nothing new » answers, writes, and
@@ -188,8 +193,14 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     // The open cards of one label (issue #491): filtered from the one list of open issues, read once per run and then
     // only asked « changed? » (free when not), instead of one counted read per label. Other questions go to GitHub.
     listIssues: async (q) => {
-      if (!fromOpenList(q)) return request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`);
-      const list = (await listOpenIssues()).filter((i) => (i.labels || []).some((l) => (l.name ?? l) === q.labels));
+      const ask = () => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`);
+      if (!fromOpenList(q)) return ask();
+      // Only when every open card fits on one page (the first page of listOpenIssues, same cached answer): a longer
+      // list would cost several pages per read and could shift between them. Labels match whatever their case, like GitHub.
+      const open = await request('GET', '/repos/{repo}/issues?state=open&per_page=100');
+      if (!Array.isArray(open) || open.length >= 100) return ask();
+      const wanted = q.labels.toLowerCase();
+      const list = open.filter((i) => (i.labels || []).some((l) => String(l.name ?? l).toLowerCase() === wanted));
       return q.direction === 'asc' ? list.reverse() : list;
     },
     listPulls: () => paginate('/repos/{repo}/pulls?state=open&per_page=100'),

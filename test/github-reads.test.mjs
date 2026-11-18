@@ -1,6 +1,8 @@
 // Issue #491: how many GitHub reads each typical passage of the relay costs, so that the figure never silently goes
 // back up. The rehearsal's world plays the passage; each relay run gets a client that behaves like
 // scripts/lib/github.mjs: a read whose answer did not change since the same read in the same run is a free 304.
+// This is a model of the client, for whole passages; the client itself (pages, 304 without Link, label lists) is
+// tested on its real code in test/github.test.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld } from './sim/world.mjs';
@@ -26,7 +28,7 @@ export function readMeter() {
           const answer = await fn.apply(target, args);
           // Like github.mjs: the open cards of one label are filtered from the one list of open issues.
           const q = args[0] || {};
-          const derived = name === 'listIssues' && typeof q.labels === 'string' && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k));
+          const derived = name === 'listIssues' && typeof q.labels === 'string' && !q.labels.includes(',') && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k)) && (q.sort ?? 'created') === 'created';
           const key = derived ? 'listOpenIssues []' : `${name} ${JSON.stringify(args)}`;
           const text = JSON.stringify(derived ? await target.listOpenIssues() : answer ?? null);
           m.calls++;

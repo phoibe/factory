@@ -389,3 +389,27 @@ test('the open cards of one label come from the one list of open issues, read on
   await gh.listIssues({ labels: 'factory:stack', state: 'all' });
   assert.match(sent[2].url, /state=all.*labels=factory%3Astack/);
 });
+
+test('a long list read twice keeps all its pages: GitHub\'s 304 carries no « next page » link (review of #491)', async () => {
+  const next = { etag: 'W/"p1"', link: '<https://api.github.com/repos/o/r/issues/5/events?per_page=100&page=2>; rel="next"' };
+  const { gh } = recorder([
+    tagged(200, [{ id: 1 }], next), tagged(200, [{ id: 2 }], { etag: 'W/"p2"' }),
+    tagged(304, null, { etag: 'W/"p1"' }), tagged(304, null, { etag: 'W/"p2"' }),
+  ]);
+  assert.deepEqual((await gh.listEvents(5)).map((e) => e.id), [1, 2]);
+  assert.deepEqual((await gh.listEvents(5)).map((e) => e.id), [1, 2]);
+});
+
+const openItem = (number, label) => ({ number, created_at: `2026-11-${String(number).padStart(2, '0')}`, labels: [{ name: label }] });
+
+test('a label is matched like GitHub does, whatever its case (review of #491)', async () => {
+  const { gh } = recorder([tagged(200, [openItem(4, 'Factory:Queued')], { etag: 'W/"o"' })]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [4]);
+});
+
+test('with a full page of open cards or more, each label is asked to GitHub as before (review of #491)', async () => {
+  const many = Array.from({ length: 100 }, (_, k) => openItem(k + 1, 'factory:building'));
+  const { gh, sent } = recorder([tagged(200, many, { etag: 'W/"o"' }), tagged(200, [openItem(7, 'factory:queued')], {})]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [7]);
+  assert.match(sent[1].url, /labels=factory%3Aqueued/);
+});
