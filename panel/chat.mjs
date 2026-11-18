@@ -104,6 +104,11 @@ export const serverUnread = (c, seen) => seen[c.id] != null && Date.parse(c.upda
 
 const SAFE_URL = /^https?:\/\//i;
 
+// Display only (issue #486): the space between « or » and its word becomes a no-break space, so a narrow
+// screen never leaves a guillemet alone at a line's edge. Copying gives the ordinary spaces back (plainCopy).
+export const keepQuotes = (text) => String(text || '').replace(/« +/g, '«\u00A0').replace(/ +»/g, '\u00A0»');
+export const plainCopy = (text) => String(text || '').replace(/\u00A0/g, ' ');
+
 export function inline(text) {
   const out = [];
   const pushText = (v) => {

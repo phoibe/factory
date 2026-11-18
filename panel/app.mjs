@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues, keepQuotes, plainCopy } from './chat.mjs?v=17';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2263,6 +2263,17 @@ document.addEventListener('visibilitychange', () => {
   if (current && chat.repo) refreshChat();
 });
 
+// The chat shows « and » glued to their word with no-break spaces (keepQuotes); a copy gets the ordinary spaces back.
+$('chat-messages').addEventListener('copy', (e) => {
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed || !e.clipboardData) return;
+  const html = el('div');
+  for (let i = 0; i < sel.rangeCount; i++) html.append(sel.getRangeAt(i).cloneContents());
+  e.clipboardData.setData('text/plain', plainCopy(sel.toString()));
+  e.clipboardData.setData('text/html', plainCopy(html.innerHTML.replace(/&nbsp;/g, ' ')));
+  e.preventDefault();
+});
+
 const timeOf = (iso) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
@@ -2272,7 +2283,7 @@ const timeOf = (iso) => {
 
 function inlineNodes(parts) {
   return parts.map((p) => {
-    if (p.t === 'text') return p.v;
+    if (p.t === 'text') return keepQuotes(p.v);
     if (p.t === 'br') return el('br');
     if (p.t === 'code') return el('code', {}, p.v);
     if (p.t === 'b') return el('strong', {}, inlineNodes(p.c));
@@ -2310,7 +2321,7 @@ function chatImage(path) {
 
 function bubble(m) {
   const pics = (m.images || []).map(chatImage);
-  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
+  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), keepQuotes(l)] : [keepQuotes(l)])))];
   return el('li', { class: `msg ${m.who}` },
     pics.length ? el('div', { class: 'shots' }, pics) : null,
     text.length ? el('div', { class: 'bubble' }, text) : null,
