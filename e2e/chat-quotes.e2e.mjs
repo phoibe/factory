@@ -37,7 +37,6 @@ test('sur un écran étroit, aucune ligne de la réponse ne commence par « » �
     await withPanel({ issues: [question], comments: thread, viewport: { width, height: 800 } }, async ({ page, url }) => {
       await page.goto(url);
       await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-      await page.locator('.conv', { hasText: 'Où voir mes demandes ?' }).click();
       await page.locator('#chat-messages .msg.agent .bubble').waitFor();
       const lines = [...await linesOf(page, '#chat-messages .msg.agent .bubble'), ...await linesOf(page, '#chat-messages .msg.me .bubble')];
       for (const line of lines) {
@@ -64,7 +63,6 @@ const copiedHtml = (page) => page.evaluate(async () => {
 const openChat = async (page, url) => {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-  await page.locator('.conv', { hasText: 'Où voir mes demandes ?' }).click();
   await page.locator('#chat-messages .msg.agent .bubble').waitFor();
 };
 
