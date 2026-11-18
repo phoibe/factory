@@ -3,7 +3,7 @@
 import { L, AGENT_MARKER, UPDATE_BRANCH_MARKER, REVERT_MARKER, PROD_BUG_MARKER, releaseNote } from '../lib/labels.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-core.mjs';
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
-import { isRateLimited } from '../lib/ratelimit.mjs';
+import { isRateLimited, isGitHubDown } from '../lib/ratelimit.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
@@ -76,6 +76,7 @@ export function deliveryPart(ctx) {
       // The merge may have gone through behind a 5xx: a merged PR is a success, not a refusal.
       const fresh = await gh.getPr(prNumber);
       if (fresh?.merged) log(`merge reported as failed (${e}) but PR #${prNumber} is merged`);
+      else if (isGitHubDown(e)) throw e; // GitHub down, not a refusal: the tick replays the « ok » (issue #490)
       else {
         log(`merge failed: ${e}`);
         const state = fresh?.mergeable_state;

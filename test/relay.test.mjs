@@ -3791,3 +3791,22 @@ test('the tick re-runs a decision stopped by GitHub before the relay ran, never 
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
   assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 6], ['rerun', 7]]);
 });
+
+// Issue #490, review: a merge GitHub answered with an outage (and that did not go through) is replayed by the tick,
+// not turned into a blocked card asking the owner to say « réessaie ».
+test('a merge stopped by a GitHub outage is passed on to be replayed, the card is not blocked', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, state: 'open', base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.merge = async () => { throw Object.assign(new Error('PUT /repos/r/pulls/10/merge -> 502 Bad Gateway'), { githubDown: true }); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await assert.rejects(relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true }), /502/);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.blocked)));
+});
+
+test('an « ok » on a PR merged days ago does not start its delivery again', async () => {
+  const old = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: old, pull_request: { merged_at: old }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fusionné ✅/.test(c[2])));
+  assert.ok(!gh.calls.some((c) => c[0] === 'close'));
+});
