@@ -3742,3 +3742,37 @@ test('a GitHub outage ends a decision on the « retried at the next tick » step
   }
   assert.equal(retriedLater('prod-report', down), false); // no step marks that run: it must fail visibly
 });
+
+// Issue #490, review: the replay of an « ok » whose merge went through just before GitHub went down finds the PR
+// merged. It must not tell the owner the PR was « fermée » (the tick's closeMerged finishes the work quietly).
+test('the replay of an « ok » on a PR already merged says nothing and merges nothing again', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 10), 'no « PR fermée » message for a merged PR');
+});
+
+// Issue #490, review: an outage often stops a decision before the relay script even runs (checkout, setup-node), and
+// a re-run must never start an agent job again (a second agent, without the queue lock nor factory:running).
+test('the tick re-runs a decision stopped by GitHub before the relay ran, never a run whose agent job failed', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  const runs = [6, 7, 8, 9].map((id) => ({ id, run_attempt: 1, created_at: recent }));
+  const relayStep = 'Run node .factory-src/scripts/relay.mjs decide';
+  const jobs = {
+    6: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run actions/checkout@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] },
+      { name: 'factory / agent', conclusion: 'skipped', steps: [] }],
+    7: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/setup-node@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] }],
+    8: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/checkout@v4', conclusion: 'success' }, { name: relayStep, conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    9: [{ name: 'factory / decide', conclusion: 'success', steps: [] },
+      { name: 'factory / agent', conclusion: 'failure', steps: [{ name: 'Run anthropics/claude-code-action@v1', conclusion: 'failure' }] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+  };
+  Object.assign(gh, { failedRuns: async () => runs, runJobs: async (id) => jobs[id], rerunFailed: async (id) => gh.calls.push(['rerun', id]) });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 6], ['rerun', 7]]);
+});
