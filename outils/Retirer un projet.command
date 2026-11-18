@@ -17,7 +17,8 @@ if curl -fsSL https://raw.githubusercontent.com/phoibe/factory/stable/scripts/fa
 else
   echo
   echo "Impossible de télécharger la factory. Vérifiez votre connexion à internet, puis relancez ce fichier."
-  read -r -n 1 -p "Appuyez sur une touche pour fermer cette fenêtre." </dev/tty
+  printf "Appuyez sur une touche pour fermer cette fenêtre."
+  read -r -n 1 </dev/tty
 fi
 rm -f "$script"
 echo

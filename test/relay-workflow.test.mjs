@@ -71,6 +71,6 @@ test('every job that takes the queue lock can write it and wait for it', () => {
 test('the agent run description travels in hex between jobs and is read back before use', () => {
   const agent = job('agent');
   assert.doesNotMatch(agent, /\$\{\{ needs\.decide\.outputs\.payload \}\}\n\s+Lis/, 'the prompt must not use the raw job output');
-  assert.match(agent, /id: payload[\s\S]*?PAYLOAD: \$\{\{ needs\.decide\.outputs\.payload \}\}/);
+  assert.match(agent, /id: payload\n\s+shell: bash[\s\S]*?PAYLOAD: \$\{\{ needs\.decide\.outputs\.payload \}\}/);
   assert.match(agent, /\$\{\{ steps\.payload\.outputs\.json \}\}/);
 });

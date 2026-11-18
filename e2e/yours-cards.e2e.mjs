@@ -134,7 +134,7 @@ test('le bouton bleu et les deux boutons discrets d\'une carte tiennent sur une 
   const acceptance = { ...issue(3, 'Trier par saison', ['factory:feature', 'factory:acceptance'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/3' }), comments: 1 };
   const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
   for (const viewport of [{ width: 1280, height: 900 }, { width: 900, height: 800 }, { width: 390, height: 844 }]) {
-    await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport }, async ({ page, url }) => {
+    await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport, writeDelay: 3000 }, async ({ page, url }) => {
       await page.goto(url);
       const actions = page.locator('.ticket.yours[data-number="3"] .card-actions');
       await actions.locator('a[href="https://preview.example.com/"]').waitFor();

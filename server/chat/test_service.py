@@ -241,7 +241,7 @@ class ServiceTest(unittest.TestCase):
             f.write("#!/bin/sh\nsleep 30\n")
         os.chmod(hang, os.stat(hang).st_mode | stat.S_IEXEC)
         app = create_app("phoibe", claude_bin=self.claude, repos_dir=os.path.join(self.tmp, "repos-hang"), git_bin=hang,
-                         git_timeout=0.5, transport=httpx.MockTransport(self.gh))
+                         git_timeout=0.5, clone_timeout=0.5, transport=httpx.MockTransport(self.gh))
         started = time.monotonic()
         r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
         events = [json.loads(l) for l in r.text.splitlines() if l.strip()]

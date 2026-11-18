@@ -101,8 +101,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # The run description comes in hex (scripts/lib/job-output.mjs): read back here, in plain bash (any runner).
+      # The run description comes in hex (scripts/lib/job-output.mjs): read back here, in bash (any runner that has it, macOS too).
       - id: payload
+        shell: bash
         env:
           PAYLOAD: ${{ needs.decide.outputs.payload }}
         run: |

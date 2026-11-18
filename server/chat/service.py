@@ -35,7 +35,8 @@ FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched aga
 MAX_IMAGES = 4
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
-GIT_TIMEOUT = 60  # seconds for one copy of the project: a stalled GitHub must not hold the project's lock
+GIT_TIMEOUT = 60  # seconds for one update of the project's copy: a stalled GitHub must not hold the project's lock
+CLONE_TIMEOUT = 180  # the first copy of a big project takes longer
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
 # Writes with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
 # can write with a 422 (invalid body), so nothing is ever written. Files, issues, pull requests: same list as the panel.
@@ -93,7 +94,7 @@ class GitHub:
 
 def create_app(owner, github_api="https://api.github.com", claude_bin="claude", repos_dir="/repos", model="sonnet",
                origins=None, on_repo_change=None, git_url="https://github.com/{repo}.git", transport=None, git_bin="git",
-               git_timeout=GIT_TIMEOUT):
+               git_timeout=GIT_TIMEOUT, clone_timeout=CLONE_TIMEOUT):
     app = FastAPI()
     app.add_middleware(CORSMiddleware, allow_origins=origins or [f"https://{owner.lower()}.github.io"],
                        allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type"])
@@ -109,12 +110,12 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         keep = ("PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN", "LANG")
         return {k: os.environ[k] for k in keep if k in os.environ}
 
-    async def run(*args, cwd=None):
+    async def run(*args, cwd=None, limit=None):
         # Its own process group: git hands the download to a child (git-remote-https), which must stop with it.
         proc = await asyncio.create_subprocess_exec(*args, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                                                     start_new_session=True)
         try:
-            out, err = await asyncio.wait_for(proc.communicate(), git_timeout)
+            out, err = await asyncio.wait_for(proc.communicate(), limit or git_timeout)
         except asyncio.TimeoutError:
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
@@ -143,7 +144,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             else:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 try:
-                    await run(*git, "clone", "--depth", "1", "-q", url, path)
+                    await run(*git, "clone", "--depth", "1", "-q", url, path, limit=clone_timeout)
                 except Exception:
                     shutil.rmtree(path, ignore_errors=True)  # a half-made copy would be fetched into, broken, ever after
                     raise

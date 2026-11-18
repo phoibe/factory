@@ -71,8 +71,10 @@ async function main() {
     // One decision at a time in the whole repository: see lib/lock.mjs.
     await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
   } else if (command === 'report') {
-    // A report may merge and then dequeue: same lock as the decisions.
-    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
+    // A report may merge and then dequeue: same lock as the decisions. The checks' duration is measured now, before
+    // the wait for the lock (see report: a cancelled run is a hung test only when it reached the time limit).
+    const reportAt = Date.now();
+    await withLock(gh.queueLock, () => relay.report({ now: reportAt, result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await relay.relaunchSoon(); // a fix whose launch failed for a passing reason: first relaunch, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner

@@ -102,10 +102,13 @@ function toast(msg) {
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
 }
 
-// Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
-function resetSession() {
+// Forgets the session (tokens, projects, caches, live board): the next account never sees it. `forget` (logging out)
+// also removes every stored project name (open project, read answers, clicks on their way); a refused token keeps them,
+// so the owner pasting a renewed token finds the same project and the same unread marks.
+function resetSession({ forget = false } = {}) {
   triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
-  for (const k of sessionKeys(store.keys())) store.del(k);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); store.del(READ_TOKEN_KEY);
+  if (forget) for (const k of sessionKeys(store.keys())) store.del(k);
   token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
@@ -1614,7 +1617,8 @@ async function refreshRuns() {
     const counts = await mapLimit(projects, 2, async (p) => {
       const events = [];
       for (let page = 1; page <= 5; page++) {
-        const batch = (await cachedGet(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`)).data || [];
+        // A project GitHub no longer shows (404) counts no start, as before; it never stops the whole counter.
+        const batch = (await cachedGet(`/repos/${p.repo.full_name}/issues/events?per_page=100&page=${page}`).catch((e) => { if (e.status === 404) return { data: [] }; throw e; })).data || [];
         events.push(...batch);
         if (batch.length < 100 || Date.parse(batch.at(-1).created_at) < from) break;
       }
@@ -1933,7 +1937,7 @@ $('login-form').addEventListener('submit', (e) => {
   start();
 });
 $('logout').addEventListener('click', () => {
-  resetSession();
+  resetSession({ forget: true });
   show('login');
 });
 function loadScript(src) {
