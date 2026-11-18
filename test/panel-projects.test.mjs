@@ -75,6 +75,27 @@ test('quand GitHub limite les appels, la vérification des autres projets attend
   assert.equal(dotsDelay(3_600_000), 300_000);
 });
 
+// Issue #488: the other projects are checked every 10 s while the owner is active, every 30 s when calm or hidden.
+test('quand vous êtes actif, les autres projets sont vérifiés toutes les 10 secondes, sinon toutes les 30', async () => {
+  const { dotsDelay } = await import('../panel/projects.mjs');
+  assert.equal(dotsDelay(0, false), 10_000);
+  assert.equal(dotsDelay(0, true), 30_000);
+  assert.equal(dotsDelay(120_000, false), 120_000);
+  assert.equal(dotsDelay(3_600_000, false), 300_000);
+});
+
+test('un geste ou un retour sur l\'onglet vérifie les pastilles aussitôt, sauf juste après une vérification ou pendant une pause demandée par GitHub', async () => {
+  const { dotsWake } = await import('../panel/projects.mjs');
+  const now = 1_000_000;
+  assert.equal(dotsWake({ now, last: now - 60_000, pausedUntil: 0 }), 0);
+  // Just checked: no new round, the next one comes 10 s after the last (the owner is active again).
+  assert.equal(dotsWake({ now, last: now - 2_000, pausedUntil: 0 }), 8_000);
+  // GitHub asked to wait: nothing before the end of the wait.
+  assert.equal(dotsWake({ now, last: now - 60_000, pausedUntil: now + 90_000 }), null);
+  // A clock set back never stops the dots for longer than the active rhythm.
+  assert.equal(dotsWake({ now, last: now + 3_600_000, pausedUntil: 0 }), 10_000);
+});
+
 // Issue #399: the project list is remembered on this device, and an unchanged repository is not read again.
 
 const repo = (name, pushed = '2026-11-01T10:00:00Z', extra = {}) => ({ id: 1, name, full_name: `o/${name}`, html_url: `https://github.com/o/${name}`, homepage: '', private: true, default_branch: 'main', archived: false, is_template: false, pushed_at: pushed, owner: { login: 'o' }, description: 'long', ...extra });
