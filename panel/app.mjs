@@ -1488,7 +1488,14 @@ function selectTab(name) {
     $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
-  if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
+  if (name === 'chat') { openChat(); focusChat(); } else if (fromChat) scheduleChat();
+}
+
+// Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
+// while it is missing, the message box otherwise. Never on a phone: the keyboard would hide half the screen.
+function focusChat() {
+  if (!matchMedia('(pointer: fine)').matches) return;
+  $(needsReadToken() ? 'read-token' : 'chat-input').focus();
 }
 
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
