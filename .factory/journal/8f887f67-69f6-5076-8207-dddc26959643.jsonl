@@ -11,3 +11,8 @@
 {"t":"2026-11-18T15:23:16.698Z","kind":"skill","name":"requesting-code-review","id":"toolu_011vG61gTYMVKRXnrrDuzceu"}
 {"t":"2026-11-18T15:23:26.963Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #466","id":"toolu_01UunGNPdSbzWGMPZnjbGc7S"}
 {"t":"2026-11-18T15:25:07.364Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_015oXk8MT4mWvnCNWHxvb8UR"}
+{"t":"2026-11-18T15:26:02.735Z","kind":"skill","name":"receiving-code-review","id":"toolu_01YNhySkzBmwhkNB6is7UJ5W"}
+{"t":"2026-11-18T15:27:00.135Z","kind":"test","cmd":"cat >> test/readme-rule.test.mjs <<'EOF'\n\ntest('the home-page screenshot sits between the address and the list of features, as the spec orders', () => {\n  const g = read('agent/stages/readme.md');\n  c","ok":false,"id":"toolu_01Ki6ZgZXDgtubzUpZM6X6vi"}
+{"t":"2026-11-18T15:27:48.247Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\np=…; s=…\nimg=…\ns=…\nold=…\nassert old in s\ns=… old+img,1)\nold_cap=… d\\'écran**'):s.index('## Quand la mettre à jour')]\nnew_cap=…'**Adresse** : prends-la dans les réglages du ","ok":true,"id":"toolu_01Nvh9HtD7AbP4ceiUhpR3dy"}
+{"t":"2026-11-18T15:27:53.335Z","kind":"skill","name":"verification-before-completion","id":"toolu_01BP8zUiLuqqFhLWdRBYfLLg"}
+{"t":"2026-11-18T15:28:43.607Z","kind":"test","cmd":"git add agent test && git commit -qm \"fix(agent): README screenshot order and timing, factory exclusion in build step (#466)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: ht","ok":true,"id":"toolu_01TCRcee3PfMUrTAnupgaPTK"}
