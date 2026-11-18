@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
-import { isRateLimited } from './lib/ratelimit.mjs';
+import { isRateLimited, isGitHubDown } from './lib/ratelimit.mjs';
 import { withLock } from './lib/lock.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { statePart } from './relay/state.mjs';
@@ -42,6 +42,12 @@ function readResult(file) {
 function readCheck() {
   try { return JSON.parse(fromJobOutput(process.env.CHECK) || '{}') || {}; } catch { return {}; }
 }
+
+// A run stopped by GitHub (its rate limit, or an outage longer than the client's retries: issue #490) is not lost: when
+// its workflow step is followed by RATE_LIMIT_STEP, it ends there and the next tick re-runs it (retryRateLimited), which
+// replays the very same event. Rarely, part of the work was already done and one message shows twice: better than an
+// owner's « go » never seen. Any other error is the code's and fails the run.
+export const retriedLater = (command, e) => (isRateLimited(e) || isGitHubDown(e)) && rateLimitHandled(command);
 
 export function writeOutputs(outputs) {
   const file = process.env.GITHUB_OUTPUT;
@@ -143,9 +149,9 @@ async function main() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((e) => {
     console.error(e);
-    // GitHub's « too many requests » for longer than a pause: the step `RATE_LIMIT_STEP` of relay.yml fails on this
-    // output, and the next tick re-runs the run (retryRateLimited), so the event is taken up instead of lost.
-    if (isRateLimited(e) && rateLimitHandled(process.argv[2])) { writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ratelimited: 'true' }); return; }
+    // GitHub's « too many requests » or outage: the step `RATE_LIMIT_STEP` of relay.yml fails on this output, and the
+    // next tick re-runs the run (retryRateLimited), so the event is taken up instead of lost.
+    if (retriedLater(process.argv[2], e)) { writeOutputs({ checks: 'false', agent: 'false', pr: '', payload: '', preview: '', production: '', ratelimited: 'true' }); return; }
     process.exit(1);
   });
 }
