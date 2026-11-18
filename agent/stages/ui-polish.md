@@ -12,7 +12,7 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    **Aucun écran** (outil en ligne de commande, bibliothèque, projet encore vide) : n'ouvre pas de PR. Écris sur
    l'issue un message court et clair (« Ce projet n'a pas encore d'écran : il n'y a rien à améliorer. »), ajoute
    le label `factory:close` à l'issue (sans label de raison : ce n'est ni un doublon ni une demande obsolète), et
-   termine. C'est la seule fermeture permise sur cette carte.
+   termine. En dehors de ce cas et de celui de l'étape 4, ne ferme jamais cette carte de toi-même.
 3. **Estimation de durée** : une fois les écrans listés, publie sur l'issue une estimation au même format que
    l'étape 0 de `build.md` (taille `medium`, ou `large` si l'appli a beaucoup d'écrans, marqueur
    `factory-estimate`). Si tu dépasses le haut de ta fourchette, publie une nouvelle estimation.
