@@ -106,29 +106,49 @@ export function eventsPart(ctx) {
     }
   }
   // Issue #455: the card enters « Captures à valider » only once its captures are visible in the PR. The agent hands
-  // the PR over with factory:checks alone; the factory posts the table, then sets factory:visual-review. An agent that
-  // still sets it before any capture is shown has it taken back at once: the card stays in « Contrôles », and the
-  // end of the checks catches the captures up, instead of the card going back from « Captures à valider ».
+  // the PR over with factory:checks alone; the factory posts the table, then sets factory:visual-review. The rule is a
+  // state, not a step: while the latest captures are shown and not validated (no « ok » after them), the card is there,
+  // so a label lost on the way (an agent taking it off for a retouch, a failed call) comes back at the next event.
+  // An agent that still sets it before any capture is shown has it taken back at once: the card stays in « Contrôles »,
+  // and the end of the checks catches the captures up, instead of the card going back from « Captures à valider ».
+  // Returns true when it changed a label. A failed call is logged, never thrown but on a rate limit: the hand-over
+  // goes on (the next event, or the end of the checks, sets the label right).
   async function showCaptures(n, labels) {
     const res = await postCaptures(n);
-    if (res === 'posted' && !labels.includes(L.visualReview)) await gh.addLabels(n, [L.visualReview]);
-    if (res === null && labels.includes(L.visualReview) && !((await gh.listComments(n)) || []).some(postedCaptures)) {
-      await gh.removeLabel(n, L.visualReview);
-      log(`#${n}: no captures shown yet, not in « Captures à valider »`);
+    const has = labels.includes(L.visualReview);
+    try {
+      if (res === 'posted' || res === 'shown') {
+        if (has || (res === 'shown' && visualApproved((await gh.listComments(n)) || []))) return false;
+        await gh.addLabels(n, [L.visualReview]);
+        return true;
+      }
+      if (res === null && has && !((await gh.listComments(n)) || []).some(postedCaptures)) {
+        await gh.removeLabel(n, L.visualReview);
+        log(`#${n}: no captures shown yet, not in « Captures à valider »`);
+        return true;
+      }
+    } catch (e) {
+      if (isRateLimited(e)) throw e;
+      log(`captures label of #${n}: ${e.message}`);
     }
-    return res;
+    return false;
   }
   async function postLatestCaptures(n) {
     if (!gh.getContent) return null;
-    // A missing folder reads as nothing; a rate limit goes up, so that the run is retried.
-    const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; return null; });
+    // A missing folder reads as nothing; a rate limit goes up, so that the run is retried. Any other failure is not
+    // « nothing to show » (issue #455): the captures may well be there, so the card's labels are left alone.
+    const missing = (e) => e?.status === 404 || /-> 404\b/.test(String(e?.message ?? ''));
+    let failed = false;
+    const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; if (!missing(e)) failed = true; return null; });
     const runs = await soft(gh.getContent(`pr-${n}`, SHOTS_BRANCH));
+    if (failed) return undefined;
     const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
     if (!latest) return null;
     const dir = `pr-${n}/${latest}`;
     const mark = `<!-- factory-shots-posted: ${dir} -->`;
     const images = await soft(gh.getContent(`${dir}/compare`, SHOTS_BRANCH));
     const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
+    if (failed) return undefined;
     if (!files.length) return null;
     // Also skipped when a whole, unbroken table of this folder is already there (posted by an agent not yet given this
     // rule). A table whose dark rows arrived broken (#373) does not count: the factory posts the right one.
@@ -252,8 +272,7 @@ export function eventsPart(ctx) {
     // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first, once the
     // agent handed the PR over; then only the card enters « Captures à valider » (issue #455).
     if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && [L.visualReview, L.checks].some((l) => ev.labels.includes(l))) {
-      await showCaptures(ev.number, ev.labels);
-      ev = { ...ev, labels: await liveLabels(ev.number) };
+      if (await showCaptures(ev.number, ev.labels)) ev = { ...ev, labels: await liveLabels(ev.number) };
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
