@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys } from './lib.mjs?v=27';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince } from './chat.mjs?v=20';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts } from './chat.mjs?v=21';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=13';
@@ -2369,6 +2369,28 @@ document.addEventListener('visibilitychange', () => {
   if (current && chat.repo) refreshChat();
 });
 
+// The chat shows « and » glued to their word (quoteParts): during a copy that touches them, the glued spaces
+// turn back into the message's own spaces, so the browser copies the exact text (plain and rich), then the
+// screen gets them back. The page fills the clipboard itself: some Chromium versions turn a lone space of a
+// copied <span> into &nbsp; in the rich copy.
+document.addEventListener('copy', (e) => {
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed) return;
+  const glued = [...document.querySelectorAll('#chat-messages .glue')].filter((g) => sel.containsNode(g, true));
+  if (!glued.length) return;
+  // insertData then deleteData, not a new `data`: a selection ending inside the glue keeps its place.
+  const swap = (g, v) => { const t = g.firstChild; const n = t.length; t.insertData(0, v); t.deleteData(v.length, n); };
+  for (const g of glued) swap(g, g.dataset.v);
+  setTimeout(() => { for (const g of glued) swap(g, '\u00A0'.repeat(g.dataset.v.length)); });
+  if (!e.clipboardData) return;
+  const box = document.createElement('div');
+  for (let i = 0; i < sel.rangeCount; i++) box.append(sel.getRangeAt(i).cloneContents());
+  for (const g of box.querySelectorAll('.glue')) g.replaceWith(g.textContent);
+  e.clipboardData.setData('text/plain', sel.toString());
+  e.clipboardData.setData('text/html', box.innerHTML);
+  e.preventDefault();
+});
+
 const timeOf = (iso) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
@@ -2376,9 +2398,14 @@ const timeOf = (iso) => {
     : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 };
 
+const quoted = (text, edges) => quoteParts(text, edges).map((q) => (q.t === 'text' ? q.v
+  : el('span', { class: 'glue', 'data-v': q.v }, '\u00A0'.repeat(q.v.length))));
+// A bold, italic, link or code part next to a text part may hold the word its guillemet belongs to.
+const holdsWord = (p) => p != null && p.t !== 'text' && p.t !== 'br';
+
 function inlineNodes(parts) {
-  return parts.map((p) => {
-    if (p.t === 'text') return p.v;
+  return parts.flatMap((p, i) => {
+    if (p.t === 'text') return quoted(p.v, { before: holdsWord(parts[i - 1]), after: holdsWord(parts[i + 1]) });
     if (p.t === 'br') return el('br');
     if (p.t === 'code') return el('code', {}, p.v);
     if (p.t === 'b') return el('strong', {}, inlineNodes(p.c));
@@ -2449,7 +2476,7 @@ function openLightbox(src) {
 
 function bubble(m) {
   const pics = (m.images || []).map(chatImage);
-  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
+  const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), ...quoted(l)] : quoted(l))))];
   return el('li', { class: `msg ${m.who}` },
     pics.length ? el('div', { class: 'shots' }, pics) : null,
     text.length ? el('div', { class: 'bubble' }, text) : null,

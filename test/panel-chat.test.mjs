@@ -234,6 +234,28 @@ test('defaultConversation: the most recent open conversation, else a new one (is
   assert.equal(defaultConversation(null, false), 'new');
 });
 
+test('quoteParts marks the spaces between « or » and their word, and nothing else', async () => {
+  const { quoteParts } = await import('../panel/chat.mjs');
+  assert.deepEqual(quoteParts('l\'onglet « Suivi » ici'), [
+    { t: 'text', v: 'l\'onglet «' }, { t: 'glue', v: ' ' }, { t: 'text', v: 'Suivi' }, { t: 'glue', v: ' ' }, { t: 'text', v: '» ici' }]);
+  assert.deepEqual(quoteParts('«  deux'), [{ t: 'text', v: '«' }, { t: 'glue', v: '  ' }, { t: 'text', v: 'deux' }]);
+  assert.deepEqual(quoteParts('«Suivi»'), [{ t: 'text', v: '«Suivi»' }]);
+  assert.deepEqual(quoteParts('déjà « collé »'), [{ t: 'text', v: 'déjà « collé »' }]);
+  assert.deepEqual(quoteParts('a - b'), [{ t: 'text', v: 'a - b' }]);
+  assert.deepEqual(quoteParts(''), []);
+  assert.deepEqual(quoteParts('« »'), [{ t: 'text', v: '« »' }]);
+  assert.deepEqual(quoteParts('fin «\nsuite'), [{ t: 'text', v: 'fin «\nsuite' }]);
+});
+
+test('quoteParts glues across bold, links and code: the word may sit in the next or the previous part', async () => {
+  const { quoteParts } = await import('../panel/chat.mjs');
+  // « **Paramètres** » : the text before the bold ends with « and a space, the text after starts with a space and ».
+  assert.deepEqual(quoteParts('voir « ', { after: true }), [{ t: 'text', v: 'voir «' }, { t: 'glue', v: ' ' }]);
+  assert.deepEqual(quoteParts(' » ici', { before: true }), [{ t: 'glue', v: ' ' }, { t: 'text', v: '» ici' }]);
+  assert.deepEqual(quoteParts('voir « '), [{ t: 'text', v: 'voir « ' }]);
+  assert.deepEqual(quoteParts(' » ici'), [{ t: 'text', v: ' » ici' }]);
+});
+
 // The chat server is not trusted with writes: a request it proposes never carries the factory's hidden notes, which
 // the owner's token would make count (block a card, skip a step).
 test('issueRequest takes the factory notes out of a proposed request', async () => {
