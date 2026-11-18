@@ -80,12 +80,13 @@ test('toutes les cartes ont les mêmes dimensions, quel que soit leur contenu (p
       const boxes = await yours(page).evaluateAll((n) => n.map((x) => { const r = x.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }));
       assert.equal(new Set(boxes.map((b) => b.h)).size, 1, `${viewport.width}px: same height for every card ${JSON.stringify(boxes)}`);
       assert.equal(new Set(boxes.map((b) => b.w)).size, 1, `${viewport.width}px: same width for every card`);
-      // The steps bar lines up at the bottom of every card, whatever comes above it.
+      // The steps bar lines up at the bottom of every card, whatever comes above it. The gap is compared unrounded:
+      // it often sits on a half pixel (42.5), where rounding flips between 42 and 43 on a tiny float error.
       const gaps = await yours(page).evaluateAll((n) => n.map((x) => {
-        const t = x.querySelector('.step'); return t ? Math.round(x.getBoundingClientRect().bottom - t.getBoundingClientRect().bottom) : null;
+        const t = x.querySelector('.step'); return t ? x.getBoundingClientRect().bottom - t.getBoundingClientRect().bottom : null;
       }).filter((g) => g != null));
       assert.ok(gaps.length >= 2);
-      assert.equal(new Set(gaps).size, 1, `${viewport.width}px: steps bar at the same place ${JSON.stringify(gaps)}`);
+      assert.ok(Math.max(...gaps) - Math.min(...gaps) < 1, `${viewport.width}px: steps bar at the same place ${JSON.stringify(gaps)}`);
     });
   }
 });
@@ -134,7 +135,7 @@ test('le bouton bleu et les deux boutons discrets d\'une carte tiennent sur une 
   const acceptance = { ...issue(3, 'Trier par saison', ['factory:feature', 'factory:acceptance'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/3' }), comments: 1 };
   const comment = [{ id: 1, body: 'Vous pouvez tester la nouvelle version ici : https://preview.example.com/', user: { login: 'github-actions[bot]' }, author_association: 'NONE', created_at: new Date().toISOString() }];
   for (const viewport of [{ width: 1280, height: 900 }, { width: 900, height: 800 }, { width: 390, height: 844 }]) {
-    await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport }, async ({ page, url }) => {
+    await withPanel({ issues: [acceptance], comments: { 3: comment }, viewport, writeDelay: 3000 }, async ({ page, url }) => {
       await page.goto(url);
       const actions = page.locator('.ticket.yours[data-number="3"] .card-actions');
       await actions.locator('a[href="https://preview.example.com/"]').waitFor();

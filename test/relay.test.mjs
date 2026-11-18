@@ -223,7 +223,11 @@ test('github-actions runner dispatches the project workflow with the payload', a
 test('the dispatched run hands the payload to the agent job', async () => {
   const relay = createRelay({ gh: fakeGh({ issues: [], prs: [] }), repo: 'r', config, env, log: quiet });
   const { outputs } = await relay.handle({ kind: 'dispatch', payload: '{"stage":"build"}' });
-  assert.deepEqual([outputs.agent, outputs.payload], ['true', '{"stage":"build"}']);
+  assert.equal(outputs.agent, 'true');
+  // Written in hex, like the preview and production values: GitHub drops a job output that spells a secret (a project
+  // named like its ntfy topic), and the agent would start on an empty JSON.
+  assert.match(outputs.payload, /^hex:[0-9a-f]+$/);
+  assert.equal(fromJobOutput(outputs.payload), '{"stage":"build"}');
 });
 
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
@@ -623,6 +627,22 @@ test('still over the time limit after the last try: the owner reads that the set
   assert.match(said, /durée maximale réglée dans Paramètres \(90 min\)/);
   assert.match(said, /dépassent encore la durée maximale réglée dans Paramètres \(90 min\) après 3 tentatives/);
   assert.doesNotMatch(said, /échouent encore/);
+});
+
+test('a time limit set under 28 min in Paramètres: checks cancelled at that limit are a hung test, not a replaced run', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [] } };
+  const gh = fakeGh(state);
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config: { ...config, checksMinutes: 15 }, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: Date.now() / 1000 - 15 * 60 });
+  assert.equal(payloadOf(sent[0]?.init.body || '{}').stage, 'fix-checks');
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && /durée maximale réglée dans Paramètres \(15 min\)/.test(c[2])));
+});
+
+test('checks cancelled early under a short time limit are still a replaced run', async () => {
+  const state = { issues: [{ number: 1, labels: [L.feature, L.building] }], prs: [{ number: 10, body: 'Closes #1', head: { sha: 'abc' } }], comments: { 10: [] } };
+  const sent = [];
+  await createRelay({ gh: fakeGh(state), repo: 'r', config: { ...config, checksMinutes: 15 }, env, fetchImpl: fetchOk(sent), log: quiet }).report({ result: 'cancelled', pr: 10, sha: 'abc', started: Date.now() / 1000 - 5 * 60 });
+  assert.equal(sent.length, 0);
 });
 
 test('checks cancelled because the PR changed are ignored (a newer run reports)', async () => {
@@ -3727,6 +3747,16 @@ test('#440 review: a French title that merely starts with an ordinary word keeps
   const { plainTitle } = await import('../scripts/relay/shared.mjs');
   assert.equal(plainTitle('Style : nouvelles couleurs'), 'Style : nouvelles couleurs');
   assert.equal(plainTitle('docs(readme): x'), 'x');
+});
+
+// The checks' duration is measured up to the end of the checks job itself, not to the start of its report (which may
+// have waited minutes for a busy dev-server runner).
+test('checksEndedAt reads the end of the run\'s checks job', async () => {
+  const { checksEndedAt } = await import('../scripts/relay/shared.mjs');
+  const jobs = [{ name: 'decide', completed_at: '2026-11-18T10:00:00Z' }, { name: 'checks', completed_at: '2026-11-18T10:06:00Z' }, { name: 'report', completed_at: null }];
+  assert.equal(checksEndedAt(jobs), Date.parse('2026-11-18T10:06:00Z'));
+  assert.equal(checksEndedAt([{ name: 'checks', completed_at: null }]), null);
+  assert.equal(checksEndedAt([]), null);
 });
 
 // Issue #490: the owner's answer (« go », « ok ») came while GitHub was down: the run failed for good and the answer

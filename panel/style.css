@@ -101,7 +101,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .release-fold[open] { margin-bottom: 0; }
 .release-fold > summary { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 12px 0; min-height: 44px; box-sizing: border-box; list-style: none; color: var(--text); font-size: .8125rem; font-weight: 500; }
 .release-fold > summary::-webkit-details-marker { display: none; }
-.release-fold > summary::before { content: '▸'; content: '▸' / ''; display: inline-block; width: .875rem; font-size: .9375rem; line-height: 1; color: var(--text); transition: transform .15s ease-out; }
+.release-fold > summary::before { content: '▸'; content: '▸' / ''; display: inline-block; width: .875rem; font-size: .8125rem; line-height: 1; color: var(--text); transition: transform .15s ease-out; }
 .release-fold[open] > summary::before { transform: rotate(90deg); }
 .release-fold > summary:hover > span { text-decoration: underline; text-underline-offset: 3px; }
 .release-fold > summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
@@ -117,7 +117,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
    24px, the headline's 24px line (body 16px/1.5), and in rem the title line and the version and link lines. While no list
    is open, all rows also take the tallest card's height (a fuller card never stands out); an opened « N modifications »
    grows its own card only. */
-.lane-done { --done-card-height: calc(142px + 1.02rem * 1.35 + 2 * .8125rem * 1.5); }
+.lane-done { --done-card-height: calc(142px + 1rem * 1.35 + 2 * .8125rem * 1.5); }
 .lane-done .ticket { min-height: var(--done-card-height); align-self: start; }
 .lane-done .tickets:not(:has(.release-fold[open])) { grid-auto-rows: 1fr; }
 .lane-done .tickets:not(:has(.release-fold[open])) > .ticket { align-self: stretch; }
@@ -135,7 +135,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .ticket.yours:hover { border-color: var(--you); }
 .ticket.blocked { border-color: var(--danger); background: var(--danger-bg); }
 .ticket.queued { box-shadow: none; background: var(--surface-2); }
-.ticket h3 { margin: 0; font-size: 1.02rem; font-weight: 650; line-height: 1.35; text-wrap: balance; }
+.ticket h3 { margin: 0; font-size: 1rem; font-weight: 650; line-height: 1.35; text-wrap: balance; }
 .ticket p { margin: 0; }
 .ticket-top { display: flex; justify-content: space-between; gap: 8px; font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ticket-top .since { flex-shrink: 0; white-space: nowrap; }
@@ -388,7 +388,7 @@ button.go:disabled { opacity: .6; cursor: default; }
 .site-line { margin: 0; }
 button.go:focus-visible { outline-color: var(--text); }
 /* ---- Mono Numbers Rule: every figure is set in Geist Mono (see numbers.mjs for the text figures) ---- */
-.num { font-size: .92em; letter-spacing: -.01em; }
+.num { font-size: max(.92em, .8125rem); letter-spacing: -.01em; }
 .count, .badge { font-weight: 500; }
 /* Keyboard focus is always visible, also on the tabs and the conversations. */
 .tabs button:focus-visible, .conv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

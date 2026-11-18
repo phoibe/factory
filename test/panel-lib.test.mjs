@@ -308,3 +308,11 @@ test('doneItems lists a closed « Mise en production » request as a release ite
 test('releaseOutcome returns null for an old release with neither a note nor « En production ✅ »', () => {
   assert.equal(releaseOutcome([relComment("Je n'ai pas pu mettre en production (conflit).")]), null);
 });
+
+test('sessionKeys lists every stored key of the session, so a logout leaves no project name behind', async () => {
+  const { sessionKeys } = await import('../panel/lib.mjs');
+  const stored = ['factory.token', 'factory.chatToken', 'factory.project', 'factory.projects', 'factory.pending.o/secret',
+    'factory.chat.seen.o/secret', 'factory.advanced', 'other.app'];
+  assert.deepEqual(sessionKeys(stored).sort(), ['factory.chat.seen.o/secret', 'factory.chatToken', 'factory.pending.o/secret',
+    'factory.project', 'factory.projects', 'factory.token']);
+});
