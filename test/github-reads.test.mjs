@@ -67,7 +67,8 @@ test('the counted reads of each typical passage stay within their measured budge
   const p = await passages();
   // Measured on 2026-11-18, counted reads before → after: idle tick 23 → 6, « go » up to the PR waiting for its captures
   // 135 → 70 (several relay runs: each reads the open lists once), tick with a PR waiting 25 → 6.
+  // #490 (keep an answer through a GitHub outage) then added 2 reads to « go »: 140 calls → 72 counted.
   // A change that reads more must raise these on purpose, with its reason.
-  const budget = { idle: 6, message: 70, waiting: 6 };
+  const budget = { idle: 6, message: 72, waiting: 6 };
   for (const [name, max] of Object.entries(budget)) assert.ok(p[name].counted <= max, `${name}: ${p[name].counted} counted reads, budget ${max} (${p[name].calls} calls)`);
 });
