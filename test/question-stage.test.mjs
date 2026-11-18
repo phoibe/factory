@@ -12,3 +12,10 @@ test('the question stage creates a ticket only on an explicit action of the owne
   assert.doesNotMatch(stage, /Crée une issue/);
   assert.doesNotMatch(stage, /Une demande floue \? Crée quand même/);
 });
+
+test('the question stage only proposes a request, the owner creates it with a click (issue #492)', () => {
+  assert.match(stage, /<creer-issue type="feature" titre="/);
+  assert.match(stage, /Créer cette demande/);
+  assert.doesNotMatch(stage, /crée l'issue avec l'API REST/i);
+  assert.doesNotMatch(stage, /state=closed/);
+});

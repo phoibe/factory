@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, githubBusy, wantedIssues, decideProposal, decisionComment } from './chat.mjs?v=17';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2058,13 +2058,13 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Set() };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [] });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Set() });
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2316,7 +2316,73 @@ function bubble(m) {
     text.length ? el('div', { class: 'bubble' }, text) : null,
     ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
       el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Fonctionnalité créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
+    ...(m.proposals || []).map(proposalCard),
     el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+}
+
+// ---- Requests the agent proposes (issue #492) ----------------------------------------------------
+// Nothing is created until the owner clicks « Créer cette demande » on the card under the answer.
+const cardKey = (p) => `${chat.open}:${p.id}`;
+
+function proposalCard(p) {
+  const key = cardKey(p);
+  const s = { ...p, ...chat.decided.get(key) };
+  const busy = chat.deciding.has(key);
+  const kind = s.kind === 'bug' ? 'Bug' : 'Feature';
+  const outcome = s.state === 'created'
+    ? el('a', { class: 'proposal-done', href: safeGithubUrl(s.url), target: '_blank', rel: 'noopener' }, el('strong', {}, 'Créée'), ' · Voir la demande', el('span', { 'aria-hidden': 'true' }, ' ↗'))
+    : s.state === 'ignored' ? el('p', { class: 'proposal-done muted' }, 'Ignorée')
+      : el('div', { class: 'proposal-actions' },
+        el('button', { type: 'button', disabled: busy, 'aria-busy': busy ? 'true' : false, onclick: () => decide(p, 'created') }, busy ? 'Création…' : 'Créer cette demande'),
+        el('button', { type: 'button', class: 'secondary', disabled: busy, onclick: () => decide(p, 'ignored') }, 'Ignorer'));
+  return el('div', { class: `proposal${s.state === 'pending' ? '' : ' decided'}`, role: 'group', 'aria-label': `${kind} proposée : ${s.title}` },
+    el('p', { class: 'proposal-kind' }, kind),
+    el('p', { class: 'proposal-title' }, s.title),
+    s.body ? el('details', {}, el('summary', {}, 'Lire le texte'), el('div', { class: 'proposal-body' }, richText(s.body))) : null,
+    s.state === 'pending' && chat.refused.has(key) ? el('p', { class: 'proposal-error', role: 'alert' }, 'La demande n\'a pas pu être créée. Réessayez dans un instant.') : null,
+    outcome);
+}
+
+// The owner's choice on a card. A request is created once: the button is off while it is made, and in instant mode
+// the stored conversation is read again first (another device may have decided already).
+async function decide(p, state) {
+  const key = cardKey(p);
+  if (chat.deciding.has(key) || chat.decided.has(key)) return;
+  const repo = chat.repo, open = chat.open, run = chat.run;
+  const gone = () => chat.repo !== repo || chat.run !== run;
+  chat.deciding.add(key);
+  chat.refused.delete(key);
+  drawChat();
+  let url;
+  try {
+    const path = `chats/${open}.json`;
+    if (chat.server) {
+      const { data } = await chatFile(repo, path);
+      const stored = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === p.id);
+      if (stored && stored.state !== 'pending') {
+        if (!gone()) chat.conv = data;
+        return;
+      }
+    }
+    if (state === 'created') url = (await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(p)) })).html_url;
+    if (!gone()) chat.decided.set(key, { state, ...(url ? { url } : {}) });
+    try {
+      if (chat.server) {
+        const conv = await writeChatFile(repo, path, (latest) => { const next = latest || structuredClone(chat.conv); decideProposal(next, p.id, state, url); return next; }, `chore(factory): chat ${open}`);
+        if (!gone() && chat.open === open) chat.conv = conv;
+      } else {
+        await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(p.id, state, url) }) });
+      }
+    } catch {
+      if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
+    }
+  } catch (e) {
+    if (!gone()) { chat.refused.add(key); toast(`La demande n'a pas pu être créée. ${errorText(e)}`); }
+  } finally {
+    chat.deciding.delete(key);
+    if (!gone()) drawChat();
+    if (url) renderBoard().catch(() => {});
+  }
 }
 
 // The answer being written by the chat server, updated in place as it streams.
@@ -2621,8 +2687,7 @@ async function sendToServer(text, files, withImages) {
     live.status = 'Enregistre…';
     if (!gone()) drawLive();
     const id = conversationId(answer.conversation?.id, isNew ? null : chat.open);
-    const { conv, saved, created } = await finishExchange(repo, id, { text, images: paths }, answer);
-    answer.issues = created;
+    const { conv, saved } = await finishExchange(repo, id, { text, images: paths }, answer);
     if (!gone()) {
       for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
       chat.conv = conv;
@@ -2651,35 +2716,26 @@ async function sendToServer(text, files, withImages) {
       btn.disabled = false;
       drawChat();
     }
-    if (answer?.issues?.length) renderBoard().catch(() => {});
   }
 }
 
 const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 const SAVE_TRIES = 5;
 
-// After an answer: the panel creates the issues the agent proposed, then saves the exchange on `factory-chat`, with
-// the full token (the chat server never writes). Never throws: a failure is said under the answer or in a toast.
+// After an answer: the panel saves the exchange on `factory-chat` with the full token (the chat server never writes).
+// The requests the agent proposed are saved as cards waiting for the owner's click (issue #492), never created here.
+// Never throws: a failure is said under the answer or in a toast.
 async function finishExchange(repo, cid, mine, answer) {
-  const created = [];
-  let refused = 0;
-  for (const wanted of wantedIssues(answer.issues)) {
-    try {
-      const made = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(wanted)) });
-      created.push({ ...wanted, url: made.html_url, number: made.number });
-    } catch {
-      refused += 1; // going on: the others are still created, once
-    }
-  }
-  const text = (answer.text || '') + notCreatedNote(refused);
+  const proposals = wantedIssues(answer.issues);
+  const text = answer.text || '';
   const at = stamp();
   const base = newConversation(cid, mine.text || answer.conversation?.title || '', at);
   try {
-    return { conv: await saveExchange(repo, cid, base, mine, text, at, created), saved: true, created };
+    return { conv: await saveExchange(repo, cid, base, mine, text, at, proposals), saved: true };
   } catch {
-    const conv = addExchange(chat.conv?.id === cid ? structuredClone(chat.conv) : base, mine, `${text}\n\n_Cette réponse n'a pas pu être enregistrée._`, at, created);
+    const conv = addExchange(chat.conv?.id === cid ? structuredClone(chat.conv) : base, mine, `${text}\n\n_Cette réponse n'a pas pu être enregistrée._`, at, proposals);
     conv.unsaved = true;
-    return { conv, saved: false, created };
+    return { conv, saved: false };
   }
 }
 
@@ -2724,10 +2780,10 @@ async function ensureChatBranch(repo) {
   });
 }
 
-async function saveExchange(repo, cid, base, mine, text, at, created) {
+async function saveExchange(repo, cid, base, mine, text, at, proposals) {
   await ensureChatBranch(repo);
   const conv = await writeChatFile(repo, `chats/${cid}.json`, (latest) => {
-    const next = addExchange(latest || structuredClone(base), mine, text, at, created);
+    const next = addExchange(latest || structuredClone(base), mine, text, at, proposals);
     next.id = cid; // a stored id is never trusted
     return next;
   }, `chore(factory): chat ${cid}`);

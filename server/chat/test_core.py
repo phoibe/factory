@@ -61,6 +61,11 @@ class CreationNeedsAnExplicitActionTest(unittest.TestCase):
             self.assertIn(m.split(" « ")[0], SYSTEM)
             self.assertIn("à partir de cette conversation", m)
 
+    def test_the_owner_confirms_each_request_on_its_card(self):
+        # Issue #492: the block is only a proposal, shown as a card; the owner's click creates it.
+        self.assertIn("Créer cette demande", ASK_BLOCK)
+        self.assertNotIn("La factory crée la fiche", ASK_BLOCK)
+
     def test_only_buttons_an_explicit_request_or_a_yes_count(self):
         for needle in ("Créez une issue", "vas-y", "Une seule fois"):
             self.assertIn(needle, SYSTEM)

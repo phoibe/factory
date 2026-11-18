@@ -113,9 +113,15 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (name?.[1]) chatBranch.chats[name[1]] = data; else if (name) chatBranch.index = data;
         return json({ content: { sha: 'n' } });
       }
-      if (chatServer && req.method() === 'POST' && path === '/repos/o/r/issues') {
+      // A bug or a feature (never a chat conversation): created as GitHub does, with its number and link.
+      if (req.method() === 'POST' && path === '/repos/o/r/issues' && !(req.postDataJSON()?.labels || []).includes('factory:question') && ![failing, forbidden, missing, offline].some((set) => set?.has(path))) {
         const made = req.postDataJSON();
-        writes.push({ method: 'POST', path, body: made });
+        // `refuseIssues`: GitHub refuses the first n requests (the network dropped).
+        if (chatServer?.refuseIssues > writes.filter((w) => w.path === path && !w.ok).length) {
+          writes.push({ method: 'POST', path, body: made });
+          return json({ message: 'Server Error' }, 500);
+        }
+        writes.push({ method: 'POST', path, body: made, ok: true });
         const number = 100 + issues.length;
         // The factory then queues a new feature (the board shows it in « File d'attente »).
         issues.push(issue(number, made.title, made.labels.includes('factory:feature') ? [...made.labels, 'factory:queued'] : made.labels, { body: made.body }));

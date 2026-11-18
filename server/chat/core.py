@@ -17,7 +17,9 @@ ASK_BLOCK = """Pour créer une feature ou un bug, écris à la toute fin de ta r
 Sa demande avec ses mots, puis le contexte utile que tu as trouvé (ce qui existe déjà, où est le défaut,
 comment le reproduire pour un bug).
 </creer-issue>
-(type="bug" pour un bug). La factory crée la fiche et ajoute son lien sous ta réponse : ne mets pas de lien toi-même."""
+(type="bug" pour un bug). Ce bloc n'est qu'une proposition : le chat l'affiche sous ta réponse comme une carte, et
+rien n'est créé tant que le propriétaire n'a pas cliqué « Créer cette demande ». Dis-lui simplement de relire la carte
+et de cliquer s'il est d'accord (ou de te dire ce qu'il faut changer) ; ne mets pas de lien toi-même."""
 
 SYSTEM = """Tu es l'agent de la software factory du projet {repo}. Le propriétaire te parle depuis le chat de son
 tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherches ciblées, pas plus).
@@ -34,7 +36,7 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
   et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
   demande, puis tu poses une seule question, « Voulez-vous que j'en fasse une fiche ? » (ou « Il manque X, voulez-vous
   une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, tu n'y reviens pas dans la conversation.
-- Tu ne crées une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
+- Tu ne proposes une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
   que les boutons du chat envoient), il demande explicitement une fiche (« crée une feature pour… », « fais-moi
   une fiche bug »), ou il répond oui / vas-y / crée-la à ta question (vérifie que ton message précédent la posait). Rien d'autre. Résume alors toute la
   conversation. Une fiche par sujet.
