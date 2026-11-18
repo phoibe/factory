@@ -329,7 +329,8 @@ export const newConversation = (id, firstText, now = '') => ({ id, title: titleF
 export function addExchange(conv, mine, answer, now = '', proposals = []) {
   conv.messages.push({ who: 'me', text: mine.text || '', images: [...(mine.images || [])], at: now });
   const agent = { who: 'agent', text: answer, at: now };
-  const at = conv.messages.length; // the answer's place: messages are only ever appended, so ids stay unique
+  // The answer's place plus a random part: an answer rebuilt at the same place (after a failed save) gets new ids.
+  const at = `${conv.messages.length}-${Math.random().toString(36).slice(2, 8)}`;
   if (proposals.length) agent.proposals = proposals.map((p, i) => ({ id: `${at}-${i}`, kind: p.kind, title: p.title, body: p.body, state: 'pending' }));
   conv.messages.push(agent);
   conv.updated = now;

@@ -72,6 +72,15 @@ class CreationNeedsAnExplicitActionTest(unittest.TestCase):
 
 
 class PromptTest(unittest.TestCase):
+    def test_the_agent_sees_its_cards_and_what_the_owner_chose(self):
+        conv = new_conversation("c1", "Export ?", now="t0")
+        conv["messages"] += [{"who": "me", "text": "Export ?"}, {"who": "agent", "text": "Voici.", "proposals": [
+            {"id": "a", "kind": "feature", "title": "Exporter", "body": "x", "state": "ignored"},
+            {"id": "b", "kind": "bug", "title": "Plante", "body": "y", "state": "pending"}]}]
+        prompt = build_prompt(conv, "Plutôt en PDF", [])
+        self.assertIn("(carte proposée : feature « Exporter », ignorée par le propriétaire)", prompt)
+        self.assertIn("(carte proposée : bug « Plante », en attente de son clic)", prompt)
+
     def test_history_message_and_images(self):
         conv = new_conversation("c1", "Minuit ?", now="2026-11-04T10:00:00Z")
         add_exchange(conv, {"text": "Minuit ?", "images": []}, "Ça marche.", now="2026-11-04T10:01:00Z")
@@ -131,7 +140,7 @@ class LimitsTest(unittest.TestCase):
         text = "".join(f'<creer-issue type="bug" titre="T{i}">corps</creer-issue>' for i in range(MAX_ISSUES + 5))
         answer, issues = extract_issues(text)
         self.assertEqual(len(issues), MAX_ISSUES)
-        self.assertIn("5 autres demandes n'ont pas été créées", answer)  # never dropped silently
+        self.assertIn("5 autres demandes n'ont pas été proposées", answer)  # never dropped silently
 
     def test_conversation_ids_cannot_climb_out_of_the_chats_folder(self):
         self.assertIsNone(CID_RE.match("../index"))

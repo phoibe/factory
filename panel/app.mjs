@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, decideProposal, decisionComment } from './chat.mjs?v=20';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, decideProposal, decisionComment } from './chat.mjs?v=21';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2508,13 +2508,18 @@ async function decide(p, state) {
   let url;
   try {
     const path = `chats/${open}.json`;
-    // An answer that could not be saved lives only on screen: its card is decided there too.
-    const unsaved = server && chat.conv?.id === open && chat.conv.unsaved ? chat.conv : null;
-    if (server && !unsaved) {
+    // An answer that could not be saved lives only on screen: its cards are decided there. Every other card is read
+    // again from the stored conversation first (another device may have decided it already).
+    let unsaved = null;
+    if (server) {
       const { data } = await chatFile(repo, path);
       const stored = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === p.id);
-      if (stored && stored.state !== 'pending') {
-        if (here()) chat.conv = data;
+      if (!stored) {
+        if (chat.conv?.id === open && chat.conv.unsaved) unsaved = chat.conv;
+        else throw new Error('card not found');
+      } else if (stored.state !== 'pending') {
+        if (here() && !chat.conv?.unsaved) chat.conv = data;
+        else decided.set(key, { state: stored.state, ...(stored.url ? { url: stored.url } : {}) });
         return;
       }
     }
@@ -2528,7 +2533,7 @@ async function decide(p, state) {
           if (!latest || !decideProposal(latest, p.id, state, url)) throw new Error('not recorded');
           return latest;
         }, `chore(factory): chat ${open}`);
-        if (here()) chat.conv = conv;
+        if (here() && !chat.conv?.unsaved) chat.conv = conv;
       } else {
         await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(p.id, state, url) }) });
         // The choice is one more comment on the conversation: already seen, never a « new answer ».

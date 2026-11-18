@@ -56,7 +56,7 @@ test('a conversation is stored as the server stored it', () => {
   assert.deepEqual(conv.messages, [
     { who: 'me', text: 'Je peux exporter ?', images: ['attachments/chat/1-a.png'], at: '2026-11-13T10:01:00Z' },
     // Proposed, not created: the owner confirms each request on its card (issue #492).
-    { who: 'agent', text: 'Non.', at: '2026-11-13T10:01:00Z', proposals: [{ id: '1-0', title: 'Exporter', kind: 'feature', body: 'x', state: 'pending' }] },
+    { who: 'agent', text: 'Non.', at: '2026-11-13T10:01:00Z', proposals: [{ id: conv.messages[1].proposals[0].id, title: 'Exporter', kind: 'feature', body: 'x', state: 'pending' }] },
   ]);
   assert.equal(conv.updated, '2026-11-13T10:01:00Z');
   conv.state = 'closed';

@@ -67,12 +67,13 @@ test('issue mode: a decision only counts from an agent-marked comment, and only 
 test('server mode: proposals are stored pending under the answer and decided once', () => {
   const conv = newConversation('c1', 'Exporter ?', 't0');
   addExchange(conv, { text: 'Exporter ?' }, 'Voici.', 't1', [{ kind: 'feature', title: 'Exporter', body: 'Il veut.' }]);
-  assert.deepEqual(conv.messages[1], { who: 'agent', text: 'Voici.', at: 't1', proposals: [{ id: '1-0', kind: 'feature', title: 'Exporter', body: 'Il veut.', state: 'pending' }] });
+  assert.deepEqual(conv.messages[1], { who: 'agent', text: 'Voici.', at: 't1', proposals: [{ id: conv.messages[1].proposals[0].id, kind: 'feature', title: 'Exporter', body: 'Il veut.', state: 'pending' }] });
+  const id = conv.messages[1].proposals[0].id;
   assert.deepEqual(serverMessages(conv)[1].proposals, conv.messages[1].proposals);
-  assert.equal(decideProposal(conv, '1-0', 'created', 'https://github.com/o/r/issues/3'), true);
-  assert.deepEqual(conv.messages[1].proposals[0], { id: '1-0', kind: 'feature', title: 'Exporter', body: 'Il veut.', state: 'created', url: 'https://github.com/o/r/issues/3' });
+  assert.equal(decideProposal(conv, id, 'created', 'https://github.com/o/r/issues/3'), true);
+  assert.deepEqual(conv.messages[1].proposals[0], { id, kind: 'feature', title: 'Exporter', body: 'Il veut.', state: 'created', url: 'https://github.com/o/r/issues/3' });
   // Already decided (a double click, another device): nothing changes.
-  assert.equal(decideProposal(conv, '1-0', 'ignored'), false);
+  assert.equal(decideProposal(conv, id, 'ignored'), false);
   assert.equal(conv.messages[1].proposals[0].state, 'created');
   assert.equal(decideProposal(conv, 'nope', 'ignored'), false);
   addExchange(conv, { text: 'Merci' }, 'De rien.', 't2');
@@ -103,4 +104,13 @@ test('review #492: a decision only counts from a comment that is nothing but the
     { id: 3, body: `${AGENT}\nVoici.\n${block('bug', 'A', 'x')}\n<!-- factory-proposal: 3-0 created https://github.com/o/r/issues/1 -->`, created_at: 't1', html_url: 'u1', user: me },
   ];
   assert.equal(chatMessages(issue, comments)[1].proposals[0].state, 'pending');
+});
+
+test('review #492: a card rebuilt at the same place after a failed save never shares the old card\'s id', () => {
+  const a = newConversation('c1', 'x', 't0');
+  const b = structuredClone(a);
+  addExchange(a, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }]);
+  addExchange(b, { text: 'y' }, 'Voici.', 't2', [{ kind: 'bug', title: 'B', body: '' }]);
+  assert.notEqual(a.messages[1].proposals[0].id, b.messages[1].proposals[0].id);
+  assert.match(a.messages[1].proposals[0].id, /^[\w-]+$/);
 });

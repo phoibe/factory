@@ -98,8 +98,8 @@ def extract_issues(text):
     answer = BLOCK_RE.sub("", text or "").strip()
     dropped = len(issues) - MAX_ISSUES
     if dropped > 0:
-        answer += (f"\n\n_{dropped} autres demandes n'ont pas été créées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
-                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été créée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
+        answer += (f"\n\n_{dropped} autres demandes n'ont pas été proposées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
+                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été proposée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
     return answer, issues[:MAX_ISSUES]
 
 
@@ -148,6 +148,7 @@ def upsert_index(index, conv):
     return sorted([index_entry(conv)] + rest, key=lambda e: e.get("updated") or "", reverse=True)
 
 
+CARD_STATES = {"pending": "en attente de son clic", "created": "créée par le propriétaire", "ignored": "ignorée par le propriétaire"}
 MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
 
 
@@ -159,6 +160,10 @@ def build_prompt(conv, message, image_files):
         for m in history:
             who = "[Propriétaire]" if m["who"] == "me" else "[Toi]"
             extra = f" ({len(m['images'])} image(s) jointe(s))" if m.get("images") else ""
+            # The cards proposed under an answer, and what the owner chose (issue #492): the agent can revise them.
+            for p in m.get("proposals") or []:
+                state = CARD_STATES.get(p.get("state"), CARD_STATES["pending"])
+                extra += f"\n(carte proposée : {'bug' if p.get('kind') == 'bug' else 'feature'} « {p.get('title', '')} », {state})"
             lines.append(f"{who} {m.get('text', '')}{extra}")
         kept, size = [], 0
         for line in reversed(lines):
