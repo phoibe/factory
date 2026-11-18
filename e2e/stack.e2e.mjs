@@ -7,12 +7,12 @@ import { withPanel, issue } from './fixture.mjs';
 const SHEET = readFileSync(new URL('../STACK.md', import.meta.url), 'utf8');
 const withSheet = { files: { 'STACK.md': SHEET }, fileDates: { 'STACK.md': '2026-11-06T15:00:00Z' } };
 
-test('le bouton « Stack technique » est en haut, à côté de « Review générale »', async () => {
+test('le bouton « Stack technique » est en haut, juste après « Review générale » et « Amélioration UI »', async () => {
   await withPanel(withSheet, async ({ page, url }) => {
     await page.goto(url);
     const button = page.getByRole('button', { name: 'Stack technique' });
     await button.waitFor();
-    assert.equal(await page.locator('#general-review + #stack-open').count(), 1);
+    assert.equal(await page.locator('#general-review + #ui-polish + #stack-open').count(), 1);
   });
 });
 

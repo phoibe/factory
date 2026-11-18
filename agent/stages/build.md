@@ -92,7 +92,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    **Feature qui change une feature déjà rangée** : regarde le sommaire ; pour chaque ancienne spec que celle-ci
    modifie, lance `node .factory/scripts/specs.mjs modified <ancienne> <n>`. L'ancienne spec n'est jamais réécrite :
    elle reçoit seulement en tête la ligne « Modifiée par la demande n° … ».
-   Pas de spec rangée pour un cadrage (`factory:project`) ni une revue générale (`factory:audit`) ; les demandes livrées
+   Pas de spec rangée pour un cadrage (`factory:project`) ni une revue générale (`factory:audit`), ni une amélioration UI (`factory:ui-polish`) ; les demandes livrées
    avant cette règle ne se rattrapent pas. Si `save` répond que l'issue n'a aucune spec validée, il n'y a rien à ranger :
    ignore la ligne « spec rangée » du contrôle du journal.
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer

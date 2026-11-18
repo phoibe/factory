@@ -30,6 +30,9 @@ const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
   'Ce qui demande une vraie nouvelle feature devient une issue à part.'].join('\n');
+const UI_POLISH_BODY = ['Amélioration UI demandée depuis le tableau.', '',
+  'Jusqu\'à 3 tours de critique design de tous les écrans (états vide, erreur, chargement et téléphone compris), chacun suivi de la correction de tout ce qu\'il a trouvé.', '',
+  'Seulement l\'apparence et la clarté des écrans : un vrai manque fonctionnel devient une idée à trier.'].join('\n');
 const $ = (id) => document.getElementById(id);
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -741,7 +744,7 @@ function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:ui-polish') ? 'Amélioration UI' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
   const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
@@ -1926,6 +1929,7 @@ $('project-switch').addEventListener('click', () => {
 });
 $('projects-close').addEventListener('click', () => $('projects-dialog').close());
 $('general-review').addEventListener('click', () => startGeneralReview());
+$('ui-polish').addEventListener('click', () => startUiPolish());
 $('stack-open').addEventListener('click', () => openStack().catch(() => toast("La fiche ne s'est pas chargée.")));
 // A click on the dimmed page around the sheet closes it too (it only shows something).
 $('stack').addEventListener('click', (e) => { if (e.target === $('stack')) $('stack').close(); });
@@ -2025,26 +2029,31 @@ async function askStack(repo, btn) {
   }
 }
 
-// Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
-async function startGeneralReview() {
+// Opens a card the relay starts at once (or queues), with no questions and no spec: a general review (factory:audit)
+// or a UI improvement (factory:ui-polish, issue #462).
+async function startRun(buttonId, { question, title, label, body, done, failed }) {
   if (!current) return;
-  if (!confirm('Lancer une review générale de l\'appli ?')) return;
-  const btn = $('general-review');
+  if (!confirm(question)) return;
+  const btn = $(buttonId);
   btn.disabled = true;
   try {
     const issue = await api(`/repos/${current.repo.full_name}/issues`, {
       method: 'POST',
-      body: JSON.stringify({ title: 'Review générale de l\'appli', labels: ['factory:audit'], body: REVIEW_BODY }),
+      body: JSON.stringify({ title, labels: [label], body }),
     });
-    toast('Review générale lancée');
+    toast(done);
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review. ${errorText(e)}`);
+    toast(`${failed} ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
 }
+const startGeneralReview = () => startRun('general-review', { question: 'Lancer une review générale de l\'appli ?',
+  title: 'Review générale de l\'appli', label: 'factory:audit', body: REVIEW_BODY, done: 'Review générale lancée', failed: 'Impossible de lancer la review.' });
+const startUiPolish = () => startRun('ui-polish', { question: 'Lancer une amélioration de l\'interface ?',
+  title: 'Amélioration UI de l\'appli', label: 'factory:ui-polish', body: UI_POLISH_BODY, done: 'Amélioration UI lancée', failed: 'Impossible de lancer l\'amélioration.' });
 // ---- Agent (chat) -------------------------------------------------------------------------------
 // A chat with the agent. Two ways to reach it:
 // - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within

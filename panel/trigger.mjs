@@ -7,7 +7,7 @@
 export const TRIGGER_FILE = '.github/workflows/factory.yml';
 
 // Labels whose arrival on an issue must wake the factory (same list as the factory's own trigger, checked by the test).
-export const WAKE_LABELS = ['factory:feature', 'factory:bug', 'factory:project', 'factory:question', 'factory:audit', 'factory:stack', 'factory:kept', 'factory:blocked'];
+export const WAKE_LABELS = ['factory:feature', 'factory:bug', 'factory:project', 'factory:question', 'factory:audit', 'factory:stack', 'factory:kept', 'factory:blocked', 'factory:ui-polish'];
 
 const clause = (label) => `github.event.label.name == '${label}'`;
 const OPENING = "github.event_name != 'issues' || github.event.action != 'labeled'";

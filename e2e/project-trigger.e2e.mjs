@@ -51,7 +51,7 @@ test('la branche preprod reçoit la même mise à jour, pour que main y passe en
 });
 
 test('un déclencheur à jour n\'est pas réécrit', async () => {
-  const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked')");
+  const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked' || github.event.label.name == 'factory:ui-polish')");
   await withPanel({ files: { [FILE]: fresh } }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.waitForSelector('#project-view:not([hidden])');
@@ -78,7 +78,7 @@ test('si GitHub refuse le réveil après « Garder », le panneau le dit au lieu
 });
 
 test('sur un projet au déclencheur à jour, « Garder » suffit : pas d\'alerte même si le réveil de secours est refusé', async () => {
-  const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked')");
+  const fresh = OLD.replace("'factory:audit')", "'factory:audit' || github.event.label.name == 'factory:stack' || github.event.label.name == 'factory:kept' || github.event.label.name == 'factory:blocked' || github.event.label.name == 'factory:ui-polish')");
   await withPanel({ files: { [FILE]: fresh }, issues: [idea(5, 'Importer depuis un site')], config: { autoPick: true }, forbidden: new Set(['/repos/o/r/actions/workflows/factory.yml/dispatches']) }, async ({ page, writes, url }) => {
     await page.goto(url);
     await page.waitForTimeout(800);

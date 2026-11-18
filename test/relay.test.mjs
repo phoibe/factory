@@ -852,7 +852,7 @@ test('autoPick: urgent goes first, a feature starts by grilling and holds back o
 
 test('autoPick never takes held, running, waiting, question, project or release issues', async () => {
   const issues = [fi(1, L.feature, L.noPick), fi(2, L.question), fi(3, L.project), fi(4, 'factory:release'), fi(5, L.feature, L.grilling),
-    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement')];
+    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement'), fi(12, L.uiPolish)];
   const { started } = await runPick(issues, { ...pickConfig, maxParallel: 20 });
   assert.deepEqual(started, []);
 });
@@ -2286,6 +2286,13 @@ test('a queued stack card starts the stack stage when a place frees', async () =
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
   assert.equal(payloadOf(sent[0].init.body).stage, 'stack');
+});
+
+test('a queued « Amélioration UI » card starts the ui-polish stage when a place frees (issue #462)', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.uiPolish, L.queued] }], prs: [] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
+  assert.equal(payloadOf(sent[0].init.body).stage, 'ui-polish');
 });
 
 test('a failed lookup of the stack sheet (not a 404) opens no card', async () => {
