@@ -79,7 +79,7 @@ async function main() {
   } else if (command === 'release') {
     // The lock and the replay need no queue lock: done first, they never wait behind it. Then the place the run may
     // have freed is filled at once (issue #384), under the same lock as the decisions.
-    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
+    await relay.release(JSON.parse(fromJobOutput(process.env.PAYLOAD) || '{}'));
     await withLock(gh.queueLock, () => relay.refill()).catch((e) => console.log(`queue check after the run: ${e.message}`));
   } else if (command === 'relaunch-soon') {
     // Its own job after a decision whose launch failed for a passing reason (issue #383): the first relaunch, 2 min later.

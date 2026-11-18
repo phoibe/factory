@@ -9,7 +9,7 @@ import { toJobOutput } from '../lib/job-output.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
 import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
-import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, CHECKS_TIMEOUT_MS, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
+import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, checksTimeoutMs, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
 export function eventFromPayload(eventName, p, now = Date.now()) {
@@ -242,7 +242,7 @@ export function eventsPart(ctx) {
   async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
       outputs.agent = 'true';
-      outputs.payload = ev.payload;
+      outputs.payload = toJobOutput(ev.payload); // hex, see job-output.mjs
       return { action: { type: 'agent' }, outputs };
     }
     if (ev.kind === 'preview-check' || ev.kind === 'prod-check') {
@@ -472,7 +472,7 @@ export function eventsPart(ctx) {
     // A newer checks run on the same commit cancels the older one (two events asked for checks). Only a run that
     // reached the time limit is a hung test; a cancelled run that stopped early leaves the report to the newer run.
     // A run cancelled without a known start time never got going: it was replaced too.
-    if (result === 'cancelled' && !(started && nowMs - started * 1000 >= CHECKS_TIMEOUT_MS)) {
+    if (result === 'cancelled' && !(started && nowMs - started * 1000 >= checksTimeoutMs(config.checksMinutes))) {
       return log('checks replaced by a newer run on the same commit: it reports instead');
     }
     // An agent was sent on the PR after these checks started (a branch update after a conflict, a fix): new code is

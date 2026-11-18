@@ -15,6 +15,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import tempfile
 import string
 import time
@@ -34,6 +35,7 @@ FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched aga
 MAX_IMAGES = 4
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
+GIT_TIMEOUT = 60  # seconds for one copy of the project: a stalled GitHub must not hold the project's lock
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
 # Writes with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
 # can write with a 422 (invalid body), so nothing is ever written. Files, issues, pull requests: same list as the panel.
@@ -90,7 +92,8 @@ class GitHub:
 
 
 def create_app(owner, github_api="https://api.github.com", claude_bin="claude", repos_dir="/repos", model="sonnet",
-               origins=None, on_repo_change=None, git_url="https://github.com/{repo}.git", transport=None):
+               origins=None, on_repo_change=None, git_url="https://github.com/{repo}.git", transport=None, git_bin="git",
+               git_timeout=GIT_TIMEOUT):
     app = FastAPI()
     app.add_middleware(CORSMiddleware, allow_origins=origins or [f"https://{owner.lower()}.github.io"],
                        allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type"])
@@ -107,8 +110,18 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         return {k: os.environ[k] for k in keep if k in os.environ}
 
     async def run(*args, cwd=None):
-        proc = await asyncio.create_subprocess_exec(*args, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        out, err = await proc.communicate()
+        # Its own process group: git hands the download to a child (git-remote-https), which must stop with it.
+        proc = await asyncio.create_subprocess_exec(*args, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                                                    start_new_session=True)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), git_timeout)
+        except asyncio.TimeoutError:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+            raise RuntimeError("GitHub ne répond pas, réessayez dans un instant.") from None
         if proc.returncode:
             raise RuntimeError(err.decode(errors="replace")[-500:])
         return out.decode()
@@ -121,15 +134,19 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if time.time() - fetched.get(repo, 0) < FETCH_EVERY and os.path.isdir(path):
                 return path
             auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-            git = ["git", "-c", f"http.extraHeader=Authorization: Basic {auth}"]
+            git = [git_bin, "-c", f"http.extraHeader=Authorization: Basic {auth}"]
             url = git_url.format(repo=repo)
             if os.path.isdir(os.path.join(path, ".git")):
                 await run(*git, "fetch", "--depth", "1", "origin", "HEAD", cwd=path)
-                await run("git", "reset", "--hard", "-q", "FETCH_HEAD", cwd=path)
-                await run("git", "clean", "-fdq", cwd=path)
+                await run(git_bin, "reset", "--hard", "-q", "FETCH_HEAD", cwd=path)
+                await run(git_bin, "clean", "-fdq", cwd=path)
             else:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
-                await run(*git, "clone", "--depth", "1", "-q", url, path)
+                try:
+                    await run(*git, "clone", "--depth", "1", "-q", url, path)
+                except Exception:
+                    shutil.rmtree(path, ignore_errors=True)  # a half-made copy would be fetched into, broken, ever after
+                    raise
             fetched[repo] = time.time()
             if on_repo_change:
                 on_repo_change()

@@ -9,8 +9,9 @@ export const STEP_NAMES = { 'requesting-code-review': 'la revue de code', impecc
 export const SHOTS_BRANCH = 'claude/factory-assets';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-// Just under the checks job's timeout-minutes (30) in relay.yml.
-export const CHECKS_TIMEOUT_MS = 28 * 60_000;
+// Just under the checks job's timeout-minutes in relay.yml, which is the project's « checksMinutes » (30 by default):
+// a cancelled run that lasted this long hit the limit (a hung test) and was not replaced by a newer run.
+export const checksTimeoutMs = (minutes) => ((Number(minutes) || 30) - 2) * 60_000;
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 // A routine session has no time limit (yolivesound #115): past LOCK_MINUTES, the lock holds while the agent's sign of
 // life (agent/scripts/alive.mjs, renewed every 10 min while it works) is under ALIVE_MINUTES old, up to LOCK_MAX_MINUTES.
