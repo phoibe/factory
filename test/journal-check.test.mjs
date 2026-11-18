@@ -66,3 +66,8 @@ test('a build branch without its archived spec is told to save it', () => {
   assert.match(otherSpec, /spec rangée/, 'an older spec marked « Modifiée par » is not this request\'s spec');
   assert.doesNotMatch(report(['lib/x.ts', '.factory/journal/s1.jsonl'], () => journal, stages, { stage: 'bugfix', current: journal }), /spec rangée/);
 });
+
+test('the lock covers « Amélioration UI » runs (issue #462)', async () => {
+  const { GATED } = await import('../agent/scripts/journal-check.mjs');
+  assert.ok(GATED.includes('ui-polish'));
+});

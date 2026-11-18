@@ -107,3 +107,8 @@ test('a PR without a build run has no route line', () => {
   assert.equal(routeLine(runs, { small: true }), null);
   assert.doesNotMatch(summarize(runs, { stages, small: true }).body, /Parcours/);
 });
+
+test('an « Amélioration UI » run must show the design pass, whatever the toggles (issue #462)', async () => {
+  const { expectations } = await import('../scripts/lib/fabrication.mjs');
+  assert.deepEqual(expectations('ui-polish', { designPass: false }, false).map((e) => e.skill), ['impeccable']);
+});

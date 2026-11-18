@@ -32,10 +32,10 @@ test('les autres boutons du menu « Plus » restent, dans le même ordre', async
   await withPanel({ viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
-    const before = ['Signaler un bug', 'Review générale', 'Stack technique'];
+    const before = ['Signaler un bug', 'Review générale', 'Amélioration UI', 'Stack technique'];
     const items = await menuItems(page);
-    assert.deepEqual(items.slice(0, 3), before);
+    assert.deepEqual(items.slice(0, 4), before);
     // Whatever follows « Stack technique » is unchanged: only the framing button is gone.
-    assert.ok(items.slice(3).every((t) => !['Cadrer le projet', 'Revoir le cadrage'].includes(t)), items.join(', '));
+    assert.ok(items.slice(4).every((t) => !['Cadrer le projet', 'Revoir le cadrage'].includes(t)), items.join(', '));
   });
 });
