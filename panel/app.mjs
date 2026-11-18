@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues } from './chat.mjs?v=16';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues, elapsed, waitingSince } from './chat.mjs?v=17';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -1489,6 +1489,20 @@ function selectTab(name) {
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
   if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
+  // Issue #460: the « Agent » tab uses the whole width, and exactly the height left under the header.
+  document.body.classList.toggle('chat-wide', name === 'chat');
+  fitChat();
+}
+
+function fitChat() {
+  const box = $('chat');
+  if (box.hidden) return;
+  box.style.setProperty('--chat-top', `${Math.max(0, box.getBoundingClientRect().top + scrollY)}px`);
+}
+addEventListener('resize', fitChat);
+if ('ResizeObserver' in window) {
+  const watch = new ResizeObserver(() => fitChat());
+  for (const n of document.querySelectorAll('.top, .project-head, .tabs')) watch.observe(n);
 }
 
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
@@ -2282,11 +2296,35 @@ function inlineNodes(parts) {
   });
 }
 
+// Issue #460: one click copies a command or a whole answer; a short word on the button confirms it.
+async function copyText(btn, text) {
+  const label = btn.querySelector('.copy-label');
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+  btn.classList.toggle('copied', ok);
+  label.textContent = ok ? 'Copié ✓' : 'Copie impossible';
+  clearTimeout(btn.reset);
+  btn.reset = setTimeout(() => { btn.classList.remove('copied'); label.textContent = btn.dataset.label; }, 2000);
+}
+
+const COPY_ICON = () => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  return svg;
+};
+
+const copyButton = (label, cls, getText) => el('button', { type: 'button', class: `copy ${cls}`, 'data-label': label, onclick: (e) => copyText(e.currentTarget, getText()) },
+  COPY_ICON(), el('span', { class: 'copy-label', 'aria-live': 'polite' }, label));
+
+const TONE_NAMES = { warn: 'Attention', ok: 'Réussite', todo: 'À faire' };
+
 function richText(text) {
   return markdown(text).map((b) => {
     if (b.type === 'p') return el('p', {}, inlineNodes(b.inline));
     if (b.type === 'quote') return el('blockquote', {}, inlineNodes(b.inline));
-    if (b.type === 'pre') return el('pre', {}, b.v);
+    if (b.type === 'callout') return el('p', { class: `callout ${b.tone}`, }, el('span', { class: 'visually-hidden' }, `${TONE_NAMES[b.tone]} : `), inlineNodes(b.inline));
+    if (b.type === 'pre') return el('div', { class: 'code' }, el('pre', {}, b.v), copyButton('Copier', 'copy-code', () => b.v));
     return el(b.type, {}, b.items.map((it) => el('li', {}, inlineNodes(it))));
   });
 }
@@ -2295,7 +2333,11 @@ function richText(text) {
 // fetched once and shown from a local copy.
 function chatImage(path) {
   const img = el('img', { alt: 'Image envoyée', loading: 'lazy' });
-  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener' }, img);
+  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener', 'aria-label': 'Agrandir l\'image', onclick: (e) => {
+    if (!img.src || e.metaKey || e.ctrlKey || e.shiftKey) return; // a new tab when asked for
+    e.preventDefault();
+    openLightbox(img.src);
+  } }, img);
   const show = (url) => { img.src = url; link.href = url; };
   if (path.startsWith('blob:')) { show(path); return link; }
   if (!chat.images.has(path)) {
@@ -2308,6 +2350,11 @@ function chatImage(path) {
   return link;
 }
 
+function openLightbox(src) {
+  $('lightbox-img').src = src;
+  $('lightbox').showModal();
+}
+
 function bubble(m) {
   const pics = (m.images || []).map(chatImage);
   const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
@@ -2316,8 +2363,22 @@ function bubble(m) {
     text.length ? el('div', { class: 'bubble' }, text) : null,
     ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
       el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Fonctionnalité créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
-    el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+    el('div', { class: 'msg-foot' },
+      el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'),
+      m.who === 'agent' && m.text ? copyButton('Copier la réponse', 'copy-answer', () => m.text) : null));
 }
+
+// « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », the time ticking every second (issue #460).
+const USUAL_WAIT = 'd\'habitude, environ 1 à 2 min';
+function thinkingMeta(label, since) {
+  const at = Date.parse(since || '') || Date.now();
+  return el('span', { class: 'meta thinking-meta' }, label, ' ',
+    el('span', { class: 'num', 'data-since': String(at) }, elapsed(Date.now() - at)),
+    el('span', { class: 'usual' }, ` · ${USUAL_WAIT}`));
+}
+setInterval(() => {
+  for (const n of document.querySelectorAll('[data-since]')) n.textContent = elapsed(Date.now() - Number(n.dataset.since));
+}, 1000);
 
 // The answer being written by the chat server, updated in place as it streams.
 function liveBubble() {
@@ -2326,7 +2387,7 @@ function liveBubble() {
     live.text
       ? el('div', { class: 'bubble' }, richText(live.text))
       : el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-    el('span', { class: 'meta' }, live.status || 'Réfléchit…'));
+    thinkingMeta(live.status || 'Réfléchit…', live.since));
 }
 
 function drawLive() {
@@ -2370,6 +2431,7 @@ function drawChatList() {
 }
 
 function drawChat() {
+  fitChat();
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
   if (chat.server) return drawServerChat(isNew);
@@ -2387,7 +2449,7 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
+        thinkingMeta('Réfléchit…', chat.pending?.since || waitingSince(messages)))
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
@@ -2526,7 +2588,7 @@ async function sendChat(text, withImages = true) {
   btn.disabled = true;
   chat.sending = true;
   try {
-    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
     const paths = await uploadImages(repo, files);
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
@@ -2574,7 +2636,7 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
+  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
@@ -2783,6 +2845,8 @@ $('chat-input').addEventListener('keydown', (e) => {
   }
 });
 $('chat-new').addEventListener('click', () => selectConversation('new'));
+$('lightbox').addEventListener('click', (e) => { if (e.target !== $('lightbox-img')) $('lightbox').close(); });
+$('lightbox').addEventListener('close', () => { $('lightbox-img').removeAttribute('src'); });
 $('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
 $('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));
 $('chat-bug').addEventListener('click', () => sendChat(ASK.bug, false));

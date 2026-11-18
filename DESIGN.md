@@ -12,6 +12,10 @@ colors:
   ok-green: "#1a7f4b"
   danger-red: "#c62828"
   scrim: "rgb(0 0 0 / .45)"
+  warn-soft: "#fff4e5"
+  warn-line: "#f3c58f"
+  ok-soft: "#ebf6ef"
+  ok-line: "#a9d8bc"
   paper-dark: "#101113"
   surface-dark: "#18191c"
   ink-dark: "#f2f2ef"
@@ -21,6 +25,10 @@ colors:
   signal-blue-soft-dark: "#16213f"
   ok-green-dark: "#6fcf97"
   danger-red-dark: "#ff8a80"
+  warn-soft-dark: "#33240f"
+  warn-line-dark: "#6b4a1f"
+  ok-soft-dark: "#12291c"
+  ok-line-dark: "#285c3d"
 typography:
   display:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
@@ -172,3 +180,11 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Téléphone** : en haut, seulement le nom du projet, l'état du site en ligne (« En ligne : à jour », « En ligne : 2 modifications d'écart »… sur une ligne discrète, en rouge quand la dernière publication a échoué), « Nouvelle fonctionnalité », « Plus » (menu qui replie les actions secondaires) puis la carte « À vous ». Sur un projet mis en production « sur accord », « Mise en production » prend la place de « Nouvelle fonctionnalité », qui devient la première ligne de « Plus » : toujours une seule ligne de boutons, le « go » ne bouge jamais. Sur ordinateur tout reste affiché.
 - **« go » immédiat** (#450) : un toucher envoie la réponse tout de suite ; le bouton affiche « Envoi… », sans compte à rebours ni fenêtre de confirmation. « Jeter » sur une idée part aussi au toucher.
 - **Chargement** : cartes grises calmes, sans animation. **Erreur de discussions** : message permanent + « Réessayer ».
+
+## Issue 460 additions (onglet Agent)
+- **Pleine largeur** : seul l'onglet « Agent » ignore la largeur maximale de 1100 px ; ses messages restent dans une colonne de lecture de 860 px au plus, centrée. La conversation occupe exactement la hauteur restante de l'écran : la zone de saisie est toujours visible.
+- **Messages** : ceux du propriétaire dans une bulle bleu doux (fond `#eaf0ff`, filet `#b9cbfa` ; nuit `#16213f` / `#2c437f`) à droite ; ceux de l'agent sans bulle, comme un texte de document. Le bleu doux n'est pas un appel à l'action : la règle « une seule voix » vaut toujours pour le bleu vif.
+- **Encadrés colorés** (exception assumée à « tout est gris ») : une ligne de l'agent qui commence par ⚠️ (orange doux `#fff4e5`, filet `#f3c58f`), ✅ (vert doux `#ebf6ef`, filet `#a9d8bc`) ou ➡️ (bleu doux). Filet d'un pixel tout autour, jamais de bordure latérale ; l'émoji reste visible, la couleur n'est jamais seule.
+- **Copier** : bouton discret (icône + « Copier ») en haut à droite d'un bloc de commande, et « Copier la réponse » sous chaque réponse ; « Copié ✓ » (vert) ou « Copie impossible » pendant 2 s.
+- **Attente** : « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », chiffres en mono.
+- **Image agrandie** : par-dessus la page sur un voile sombre ; Échap, un clic à côté ou le bouton × la referme.

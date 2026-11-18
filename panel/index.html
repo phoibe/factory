@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=49">
+  <link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
   <header class="top">
@@ -155,7 +155,11 @@
       <button id="gap-close" type="button">Fermer</button>
     </div>
   </dialog>
+  <dialog id="lightbox" class="lightbox" aria-label="Image agrandie">
+    <img id="lightbox-img" alt="Image agrandie">
+    <button type="button" class="lightbox-close" aria-label="Fermer" autofocus>×</button>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=68"></script>
+  <script type="module" src="app.mjs?v=69"></script>
 </body>
 </html>
