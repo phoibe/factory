@@ -2365,15 +2365,24 @@ document.addEventListener('visibilitychange', () => {
 
 // The chat shows « and » glued to their word (quoteParts): during a copy that touches them, the glued spaces
 // turn back into the message's own spaces, so the browser copies the exact text (plain and rich), then the
-// screen gets them back.
-document.addEventListener('copy', () => {
+// screen gets them back. The page fills the clipboard itself: some Chromium versions turn a lone space of a
+// copied <span> into &nbsp; in the rich copy.
+document.addEventListener('copy', (e) => {
   const sel = getSelection();
   if (!sel || sel.isCollapsed) return;
   const glued = [...document.querySelectorAll('#chat-messages .glue')].filter((g) => sel.containsNode(g, true));
+  if (!glued.length) return;
   // insertData then deleteData, not a new `data`: a selection ending inside the glue keeps its place.
   const swap = (g, v) => { const t = g.firstChild; const n = t.length; t.insertData(0, v); t.deleteData(v.length, n); };
   for (const g of glued) swap(g, g.dataset.v);
-  if (glued.length) setTimeout(() => { for (const g of glued) swap(g, '\u00A0'.repeat(g.dataset.v.length)); });
+  setTimeout(() => { for (const g of glued) swap(g, '\u00A0'.repeat(g.dataset.v.length)); });
+  if (!e.clipboardData) return;
+  const box = document.createElement('div');
+  for (let i = 0; i < sel.rangeCount; i++) box.append(sel.getRangeAt(i).cloneContents());
+  for (const g of box.querySelectorAll('.glue')) g.replaceWith(g.textContent);
+  e.clipboardData.setData('text/plain', sel.toString());
+  e.clipboardData.setData('text/html', box.innerHTML);
+  e.preventDefault();
 });
 
 const timeOf = (iso) => {
