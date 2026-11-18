@@ -372,3 +372,20 @@ test('the end-of-run summary says what was read, what was free and the reserve l
   assert.match(text, /\n  7 GET \/repos\/\{repo\}\/issues\n  3 GET \/repos\/\{repo\}\/pulls\n  2 GET/);
   assert.match(formatUsage({ reads: 0, free: 0, writes: 0, remaining: null, limit: null, routes: {} }), /reserve unknown/);
 });
+
+test('the open cards of one label come from the one list of open issues, read once per run (issue #491)', async () => {
+  const open = [
+    { number: 3, created_at: '2026-11-03', labels: [{ name: 'factory:queued' }] },
+    { number: 2, created_at: '2026-11-02', labels: [{ name: 'factory:checks' }], pull_request: {} },
+    { number: 1, created_at: '2026-11-01', labels: [{ name: 'factory:queued' }, { name: 'factory:kept' }] },
+  ];
+  const { gh, sent } = recorder([tagged(200, open, { etag: 'W/"o"' }), tagged(304, null, { etag: 'W/"o"' }), tagged(200, [{ number: 9 }], {})]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [3, 1]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued', sort: 'created', direction: 'asc' })).map((i) => i.number), [1, 3]);
+  assert.match(sent[0].url, /\/issues\?state=open&per_page=100$/);
+  assert.equal(sent[1].headers['if-none-match'], 'W/"o"');
+  assert.deepEqual([gh.usage().reads, gh.usage().free], [1, 1]);
+  // Any other question (closed ones too) is still asked to GitHub as it is.
+  await gh.listIssues({ labels: 'factory:stack', state: 'all' });
+  assert.match(sent[2].url, /state=all.*labels=factory%3Astack/);
+});

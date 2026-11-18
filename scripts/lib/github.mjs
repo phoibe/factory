@@ -104,6 +104,11 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return out;
   }
   const enc = encodeURIComponent;
+  // All open issues and PRs, newest first (GitHub's order).
+  const listOpenIssues = () => paginate('/repos/{repo}/issues?state=open&per_page=100');
+  // A question the open list answers: one label, open ones, by creation date.
+  const fromOpenList = (q = {}) => typeof q.labels === 'string' && !q.labels.includes(',')
+    && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k)) && (q.sort ?? 'created') === 'created';
   const trusted = (list) => trustNotes(list, repo.split('/')[0]);
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
@@ -180,9 +185,15 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
-    listIssues: (q) => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`),
+    // The open cards of one label (issue #491): filtered from the one list of open issues, read once per run and then
+    // only asked « changed? » (free when not), instead of one counted read per label. Other questions go to GitHub.
+    listIssues: async (q) => {
+      if (!fromOpenList(q)) return request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`);
+      const list = (await listOpenIssues()).filter((i) => (i.labels || []).some((l) => (l.name ?? l) === q.labels));
+      return q.direction === 'asc' ? list.reverse() : list;
+    },
     listPulls: () => paginate('/repos/{repo}/pulls?state=open&per_page=100'),
-    listOpenIssues: () => paginate('/repos/{repo}/issues?state=open&per_page=100'),
+    listOpenIssues,
     // The repository's latest issue events, all cards together (newest first).
     listRepoEvents: () => request('GET', '/repos/{repo}/issues/events?per_page=100'),
     // Comments updated at or after `since` (ISO time): only what moved, not the whole thread.
