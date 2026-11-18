@@ -290,3 +290,25 @@ test('a version tag naming a commit GitHub does not know resolves to null (404 o
   assert.equal(await client([answer(404)]).resolveCommit('fffffff'), null);
   await assert.rejects(client([answer(403)]).resolveCommit('abc1234'));
 });
+
+// Issue #490: an owner's « go » answered by a GitHub outage longer than the retries was lost. The client marks such
+// failures so the relay can end on its « retried at the next tick » step instead of failing for good.
+test('a GitHub outage that outlasts the retries is marked as such (5xx, or no answer at all)', async () => {
+  const { isGitHubDown } = await import('../scripts/lib/ratelimit.mjs');
+  const e5 = await client([answer(502), answer(502), answer(502), answer(502)]).getPr(1).catch((e) => e);
+  assert.match(String(e5), /502/);
+  assert.equal(isGitHubDown(e5), true);
+  const eNet = await client([new Error('ECONNRESET')]).comment(1, 'hi').catch((e) => e);
+  assert.match(String(eNet), /ECONNRESET/);
+  assert.equal(isGitHubDown(eNet), true);
+  const eList = await client([answer(503), answer(503), answer(503), answer(503)]).listComments(1).catch((e) => e);
+  assert.equal(isGitHubDown(eList), true);
+});
+
+test('a refused call (4xx) is not taken for an outage: replaying it would fail the same way', async () => {
+  const { isGitHubDown } = await import('../scripts/lib/ratelimit.mjs');
+  const e = await client([answer(422)]).comment(1, 'hi').catch((err) => err);
+  assert.ok(e instanceof Error);
+  assert.equal(isGitHubDown(e), false);
+  assert.equal(isGitHubDown(new Error('boom')), false);
+});

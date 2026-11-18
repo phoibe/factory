@@ -1,0 +1,6 @@
+{"t":"2026-11-18T17:40:30.663Z","kind":"run","stage":"bugfix","issue":490,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-18T17:41:10.872Z","kind":"skill","name":"systematic-debugging","id":"toolu_016FAdAUtYpbbgVTT6jh7PmH"}
+{"t":"2026-11-18T17:41:11.128Z","kind":"skill","name":"test-driven-development","id":"toolu_01ECfWigyw13PtpPbRuCzYjs"}
+{"t":"2026-11-18T17:42:06.534Z","kind":"test","cmd":"cat >> test/relay.test.mjs <<'EOF'\n\n// Issue #490: the owner's answer (« go », « ok ») came while GitHub was down: the run failed for good and the answer\n// was never seen. An outage now ends the run ","ok":false,"id":"toolu_01VMXhnBKc9bYVEo73EEY9ms"}
+{"t":"2026-11-18T17:42:43.938Z","kind":"test","cmd":"cat >> scripts/lib/ratelimit.mjs <<'EOF'\n\n// GitHub down for longer than the client's retries (5xx, or no answer at all): like a rate limit, the work is not\n// wrong, only early. The relay ends such a","ok":true,"id":"toolu_01HCqcDPYzDzRkQmg6J6QGr3"}
+{"t":"2026-11-18T17:43:30.859Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=…  // A relay run stopped by GitHub's « too many requests » left its event undone:\"\"\",\"\"\"  // A relay run stopped by GitHub's « too many requests », or by an outage (issue ","ok":true,"id":"toolu_01KRHb6sSBocWrUvGYCh3m21"}

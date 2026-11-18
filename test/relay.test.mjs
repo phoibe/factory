@@ -3728,3 +3728,17 @@ test('#440 review: a French title that merely starts with an ordinary word keeps
   assert.equal(plainTitle('Style : nouvelles couleurs'), 'Style : nouvelles couleurs');
   assert.equal(plainTitle('docs(readme): x'), 'x');
 });
+
+// Issue #490: the owner's answer (« go », « ok ») came while GitHub was down: the run failed for good and the answer
+// was never seen. An outage now ends the run like the rate limit, on the step the tick re-runs, so the event is replayed.
+test('a GitHub outage ends a decision on the « retried at the next tick » step instead of losing the event', async () => {
+  const { retriedLater } = await import('../scripts/relay.mjs');
+  const { RateLimited } = await import('../scripts/lib/ratelimit.mjs');
+  const down = Object.assign(new Error('GET /repos/o/r/issues/1 -> 502 Bad Gateway'), { githubDown: true });
+  for (const cmd of ['decide', 'release', 'report']) {
+    assert.equal(retriedLater(cmd, down), true, cmd);
+    assert.equal(retriedLater(cmd, new RateLimited(120_000)), true, cmd);
+    assert.equal(retriedLater(cmd, new Error('TypeError: x is not a function')), false, cmd); // a code bug still fails
+  }
+  assert.equal(retriedLater('prod-report', down), false); // no step marks that run: it must fail visibly
+});

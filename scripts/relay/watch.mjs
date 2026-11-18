@@ -178,7 +178,7 @@ export function watchPart(ctx) {
     await syncVersionTag().catch((e) => log(`version tag: ${e.message}`));
   }
 
-  // A relay run stopped by GitHub's « too many requests » left its event undone: re-running its failed jobs replays
+  // A relay run stopped by GitHub's « too many requests », or by an outage (issue #490), left its event undone: re-running its failed jobs replays
   // the very same event, now that the limit has passed. Runs of the last day only, a few attempts each.
   async function retryRateLimited() {
     if (!gh.failedRuns) return;
