@@ -1509,7 +1509,8 @@ async function updateTrigger(repo) {
   }
 }
 
-function selectTab(name) {
+// `focus`: also put the cursor in the tab's field (a click on « Agent », not the arrow keys moving along the tabs).
+function selectTab(name, focus = false) {
   const fromChat = !$('chat').hidden;
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
@@ -1521,6 +1522,17 @@ function selectTab(name) {
   document.body.classList.toggle('chat-wide', name === 'chat');
   if (name !== 'chat') setChatFull(false);
   fitChat();
+  if (name === 'chat' && focus) focusChat();
+}
+
+// Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
+// while it is missing, the message box otherwise. Never on a phone: the keyboard would hide half the screen.
+function focusChat() {
+  if (!matchMedia('(pointer: fine)').matches) return;
+  const field = $(needsReadToken() ? 'read-token' : 'chat-input');
+  field.focus({ preventScroll: true }); // the browser would centre it, pushing the tabs off a short screen
+  // A laptop screen can leave the box just below the fold: show it whole, with its focus ring.
+  (field.closest('.composer') || field).scrollIntoView({ block: 'nearest' });
 }
 
 // Issue #473: the « Agent » tab at the usual width, or full screen (only the top bar and the project list stay).
@@ -2943,7 +2955,8 @@ $('chat-close').addEventListener('click', () => closeConversation());
 setupTabs(document.querySelector('.tabs'));
 watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
-$('tab-chat').addEventListener('click', () => selectTab('chat'));
+// The arrow keys of the tab list click from code (untrusted): the keyboard stays on the tabs (WAI-ARIA tabs pattern).
+$('tab-chat').addEventListener('click', (e) => selectTab('chat', e.isTrusted));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
