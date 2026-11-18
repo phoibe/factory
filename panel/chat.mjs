@@ -292,8 +292,11 @@ export function upsertIndex(index, conv) {
 
 // An issue the agent proposed. A feature the owner asked for is kept (never an « idée à trier »), and the agent
 // marker leaves it to the queue instead of starting it at once; a bug starts right away.
+// The factory's hidden notes are taken out of the proposed text: written with the owner's token they would count.
+const NOTES = /<!--\s*factory-[\s\S]*?-->/g;
+const withoutNotes = (text) => { let s = String(text ?? ''); for (let prev = null; prev !== s;) { prev = s; s = s.replace(NOTES, ''); } return s; };
 export function issueRequest({ kind, title, body }) {
-  const text = `${body}\n\n_Demandé depuis le chat du tableau de suivi._`;
+  const text = `${withoutNotes(body)}\n\n_Demandé depuis le chat du tableau de suivi._`;
   return kind === 'bug'
     ? { title, labels: ['factory:bug'], body: text }
     : { title, labels: ['factory:feature', 'factory:kept'], body: `${AGENT_MARKER}\n${text}` };

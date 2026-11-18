@@ -290,3 +290,40 @@ test('a version tag naming a commit GitHub does not know resolves to null (404 o
   assert.equal(await client([answer(404)]).resolveCommit('fffffff'), null);
   await assert.rejects(client([answer(403)]).resolveCommit('abc1234'));
 });
+
+// A connection that never answers must not eat the whole job (15 min) and lose the owner's message with it.
+test('a GitHub request that never answers is abandoned after the time limit: a read is tried again, then fails', async () => {
+  let calls = 0;
+  const hang = (url, init) => { calls++; return new Promise((_, ko) => { const alive = setTimeout(() => {}, 5000); init.signal?.addEventListener('abort', () => { clearTimeout(alive); ko(init.signal.reason); }); }); };
+  const gh = github({ token: 't', repo: 'o/r', fetchImpl: hang, sleep: async () => {}, timeoutMs: 20 });
+  await assert.rejects(gh.request('GET', '/repos/{repo}/issues'));
+  assert.ok(calls > 1, 'the read is tried again');
+});
+
+test('a write that never answers is abandoned once, never sent twice', async () => {
+  let calls = 0;
+  const hang = (url, init) => { calls++; return new Promise((_, ko) => { const alive = setTimeout(() => {}, 5000); init.signal?.addEventListener('abort', () => { clearTimeout(alive); ko(init.signal.reason); }); }); };
+  const gh = github({ token: 't', repo: 'o/r', fetchImpl: hang, sleep: async () => {}, timeoutMs: 20 });
+  await assert.rejects(gh.request('POST', '/repos/{repo}/issues', { title: 'x' }));
+  assert.equal(calls, 1);
+});
+
+// A waiting run polls every 4 s for up to 13 min: a commit never changes, so its date is read once, not at each poll.
+test('a run waiting for the lock reads the date of the same lock commit only once', async () => {
+  const keys = [];
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {},
+    fetchImpl: async (url, init) => {
+      const key = `${init.method} ${url.replace('https://api.github.com/repos/o/r', '')}`;
+      keys.push(key);
+      if (key === 'GET /git/ref/factory/lock') return answer(200, { object: { sha: 'held' } });
+      if (key === 'GET /git/commits/held') return answer(200, { committer: { date: new Date(Date.now() - 1000).toISOString() } });
+      return answer(404);
+    },
+  });
+  for (let i = 0; i < 5; i++) {
+    assert.equal(await gh.queueLock.acquire(), false);
+    assert.ok((await gh.queueLock.ageMs()) >= 1000);
+  }
+  assert.equal(keys.filter((k) => k === 'GET /git/commits/held').length, 1);
+});

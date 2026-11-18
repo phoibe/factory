@@ -16,7 +16,9 @@ const MAX_RATE_PAUSES = 3;
 const MAX_PAUSED_MS = 3 * 60_000;
 const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the queue lock first: no pause past this
 
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
+// `timeoutMs`: a request with no answer by then is abandoned (and retried like a network error): a hung connection
+// must not eat the whole job and lose the event it handles.
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timeoutMs = 60_000 }) {
   const started = now();
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
@@ -25,7 +27,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
       let res;
-      try { res = await fetchImpl(url, { method, ...init }); } catch (e) {
+      try { res = await fetchImpl(url, { method, ...init, signal: AbortSignal.timeout(timeoutMs) }); } catch (e) {
         if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw e;
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
@@ -84,6 +86,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     if (!sha || (await lockSha()) !== sha) return;
     try { await request('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
   };
+  const lockDate = { sha: null, at: 0 };
   const queueLock = {
     async acquire() {
       seen = await lockSha();
@@ -95,8 +98,13 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     },
     async ageMs() {
       if (!seen) return null;
-      const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
-      return commit ? Date.now() - Date.parse(commit.committer.date) : null;
+      // A commit never changes: its date is read once per lock commit, not at every poll of a waiting run.
+      if (lockDate.sha !== seen) {
+        const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
+        if (!commit) return null;
+        Object.assign(lockDate, { sha: seen, at: Date.parse(commit.committer.date) });
+      }
+      return Date.now() - lockDate.at;
     },
     // A sign of life: a new commit on top of ours, so its date is now. A fast-forward only (force: false): a run that
     // took the lock over has put an unrelated commit there, and GitHub refuses the move (422) instead of stealing it back.
