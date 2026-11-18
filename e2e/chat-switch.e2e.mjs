@@ -37,6 +37,8 @@ test('je change de projet pendant que l\'agent répond : aucune erreur, la zone 
     // Back on the first project: the chat works, and a new message can be sent.
     await pick(page, 'r');
     await page.waitForFunction(() => document.getElementById('project-name').textContent === 'r');
+    // Another project opens on « Suivi » (issue #475): back to « Agent » to write again.
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
     await page.locator('#chat-input').fill('Encore');
     await page.locator('#chat-send').click();
     await page.locator('#chat-messages .msg.agent', { hasText: 'Bien reçu.' }).waitFor({ timeout: 8000 });
