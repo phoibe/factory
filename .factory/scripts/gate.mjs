@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code hook: the lock. A build, bugfix, foundation or audit run cannot open its PR (nor hand it to the next
+// Claude Code hook: the lock. A build, bugfix, foundation, audit or ui-polish run cannot open its PR (nor hand it to the next
 // step with factory:checks / factory:visual-review) while its journal lacks a step, nor open it without saying what
 // was tried in real conditions (issue #385), and it is sent back once
 // when it tries to stop early. Installed by scripts/sync.mjs. After MAX_DENIALS refusals in one run it lets
