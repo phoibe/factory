@@ -338,7 +338,24 @@ async function projectDotOf(repo) {
   }
 }
 
+// The open board's own requests go first: everything else the page reads (the other projects' dots, the day's agent
+// starts, the gap with production, « Déclarer stable ») waits for its first cards, at most BOARD_FIRST_MS. Fired all
+// at once, these heavy lists (about 1 MB a page) shared the connection with the board, which took 8 to 20 s to show.
+const BOARD_FIRST_MS = 8000;
+let boardGate = Promise.resolve();
+let gateOpener = null; // set while the gate is held
+function holdForBoard() {
+  if (gateOpener) return; // already held (a project opened while the first one loads): the board on screen opens it
+  boardGate = new Promise((ok) => {
+    const timer = setTimeout(() => openBoardGate(), BOARD_FIRST_MS);
+    gateOpener = () => { clearTimeout(timer); gateOpener = null; ok(); };
+  });
+}
+function openBoardGate() { gateOpener?.(); }
+holdForBoard(); // from the panel's start: the first board is the one waited for
+
 async function refreshDots() {
+  await boardGate;
   clearTimeout(dotsTimer);
   // While GitHub's wait runs, every caller waits too: the next round comes at its end.
   const paused = Math.min(dotsPausedUntil - Date.now(), 300_000);
@@ -379,6 +396,7 @@ async function openProject(fullName) {
   // Never the old project's cards under the new name (issue #319): its late answers are dropped. The new one shows
   // at once from this tab's memory, or from what the project list knows, otherwise grey cards (issue #327).
   if (live.repo !== next.repo.full_name) enterBoard(next.repo.full_name);
+  holdForBoard();
   store.set(PROJECT_KEY, current.repo.full_name);
   renderProjectList();
   const { config, warnings } = resolveConfig(raw, catalog, defaults);
@@ -405,7 +423,8 @@ async function openProject(fullName) {
   renderRules();
   loadMachine(current).catch(() => {});
   drawRelease();
-  refreshRelease().catch(() => {});
+  const opened = current;
+  boardGate.then(() => (current === opened ? refreshRelease() : null)).catch(() => {});
   loadDelivery(current).catch(() => {});
   updateTrigger(current.repo).catch((e) => console.warn('Trigger not checked', e));
   await renderBoard();
@@ -518,23 +537,35 @@ async function refresh() {
     };
     // The first requests go together (issue #327). Requests the agent closed by itself (already done, duplicate,
     // obsolete) are shown in « Terminé » with their reason.
-    const [issues, closed, closedIssues, ev] = await Promise.all([
-      openIssues(),
+    // « Terminé » (two lists of about 1 to 2 MB at their first read): on a board's first read the open cards come
+    // first, alone, and these lists follow once they are drawn; afterwards (cheap unchanged answers) they go together.
+    const readDone = () => Promise.all([
       cachedGet(`/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`).catch(soft({ data: null, changed: false })),
       cachedGet(`/repos/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=100`).catch(soft({ data: null, changed: false })),
+    ]);
+    const early = live.doneLoaded ? readDone() : null;
+    early?.catch(() => {}); // its failure is read below, after the open cards
+    const [issues, ev] = await Promise.all([
+      openIssues(),
       cachedGet(`/repos/${repo}/issues/events?per_page=100&page=1`).catch(soft({ data: [], changed: false })),
     ]);
     if (!same()) return; // the owner switched project meanwhile
     // More than a page of events while away: the older pages are read again, so that no step is missing.
     if (live.eventsDeep && ev.data.length === 100 && live.events.length && !ev.data.some((e) => live.events.some((k) => k.id === e.id))) live.eventsDeep = false;
     mergeEvents(ev.data); // even unchanged: a board left before its first load kept no events
-    // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
-    if (closed.data) { live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true; }
     live.issues = issues.data.map((i) => ({ ...i, labels: i.labels.map((l) => l.name) }));
     $('issues-link').textContent = issuesLinkText(openIssueCount(live.issues));
-    // The cards show now; their details (preview, session, estimate) come in below, in their place.
-    if (!live.drawn || !live.synced || issues.changed || closed.changed || closedIssues.changed || ev.changed) drawBoard();
+    // The cards show now; « Terminé » and their details (preview, session, estimate) come in below, in their place.
+    if (!live.drawn || !live.synced || issues.changed || ev.changed) drawBoard();
     live.synced = true;
+    openBoardGate();
+    // Read alongside the cards' details below, drawn as soon as it arrives.
+    const doneRead = (early || readDone()).then(([closed, closedIssues]) => {
+      // A failed read is not « Rien de livré »: « Terminé » waits for a list it could read.
+      if (!same() || !closed.data) return;
+      live.done = doneItems(closed.data, closedIssues.data || []); live.doneLoaded = true; live.doneTried = true;
+      if (closed.changed || closedIssues.changed || live.doneSig == null) drawBoard();
+    });
     // The older history of steps (the cards' durations), read once per project.
     const deepEvents = async () => {
       if (live.eventsDeep) return false;
@@ -618,7 +649,7 @@ async function refresh() {
       });
     };
     const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
-    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneReleases(), refreshGap()]);
+    const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneRead.then(doneReleases), refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
     if (limited) live.pauseMs = Math.min(limited.waitMs, 5 * 60_000);
@@ -633,6 +664,7 @@ async function refresh() {
     live.failures++;
     if (!live.issues) $('board').replaceChildren(el('div', { class: 'board-error', role: 'alert' }, el('strong', {}, 'Connexion perdue'), el('span', {}, 'GitHub ne répond pas pour le moment.'), el('button', { type: 'button', class: 'secondary', onclick: () => refresh() }, 'Réessayer')));
   } finally {
+    if (live.repo === repo) openBoardGate(); // a board that could not load holds nothing up
     if (live.busy === run) {
       live.busy = null;
       drawStatus();
@@ -1645,6 +1677,7 @@ let runsTimer = null;
 async function refreshRuns() {
   clearTimeout(runsTimer);
   runsTimer = setTimeout(refreshRuns, 5 * 60_000);
+  await boardGate;
   if (!token || !projects.length) return;
   const from = parisMidnight();
   try {
@@ -1714,6 +1747,8 @@ function refreshGap(force = false) {
 const gapMode = (project) => effectiveProduction(project.config, project.delivery);
 async function readGap(force) {
   const project = current;
+  await boardGate;
+  if (current !== project) return; // another project opened meanwhile: its own read comes with it
   const repo = project.repo.full_name;
   if (!force && Date.now() - (gap.at.get(repo) || 0) < GAP_MS) return;
   gap.at.set(repo, Date.now());
@@ -1936,6 +1971,7 @@ async function productionModeChanged(was, now) {
 const FACTORY_REPO = 'phoibe/factory';
 let stableChanges = [];
 async function refreshStable() {
+  await boardGate;
   const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
   stableChanges = (cmp?.commits || []).map((c) => c.commit.message.split('\n')[0]).filter((s) => !s.startsWith('chore(factory)'));
   const btn = $('stable');

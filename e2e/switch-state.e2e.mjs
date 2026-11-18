@@ -40,7 +40,8 @@ test('j\'ouvre un projet lent juste après un autre : il ne dit pas « à jour �
     await page.locator('.ticket', { hasText: 'Carte alpha' }).waitFor();
     assert.equal(await status(page).textContent(), 'En direct · mise à jour…');
     assert.equal(await page.locator('.live.pending').count(), 1, 'a grey dot, not the green one, until it is read');
-    await status(page).filter({ hasText: "à jour à l'instant" }).waitFor({ timeout: 10000 });
+    // A board's first read goes in two rounds (its open cards first, then « Terminé » and the details): 2 × 5 s here.
+    await status(page).filter({ hasText: "à jour à l'instant" }).waitFor({ timeout: 15000 });
   });
 });
 
