@@ -5,6 +5,7 @@ import os
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 
 try:
@@ -233,6 +234,43 @@ class ServiceTest(unittest.TestCase):
         self.gh.user_error = httpx.ConnectTimeout("lent")
         r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 503)
+
+    def test_a_stalled_copy_of_the_project_ends_with_a_message_instead_of_hanging_the_chat(self):
+        hang = os.path.join(self.tmp, "git-hang")
+        with open(hang, "w") as f:
+            f.write("#!/bin/sh\nsleep 30\n")
+        os.chmod(hang, os.stat(hang).st_mode | stat.S_IEXEC)
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=os.path.join(self.tmp, "repos-hang"), git_bin=hang,
+                         git_timeout=0.5, clone_timeout=0.5, transport=httpx.MockTransport(self.gh))
+        started = time.monotonic()
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        events = [json.loads(l) for l in r.text.splitlines() if l.strip()]
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."}, events)
+
+    def test_the_first_copy_has_more_time_than_an_update(self):
+        slow = os.path.join(self.tmp, "git-slow")
+        with open(slow, "w") as f:
+            f.write('#!/bin/sh\nsleep 0.6\nfor last; do :; done\nmkdir -p "$last/.git"\n')
+        os.chmod(slow, os.stat(slow).st_mode | stat.S_IEXEC)
+        repos = os.path.join(self.tmp, "repos-slow")
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=repos, git_bin=slow, git_timeout=0.2, clone_timeout=3,
+                         transport=httpx.MockTransport(self.gh))
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        self.assertNotIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."},
+                         [json.loads(l) for l in r.text.splitlines() if l.strip()])
+        self.assertTrue(os.path.isdir(os.path.join(repos, "phoibe/habitudes", ".git")))
+
+    def test_a_failed_copy_leaves_no_half_made_project_behind(self):
+        broken = os.path.join(self.tmp, "git-broken")
+        with open(broken, "w") as f:
+            f.write('#!/bin/sh\nfor last; do :; done\nmkdir -p "$last/.git"\necho "fatal: early EOF" >&2\nexit 128\n')
+        os.chmod(broken, os.stat(broken).st_mode | stat.S_IEXEC)
+        repos = os.path.join(self.tmp, "repos-broken")
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=repos, git_bin=broken, transport=httpx.MockTransport(self.gh))
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        self.assertIn("error", [json.loads(l)["type"] for l in r.text.splitlines() if l.strip()])
+        self.assertFalse(os.path.exists(os.path.join(repos, "phoibe/habitudes")))
 
     def test_a_rate_limited_403_is_a_503_but_a_401_is_a_bad_token(self):
         self.gh.user_status = 403

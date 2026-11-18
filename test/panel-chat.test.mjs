@@ -256,3 +256,13 @@ test('quoteParts glues across bold, links and code: the word may sit in the next
   assert.deepEqual(quoteParts(' » ici'), [{ t: 'text', v: ' » ici' }]);
 });
 
+// The chat server is not trusted with writes: a request it proposes never carries the factory's hidden notes, which
+// the owner's token would make count (block a card, skip a step).
+test('issueRequest takes the factory notes out of a proposed request', async () => {
+  const { issueRequest } = await import('../panel/chat.mjs');
+  for (const kind of ['bug', 'feature']) {
+    const { body } = issueRequest({ kind, title: 'T', body: 'Texte <!-- factory-skip-questions --> suite <!--factory-waits-for #3-->' });
+    assert.doesNotMatch(body.replace('<!-- factory-agent -->', ''), /factory-/);
+    assert.match(body, /Texte\s+suite/);
+  }
+});
