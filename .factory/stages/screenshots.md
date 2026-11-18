@@ -40,6 +40,10 @@
    sortie de la tâche qu'elle a bien démarré (pas d'erreur de port déjà pris), puis
    `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
+3 bis. **Capture de la présentation** (`README.md`, voir `.factory/stages/readme.md`) : si la page d'accueil a pu
+   changer d'apparence, ou que la présentation n'a pas encore sa capture, copie `/tmp/shots/after/accueil--desktop.png`
+   dans `docs/readme/accueil.png`, committe et pousse-la avec la PR. Pas pour la factory elle-même, ni pour une appli
+   sans page d'accueil.
 4. **Avant** : `git worktree add /tmp/before origin/main`, `cd /tmp/before && npm ci`, puis
    `cd /tmp/before && node <outil> run -- sh -c 'npm run build && exec npm run start -- -p 3001'` (même `<outil>`
    qu'à l'étape 3 ; le `cd` dans la même commande, car il ne passe pas d'une commande à l'autre), attends qu'elle

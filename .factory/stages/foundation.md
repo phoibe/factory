@@ -67,7 +67,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      un premier parcours « j'ouvre l'appli et je vois sa page d'accueil »), qui passent tous : ce sont ceux des
      contrôles automatiques ; et `e2e/smoke-routes.txt` avec les écrans principaux ouverts sans connexion ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
-   - un `README.md` technique court (en anglais) : lancer, tester, structure.
+   - la présentation `README.md`, en français, au modèle de `.factory/stages/readme.md` (à quoi sert l'appli,
+     adresse, capture de la page d'accueil, ce qu'on peut faire, lancer et tester).
    - **l'hébergeur retenu dans la fiche** :
      - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
        (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire. Pour GitHub Pages,
