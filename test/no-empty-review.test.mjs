@@ -12,9 +12,13 @@ test('the screenshots stage never asks to validate when no screen changed', () =
   assert.match(s, /revérifie/);
 });
 
-for (const stage of ['build.md', 'bugfix.md', 'acceptance-fix.md', 'audit.md', 'skills-fix.md']) {
+// Issue #455: the agent never puts the card in « Captures à valider » itself; the factory does, once it posted the
+// captures. So no screen changed (nothing posted) never asks for a validation either.
+for (const stage of ['build.md', 'bugfix.md', 'acceptance-fix.md', 'audit.md', 'skills-fix.md', 'foundation.md']) {
   test(`${stage}: no « captures à valider » when no screen changed`, () => {
-    assert.match(read(stage).replace(/\s+/g, ' '), /aucun écran n'a changé, mets `factory:checks` seul/i);
+    const s = read(stage).replace(/\s+/g, ' ');
+    assert.match(s, /pose elle-même `factory:visual-review`|jamais `factory:visual-review` toi-même|met elle-même la carte en « Captures à valider »/i);
+    assert.doesNotMatch(s, /mets (les labels )?`factory:visual-review`|`factory:visual-review` (puis|et) `factory:checks`/i);
   });
 }
 

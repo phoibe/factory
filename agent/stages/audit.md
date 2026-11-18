@@ -40,7 +40,7 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    et la ligne « Essayé en vrai : … » / « Pas vérifié en vrai : … » de l'étape 7 bis de `build.md` (essai en
    conditions réelles, en lecture seule). Puis `Closes #<n>`, puis les détails techniques en anglais.
 7. **Captures** : si l'apparence a changé et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:visual-review` puis `factory:checks` sur la PR
+   `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:checks` sur la PR (la factory pose elle-même `factory:visual-review` en publiant les captures)
    (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)).
    Sinon, mets `factory:checks`.
 8. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

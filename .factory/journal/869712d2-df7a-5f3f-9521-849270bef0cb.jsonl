@@ -1,0 +1,9 @@
+{"t":"2026-11-18T12:18:57.105Z","kind":"run","stage":"bugfix","issue":455,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-18T12:19:03.126Z","kind":"skill","name":"systematic-debugging","id":"toolu_013t4NLpovoPC894TWnA9oPr"}
+{"t":"2026-11-18T12:22:44.382Z","kind":"skill","name":"test-driven-development","id":"toolu_01VSEzBBjLE9w6btxkfCiYBe"}
+{"t":"2026-11-18T12:22:58.876Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"  const noReview = shotsGh({ labels: [L.checks] });\n  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });\n  assert.ok(!noReview.calls.some((c) =>","ok":false,"id":"toolu_01QC1R1o4eQ4FK7cCR1Hysqj"}
+{"t":"2026-11-18T12:23:24.387Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ndef rep(a,b):\n    global s\n    assert a in s, a\n    s=…\nrep(\"\"\"  // Never throws but on a rate limit, so that the relay run is retried (a missed post is caught up when checks","ok":true,"id":"toolu_01KaCwdbg6UoSRfAcXBhkB4W"}
+{"t":"2026-11-18T12:24:10.008Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":true,"id":"toolu_01MAqBZBdnPAY596bzENoaWm"}
+{"t":"2026-11-18T12:25:17.620Z","kind":"test","cmd":"sed -n 129,136p agent/AGENT.md; sed -n 16,21p agent/stages/acceptance-fix.md; sed -n 122,130p agent/stages/build.md; npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":false,"id":"toolu_013x5CFq2QJ41KMcmNLbHjJX"}
+{"t":"2026-11-18T12:26:08.320Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"for (const stage of ['build.md', 'bugfix.md', 'acceptance-fix.md', 'audit.md', 'skills-fix.md']) {\n  test(`${stage}: no « captures à valider » when no screen changed`, ","ok":true,"id":"toolu_013X8nhhNvLuH7Nr72PMrERj"}
+{"t":"2026-11-18T12:26:13.428Z","kind":"skill","name":"requesting-code-review","id":"toolu_01VdHBGCcyxzEg2fQhhMAXkF"}

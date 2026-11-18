@@ -97,29 +97,44 @@ export function eventsPart(ctx) {
   // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
   // reached GitHub as broken links after leaving the agent's environment. Posted once per folder.
   // Never throws but on a rate limit, so that the relay run is retried (a missed post is caught up when checks end).
+  // Returns 'posted' (a new table), 'shown' (this folder's table is already there) or null (nothing to show).
   async function postCaptures(n) {
-    try { await postLatestCaptures(n); } catch (e) {
+    try { return await postLatestCaptures(n); } catch (e) {
       if (isRateLimited(e)) throw e;
       log(`captures: ${e.message}`);
+      return undefined; // unknown: the labels are left as they are
     }
   }
+  // Issue #455: the card enters « Captures à valider » only once its captures are visible in the PR. The agent hands
+  // the PR over with factory:checks alone; the factory posts the table, then sets factory:visual-review. An agent that
+  // still sets it before any capture is shown has it taken back at once: the card stays in « Contrôles », and the
+  // end of the checks catches the captures up, instead of the card going back from « Captures à valider ».
+  async function showCaptures(n, labels) {
+    const res = await postCaptures(n);
+    if (res === 'posted' && !labels.includes(L.visualReview)) await gh.addLabels(n, [L.visualReview]);
+    if (res === null && labels.includes(L.visualReview) && !((await gh.listComments(n)) || []).some(postedCaptures)) {
+      await gh.removeLabel(n, L.visualReview);
+      log(`#${n}: no captures shown yet, not in « Captures à valider »`);
+    }
+    return res;
+  }
   async function postLatestCaptures(n) {
-    if (!gh.getContent) return;
+    if (!gh.getContent) return null;
     // A missing folder reads as nothing; a rate limit goes up, so that the run is retried.
     const soft = (p) => p.catch((e) => { if (isRateLimited(e)) throw e; return null; });
     const runs = await soft(gh.getContent(`pr-${n}`, SHOTS_BRANCH));
     const latest = (Array.isArray(runs) ? runs : []).filter((e) => e.type === 'dir').map((e) => e.name).sort().pop();
-    if (!latest) return;
+    if (!latest) return null;
     const dir = `pr-${n}/${latest}`;
     const mark = `<!-- factory-shots-posted: ${dir} -->`;
     const images = await soft(gh.getContent(`${dir}/compare`, SHOTS_BRANCH));
     const files = (Array.isArray(images) ? images : []).filter((e) => e.type === 'file' && e.name.endsWith('.png')).map((e) => e.name);
-    if (!files.length) return;
+    if (!files.length) return null;
     // Also skipped when a whole, unbroken table of this folder is already there (posted by an agent not yet given this
     // rule). A table whose dark rows arrived broken (#373) does not count: the factory posts the right one.
     const link = (f) => `![avant · après](https://github.com/${repo}/blob/${SHOTS_BRANCH}/${dir}/compare/${f}?raw=true)`;
     const whole = (c) => postedCaptures(c) && files.every((f) => c.body.includes(link(f))) && !brokenShotRows(c.body).length;
-    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return;
+    if (((await gh.listComments(n)) || []).some((c) => (c.body || '').includes(mark) || whole(c))) return 'shown';
     const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
     let unchanged = [];
     let setAside = [];
@@ -132,6 +147,7 @@ export function eventsPart(ctx) {
     const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)), setAside });
     await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
     log(`captures of #${n} posted from ${dir}`);
+    return 'posted';
   }
 
   // True when the factory's checks job already passed on this commit (they ran while the owner looked at the captures).
@@ -233,9 +249,11 @@ export function eventsPart(ctx) {
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
     }
-    // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first.
-    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && ev.labels.includes(L.visualReview)) {
-      await postCaptures(ev.number);
+    // Captures to validate: the factory posts their table itself (issue #378), whatever PR event comes first, once the
+    // agent handed the PR over; then only the card enters « Captures à valider » (issue #455).
+    if (ev.kind === 'pr' && ev.event === 'pull_request' && ev.fromOwner && ev.open !== false && [L.visualReview, L.checks].some((l) => ev.labels.includes(l))) {
+      await showCaptures(ev.number, ev.labels);
+      ev = { ...ev, labels: await liveLabels(ev.number) };
     }
     // The board's « Mise en production » (issue #294): an issue the owner opens with L.production.
     if (ev.kind === 'issue' && ev.event === 'issues' && ev.action === 'opened' && ev.labels.includes(L.production)) {
@@ -463,8 +481,8 @@ export function eventsPart(ctx) {
     const catchUp = reverting ? [] : (missing || []).filter((s) => CATCH_UP.includes(s));
     // A visible change must have been shown to the owner: no captures table on the PR means the step was skipped.
     if (result === 'success' && ui && config.stages.screenshots !== false && !reverting) {
-      // Captures pushed but whose table was never posted (a missed event): posted now rather than redone.
-      if (live.includes(L.visualReview)) await postCaptures(prNumber);
+      // Captures pushed but whose table was never posted (a missed event): posted now rather than redone (issue #455).
+      await showCaptures(prNumber, live);
       const shown = ((await gh.listComments(prNumber)) || []).some(postedCaptures);
       if (!shown) catchUp.push('screenshots');
     }
@@ -652,5 +670,5 @@ export function eventsPart(ctx) {
   const refill = () => dequeue().catch((e) => log(`queue check: ${e.message}`));
 
 
-  return { postCaptures, postLatestCaptures, checksGreen, visualApproved, lastRunningAt, hasPreviews, previewUrl, previewWait, handle, handleEvent, fabrication, report, onOutage, blockOnRed, release, retrySoon, relaunchSoon, refilling, refill };
+  return { postCaptures, showCaptures, postLatestCaptures, checksGreen, visualApproved, lastRunningAt, hasPreviews, previewUrl, previewWait, handle, handleEvent, fabrication, report, onOutage, blockOnRed, release, retrySoon, relaunchSoon, refilling, refill };
 }

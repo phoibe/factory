@@ -3194,12 +3194,47 @@ test('the same captures are never posted twice, and nothing is posted outside th
   const again = shotsGh({ comments: [{ body, user: { login: 'github-actions[bot]' } }] });
   await relayFor(again).handle(labeledChecks);
   assert.ok(!again.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'already posted');
-  const noReview = shotsGh({ labels: [L.checks] });
-  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });
-  assert.ok(!noReview.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures to validate');
+  const noLabel = shotsGh({ labels: [] });
+  await relayFor(noLabel).handle({ ...labeledChecks, action: 'opened', labels: [] });
+  assert.ok(!noLabel.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'not handed over yet');
   const empty = shotsGh({ dirs: [] });
   await relayFor(empty).handle(labeledChecks);
   assert.ok(!empty.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures pushed');
+});
+
+// Issue #455: the card enters « Captures à valider » only once its captures are visible in the PR, never before.
+const handedOver = { ...labeledChecks, labels: [L.checks] };
+const relayOf = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+
+test('the factory puts the card in « Captures à valider » itself, right after posting its captures (#455)', async () => {
+  const gh = shotsGh({ labels: [L.checks] });
+  await relayOf(gh).handle(handedOver);
+  const post = gh.calls.findIndex((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted'));
+  const label = gh.calls.findIndex((c) => c[0] === 'add' && c[1] === 7 && c.includes(L.visualReview));
+  assert.ok(post >= 0, 'captures posted');
+  assert.ok(label > post, 'labelled after the table is there');
+});
+
+test('no captures pushed: the card stays in « Contrôles », never in « Captures à valider » (#455)', async () => {
+  const gh = shotsGh({ labels: [L.checks], dirs: [] });
+  await relayOf(gh).handle(handedOver);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)));
+});
+
+test('an agent that still sets « Captures à valider » before any capture is shown is put back in « Contrôles » at once (#455)', async () => {
+  const gh = shotsGh({ dirs: [] });
+  await relayOf(gh).handle({ ...labeledChecks, addedLabel: L.visualReview });
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.visualReview));
+});
+
+test('captures already shown and validated are not asked again when the checks are handed over once more (#455)', async () => {
+  const first = shotsGh({ labels: [L.checks] });
+  await relayOf(first).handle(handedOver);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  const again = shotsGh({ labels: [L.checks], comments: [{ body, user: { login: 'github-actions[bot]' } }] });
+  await relayOf(again).handle(handedOver);
+  assert.ok(!again.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)));
+  assert.ok(!again.calls.some((c) => c[0] === 'remove' && c[2] === L.visualReview));
 });
 
 test('a table the agent already posted for the same captures is not posted again by the factory (#378, transition)', async () => {
