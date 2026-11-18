@@ -2252,6 +2252,7 @@ async function refreshChat() {
   if (chat.busy) return;
   chat.busy = true;
   const repo = chat.repo;
+  const clicks = chat.clicks;
   try {
     if (chat.server) { await refreshServerChat(); chat.error = false; drawChat(); return; }
     const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
@@ -2280,7 +2281,8 @@ async function refreshChat() {
     else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
-    scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
+    // The project or the conversation changed meanwhile (the owner clicked another one): fetch it now.
+    scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
   }
 }
 
@@ -2461,7 +2463,7 @@ function drawChat() {
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
   if (chat.server) return drawServerChat(isNew);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '';
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || chat.list?.find((c) => c.number === chat.open)?.title || '';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
@@ -2531,6 +2533,7 @@ function drawServerChat(isNew) {
 function selectConversation(n) {
   if (chat.live && n !== chat.open) return toast('Attendez la fin de la réponse en cours.');
   chat.open = n;
+  chat.clicks = (chat.clicks || 0) + 1; // a check already running fetches the old one: refreshChat checks again at once
   chat.pending = null;
   if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
   if (chat.conv?.id !== n) chat.conv = null;

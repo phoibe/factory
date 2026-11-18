@@ -92,3 +92,16 @@ test('discussion en direct : au rechargement, la conversation en cours s\'affich
     assert.equal(chatCalls.length, 1);
   });
 });
+
+test('je clique une autre conversation pendant que celle ouverte d\'office se charge : elle s\'affiche tout de suite, avec son titre', async () => {
+  const slowReads = [[/\/repos\/o\/r\/issues\/9/, 1500]];
+  const threads = { 7: [{ id: 3, body: `${AGENT}\nDeux demandes.`, user: { login: 'o' }, author_association: 'OWNER', created_at: ago(25) }] };
+  await withPanel({ issues: [older, recent], comments: threads, slowReads, viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await openAgent(page);
+    // The title of the conversation opened by itself shows while it loads.
+    await page.locator('#chat-title', { hasText: 'Où en est la mise en ligne ?' }).waitFor({ timeout: 1000 });
+    await page.locator('.conv', { hasText: 'Combien de demandes en cours ?' }).click();
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Deux demandes.' }).waitFor({ timeout: 5000 });
+  });
+});
