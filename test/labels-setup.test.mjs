@@ -28,3 +28,7 @@ test('the « Amélioration UI » label exists and leads to its own stage (issue 
   assert.ok(LABEL_DEFS.some(([name]) => name === 'factory:ui-polish'));
   assert.equal(buildStage([L.uiPolish, L.queued]), 'ui-polish');
 });
+
+test('every label description fits GitHub\'s 100-character limit, or the sync fails in every project', () => {
+  for (const [name, , description] of LABEL_DEFS) assert.ok(description.length <= 100, `${name}: ${description.length} characters`);
+});

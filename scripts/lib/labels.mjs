@@ -50,7 +50,7 @@ export const LABEL_DEFS = [
   [L.bug, 'd73a4a', 'Bug à corriger par la factory'],
   [L.project, '1d76db', 'Cadrage du projet : vision, périmètre et stack'],
   [L.audit, '1d76db', 'Review générale : critique et correction de tous les écrans, puis revue de tout le code'],
-  [L.uiPolish, '1d76db', "Amélioration UI : jusqu'à 3 tours de critique design de tous les écrans, chacun suivi de ses corrections"],
+  [L.uiPolish, '1d76db', "Amélioration UI : jusqu'à 3 tours de critique et correction de tous les écrans"],
   [L.stack, '1d76db', 'Fiche stack technique à établir : technologies, bibliothèques et services du projet'],
   [L.question, 'd4c5f9', "Question au sujet du projet : l'agent répond sans rien modifier"],
   [L.grilling, 'fbca04', 'Questions en cours pour clarifier la feature'],

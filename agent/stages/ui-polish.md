@@ -11,7 +11,8 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    local et ouvre chacun dans le navigateur (Playwright).
    **Aucun écran** (outil en ligne de commande, bibliothèque, projet encore vide) : n'ouvre pas de PR. Écris sur
    l'issue un message court et clair (« Ce projet n'a pas encore d'écran : il n'y a rien à améliorer. »), ajoute
-   le label `factory:close` à l'issue, et termine.
+   le label `factory:close` à l'issue (sans label de raison : ce n'est ni un doublon ni une demande obsolète), et
+   termine. C'est la seule fermeture permise sur cette carte.
 3. **Estimation de durée** : une fois les écrans listés, publie sur l'issue une estimation au même format que
    l'étape 0 de `build.md` (taille `medium`, ou `large` si l'appli a beaucoup d'écrans, marqueur
    `factory-estimate`). Si tu dépasses le haut de ta fourchette, publie une nouvelle estimation.
@@ -22,7 +23,10 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
      `.factory/stages/design-pass.md` (rappelle-la à chaque appel). Tu travailles seul : saute les questions de
      fin de critique (« Questions skipped: run autonome de la factory ») ;
    - **note le score** du tour ;
-   - **si la critique ne trouve plus aucun problème, arrête-toi là** : pas de tour suivant ;
+   - **si la critique ne trouve plus aucun problème, arrête-toi là** : pas de tour suivant. Si c'est dès le
+     **premier** tour (rien à corriger du tout), n'ouvre pas de PR : écris sur l'issue une phrase claire (« L'interface
+     n'a rien montré à corriger : rien n'a changé. »), ajoute `factory:close` à l'issue (sans label de raison) et
+     termine ;
    - sinon **corrige tout** ce qu'elle a trouvé (prioritaires, alertes des personas, observations mineures,
      alertes du détecteur), avec les commandes qu'elle suggère (`polish`, `layout`, `typeset`, `clarify`,
      `harden`, `adapt`…), puis relance les tests du projet.
@@ -48,7 +52,5 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    exemple la page de la branche comparée au vrai site en ligne). Puis `Closes #<n>`, puis les détails techniques en
    anglais. Pas de spec à ranger.
 9. **Captures** : suis `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:checks`
-   sur la PR : la factory publie les captures et pose elle-même `factory:visual-review`. Rien n'a changé à l'écran
-   (la première critique n'a rien trouvé) : pas de PR ; dis-le en une phrase sur l'issue, ajoute `factory:close` et
-   termine.
+   sur la PR : la factory publie les captures et pose elle-même `factory:visual-review`.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

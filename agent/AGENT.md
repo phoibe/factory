@@ -152,7 +152,7 @@ est oublié et tu reprends normalement.
   à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
   factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
 - **Fermer de toi-même une demande inutile**, sans lui demander de confirmer : seulement une feature ou un bug (jamais
-  un cadrage `factory:project`, une revue `factory:audit` ni une amélioration UI `factory:ui-polish`), à n'importe quelle étape, et seulement dans trois cas
+  un cadrage `factory:project`, une revue `factory:audit` ni une amélioration UI `factory:ui-polish`, sauf les deux cas prévus par `stages/ui-polish.md`), à n'importe quelle étape, et seulement dans trois cas
   sans ambiguïté, avec une preuve (un lien) : **déjà réglée** par une autre demande ou PR, **en double** d'une
   demande encore ouverte, ou **obsolète** (elle porte sur quelque chose qui n'existe plus). Au moindre doute (réglée
   en partie, pas certain), pose-lui la question comme d'habitude, sans fermer. Pour fermer :
