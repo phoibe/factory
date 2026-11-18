@@ -1481,21 +1481,25 @@ async function updateTrigger(repo) {
   }
 }
 
-function selectTab(name) {
+// `focus`: also put the cursor in the tab's field (a click on « Agent », not the arrow keys moving along the tabs).
+function selectTab(name, focus = false) {
   const fromChat = !$('chat').hidden;
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
     $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
-  if (name === 'chat') { openChat(); focusChat(); } else if (fromChat) scheduleChat();
+  if (name === 'chat') { openChat(); if (focus) focusChat(); } else if (fromChat) scheduleChat();
 }
 
 // Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
 // while it is missing, the message box otherwise. Never on a phone: the keyboard would hide half the screen.
 function focusChat() {
   if (!matchMedia('(pointer: fine)').matches) return;
-  $(needsReadToken() ? 'read-token' : 'chat-input').focus();
+  const field = $(needsReadToken() ? 'read-token' : 'chat-input');
+  field.focus();
+  // A laptop screen can leave the box just below the fold: show it whole, with its focus ring.
+  (field.closest('.composer') || field).scrollIntoView({ block: 'nearest' });
 }
 
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
@@ -2811,7 +2815,8 @@ $('chat-close').addEventListener('click', () => closeConversation());
 setupTabs(document.querySelector('.tabs'));
 watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
-$('tab-chat').addEventListener('click', () => selectTab('chat'));
+// The arrow keys of the tab list click from code (untrusted): the keyboard stays on the tabs (WAI-ARIA tabs pattern).
+$('tab-chat').addEventListener('click', (e) => selectTab('chat', e.isTrusted));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
