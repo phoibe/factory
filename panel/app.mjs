@@ -101,7 +101,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -295,7 +295,8 @@ function setDot(repo, dot) {
   renderProjectList();
 }
 
-// The other projects are checked at start, then every 10 s while the owner is active, 30 s when calm or hidden (issue #488). Their requests carry the last ETag (an unchanged
+// The other projects are checked at start, then every 10 s while the owner is active, 30 s when calm or hidden
+// (issue #488). Their requests carry the last ETag (an unchanged
 // answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
 // A project GitHub does not answer for keeps its last known dot.
 // One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
@@ -330,8 +331,10 @@ async function projectDotOf(repo) {
 
 async function refreshDots() {
   clearTimeout(dotsTimer);
-  dotsTimer = setTimeout(refreshDots, dotsDelay(0, dotsIdle()));
-  if (!token || !projects.length || dotsBusy) return;
+  // While GitHub's wait runs, every caller waits too: the next round comes at its end.
+  const paused = dotsPausedUntil - Date.now();
+  dotsTimer = setTimeout(refreshDots, paused > 0 ? paused : dotsDelay(0, dotsIdle()));
+  if (paused > 0 || !token || !projects.length || dotsBusy) return;
   dotsBusy = true;
   dotsLast = Date.now();
   const session = token;

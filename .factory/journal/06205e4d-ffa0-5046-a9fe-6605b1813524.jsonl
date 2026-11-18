@@ -19,3 +19,5 @@
 {"t":"2026-11-18T17:50:39.117Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/dots-refresh.e2e.mjs e2e/project-list.e2e.mjs 2>&1 | tail -25","ok":true,"id":"toolu_011htQf4D3TUkLZeEiwqa5mX"}
 {"t":"2026-11-18T17:50:42.651Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A design review","id":"toolu_01UgB9P1q3D9LdmMgi561Xqy"}
 {"t":"2026-11-18T17:50:48.057Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B detector evidence","id":"toolu_012dEpkYGd589jVEjmihpcmc"}
+{"t":"2026-11-18T17:53:09.343Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"    await setHidden(page, true);\n    // Hidden: the round due after 10 s slows the next one down to 30 s.\n    await page.waitForTimeout(16_000);\n    repoIssues['o/alpha","ok":true,"id":"toolu_01JpUdY9f6X8KfgfzHVFFYk3"}
+{"t":"2026-11-18T17:53:17.564Z","kind":"test","cmd":"cp panel/app.mjs /tmp/claude-0/app.bak && sed -i 's/    if (wasIdle \\&\\& !document.hidden) wakeDots();/    \\/\\/ removed/' panel/app.mjs && CHROMIUM_PATH=… timeout 300 node --test --test-name-pattern=\"","ok":false,"id":"toolu_01XK7zSSGDsG11ABP6iVrGqx"}
