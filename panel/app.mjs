@@ -2270,8 +2270,10 @@ document.addEventListener('copy', () => {
   const sel = getSelection();
   if (!sel || sel.isCollapsed) return;
   const glued = [...document.querySelectorAll('#chat-messages .glue')].filter((g) => sel.containsNode(g, true));
-  for (const g of glued) g.firstChild.data = g.dataset.v;
-  if (glued.length) setTimeout(() => { for (const g of glued) g.firstChild.data = '\u00A0'.repeat(g.dataset.v.length); });
+  // insertData then deleteData, not a new `data`: a selection ending inside the glue keeps its place.
+  const swap = (g, v) => { const t = g.firstChild; const n = t.length; t.insertData(0, v); t.deleteData(v.length, n); };
+  for (const g of glued) swap(g, g.dataset.v);
+  if (glued.length) setTimeout(() => { for (const g of glued) swap(g, '\u00A0'.repeat(g.dataset.v.length)); });
 });
 
 const timeOf = (iso) => {
@@ -2281,12 +2283,14 @@ const timeOf = (iso) => {
     : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 };
 
-const quoted = (text) => quoteParts(text).map((q) => (q.t === 'text' ? q.v
+const quoted = (text, edges) => quoteParts(text, edges).map((q) => (q.t === 'text' ? q.v
   : el('span', { class: 'glue', 'data-v': q.v }, '\u00A0'.repeat(q.v.length))));
+// A bold, italic, link or code part next to a text part may hold the word its guillemet belongs to.
+const holdsWord = (p) => p != null && p.t !== 'text' && p.t !== 'br';
 
 function inlineNodes(parts) {
-  return parts.flatMap((p) => {
-    if (p.t === 'text') return quoted(p.v);
+  return parts.flatMap((p, i) => {
+    if (p.t === 'text') return quoted(p.v, { before: holdsWord(parts[i - 1]), after: holdsWord(parts[i + 1]) });
     if (p.t === 'br') return el('br');
     if (p.t === 'code') return el('code', {}, p.v);
     if (p.t === 'b') return el('strong', {}, inlineNodes(p.c));

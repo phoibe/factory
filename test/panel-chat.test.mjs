@@ -178,4 +178,21 @@ test('quoteParts marks the spaces between « or » and their word, and nothing e
   assert.deepEqual(quoteParts('déjà « collé »'), [{ t: 'text', v: 'déjà « collé »' }]);
   assert.deepEqual(quoteParts('a - b'), [{ t: 'text', v: 'a - b' }]);
   assert.deepEqual(quoteParts(''), []);
+  assert.deepEqual(quoteParts('« »'), [{ t: 'text', v: '« »' }]);
+  assert.deepEqual(quoteParts('fin «\nsuite'), [{ t: 'text', v: 'fin «\nsuite' }]);
+});
+
+test('quoteParts glues across bold, links and code: the word may sit in the next or the previous part', async () => {
+  const { quoteParts } = await import('../panel/chat.mjs');
+  // « **Paramètres** » : the text before the bold ends with « and a space, the text after starts with a space and ».
+  assert.deepEqual(quoteParts('voir « ', { after: true }), [{ t: 'text', v: 'voir «' }, { t: 'glue', v: ' ' }]);
+  assert.deepEqual(quoteParts(' » ici', { before: true }), [{ t: 'glue', v: ' ' }, { t: 'text', v: '» ici' }]);
+  assert.deepEqual(quoteParts('voir « '), [{ t: 'text', v: 'voir « ' }]);
+  assert.deepEqual(quoteParts(' » ici'), [{ t: 'text', v: ' » ici' }]);
+});
+
+test('the chat module parses on older Safari: no lookbehind in its regular expressions', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../panel/chat.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /\(\?<[=!]/);
 });
