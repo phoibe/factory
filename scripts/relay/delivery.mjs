@@ -3,7 +3,7 @@
 import { L, AGENT_MARKER, UPDATE_BRANCH_MARKER, REVERT_MARKER, PROD_BUG_MARKER, releaseNote } from '../lib/labels.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-core.mjs';
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
-import { isRateLimited } from '../lib/ratelimit.mjs';
+import { isRateLimited, isGitHubDown } from '../lib/ratelimit.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
@@ -55,11 +55,14 @@ export function deliveryPart(ctx) {
     const othersWait = async () => ((await gh.listAwaiting?.().catch(() => [])) || []).some((p) => p.number !== prNumber && names(p.labels).includes(L.awaitingProd));
     const mode = effectiveProduction(config, config.production ? null : await readDelivery());
     const manual = mode === 'external';
-    const held = mode === 'approval' && (!isUndo || await othersWait());
+    // Already merged (the replay of an « ok » stopped by a GitHub outage right after its merge, issue #490): where it
+    // landed is known, and only the end of the delivery is left to do.
+    const already = Boolean(pr?.merged || pr?.merged_at);
+    const held = already ? pr?.base?.ref === PREPROD_BRANCH : mode === 'approval' && (!isUndo || await othersWait());
     const def = (await gh.getRepo?.().catch(() => null))?.default_branch || 'main';
     const target = held ? PREPROD_BRANCH : def;
     // A PR opened before the mode changed is moved onto the right branch before its merge.
-    if (pr?.base?.ref && pr.base.ref !== target && [def, PREPROD_BRANCH].includes(pr.base.ref) && gh.setPrBase) {
+    if (!already && pr?.base?.ref && pr.base.ref !== target && [def, PREPROD_BRANCH].includes(pr.base.ref) && gh.setPrBase) {
       try {
         if (held) await ensurePreprod(def);
         await gh.setPrBase(prNumber, target);
@@ -67,12 +70,13 @@ export function deliveryPart(ctx) {
       } catch (e) { log(`PR #${prNumber} not moved to ${target}: ${e.message || e}`); }
     }
     try {
-      await gh.merge(prNumber, sha);
+      if (!already) await gh.merge(prNumber, sha);
     } catch (e) {
       if (isRateLimited(e)) throw e; // not a refused merge: the event is taken up again once the limit is over
       // The merge may have gone through behind a 5xx: a merged PR is a success, not a refusal.
       const fresh = await gh.getPr(prNumber);
       if (fresh?.merged) log(`merge reported as failed (${e}) but PR #${prNumber} is merged`);
+      else if (isGitHubDown(e)) throw e; // GitHub down, not a refusal: the tick replays the « ok » (issue #490)
       else {
         log(`merge failed: ${e}`);
         const state = fresh?.mergeable_state;

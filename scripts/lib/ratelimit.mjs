@@ -25,3 +25,8 @@ export class RateLimited extends Error {
 }
 
 export const isRateLimited = (e) => Boolean(e?.rateLimited);
+
+// GitHub down for longer than the client's retries (5xx, or no answer at all): like a rate limit, the work is not
+// wrong, only early. The relay ends such a run on the step the tick re-runs (issue #490: an owner's « go » was lost).
+export const markGitHubDown = (e) => { if (e && typeof e === 'object') e.githubDown = true; return e; };
+export const isGitHubDown = (e) => Boolean(e?.githubDown);

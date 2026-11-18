@@ -17,7 +17,7 @@ test('AGENT.md holds one grid: model and effort for each kind of sub-agent', () 
 
 test('each stage that dispatches a sub-agent names its model', () => {
   const expected = {
-    'stages/build.md': ['`opus`', '`sonnet`'], 'stages/bugfix.md': ['`opus`'], 'stages/audit.md': ['`sonnet`', '`opus`'],
+    'stages/build.md': ['`opus`', '`sonnet`'], 'stages/bugfix.md': ['`opus`'], 'stages/audit.md': ['`sonnet`', '`opus`'], 'stages/ui-polish.md': ['`sonnet`'],
     'stages/design-pass.md': ['`sonnet`'], 'stages/visual-fix.md': ['`sonnet`'], 'stages/acceptance-fix.md': ['`sonnet`'], 'stages/skills-fix.md': ['`opus`'],
   };
   for (const [file, models] of Object.entries(expected)) for (const m of models) assert.ok(read(file).includes(m), `${file} should name ${m}`);

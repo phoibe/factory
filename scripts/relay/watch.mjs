@@ -10,6 +10,10 @@ import { readOutage, writeOutage, syncStep, OUTAGE_GIVE_UP_MS } from '../lib/out
 import { waitedFor } from '../lib/waits.mjs';
 import { ROOT, PROJECT_WORKFLOW, MAX_BRANCH_UPDATES, updateMark, branchUpdates, IDLE_MINUTES, HEAL_MARKER, RATE_LIMIT_STEP, MAX_RATE_LIMIT_ATTEMPTS, OUTAGE_LOST_MS, REOPEN_MARKER, REOPEN_LABELS, REOPEN_PR_LABELS, stripReopen, CLOSE_STATE, branchIssue, prIssue, say, names, linkedIssue } from './shared.mjs';
 
+// A decision whose job stopped while getting ready (GitHub down: the factory's code or Node not downloaded) never
+// read its event: re-run like a rate limit (issue #490). A failure of the relay step itself is the code's: not re-run.
+const SETUP_STEP = /^(Set up job|Run actions\/(checkout|setup-node)@)/;
+
 export function watchPart(ctx) {
   const { gh, repo, env, fetchImpl, now, log } = ctx;
   const liveLabels = (...a) => ctx.liveLabels(...a);
@@ -178,7 +182,7 @@ export function watchPart(ctx) {
     await syncVersionTag().catch((e) => log(`version tag: ${e.message}`));
   }
 
-  // A relay run stopped by GitHub's « too many requests » left its event undone: re-running its failed jobs replays
+  // A relay run stopped by GitHub's « too many requests » or an outage (issue #490) left its event undone: re-running its failed jobs replays
   // the very same event, now that the limit has passed. Runs of the last day only, a few attempts each.
   async function retryRateLimited() {
     if (!gh.failedRuns) return;
@@ -191,11 +195,14 @@ export function watchPart(ctx) {
       if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
       if (run.updated_at && Date.parse(run.updated_at) < moved) continue;
       const jobs = await gh.runJobs(run.id);
+      // Re-running a run re-runs all its failed or cancelled jobs: never one whose agent ran and did not succeed (a
+      // second agent, issue #490). Its lock and the owner's messages are then freed and replayed by releaseStaleLocks.
+      if (jobs.some((j) => /(^|\/ )agent$/.test(j.name || '') && j.conclusion && !['success', 'skipped'].includes(j.conclusion))) continue;
       // A checks report stopped this way is made again by reportLost, from the checks' own result: not re-run twice.
-      const stopped = jobs.filter((j) => (j.steps || []).some((st) => st.name === RATE_LIMIT_STEP && st.conclusion === 'failure'));
+      const stopped = jobs.filter((j) => (j.steps || []).some((st) => st.conclusion === 'failure' && (st.name === RATE_LIMIT_STEP || (/(^|\/ )decide$/.test(j.name || '') && SETUP_STEP.test(st.name || '')))));
       if (!stopped.length || stopped.every((j) => /(^|\/ )report$/.test(j.name || ''))) continue;
       await gh.rerunFailed(run.id);
-      log(`guard: run ${run.id} stopped by the rate limit, re-run`);
+      log(`guard: run ${run.id} stopped by GitHub (rate limit or outage), re-run`);
     }
   }
 

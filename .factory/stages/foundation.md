@@ -67,7 +67,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      un premier parcours « j'ouvre l'appli et je vois sa page d'accueil »), qui passent tous : ce sont ceux des
      contrôles automatiques ; et `e2e/smoke-routes.txt` avec les écrans principaux ouverts sans connexion ;
    - un premier test qui vérifie que la page d'accueil s'affiche ;
-   - un `README.md` technique court (en anglais) : lancer, tester, structure.
+   - la présentation `README.md`, en français, au modèle de `.factory/stages/readme.md` (à quoi sert l'appli,
+     adresse, capture de la page d'accueil, ce qu'on peut faire, lancer et tester).
    - **l'hébergeur retenu dans la fiche** :
      - s'il ne demande aucun compte (par exemple GitHub Pages), mets-le en place toi-même dans cette PR
        (workflow de déploiement, réglages nécessaires) : le propriétaire n'a rien à faire. Pour GitHub Pages,
@@ -97,8 +98,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    résumé et à ton message sur la PR que cette PR n'aura pas d'aperçu, en redonnant les liens et les clics de
    l'encadré « Avant de répondre « go » » de la fiche : une fois l'hébergeur branché, les PR suivantes auront
    leur aperçu.
-8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:visual-review`
-   puis `factory:checks` sur la PR. Si l'étape screenshots est désactivée, mets directement `factory:checks`.
+8. **Captures** : suis `.factory/stages/screenshots.md` (pas de « avant »), puis mets `factory:checks`
+   sur la PR (la factory publie les captures et pose elle-même `factory:visual-review`). Si l'étape screenshots est désactivée, mets directement `factory:checks`.
 9. **Issues de la première version** : pour chaque feature listée dans la fiche, ouvre une issue, titre et texte en français (titre
    « Feature : … », description en deux ou trois phrases tirées de la fiche) avec `<!-- factory-agent -->` en
    tête et les labels `factory:feature` et `factory:kept` (il les a validées dans la fiche). Elles démarrent quand il y écrit,

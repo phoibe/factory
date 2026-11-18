@@ -13,5 +13,6 @@ Le propriétaire a commenté les captures de la PR sans les valider.
      il n'y a plus rien à valider. Commente avec la sortie de l'outil (sa phrase d'information, sans question) et une phrase
      qui explique pourquoi la retouche demandée ne se voit pas, comme le dit `screenshots.md`,
      retire `factory:visual-review` de la PR, puis remets `factory:checks` : la carte passe aux contrôles, puis à la recette.
-   - Sinon, commente comme le dit `screenshots.md` (sans le tableau : la factory publie les nouvelles captures). Le label reste `factory:visual-review` ; remets `factory:checks` pour que
-     les contrôles retournent sur le nouveau code.
+   - Sinon, commente comme le dit `screenshots.md` (sans le tableau : la factory publie les nouvelles captures). Retire
+     `factory:visual-review` de la PR et remets `factory:checks` pour que les contrôles retournent sur le nouveau code : la
+     factory remet la carte en « Captures à valider » dès que les nouvelles captures sont publiées (issue #455).

@@ -11,7 +11,7 @@ const MIN = 60_000;
 
 // The `if:` of the project's factory.yml (checked against the file itself by the rehearsal).
 export const FILTER = {
-  issueLabeled: [L.feature, L.bug, L.project, L.question, L.audit, L.stack, L.kept, L.blocked],
+  issueLabeled: [L.feature, L.bug, L.project, L.question, L.audit, L.stack, L.kept, L.blocked, L.uiPolish],
   prLabeled: [L.checks],
   unlabeled: [L.running, L.building],
 };
