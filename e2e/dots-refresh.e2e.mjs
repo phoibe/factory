@@ -20,10 +20,7 @@ test('panneau ouvert et en main, quand un autre projet change d\'état, sa pasti
     await page.goto(url);
     await page.locator('#projects .pdot-working').waitFor();
     repoIssues['o/alpha'] = [issue(1, 'Question', ['factory:feature', 'factory:building', 'factory:blocked'])];
-    const started = Date.now();
-    await page.mouse.move(200, 200);
     await page.locator('#projects .pdot-blocked').waitFor({ timeout: 15_000 });
-    assert.ok(Date.now() - started <= 15_000);
     assert.match(await alphaDot(page).getAttribute('class'), /pdot-blocked/);
   });
 });

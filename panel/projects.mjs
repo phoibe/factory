@@ -48,6 +48,15 @@ export function nextDots(prev, results) {
 // tab is hidden (issue #488), or the wait GitHub asked for when it limits the calls (at most 5 min, like the board).
 export const dotsDelay = (limitedMs = 0, idle = true) => Math.min(Math.max(limitedMs, idle ? 30_000 : 10_000), 300_000);
 
+// When a gesture after a calm moment, or a return to the tab, wakes the dots (issue #488): `null` while GitHub's wait
+// runs (the planned round stays), 0 to check at once, or the milliseconds before the next round when one has just
+// started (10 s after it, the active rhythm).
+export function dotsWake({ now, last, pausedUntil }) {
+  if (now < pausedUntil) return null;
+  const since = now - last;
+  return since >= 5_000 ? 0 : Math.max(0, 10_000 - since);
+}
+
 // ---- The project list remembered on this device (issue #399) -------------------------------------------------
 // Opening the panel used to read factory.config.json in every repository. Now the list shows at once from the last
 // visit, and a repository is read again only when something was pushed to it since (`pushed_at` changed): adding,

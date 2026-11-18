@@ -84,6 +84,16 @@ test('quand vous êtes actif, les autres projets sont vérifiés toutes les 10 s
   assert.equal(dotsDelay(3_600_000, false), 300_000);
 });
 
+test('un geste ou un retour sur l\'onglet vérifie les pastilles aussitôt, sauf juste après une vérification ou pendant une pause demandée par GitHub', async () => {
+  const { dotsWake } = await import('../panel/projects.mjs');
+  const now = 1_000_000;
+  assert.equal(dotsWake({ now, last: now - 60_000, pausedUntil: 0 }), 0);
+  // Just checked: no new round, the next one comes 10 s after the last (the owner is active again).
+  assert.equal(dotsWake({ now, last: now - 2_000, pausedUntil: 0 }), 8_000);
+  // GitHub asked to wait: nothing before the end of the wait.
+  assert.equal(dotsWake({ now, last: now - 60_000, pausedUntil: now + 90_000 }), null);
+});
+
 // Issue #399: the project list is remembered on this device, and an unchanged repository is not read again.
 
 const repo = (name, pushed = '2026-11-01T10:00:00Z', extra = {}) => ({ id: 1, name, full_name: `o/${name}`, html_url: `https://github.com/o/${name}`, homepage: '', private: true, default_branch: 'main', archived: false, is_template: false, pushed_at: pushed, owner: { login: 'o' }, description: 'long', ...extra });
