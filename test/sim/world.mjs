@@ -24,7 +24,7 @@ function passes(eventName, p) {
   return true;
 }
 
-export function createWorld({ config, agent = {}, previews = false, checks = () => 'success', previewResult = { result: 'passed', detail: 'ok' } } = {}) {
+export function createWorld({ config, agent = {}, previews = false, spy = (gh) => gh, checks = () => 'success', previewResult = { result: 'passed', detail: 'ok' } } = {}) {
   let now = Date.parse('2026-11-04T08:00:00Z');
   let seq = 0;
   let num = 0; // issue and PR numbers
@@ -121,6 +121,7 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
       return direction === 'asc' ? list.sort((a, b) => a.number - b.number) : list;
     },
     listPulls: async () => [...items.values()].filter((i) => i.pr && i.open).map(asPr),
+    listOpenIssues: async () => [...items.values()].filter((i) => i.open).sort((a, b) => b.number - a.number).map(asIssue),
     listClosedPulls: async () => [...items.values()].filter((i) => i.pr && !i.open).map(asPr),
     listComments: async (n) => get(n)?.comments || [],
     listEvents: async (n) => get(n)?.events || [],
@@ -162,7 +163,8 @@ export function createWorld({ config, agent = {}, previews = false, checks = () 
     return { ok: true, json: async () => ({ claude_code_session_url: `https://claude.ai/code/s${fires.length}` }), text: async () => '' };
   };
   const env = { FACTORY_ROUTINE_URL: 'https://api.anthropic.com/routine/fire', FACTORY_ROUTINE_TOKEN: 'tok' };
-  const relayFor = () => createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl, now: () => now, log: (m) => log.push(m), sleep: async () => {} });
+  // Each relay run is a job with its own GitHub client: `spy` may wrap it (issue #491 counts its reads).
+  const relayFor = () => createRelay({ gh: spy(gh), repo: 'phoibe/app', config, env, fetchImpl, now: () => now, log: (m) => log.push(m), sleep: async () => {} });
 
   // One relay workflow run: the decide job, then the checks and report jobs when it asks for them.
   async function relayRun({ eventName: name, p }) {
