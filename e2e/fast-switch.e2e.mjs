@@ -151,7 +151,7 @@ test('au retour, une demande que la liste des projets a vue changer est à jour,
     await page.locator('.ticket', { hasText: 'Carte alpha' }).waitFor();
     // Same date and no running agent: nothing else makes the board read this card again.
     issues[0] = { ...issues[0], labels: ['factory:feature', 'factory:building'].map((name) => ({ name })) };
-    await page.waitForTimeout(33000); // the project list reads r in the background (every 30 s) and gets the change first
+    await page.waitForTimeout(33000); // the project list reads r in the background (every 10 s when active, 30 s when calm) and gets the change first
     await pick(page, 'r');
     await page.locator('.lane-working .ticket', { hasText: 'Carte r' }).waitFor({ timeout: 4000 });
   });

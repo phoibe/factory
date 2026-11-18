@@ -36,3 +36,10 @@ test('the command line « decide » still handles an event from start to end', (
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(r.stderr, /ReferenceError|is not defined/);
 });
+
+test('each relay run ends by printing its GitHub reads, free answers and reserve (issue #491)', () => {
+  const r = runRelay('decide', { repository: { owner: { login: 'o' } } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /GitHub usage: \d+ counted reads, \d+ free \(304\), \d+ writes, reserve/);
+  assert.match(r.stdout, /\n {2}\d+ GET \/repos\/\{repo\}\//);
+});

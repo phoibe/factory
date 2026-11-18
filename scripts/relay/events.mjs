@@ -271,7 +271,7 @@ export function eventsPart(ctx) {
     }
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
-      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open' } : {}) }; // webhook labels can be stale
+      ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open', merged: live.pull_request?.merged_at || null } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
     }
@@ -338,7 +338,11 @@ export function eventsPart(ctx) {
     }
     // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
     // an agent on it. Only « fermer » (drop) still tidies up.
-    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type)) {
+    // Except the replay of an « ok » whose merge went through just before GitHub went down (issue #490): the PR is
+    // merged, the end of its delivery is done now (mergePr does not merge it again).
+    // Within a day of the merge, as the tick replays nothing older: an old merged PR never starts its delivery again.
+    const mergedOk = Boolean(ev.merged) && now() - Date.parse(ev.merged) < 24 * 3600_000 && action.type === 'merge';
+    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type) && !mergedOk) {
       log('closed PR: nothing is started');
       if (ev.fromOwner && ev.text) await gh.comment(n, say("Cette PR est fermée, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau."));
       return { action: { type: 'ignore', reason: 'PR fermée' }, outputs };

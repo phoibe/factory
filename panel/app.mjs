@@ -19,7 +19,7 @@ import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './c
 import { machineLine, repoKey } from './machine.mjs';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=4';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -104,7 +104,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -299,12 +299,15 @@ function setDot(repo, dot) {
   renderProjectList();
 }
 
-// The other projects are checked at start, then every 30 s. Their requests carry the last ETag (an unchanged
+// The other projects are checked at start, then every 10 s while the owner is active, 30 s when calm or hidden
+// (issue #488). Their requests carry the last ETag (an unchanged
 // answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
 // A project GitHub does not answer for keeps its last known dot.
 // One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
 const etags = new Map();
-let dotsTimer = null, dotsBusy = false;
+let dotsTimer = null, dotsBusy = false, dotsLast = 0, dotsPausedUntil = 0;
+// Active owner: 10 s between rounds; calm for 2 minutes or tab hidden: 30 s (issue #488).
+const dotsIdle = () => isIdle(live.activity, Date.now(), document.hidden);
 async function projectDotOf(repo) {
   try {
     const issues = [];
@@ -332,9 +335,12 @@ async function projectDotOf(repo) {
 
 async function refreshDots() {
   clearTimeout(dotsTimer);
-  dotsTimer = setTimeout(refreshDots, dotsDelay());
-  if (!token || !projects.length || dotsBusy) return;
+  // While GitHub's wait runs, every caller waits too: the next round comes at its end.
+  const paused = Math.min(dotsPausedUntil - Date.now(), 300_000);
+  dotsTimer = setTimeout(refreshDots, paused > 0 ? paused : dotsDelay(0, dotsIdle()));
+  if (paused > 0 || !token || !projects.length || dotsBusy) return;
   dotsBusy = true;
+  dotsLast = Date.now();
   const session = token;
   try {
     const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
@@ -348,7 +354,11 @@ async function refreshDots() {
     if (JSON.stringify([...dots]) !== before) renderProjectList();
   } catch (err) {
     // GitHub limits the calls: no more requests until the wait it asked for (the dots stay as they were).
-    if (err?.rateLimited && token === session) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, dotsDelay(err.waitMs)); }
+    if (err?.rateLimited && token === session) {
+      const wait = dotsDelay(err.waitMs, dotsIdle());
+      dotsPausedUntil = Date.now() + wait;
+      clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait);
+    }
   } finally {
     dotsBusy = false;
   }
@@ -1163,20 +1173,32 @@ async function renderBoard() {
   await refresh();
 }
 
-// Any sign of life from the owner brings the 8 s rhythm back (after 2 minutes of calm it slows to 30 s).
+// Any sign of life from the owner brings the 8 s rhythm (10 s for the dots) back (after 2 minutes of calm it slows to 30 s).
 for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart']) {
   window.addEventListener(type, () => {
     const wasIdle = isIdle(live.activity, Date.now(), document.hidden);
     live.activity = Date.now();
     if (wasIdle && current && !document.hidden && !live.busy) schedule();
+    // The dots come back to life too: a check at once instead of waiting out the 30 s (issue #488).
+    if (wasIdle && !document.hidden) wakeDots();
   }, { passive: true });
+}
+
+// A gesture after a calm moment, or a return to the tab, checks the other projects' dots at once (issue #488),
+// unless they were just checked (then the next round comes 10 s after it) or GitHub asked to wait.
+function wakeDots() {
+  if (!token) return;
+  const wait = dotsWake({ now: Date.now(), last: dotsLast, pausedUntil: dotsPausedUntil });
+  if (wait === 0) return refreshDots();
+  if (wait != null) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait); }
 }
 
 // Coming back to the tab refreshes at once (unless it just did); while hidden it keeps polling every 30 s.
 document.addEventListener('visibilitychange', () => {
+  // The owner is back: the active rhythm (8 s board, 10 s dots) starts now.
+  if (!document.hidden) { live.activity = Date.now(); wakeDots(); }
   if (!current) return clearTimeout(live.timer);
   if (document.hidden) return schedule();
-  live.activity = Date.now();
   if (Date.now() - live.last > 5000) refresh(); else schedule();
 });
 
