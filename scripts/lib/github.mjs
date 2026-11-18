@@ -22,6 +22,39 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
   // (a POST may have been applied before the connection broke).
   async function send(method, url, init) {
+    // Issue #491: a read already answered in this run asks GitHub « changed? » (If-None-Match). A 304 is not counted in
+    // the hourly limit and gives back the answer kept here; anything else is GitHub's current state. Always fresh.
+    const key = method === 'GET' ? `${init.headers?.accept || ''} ${url}` : null;
+    const kept = key ? cache.get(key) : null;
+    if (kept) init = { ...init, headers: { ...init.headers, 'if-none-match': kept.etag } };
+    const res = await sendRaw(method, url, init);
+    tally(method, url, res);
+    if (!key) return res;
+    if (res.status === 304 && kept) return { ok: true, status: 200, headers: res.headers, json: async () => structuredClone(kept.body), text: async () => JSON.stringify(kept.body) };
+    const etag = res.headers?.get?.('etag');
+    if (res.status !== 200 || !etag) { cache.delete(key); return res; }
+    const body = await res.json();
+    cache.set(key, { etag, body: structuredClone(body) });
+    return { ok: true, status: 200, headers: res.headers, json: async () => body, text: async () => JSON.stringify(body) };
+  }
+  // GitHub's usage seen by this client: counted reads per kind of address, free « nothing new » answers, writes, and
+  // the reserve left in the hour as GitHub last told it.
+  const cache = new Map();
+  const use = { reads: 0, free: 0, writes: 0, routes: {}, remaining: null, limit: null };
+  function tally(method, url, res) {
+    const left = Number(res.headers?.get?.('x-ratelimit-remaining'));
+    const limit = Number(res.headers?.get?.('x-ratelimit-limit'));
+    if (res.headers?.get?.('x-ratelimit-remaining') != null && Number.isFinite(left)) use.remaining = left;
+    if (res.headers?.get?.('x-ratelimit-limit') != null && Number.isFinite(limit)) use.limit = limit;
+    if (method !== 'GET') { use.writes++; return; }
+    if (res.status === 304) { use.free++; return; }
+    use.reads++;
+    const route = `GET ${routeOf(url)}`;
+    use.routes[route] = (use.routes[route] || 0) + 1;
+  }
+  const routeOf = (url) => url.replace(api, '').split('?')[0].replace(`/repos/${repo}`, '/repos/{repo}')
+    .split('/').map((part) => (/^\d+$/.test(part) ? ':n' : /^[0-9a-f]{40}$/.test(part) ? ':sha' : part)).join('/');
+  async function sendRaw(method, url, init) {
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
       let res;
@@ -140,6 +173,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     catch (e) { if (!/404|422/.test(String(e))) throw e; await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${stateRef(name)}`, sha: commit.sha }); }
   };
   return {
+    usage: () => structuredClone(use),
     queueLock,
     getState,
     setState,

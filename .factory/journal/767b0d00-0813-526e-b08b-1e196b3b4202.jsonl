@@ -1,0 +1,8 @@
+{"t":"2026-11-18T17:58:22.497Z","kind":"run","stage":"build","issue":491,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-18T18:00:05.163Z","kind":"skill","name":"writing-plans","id":"toolu_013nA3vR7uVUSq9a1XgV76No"}
+{"t":"2026-11-18T18:00:20.229Z","kind":"skill","name":"executing-plans","id":"toolu_01UDw3KqrCMLFxTUghyVEfZQ"}
+{"t":"2026-11-18T18:00:20.668Z","kind":"skill","name":"test-driven-development","id":"toolu_01XTki4jwnUmnfgYk8JtZxYB"}
+{"t":"2026-11-18T18:00:36.937Z","kind":"test","cmd":"cat >> test/github.test.mjs <<'EOF'\n\n// ---- Fewer counted reads (issue #491): an unchanged answer read again in the same run is a free 304 ----\nconst tagged = (status, body, headers = {}) => ({ ok: s","ok":false,"id":"toolu_01NKogH5zeGfbgFiRSntQ8Z6"}
+{"t":"2026-11-18T18:00:47.832Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold_send_start=…\"  async function send(method, url, init) {\n    let pauses = 0;\"\"\"\nnew_send_start=…\"  async function send(method, url, init) {\n    // Issue #491: a read alrea","ok":true,"id":"toolu_01Xr8Sk7nPQtT2F6CrDrh8bz"}
+{"t":"2026-11-18T18:00:58.047Z","kind":"test","cmd":"cat >> test/github.test.mjs <<'EOF'\n\ntest('the end-of-run summary says what was read, what was free and the reserve left', async () => {\n  const { formatUsage } = await import('../scripts/lib/github-u","ok":false,"id":"toolu_01FboVWxevNLvCNwsMxYE1py"}
+{"t":"2026-11-18T18:02:19.829Z","kind":"test","cmd":"cat >> test/relay-cli.test.mjs <<'EOF'\n\ntest('each relay run ends by printing its GitHub reads, free answers and reserve (issue #491)', () => {\n  const r = runRelay('decide', { repository: { owner: { ","ok":false,"id":"toolu_01DxzhSHB2G1XQBkNBpTVt5W"}
