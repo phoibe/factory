@@ -51,7 +51,9 @@ test('avec le jeton de lecture, une conversation fonctionne, est retrouvée apr�
     await paste(page, 'lecture');
     await page.locator('#chat-input').waitFor();
     await send(page, 'Je peux exporter ?');
-    await page.locator('#chat-messages').getByRole('link', { name: /Exporter mes données/ }).waitFor();
+    // The request is created only once the owner confirms it on its card (issue #492).
+    await page.locator('.proposal', { hasText: 'Exporter mes données' }).getByRole('button', { name: 'Créer cette demande' }).click();
+    await page.locator('.proposal').getByRole('link', { name: /Voir la demande/ }).waitFor();
     // The server got the read token only; the panel created the issue and saved the conversation with the full one.
     assert.deepEqual(chatCalls.map((c) => c.token), ['Bearer lecture']);
     const made = writes.find((w) => w.method === 'POST' && w.path === '/repos/o/r/issues' && w.body.title === 'Exporter mes données');

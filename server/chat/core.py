@@ -12,12 +12,15 @@ REPO_RE = re.compile(r"^[A-Za-z0-9-]+/(?!\.{1,2}$)[A-Za-z0-9._-]+$")
 CID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_ISSUES = 3  # one answer never opens more tickets than this (each one starts factory work)
 
-ASK_BLOCK = """Pour créer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
+ASK_BLOCK = """Pour proposer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
 <creer-issue type="feature" titre="Titre court en français">
 Sa demande avec ses mots, puis le contexte utile que tu as trouvé (ce qui existe déjà, où est le défaut,
 comment le reproduire pour un bug).
 </creer-issue>
-(type="bug" pour un bug). La factory crée la fiche et ajoute son lien sous ta réponse : ne mets pas de lien toi-même."""
+(type="bug" pour un bug). Ce bloc n'est qu'une proposition : le chat l'affiche sous ta réponse comme une carte, et
+rien n'est créé tant que le propriétaire n'a pas cliqué « Créer cette demande ». Dis-lui simplement de relire la carte
+et de cliquer s'il est d'accord (ou de te dire ce qu'il faut changer) ; ne mets pas de lien toi-même. Si tu corriges
+une carte encore en attente, propose la nouvelle et dis-lui d'ignorer l'ancienne."""
 
 SYSTEM = """Tu es l'agent de la software factory du projet {repo}. Le propriétaire te parle depuis le chat de son
 tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherches ciblées, pas plus).
@@ -37,7 +40,7 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
   et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
   demande, puis tu poses une seule question, « Voulez-vous que j'en fasse une fiche ? » (ou « Il manque X, voulez-vous
   une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, tu n'y reviens pas dans la conversation.
-- Tu ne crées une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
+- Tu ne proposes une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
   que les boutons du chat envoient), il demande explicitement une fiche (« crée une feature pour… », « fais-moi
   une fiche bug »), ou il répond oui / vas-y / crée-la à ta question (vérifie que ton message précédent la posait). Rien d'autre. Résume alors toute la
   conversation. Une fiche par sujet.
@@ -96,8 +99,8 @@ def extract_issues(text):
     answer = BLOCK_RE.sub("", text or "").strip()
     dropped = len(issues) - MAX_ISSUES
     if dropped > 0:
-        answer += (f"\n\n_{dropped} autres demandes n'ont pas été créées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
-                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été créée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
+        answer += (f"\n\n_{dropped} autres demandes n'ont pas été proposées (au plus {MAX_ISSUES} à la fois) : redemandez-les ensuite._"
+                   if dropped > 1 else f"\n\n_Une autre demande n'a pas été proposée (au plus {MAX_ISSUES} à la fois) : redemandez-la ensuite._")
     return answer, issues[:MAX_ISSUES]
 
 
@@ -146,6 +149,7 @@ def upsert_index(index, conv):
     return sorted([index_entry(conv)] + rest, key=lambda e: e.get("updated") or "", reverse=True)
 
 
+CARD_STATES = {"pending": "en attente de son clic", "created": "créée par le propriétaire", "ignored": "ignorée par le propriétaire"}
 MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
 
 
@@ -157,6 +161,10 @@ def build_prompt(conv, message, image_files):
         for m in history:
             who = "[Propriétaire]" if m["who"] == "me" else "[Toi]"
             extra = f" ({len(m['images'])} image(s) jointe(s))" if m.get("images") else ""
+            # The cards proposed under an answer, and what the owner chose (issue #492): the agent can revise them.
+            for p in m.get("proposals") or []:
+                state = CARD_STATES.get(p.get("state"), CARD_STATES["pending"])
+                extra += f"\n(carte proposée : {'bug' if p.get('kind') == 'bug' else 'feature'} « {p.get('title', '')} », {state})"
             lines.append(f"{who} {m.get('text', '')}{extra}")
         kept, size = [], 0
         for line in reversed(lines):

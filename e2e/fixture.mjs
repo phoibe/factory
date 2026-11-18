@@ -36,7 +36,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer) }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0 }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -113,9 +113,16 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (name?.[1]) chatBranch.chats[name[1]] = data; else if (name) chatBranch.index = data;
         return json({ content: { sha: 'n' } });
       }
-      if (chatServer && req.method() === 'POST' && path === '/repos/o/r/issues') {
+      // A bug or a feature (never a chat conversation): created as GitHub does, with its number and link.
+      if (req.method() === 'POST' && path === '/repos/o/r/issues' && !(req.postDataJSON()?.labels || []).includes('factory:question') && ![failing, forbidden, missing, offline].some((set) => set?.has(path))) {
         const made = req.postDataJSON();
-        writes.push({ method: 'POST', path, body: made });
+        // `refuseIssues`: GitHub refuses the first n requests (the network dropped).
+        if (chatServer?.refuseIssues > writes.filter((w) => w.path === path && !w.ok).length) {
+          writes.push({ method: 'POST', path, body: made });
+          return json({ message: 'Server Error' }, 500);
+        }
+        if (issueDelay) await new Promise((r) => setTimeout(r, issueDelay));
+        writes.push({ method: 'POST', path, body: made, ok: true });
         const number = 100 + issues.length;
         // The factory then queues a new feature (the board shows it in « File d'attente »).
         issues.push(issue(number, made.title, made.labels.includes('factory:feature') ? [...made.labels, 'factory:queued'] : made.labels, { body: made.body }));

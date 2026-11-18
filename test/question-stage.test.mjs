@@ -13,6 +13,13 @@ test('the question stage creates a ticket only on an explicit action of the owne
   assert.doesNotMatch(stage, /Une demande floue \? Crée quand même/);
 });
 
+test('the question stage only proposes a request, the owner creates it with a click (issue #492)', () => {
+  assert.match(stage, /<creer-issue type="feature" titre="/);
+  assert.match(stage, /Créer cette demande/);
+  assert.doesNotMatch(stage, /crée l'issue avec l'API REST/i);
+  assert.doesNotMatch(stage, /state=closed/);
+});
+
 test('both chat agents know the coloured callouts and keep them for what matters (issue #460)', () => {
   const server = readFileSync(new URL('../server/chat/core.py', import.meta.url), 'utf8');
   for (const text of [stage, server]) {
@@ -23,7 +30,6 @@ test('both chat agents know the coloured callouts and keep them for what matters
   }
 });
 
-test('the question agent creates a ticket with the REST API, never `gh issue create`', () => {
-  assert.match(stage, /crée-la avec l'API REST \(`gh api repos\/<repo>\/issues/);
-  assert.match(stage, /jamais `gh issue create`/);
+test('the question agent never creates a ticket itself, by any means (issue #492)', () => {
+  assert.match(stage, /ni `gh api …\/issues`, ni `gh issue create`, ni autre moyen/);
 });

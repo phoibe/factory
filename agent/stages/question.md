@@ -1,8 +1,8 @@
 # Étape : répondre à une question
 
 Le propriétaire te parle depuis l'onglet « Agent » du tableau de suivi (issue `factory:question`, qu'il voit
-comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label. Seule exception : créer une issue
-quand il le demande explicitement (point 4).
+comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label, et tu ne crées aucune issue. Quand il demande une
+fiche, tu la **proposes** dans ta réponse (point 4) : c'est lui qui la crée d'un clic.
 
 **Va vite : il attend en direct.** Vise moins d'une minute. Pas de skill, pas de journal, pas d'installation, pas
 de tests, pas de lancement de l'appli, pas d'autre fichier de consignes : tout est ici. Au plus quelques
@@ -33,15 +33,22 @@ et ouvre-les avec Read avant de répondre (dans la conversation : `<!-- factory-
    conversation révèle un manque ou un défaut, et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche
    pas quand… ». Réponds d'abord, puis pose une seule question : « Voulez-vous que j'en fasse une fiche ? » (ou
    « Il manque X, voulez-vous une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, n'y reviens pas.
-   Tu ne crées l'issue que dans trois cas : les boutons du chat (« Créez une issue … à partir de cette
+   Tu ne proposes une fiche que dans trois cas : les boutons du chat (« Créez une issue … à partir de cette
    conversation »), une demande explicite de fiche (« crée une feature pour… », « fais-moi une fiche bug »), ou un
-   « oui / vas-y / crée-la » à ta question. Rien d'autre : lis les derniers messages pour le vérifier. Alors crée-la avec l'API REST (`gh api repos/<repo>/issues -f title=… -F body=@fichier.md -f 'labels[]=<factory:feature ou factory:bug>'`), jamais `gh issue create`, après avoir vérifié qu'aucune issue ouverte ne traite déjà le
-   sujet : titre court et texte en français, le texte reprend sa demande avec ses mots, puis le contexte utile
-   (ce qui existe, où est le défaut, comment le reproduire) et « Demandé dans #<n> » ; avec les boutons, résume
-   toute la conversation. Label `factory:feature` ou `factory:bug`, **sans** le marqueur `<!-- factory-agent -->`
-   dans le corps (elle doit démarrer tout de suite). Une demande floue se crée quand même : les questions se
-   poseront dans la fiche. Réponds avec son lien (« [Titre](lien) ») : elle apparaît dans l'onglet « Suivi ».
+   « oui / vas-y / crée-la » à ta question. Rien d'autre : lis les derniers messages pour le vérifier. Alors
+   **propose**-la, sans jamais la créer toi-même (ni `gh api …/issues`, ni `gh issue create`, ni autre moyen),
+   après avoir vérifié qu'aucune issue ouverte ne traite déjà le sujet : écris à la toute fin de ta réponse,
+   hors de tout bloc de code, un bloc par sujet, exactement sous cette forme (`type="bug"` pour un bug) :
+
+   <creer-issue type="feature" titre="Titre court en français">
+   Sa demande avec ses mots, puis le contexte utile (ce qui existe, où est le défaut, comment le reproduire) et
+   « Demandé dans #<n> » ; avec les boutons, résume toute la conversation.
+   </creer-issue>
+
+   Le chat affiche ce bloc comme une carte avec deux boutons, « Créer cette demande » et « Ignorer » : rien n'est
+   créé tant qu'il n'a pas cliqué. Dis-lui de relire la carte et de cliquer s'il est d'accord, ou de te dire ce qu'il
+   faut changer (tu proposeras une nouvelle carte). Pas de lien. Une carte par sujet, au plus trois par réponse. Une
+   demande floue se propose quand même : les questions se poseront dans la fiche.
 5. **Dernière action** : retire `factory:running`
-   (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404). Si tu viens de créer une
-   fiche, ferme aussi la conversation (`gh api -X PATCH repos/<repo>/issues/<n> -f state=closed -f state_reason=completed`) :
-   elle reste lisible dans l'onglet « Agent », et un nouveau message la rouvre.
+   (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404). Ne ferme jamais la
+   conversation : la carte que tu as proposée doit rester sous ses yeux jusqu'à son clic.

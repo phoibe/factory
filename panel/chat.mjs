@@ -6,10 +6,11 @@ export const LABEL = 'factory:question';
 const AGENT_MARKER = '<!-- factory-agent -->';
 const WAIT_MS = 10 * 60_000; // past this, a message nobody answered is « late »
 
-// The messages behind the two buttons under a conversation. The agent's question stage creates the issue.
+// The messages behind the two buttons under a conversation. The agent only proposes the request: the owner creates
+// it with « Créer cette demande » on the card under the answer (issue #492).
 export const ASK = {
-  feature: 'Créez une issue « Nouvelle feature » à partir de cette conversation, puis donnez-moi le lien.',
-  bug: 'Créez une issue « Signaler un bug » à partir de cette conversation, puis donnez-moi le lien.',
+  feature: 'Créez une issue « Nouvelle feature » à partir de cette conversation : proposez-la-moi pour que je la valide.',
+  bug: 'Créez une issue « Signaler un bug » à partir de cette conversation : proposez-la-moi pour que je la valide.',
 };
 
 const names = (labels = []) => labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -59,16 +60,25 @@ export function splitImages(body) {
 
 export function chatMessages(issue, comments = []) {
   const out = [];
-  const push = (who, body, item) => {
+  const push = (who, body, item, extra) => {
     const { text, images } = splitImages(body);
-    if (text || images.length) out.push({ who, text, ...(images.length ? { images } : {}), at: item.created_at, url: item.html_url });
+    if (text || images.length || extra) out.push({ who, text, ...(images.length ? { images } : {}), at: item.created_at, url: item.html_url, ...extra });
   };
   push((issue.body || '').includes(AGENT_MARKER) ? 'agent' : 'me', issue.body, issue);
-  for (const c of comments) {
-    if (fromStranger(c)) continue;
+  const kept = comments.filter((c) => !fromStranger(c));
+  const decisions = decisionsFrom(kept);
+  for (const c of kept) {
     const body = c.body || '';
-    if (body.includes(AGENT_MARKER) && !body.includes('<!-- factory-notified -->')) push('agent', body, c);
-    else if (!isBot(c.user)) push('me', body, c);
+    if (body.includes(AGENT_MARKER) && !body.includes('<!-- factory-notified -->')) {
+      // The agent proposes requests as blocks; the owner decides on each card (issue #492).
+      const { text, proposals } = proposalsFrom(body);
+      const cards = proposals.map((p, i) => {
+        const id = `${c.id}-${i}`;
+        const d = decisions.get(id);
+        return { id, ...p, state: d?.state || 'pending', ...(d?.url ? { url: d.url } : {}) };
+      });
+      push('agent', text, c, cards.length ? { proposals: cards } : undefined);
+    } else if (!isBot(c.user)) push('me', body, c);
   }
   return out;
 }
@@ -254,6 +264,7 @@ export function serverMessages(conv) {
       who: m.who === 'agent' ? 'agent' : 'me', text: m.text || '',
       ...(m.images?.length ? { images: m.images } : {}), at: m.at,
       ...(m.issues?.length ? { issues: m.issues } : {}),
+      ...(m.proposals?.length ? { proposals: m.proposals } : {}),
     }));
 }
 
@@ -289,6 +300,40 @@ export const wantedIssues = (list) => (Array.isArray(list) ? list : [])
   .slice(0, MAX_ISSUES)
   .map((i) => ({ kind: i.kind === 'bug' ? 'bug' : 'feature', title: i.title.trim().slice(0, 200), body: String(i.body ?? '').slice(0, 60000) }));
 
+// ---- Requests the agent proposes (issue #492) ------------------------------------------------------
+// The agent never creates a bug or a feature: it writes a block per request (same format as the chat server's), and
+// the panel shows it as a card that only the owner's click turns into a request.
+// A block the agent wrapped in a code fence takes its fence with it: no empty code block is left on screen.
+const BLOCK = /(?:```[^\n]*\n\s*)?<creer-issue\s+type="([^"]*)"\s+titre="([^"]*)"\s*>([\s\S]*?)<\/creer-issue>(?:\s*\n\s*```)?/g;
+// The text comes back as written (images and markers are read afterwards), only without its blocks.
+export function proposalsFrom(text) {
+  const found = [...String(text || '').matchAll(BLOCK)].map((m) => ({ kind: m[1].trim(), title: m[2], body: m[3].trim() }));
+  return { text: String(text || '').replace(BLOCK, '').trim(), proposals: wantedIssues(found) };
+}
+
+// Issue mode: the owner's choice on a card is a hidden comment with the agent marker (so the factory does not start
+// an agent on it, and the chat shows nothing). The first decision on a card is the one that counts.
+// Only a comment that is nothing but a decision counts: an answer of the agent can never mark its own card decided.
+const DECISION = /^<!-- factory-agent -->\n<!-- factory-proposal: ([\w-]+) (created|ignored)(?: (\S+))? -->$/;
+export const decisionComment = (id, state, url) => `${AGENT_MARKER}\n<!-- factory-proposal: ${id} ${state}${url ? ` ${url}` : ''} -->`;
+function decisionsFrom(comments) {
+  const out = new Map();
+  for (const c of comments) {
+    const m = DECISION.exec(String(c.body || '').replace(/\r\n/g, '\n').trim());
+    if (m && !out.has(m[1])) out.set(m[1], { state: m[2], url: m[2] === 'created' ? safeGithubUrl(m[3]) : undefined });
+  }
+  return out;
+}
+
+// Server mode: the card's state lives in the stored conversation. False when it was already decided or is unknown.
+export function decideProposal(conv, id, state, url) {
+  const p = (conv?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);
+  if (!p || p.state !== 'pending') return false;
+  p.state = state;
+  if (url) p.url = url;
+  return true;
+}
+
 // Why a pasted read token is refused, or null when it is fine.
 export function readTokenProblem({ same, status, login, owner, readable, writable }) {
   if (same || writable) return WRITABLE_TOKEN;
@@ -301,10 +346,13 @@ export function readTokenProblem({ same, status, login, owner, readable, writabl
 // The stored conversation, in the format the chat server used to write (server/chat/core.py).
 export const newConversation = (id, firstText, now = '') => ({ id, title: titleFrom(firstText || 'Image envoyée'), state: 'open', created: now, updated: now, messages: [] });
 
-export function addExchange(conv, mine, answer, now = '', issues = []) {
+// Older answers carry `issues` (requests created at once, before issue #492); new ones carry pending `proposals`.
+// `tag` names this answer's cards: the copy saved and a copy kept on screen (save failed) share it, so they share ids.
+export const cardTag = () => globalThis.crypto.randomUUID().slice(0, 8);
+export function addExchange(conv, mine, answer, now = '', proposals = [], tag = cardTag()) {
   conv.messages.push({ who: 'me', text: mine.text || '', images: [...(mine.images || [])], at: now });
   const agent = { who: 'agent', text: answer, at: now };
-  if (issues.length) agent.issues = issues.map((i) => ({ title: i.title, url: i.url, kind: i.kind }));
+  if (proposals.length) agent.proposals = proposals.map((p, i) => ({ id: `${tag}-${i}`, kind: p.kind, title: p.title, body: p.body, state: 'pending' }));
   conv.messages.push(agent);
   conv.updated = now;
   conv.state = 'open';
@@ -327,10 +375,6 @@ export function issueRequest({ kind, title, body }) {
     ? { title, labels: ['factory:bug'], body: text }
     : { title, labels: ['factory:feature', 'factory:kept'], body: `${AGENT_MARKER}\n${text}` };
 }
-
-export const notCreatedNote = (n) => (!n ? '' : n === 1
-  ? '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._'
-  : `\n\n_${n} demandes n'ont pas pu être créées sur GitHub : redemandez dans un moment._`);
 
 // The conversation id that names `chats/<id>.json`, written with the full token: never taken unchecked from the chat
 // server (a path there would aim the owner's full token at another GitHub endpoint). Same rule as the server's.

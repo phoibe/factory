@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenFromHash, readTokenFromHash, phoneLink } from '../panel/lib.mjs';
-import { newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
+import { newConversation, addExchange, upsertIndex, issueRequest, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
 
 test('le lien du téléphone emporte les deux jetons', () => {
   const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_FULL_1', 'github_pat_READ_2');
@@ -52,16 +52,17 @@ test('a conversation is stored as the server stored it', () => {
   assert.deepEqual(conv, { id: 'c1', title: 'Je peux exporter ?', state: 'open', created: '2026-11-13T10:00:00Z', updated: '2026-11-13T10:00:00Z', messages: [] });
   assert.equal(newConversation('c2', '', 'x').title, 'Image envoyée');
   addExchange(conv, { text: 'Je peux exporter ?', images: ['attachments/chat/1-a.png'] }, 'Non.', '2026-11-13T10:01:00Z',
-    [{ title: 'Exporter', url: 'https://github.com/o/r/issues/7', kind: 'feature', number: 7, body: 'x' }]);
+    [{ title: 'Exporter', kind: 'feature', body: 'x' }]);
   assert.deepEqual(conv.messages, [
     { who: 'me', text: 'Je peux exporter ?', images: ['attachments/chat/1-a.png'], at: '2026-11-13T10:01:00Z' },
-    { who: 'agent', text: 'Non.', at: '2026-11-13T10:01:00Z', issues: [{ title: 'Exporter', url: 'https://github.com/o/r/issues/7', kind: 'feature' }] },
+    // Proposed, not created: the owner confirms each request on its card (issue #492).
+    { who: 'agent', text: 'Non.', at: '2026-11-13T10:01:00Z', proposals: [{ id: conv.messages[1].proposals[0].id, title: 'Exporter', kind: 'feature', body: 'x', state: 'pending' }] },
   ]);
   assert.equal(conv.updated, '2026-11-13T10:01:00Z');
   conv.state = 'closed';
   addExchange(conv, { text: 'Encore' }, 'Oui.', '2026-11-13T10:02:00Z');
   assert.equal(conv.state, 'open'); // a new message reopens it
-  assert.equal(conv.messages.at(-1).issues, undefined);
+  assert.equal(conv.messages.at(-1).proposals, undefined);
 });
 
 test('the index keeps one entry per conversation, most recent first', () => {
@@ -77,12 +78,6 @@ test('the issues the agent proposes are created as the server created them', () 
   // A feature the owner asked for is kept, and the agent marker leaves it to the queue instead of starting it at once.
   assert.deepEqual(issueRequest({ kind: 'feature', title: 'Exporter', body: 'Il veut.' }),
     { title: 'Exporter', labels: ['factory:feature', 'factory:kept'], body: '<!-- factory-agent -->\nIl veut.\n\n_Demandé depuis le chat du tableau de suivi._' });
-});
-
-test('a request GitHub refused is said under the answer', () => {
-  assert.equal(notCreatedNote(0), '');
-  assert.equal(notCreatedNote(1), '\n\n_Une demande n\'a pas pu être créée sur GitHub : redemandez dans un moment._');
-  assert.equal(notCreatedNote(2), '\n\n_2 demandes n\'ont pas pu être créées sur GitHub : redemandez dans un moment._');
 });
 
 test('the write probes cover files, requests and pull requests, always with an empty body', () => {
