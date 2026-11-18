@@ -154,7 +154,8 @@ test('sur téléphone, revenir sur « Agent » sans rouvrir la conversation lais
     await page.addInitScript(seen);
     await page.goto(url);
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-    await page.locator('.conv', { hasText: 'Combien de demandes' }).click();
+    // The conversation still open opens by itself, on a phone too (issue #477).
+    await page.locator('#chat.viewing .conv.current', { hasText: 'Combien de demandes' }).waitFor({ state: 'attached' });
     await page.locator('#chat-back').click();
     await page.getByRole('tab', { name: 'Suivi' }).click();
     reply();

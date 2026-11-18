@@ -383,3 +383,12 @@ test('every label the factory reacts to when it is added gets through the workfl
   assert.ok(reacting.length > 0);
   for (const label of [...reacting, L.kept]) assert.ok(allowed.has(label), `${label} is ignored by .github/workflows/factory.yml`);
 });
+
+test('an « Amélioration UI » card is built right away with its own stage, or queued when the factory is full (issue #462)', () => {
+  const opened = ev({ event: 'issues', action: 'opened', labels: [L.uiPolish] });
+  const go = decide(opened, config, { inFlight: 0 });
+  assert.equal(go.type, 'fire');
+  assert.equal(go.stage, 'ui-polish');
+  assert.deepEqual(go.add, [L.building]);
+  assert.equal(decide(opened, config, { inFlight: 2 }).type, 'queue');
+});

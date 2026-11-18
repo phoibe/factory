@@ -182,3 +182,54 @@ test('serverUnread: an instant-mode conversation updated since the answer last s
   assert.equal(serverUnread(c, { a1: '2026-11-06T10:05:00Z' }), false);
   assert.equal(serverUnread({ id: 'a1', updated: 'garbage' }, { a1: '2026-11-06T10:00:00Z' }), false);
 });
+
+// ---- Issue #460: coloured callouts, waiting time ----
+import { elapsed, waitingSince } from '../panel/chat.mjs';
+
+test('a line starting with ⚠️, ✅ or ➡️ becomes a coloured callout', () => {
+  const blocks = markdown('Bonjour.\n\n⚠️ Attention au jeton.\n\n✅ C\'est en ligne.\n\n➡️ Répondez « go ».');
+  assert.deepEqual(blocks.map((b) => [b.type, b.tone]), [['p', undefined], ['callout', 'warn'], ['callout', 'ok'], ['callout', 'todo']]);
+  assert.deepEqual(blocks[1].inline, [{ t: 'text', v: '⚠️ Attention au jeton.' }]);
+});
+
+test('an emoji in the middle of a sentence stays plain text', () => {
+  assert.deepEqual(markdown('Voici ⚠️ un détail.').map((b) => b.type), ['p']);
+});
+
+test('a callout keeps its following lines until a blank line', () => {
+  const [b] = markdown('➡️ Faites ceci :\nensuite cela');
+  assert.equal(b.type, 'callout');
+  assert.deepEqual(b.inline.map((x) => x.t), ['text', 'br', 'text']);
+});
+
+test('the waiting time reads m:ss', () => {
+  assert.equal(elapsed(42000), '0:42');
+  assert.equal(elapsed(125000), '2:05');
+  assert.equal(elapsed(-5), '0:00');
+});
+
+test('the wait starts at the owner\'s last message, only while it is the last one', () => {
+  assert.equal(waitingSince([{ who: 'agent', at: 'a' }, { who: 'me', at: 'b' }]), 'b');
+  assert.equal(waitingSince([{ who: 'me', at: 'b' }, { who: 'agent', at: 'c' }]), null);
+  assert.equal(waitingSince([]), null);
+});
+
+test('defaultConversation: the most recent open conversation, else a new one (issue #477)', async () => {
+  const { defaultConversation, serverList } = await import('../panel/chat.mjs');
+  // Instant chat: ids, the list sorted by serverList.
+  assert.equal(defaultConversation(serverList([
+    { id: 'a', state: 'closed', updated: '2026-11-04T12:00:00Z' },
+    { id: 'b', state: 'open', updated: '2026-11-04T09:00:00Z' },
+    { id: 'c', state: 'open', updated: '2026-11-04T11:00:00Z' },
+  ]), true), 'c');
+  assert.equal(defaultConversation(serverList([{ id: 'a', state: 'closed', updated: '2026-11-04T12:00:00Z' }]), true), 'new');
+  assert.equal(defaultConversation([], true), 'new');
+  // Issue chat: numbers, the list sorted by conversations.
+  assert.equal(defaultConversation(conversations([
+    { number: 3, state: 'closed', updated_at: '2026-11-04T12:00:00Z' },
+    { number: 5, state: 'open', updated_at: '2026-11-04T09:00:00Z' },
+    { number: 8, state: 'open', updated_at: '2026-11-04T11:00:00Z' },
+  ]), false), 8);
+  assert.equal(defaultConversation([{ number: 3, state: 'closed' }], false), 'new');
+  assert.equal(defaultConversation(null, false), 'new');
+});

@@ -83,6 +83,15 @@ export function chatStatus(issue, messages, now = Date.now()) {
   return now - Date.parse(last.at) < WAIT_MS ? 'thinking' : 'late';
 }
 
+// Issue #460: how long the owner has been waiting, « 0:42 ».
+export function elapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// When the wait began: the owner's last message, as long as nothing answered it.
+export const waitingSince = (messages = []) => (messages.at(-1)?.who === 'me' ? messages.at(-1).at || null : null);
+
 export function titleFrom(text) {
   const line = String(text || '').trim().split('\n')[0].trim().replace(/\s+/g, ' ');
   if (!line) return 'Discussion';
@@ -138,13 +147,21 @@ export function inline(text) {
   return out;
 }
 
+const TONES = { '⚠': 'warn', '✅': 'ok', '➡': 'todo' };
+const CALLOUT = /^\s*(⚠|✅|➡)\uFE0F?/;
+
 const withBreaks = (lines) => lines.flatMap((l, i) => (i ? [{ t: 'br' }, ...inline(l)] : inline(l)));
 
 export function markdown(text) {
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
   let para = [];
-  const flush = () => { if (para.length) blocks.push({ type: 'p', inline: withBreaks(para) }); para = []; };
+  let tone;
+  const flush = () => {
+    if (para.length) blocks.push(tone ? { type: 'callout', tone, inline: withBreaks(para) } : { type: 'p', inline: withBreaks(para) });
+    para = [];
+    tone = undefined;
+  };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\s*```/.test(line)) {
@@ -182,6 +199,9 @@ export function markdown(text) {
       continue;
     }
     for (const b of blocks) delete b.open;
+    // Issue #460: a line that starts with ⚠️, ✅ or ➡️ opens a coloured callout, up to the next blank line.
+    const mark = CALLOUT.exec(line);
+    if (mark) { flush(); tone = TONES[mark[1]]; }
     para.push(line);
   }
   flush();
@@ -218,6 +238,13 @@ export function serverMessages(conv) {
 
 export const serverList = (index) => [...(index || [])]
   .sort((a, b) => (b.state === 'open') - (a.state === 'open') || Date.parse(b.updated) - Date.parse(a.updated));
+
+// The conversation the Agent tab opens on (issue #477): the most recent one still open, else a new one.
+// `list` is already sorted open first, most recent first (serverList / conversations).
+export function defaultConversation(list, server) {
+  const c = (list || []).find((x) => x.state === 'open');
+  return c ? (server ? c.id : c.number) : 'new';
+}
 
 // ---- Read-only token (issue #395) -----------------------------------------------------------------
 // The chat server only ever receives a second token that can read the projects, never change them. The panel
