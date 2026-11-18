@@ -1,6 +1,8 @@
 # 473 · Onglet Agent : largeur normale par défaut, avec un bouton plein écran
 
 > Demande [#473](https://github.com/phoibe/factory/issues/473) · 2026-11-18
+>
+> Modifiée par la demande n° [#475](https://github.com/phoibe/factory/issues/475)
 
 **En une phrase** : l'onglet Agent reprend la largeur des autres onglets, et un bouton à deux flèches le passe en vrai plein écran (toute la fenêtre sauf la barre du haut et la liste des projets), puis le ramène.
 

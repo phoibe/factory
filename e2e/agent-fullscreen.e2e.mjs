@@ -66,16 +66,16 @@ test('Échap ou un second clic sur le bouton reviennent à la largeur normale, a
   });
 });
 
-test('en plein écran, changer de projet garde l\'onglet Agent en plein écran', async () => {
+// Issue #475 (asked after this spec) wins: another project always opens on « Suivi », full screen included.
+test('en plein écran, changer de projet ouvre le « Suivi » du nouveau projet, à la largeur normale', async () => {
   await withPanel({ issues: [question], comments: thread, repos, viewport: desk }, async ({ page, url }) => {
     await openAgent(page, url);
     await full(page).click();
     await page.locator('#projects .project-item', { hasText: 'autre' }).click();
     await page.locator('#projects .project-item[aria-current="true"]', { hasText: 'autre' }).waitFor();
-    await page.locator('#chat-new').waitFor();
-    assert.equal(await page.locator('#chat').isVisible(), true, 'onglet Agent quitté');
-    assert.equal(await normal(page).isVisible(), true, 'plein écran quitté');
-    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), false);
+    await page.getByRole('tab', { name: 'Suivi', selected: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.body.classList.contains('chat-fullscreen')), false, 'plein écran resté');
+    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), true);
   });
 });
 
@@ -154,9 +154,8 @@ test('passer en plein écran, rétrécir la fenêtre à la taille d\'un téléph
     await openAgent(page, url);
     await full(page).click();
     await page.setViewportSize({ width: 500, height: 800 });
-    await page.waitForTimeout(200);
+    await page.waitForFunction(() => !document.body.classList.contains('chat-fullscreen'));
     await page.setViewportSize(desk);
-    await page.waitForTimeout(200);
     if (!(await page.locator('#chat-full').isVisible())) await page.locator('.conv', { hasText: 'Comment publier ?' }).click();
     await full(page).waitFor();
     assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true);
