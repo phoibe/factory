@@ -2245,6 +2245,7 @@ function pickDefaultConversation() {
   $('chat').classList.add('viewing');
   // Its answers are already there, not new ones: nothing to read out.
   announced = { id: chat.open, count: Infinity };
+  drawChat(); // its title and « Chargement… » at once, never the new conversation meanwhile
 }
 
 async function refreshChat() {
@@ -2258,7 +2259,6 @@ async function refreshChat() {
     chat.list = conversations(list);
     chat.error = false;
     pickDefaultConversation();
-    if (chat.open != null && chat.open !== 'new' && !chat.issue) drawChat(); // the picked one shows « Chargement… » meanwhile
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);

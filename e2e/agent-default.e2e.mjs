@@ -71,3 +71,24 @@ test('après quelques secondes sur le tableau, l\'onglet Agent s\'ouvre sur la f
     assert.ok(top + ch >= sh - 4, `scrolled to the end (${top} + ${ch} / ${sh})`);
   });
 });
+
+test('discussion en direct : au rechargement, la conversation en cours s\'affiche aussitôt, et mon message y reste', async () => {
+  const slowReads = [];
+  await withPanel({ chatServer: { answer: 'Réponse courte.' }, viewport: { width: 1280, height: 800 }, slowReads }, async ({ page, url, chatCalls }) => {
+    await page.goto(url);
+    await openAgent(page);
+    await page.locator('#chat-input').fill('Première question');
+    await page.locator('#chat-send').click();
+    await page.locator('#chat-messages .msg.agent').first().waitFor();
+    await page.waitForTimeout(500);
+    slowReads.push([/chats\/c\d+\.json/, 3000]);
+    await page.reload();
+    await openAgent(page);
+    // While the conversation loads, the screen already says which one is open, never « Nouvelle conversation ».
+    await page.waitForTimeout(1000);
+    assert.equal(await page.locator('.conv.current', { hasText: 'Première question' }).count(), 1);
+    assert.notEqual((await page.locator('#chat-title').textContent()).trim(), 'Nouvelle conversation');
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Réponse courte.' }).waitFor({ timeout: 8000 });
+    assert.equal(chatCalls.length, 1);
+  });
+});
