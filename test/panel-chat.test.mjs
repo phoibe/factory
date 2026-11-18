@@ -199,3 +199,23 @@ test('the wait starts at the owner\'s last message, only while it is the last on
   assert.equal(waitingSince([{ who: 'me', at: 'b' }, { who: 'agent', at: 'c' }]), null);
   assert.equal(waitingSince([]), null);
 });
+
+test('defaultConversation: the most recent open conversation, else a new one (issue #477)', async () => {
+  const { defaultConversation, serverList } = await import('../panel/chat.mjs');
+  // Instant chat: ids, the list sorted by serverList.
+  assert.equal(defaultConversation(serverList([
+    { id: 'a', state: 'closed', updated: '2026-11-04T12:00:00Z' },
+    { id: 'b', state: 'open', updated: '2026-11-04T09:00:00Z' },
+    { id: 'c', state: 'open', updated: '2026-11-04T11:00:00Z' },
+  ]), true), 'c');
+  assert.equal(defaultConversation(serverList([{ id: 'a', state: 'closed', updated: '2026-11-04T12:00:00Z' }]), true), 'new');
+  assert.equal(defaultConversation([], true), 'new');
+  // Issue chat: numbers, the list sorted by conversations.
+  assert.equal(defaultConversation(conversations([
+    { number: 3, state: 'closed', updated_at: '2026-11-04T12:00:00Z' },
+    { number: 5, state: 'open', updated_at: '2026-11-04T09:00:00Z' },
+    { number: 8, state: 'open', updated_at: '2026-11-04T11:00:00Z' },
+  ]), false), 8);
+  assert.equal(defaultConversation([{ number: 3, state: 'closed' }], false), 'new');
+  assert.equal(defaultConversation(null, false), 'new');
+});
