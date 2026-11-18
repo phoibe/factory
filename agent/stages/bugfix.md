@@ -28,6 +28,6 @@ Un bug signalé dans l'issue. Pas de grilling.
    langage simple), et un test qui aurait attrapé le problème dès la première livraison (le test qui reproduit
    le bug, nourri autant que possible de données réelles relevées pendant l'essai), cité dans le résumé.
 4. PR avec résumé en français et `Closes #<n>`. Si l'interface change : captures
-   (`screenshots.md`) puis `factory:visual-review` et `factory:checks` (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)) ;
+   (`screenshots.md`) puis `factory:checks` (la factory publie les captures et pose elle-même `factory:visual-review`) ;
    sinon `factory:checks`. La factory fusionne seule quand
    les contrôles passent : pas de recette pour un bug.

@@ -15,9 +15,8 @@ Le propriétaire a testé la preview et signale un problème.
 3. Corrige (TDD si actif), revue par un sous-agent neuf (`sonnet`, effort `medium`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 4. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a
-   changé et que les captures sont actives, refais les captures et mets `factory:visual-review` puis `factory:checks` (mais
-   si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)) ; sinon mets
-   `factory:checks`. Si tu n'as rien poussé (une question, un réglage à faire de son côté comme une variable
+   changé et que les captures sont actives, refais les captures (voir `screenshots.md`) ; dans tous les cas mets
+   `factory:checks` (la factory publie les captures et pose elle-même `factory:visual-review` s'il y en a). Si tu n'as rien poussé (une question, un réglage à faire de son côté comme une variable
    chez l'hébergeur) : ne touche pas aux labels. La PR reste en recette, et son « ok » la mettra en ligne. N'ajoute
    pas `factory:blocked` : le tableau lui dit déjà que c'est à lui de tester.
 5. Explique en une ou deux phrases ce que tu as corrigé.
