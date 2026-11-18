@@ -2328,7 +2328,7 @@ function proposalCard(p) {
   const key = cardKey(p);
   const s = { ...p, ...chat.decided.get(key) };
   const busy = chat.deciding.has(key);
-  const kind = s.kind === 'bug' ? 'Bug' : 'Feature';
+  const kind = s.kind === 'bug' ? 'Bug' : 'Fonctionnalité';
   const outcome = s.state === 'created'
     ? el('a', { class: 'proposal-done', href: safeGithubUrl(s.url), target: '_blank', rel: 'noopener' }, el('strong', {}, 'Créée'), ' · Voir la demande', el('span', { 'aria-hidden': 'true' }, ' ↗'))
     : s.state === 'ignored' ? el('p', { class: 'proposal-done muted' }, 'Ignorée')

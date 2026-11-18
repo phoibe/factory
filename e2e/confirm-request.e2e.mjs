@@ -21,7 +21,7 @@ test('quand l\'agent propose une feature, je vois une carte « Créer cette dema
     await card.waitFor();
     await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
     await card.getByRole('button', { name: 'Ignorer' }).waitFor();
-    assert.match(await card.innerText(), /feature/i);
+    assert.match(await card.innerText(), /fonctionnalité/i);
     await card.getByText('Lire le texte').click();
     await card.getByText('Il veut exporter ses recettes en PDF.').waitFor();
     assert.equal(created(writes).length, 0);
