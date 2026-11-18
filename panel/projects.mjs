@@ -54,7 +54,7 @@ export const dotsDelay = (limitedMs = 0, idle = true) => Math.min(Math.max(limit
 export function dotsWake({ now, last, pausedUntil }) {
   if (now < pausedUntil) return null;
   const since = now - last;
-  return since >= 5_000 ? 0 : Math.max(0, 10_000 - since);
+  return since >= 5_000 ? 0 : Math.min(10_000, Math.max(0, 10_000 - since));
 }
 
 // ---- The project list remembered on this device (issue #399) -------------------------------------------------

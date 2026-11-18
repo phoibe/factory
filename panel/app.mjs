@@ -332,7 +332,7 @@ async function projectDotOf(repo) {
 async function refreshDots() {
   clearTimeout(dotsTimer);
   // While GitHub's wait runs, every caller waits too: the next round comes at its end.
-  const paused = dotsPausedUntil - Date.now();
+  const paused = Math.min(dotsPausedUntil - Date.now(), 300_000);
   dotsTimer = setTimeout(refreshDots, paused > 0 ? paused : dotsDelay(0, dotsIdle()));
   if (paused > 0 || !token || !projects.length || dotsBusy) return;
   dotsBusy = true;

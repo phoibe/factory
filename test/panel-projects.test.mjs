@@ -92,6 +92,8 @@ test('un geste ou un retour sur l\'onglet vérifie les pastilles aussitôt, sauf
   assert.equal(dotsWake({ now, last: now - 2_000, pausedUntil: 0 }), 8_000);
   // GitHub asked to wait: nothing before the end of the wait.
   assert.equal(dotsWake({ now, last: now - 60_000, pausedUntil: now + 90_000 }), null);
+  // A clock set back never stops the dots for longer than the active rhythm.
+  assert.equal(dotsWake({ now, last: now + 3_600_000, pausedUntil: 0 }), 10_000);
 });
 
 // Issue #399: the project list is remembered on this device, and an unchanged repository is not read again.
