@@ -26,11 +26,11 @@ async function openConversation(page, url) {
   await page.locator('#chat-messages .msg.agent').first().waitFor();
 }
 
-test('sur ordinateur, l\'onglet Agent occupe toute la largeur et la zone de saisie est visible en bas sans défiler', async () => {
+test('sur ordinateur, la zone de saisie de l\'onglet Agent est visible en bas sans défiler', async () => {
   await withPanel({ issues: [question], comments: thread, viewport: { width: 1600, height: 900 } }, async ({ page, url }) => {
     await openConversation(page, url);
     const box = await page.locator('#chat').boundingBox();
-    assert.ok(box.width > 1250, `largeur ${box.width}`);
+    assert.ok(box.width <= 1100, `largeur ${box.width}`); // issue #473: the usual width by default
     const input = await page.locator('#chat-input').boundingBox();
     assert.ok(input.y + input.height <= 900, 'zone de saisie sous le bas de l\'écran');
     assert.equal(await page.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight + 1), true, 'la page défile');

@@ -137,6 +137,7 @@ function show(id) {
   // The project list shows with a project only (none to choose from on the empty screen).
   $('projects').hidden = id !== 'project-view';
   document.body.classList.toggle('has-projects', id === 'project-view');
+  if (id !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   if (id !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
   if (typeof placeMenu === 'function') placeMenu();
 }
@@ -383,6 +384,8 @@ async function openProject(fullName) {
   $('issues-link').textContent = issuesLinkText(null);
   // Everything under the name starts over at once, before any request (issue #319); the board's grey cards come with renderBoard.
   show('project-view');
+  // Another project always opens on « Suivi » (issue #475); a redraw of the same project keeps the tab.
+  if (switched) selectTab('board');
   resetChat();
   renderRules();
   loadMachine(current).catch(() => {});
@@ -1492,10 +1495,29 @@ function selectTab(name) {
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
   if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
-  // Issue #460: the « Agent » tab uses the whole width, and exactly the height left under the header.
+  // Issue #460: the « Agent » tab uses exactly the height left under the header.
   document.body.classList.toggle('chat-wide', name === 'chat');
+  if (name !== 'chat') setChatFull(false);
   fitChat();
 }
+
+// Issue #473: the « Agent » tab at the usual width, or full screen (only the top bar and the project list stay).
+// Never remembered: a reload opens it at the usual width.
+function setChatFull(on) {
+  document.body.classList.toggle('chat-fullscreen', on);
+  const label = on ? 'Largeur normale' : 'Plein écran';
+  $('chat-full').setAttribute('aria-label', label);
+  $('chat-full').title = label;
+  fitChat();
+}
+$('chat-full').addEventListener('click', () => setChatFull(!document.body.classList.contains('chat-fullscreen')));
+// The full screen exists on a computer only: shrinking the window to a phone's width ends it.
+matchMedia('(max-width: 700px)').addEventListener('change', (e) => { if (e.matches && document.body.classList.contains('chat-fullscreen')) setChatFull(false); });
+// Échap leaves the full screen, unless it is closing a window opened over it (an enlarged image, a dialog).
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || !document.body.classList.contains('chat-fullscreen') || document.querySelector('dialog[open]')) return;
+  setChatFull(false);
+});
 
 function fitChat() {
   const box = $('chat');
@@ -2137,6 +2159,8 @@ const needsReadToken = () => Boolean(chat.server) && !readToken;
 function drawReadTokenCard() {
   const needed = needsReadToken();
   $('chat').classList.toggle('needs-token', needed);
+  // Issue #473: the card has no full-screen button, so never leave the owner in full screen without a way out.
+  if (needed && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('chat-setup').hidden = !needed;
   $('read-token-link').href = READ_TOKEN_URL;
   return needed;

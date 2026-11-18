@@ -1,6 +1,8 @@
 # 460 · Améliorer la page agent : copier, couleurs, largeur, hauteur, rapidité
 
 > Demande [#460](https://github.com/phoibe/factory/issues/460) · 2026-11-18
+>
+> Modifiée par la demande n° [#473](https://github.com/phoibe/factory/issues/473)
 
 **En une phrase** : l'onglet Agent devient plus confortable : commandes et réponses copiables d'un clic, encadrés colorés pour ce qui compte, toute la largeur et toute la hauteur de l'écran utilisées, et une attente plus courte et plus lisible.
 
