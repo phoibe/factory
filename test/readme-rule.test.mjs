@@ -45,3 +45,20 @@ test('a new project gets the French README from the start', () => {
 test('the no-licence decision is recorded', () => {
   assert.match(read('docs/adr/0010-pas-de-licence-sans-accord.md'), /licence/);
 });
+
+test('the home-page screenshot sits between the address and the list of features, as the spec orders', () => {
+  const g = read('agent/stages/readme.md');
+  const img = g.indexOf('![');
+  assert.ok(img > g.indexOf('## Adresse') && img < g.indexOf('## Ce que vous pouvez faire'));
+});
+
+test('the README screenshot is the « after » home-page capture, so it follows the design pass and every retouch', () => {
+  const s = read('agent/stages/screenshots.md');
+  assert.match(s, /accueil--desktop\.png[\s\S]{0,300}docs\/readme\/accueil\.png/);
+});
+
+test('the build step comes after the saved spec and leaves the factory itself alone', () => {
+  const b = read('agent/stages/build.md');
+  assert.ok(b.indexOf('6 quater.') > b.indexOf('6 ter.'));
+  assert.match(b, /6 quater\.[\s\S]{0,700}factory elle-même/);
+});

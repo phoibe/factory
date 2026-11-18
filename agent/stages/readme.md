@@ -29,8 +29,6 @@ Les titres `##` sont dans cet ordre ; saute seulement une partie qui n'a pas lie
 
 <Une ou deux phrases : ce qu'elle fait et pour qui.>
 
-![Page d'accueil de <nom>](docs/readme/accueil.png)
-
 ## À quoi sert <nom>
 
 <Le besoin qu'elle règle, en 2 à 4 phrases, d'après `PRODUCT.md`.>
@@ -39,6 +37,8 @@ Les titres `##` sont dans cet ordre ; saute seulement une partie qui n'a pas lie
 
 <Le lien du site en ligne. Pas encore en ligne : « Pas encore en ligne. » ; pas de site (outil en ligne de commande,
 appli à installer) : où la récupérer.>
+
+![Page d'accueil de <nom>](docs/readme/accueil.png)
 
 ## Ce que vous pouvez faire
 
@@ -53,10 +53,14 @@ appli à installer) : où la récupérer.>
 <Seulement si le projet en a déjà une : son nom, avec un lien vers le fichier.>
 ```
 
-**Capture d'écran** de la page d'accueil, sous la phrase d'introduction : une image du dépôt
-(`docs/readme/accueil.png`, lien relatif pour qu'elle s'affiche sur GitHub), prise sur l'appli lancée en local
-avec des données d'exemple, largeur ordinateur, thème clair. Renouvelle-la quand la page d'accueil change
-d'apparence. Pas de page d'accueil (outil sans interface) : pas de capture.
+**Adresse** : prends-la dans les réglages du dépôt (`gh api repos/<repo> --jq .homepage`), sinon dans les
+déploiements ou la configuration d'hébergement ; ne l'invente jamais.
+
+**Capture d'écran** de la page d'accueil, sous l'adresse : une image du dépôt (`docs/readme/accueil.png`, lien
+relatif pour qu'elle s'affiche sur GitHub). Ne la prends pas à part : c'est la capture « après » de la page
+d'accueil (taille ordinateur, thème clair) que l'étape des captures copie pour toi (`screenshots.md`), donc prise
+après la passe design et refaite après chaque retouche demandée. Si l'étape des captures est désactivée, ou que
+l'appli n'a pas de page d'accueil (outil sans interface), pas de capture.
 
 ## Quand la mettre à jour
 
