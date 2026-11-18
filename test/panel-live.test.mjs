@@ -206,3 +206,8 @@ test('a card whose launch waits for its relaunch sits with the work in progress,
   assert.equal(laneFor({ column: 'blocked', body: givenUp, labels: ['factory:feature', 'factory:blocked', 'factory:relaunch'] }), 'yours', 'blocked after 3 hours: the owner answers');
   assert.equal(yoursList([{ column: 'grilling', labels: ['factory:grilling', 'factory:relaunch'], updated_at: '2026-11-13' }]).length, 0);
 });
+
+test('an « Amélioration UI » card has no questions and no spec, like a general review (issue #462)', async () => {
+  const { stepsFor } = await import('../panel/live.mjs');
+  assert.deepEqual(stepsFor(['factory:ui-polish']), stepsFor(['factory:audit']));
+});

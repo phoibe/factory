@@ -4,7 +4,7 @@
   --bg: #fbfbfa; --surface: #ffffff; --text: #0e0f11; --muted: #5f6368; --line: #e6e6e3;
   --accent: #1850e8; --accent-text: #ffffff; --you: #1850e8; --you-bg: #eaf0ff; --ok: #1a7f4b; --danger: #c62828;
   --surface-2: #f4f4f2; --track: #e6e6e3; --work: #5f6368; --you-line: #b9cbfa; --danger-bg: #fdecea;
-  --shadow: none;
+  --shadow: none; --warn-soft: #fff4e5; --warn-line: #f3c58f; --ok-soft: #ebf6ef; --ok-line: #a9d8bc;
   --radius: 14px; --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -12,7 +12,7 @@
     --bg: #101113; --surface: #18191c; --text: #f2f2ef; --muted: #9aa0a6; --line: #2a2c30;
     --accent: #6c93ff; --accent-text: #0e0f11; --you: #6c93ff; --you-bg: #16213f; --ok: #6fcf97; --danger: #ff8a80;
     --surface-2: #1d1e22; --track: #2a2c30; --work: #9aa0a6; --you-line: #2c437f; --danger-bg: #3a1f1c;
-    --shadow: none; color-scheme: dark;
+    --shadow: none; color-scheme: dark; --warn-soft: #33240f; --warn-line: #6b4a1f; --ok-soft: #12291c; --ok-line: #285c3d;
   }
 }
 * { box-sizing: border-box; }
@@ -231,7 +231,7 @@ html { touch-action: manipulation; }
 /* ---- Agent tab (chat with the agent) ---- */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--text); color: var(--bg); font-size: .8125rem; vertical-align: 1px; }
-#chat:not([hidden]) { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: clamp(440px, calc(100dvh - 300px), 860px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+#chat:not([hidden]) { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: max(240px, calc(100dvh - var(--chat-top, 300px) - 16px)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .chat-list { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-right: 1px solid var(--line); background: var(--surface-2); min-height: 0; }
 #chat-items { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
 .conv { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; color: var(--text); font-weight: 500; padding: 9px 10px; border-radius: 10px; }
@@ -251,13 +251,16 @@ html { touch-action: manipulation; }
 .chat-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .chat-tools[hidden] { display: none; }
 .small-btn { padding: 5px 10px; font-size: .8125rem; min-height: 44px; }
-.messages { list-style: none; margin: 0; padding: 20px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
+.messages { position: relative; list-style: none; margin: 0; padding: 20px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
 .msg { display: flex; flex-direction: column; gap: 4px; max-width: min(640px, 88%); }
 .msg.me { align-self: flex-end; align-items: flex-end; }
-.msg.agent { align-self: flex-start; align-items: flex-start; }
+.msg.agent { align-self: stretch; align-items: stretch; max-width: none; }
 .bubble { padding: 10px 14px; border-radius: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.msg.me .bubble { background: var(--text); color: var(--bg); border-bottom-right-radius: 5px; }
-.msg.agent .bubble { background: var(--surface-2); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.msg.me .bubble { background: var(--you-bg); color: var(--text); border: 1px solid var(--you-line); border-bottom-right-radius: 5px; }
+.msg.me .bubble a { color: var(--text); }
+/* Issue #460: the agent writes on the page itself, like a document, no bubble. */
+.msg.agent .bubble { padding: 0; border-radius: 0; }
+.msg.agent .bubble.typing { padding: 10px 0; }
 .bubble > :first-child { margin-top: 0; }
 .bubble > :last-child { margin-bottom: 0; }
 .bubble p, .bubble ul, .bubble ol, .bubble blockquote, .bubble pre { margin: 0 0 8px; }
@@ -267,7 +270,27 @@ html { touch-action: manipulation; }
 .bubble code { font: .88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--track); padding: 1px 5px; border-radius: 6px; }
 .bubble pre { font: .85em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--track); padding: 8px 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
 .msg .meta { font-size: .8125rem; color: var(--muted); padding: 0 6px; font-variant-numeric: tabular-nums; }
-.bubble.typing { display: inline-flex; gap: 5px; padding: 14px 16px; }
+.msg.agent .meta { padding: 0; }
+.msg-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.msg.me .msg-foot { justify-content: flex-end; }
+/* Callouts: a line the agent starts with ⚠️, ✅ or ➡️ (issue #460). Colour is a signal, never decoration. */
+.bubble .callout { padding: 8px 12px; border-radius: 10px; border: 1px solid; }
+.callout.warn { background: var(--warn-soft); border-color: var(--warn-line); }
+.callout.ok { background: var(--ok-soft); border-color: var(--ok-line); }
+.callout.todo { background: var(--you-bg); border-color: var(--you-line); }
+/* Copy buttons: on each command block, and under each answer. */
+.copy { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: .8125rem; font-weight: 500; position: relative; }
+.copy::after { content: ""; position: absolute; inset: -6px -4px; } /* 44 px under the finger */
+.copy:hover { color: var(--text); border-color: var(--line); background: var(--surface); }
+.copy.copied, .copy-code.copied { color: var(--ok); background: var(--surface); }
+.copy-answer { margin-left: -8px; }
+.msg .code { position: relative; margin: 0 0 8px; }
+.msg .code pre { margin: 0; padding: 10px 156px 10px 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.copy-code { position: absolute; top: 4px; right: 4px; background: var(--surface-2); }
+.copy-code:hover { background: var(--surface); }
+.thinking-meta .usual { color: var(--muted); }
+@media (max-width: 700px) { .msg .code pre { padding-right: 10px; padding-top: 40px; } }
+.bubble.typing { display: inline-flex; gap: 5px; padding: 14px 16px; align-self: flex-start; }
 .bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s ease-in-out infinite; }
 .bubble.typing span:nth-child(2) { animation-delay: .2s; }
 .bubble.typing span:nth-child(3) { animation-delay: .4s; }
@@ -323,6 +346,7 @@ html { touch-action: manipulation; }
 #chat-attach { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 #chat-attach:hover { color: var(--text); }
 @media (max-width: 700px) { .pending-images { padding: 8px 12px 0; } .shot { width: 150px; } }
+.msg.agent .issue-chip { align-self: flex-start; }
 .issue-chip { display: block; max-width: 100%; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--you-line); background: var(--you-bg); color: var(--text); font-size: .8125rem; text-decoration: none; }
 .issue-chip strong { color: var(--text); }
 .issue-chip:hover { border-color: var(--you); }
@@ -593,3 +617,14 @@ details.advanced fieldset > legend { font-weight: 600; }
 .rules-all { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
 .rules-all-title { margin: 0 0 16px; font-size: 1.125rem; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { details.advanced > summary::before { transition: none; } }
+
+/* ---- Agent tab, issue #460: full width, a comfortable reading column, images enlarged on click ---- */
+body.chat-wide main { max-width: none; padding-bottom: 16px; }
+.messages, .composer, .pending-images { padding-inline: max(16px, calc((100% - 860px) / 2)); }
+.shot { cursor: zoom-in; }
+dialog.lightbox { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 0; border: 0; background: transparent; overflow: visible; }
+dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
+.lightbox img { display: block; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); object-fit: contain; border-radius: 10px; cursor: zoom-out; }
+.lightbox { cursor: zoom-out; }
+.lightbox-close { position: fixed; top: 12px; right: 12px; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 0; background: rgb(0 0 0 / .45); color: #fff; font-size: 1.125rem; line-height: 1; }
+@media (max-width: 700px) { .messages, .composer, .pending-images { padding-inline: 12px; } }
