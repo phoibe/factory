@@ -8,7 +8,7 @@ import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD 
 import { toJobOutput } from '../lib/job-output.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
-import { markdownTable, brokenShotRows } from '../../agent/scripts/shots.mjs';
+import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, CHECKS_TIMEOUT_MS, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
@@ -114,11 +114,17 @@ export function eventsPart(ctx) {
   // Returns true when it changed a label. A failed call is logged, never thrown but on a rate limit: the hand-over
   // goes on (the next event, or the end of the checks, sets the label right).
   async function showCaptures(n, labels) {
+    // The latest captures comment is a table nobody validated yet. An agent's « no screen changed » comment after it
+    // means there is nothing (left) to validate: no new « ok » asked for the same old captures.
+    const awaitingOk = (comments) => {
+      const last = comments.filter(postedCaptures).at(-1);
+      return Boolean(last) && !(last.body || '').includes(NO_CHANGE_MARKER) && !visualApproved(comments);
+    };
     const res = await postCaptures(n);
     const has = labels.includes(L.visualReview);
     try {
       if (res === 'posted' || res === 'shown') {
-        if (has || (res === 'shown' && visualApproved((await gh.listComments(n)) || []))) return false;
+        if (has || (res === 'shown' && !awaitingOk((await gh.listComments(n)) || []))) return false;
         await gh.addLabels(n, [L.visualReview]);
         return true;
       }

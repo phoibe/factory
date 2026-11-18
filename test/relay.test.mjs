@@ -3248,6 +3248,20 @@ test('captures shown but never validated keep the card in « Captures à valider
   assert.ok(later.calls.some((c) => c[0] === 'add' && c[1] === 7 && c.includes(L.visualReview)));
 });
 
+test('no screen changed since the captures shown: the card is not asked to validate them again (#455)', async () => {
+  const first = shotsGh({ labels: [L.checks] });
+  await relayOf(first).handle(handedOver);
+  const table = { body: first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2], user: { login: 'github-actions[bot]' } };
+  const unchanged = { body: `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n<!-- factory-shots-unchanged -->\nJ'ai comparé tous les écrans : aucun n'a changé d'apparence.`, user: { login: 'phoibe' } };
+  const ok = { body: `${VISUAL_OK_MARKER}\n${AGENT_MARKER}\nCaptures validées ✅`, user: { login: 'github-actions[bot]' } };
+  const remark = { body: 'Le bouton est trop gros', user: { login: 'phoibe' } };
+  for (const comments of [[table, ok, unchanged], [table, remark, unchanged]]) {
+    const gh = shotsGh({ labels: [L.checks], comments });
+    await relayOf(gh).handle(handedOver);
+    assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)), JSON.stringify(comments.map((c) => c.body.slice(0, 20))));
+  }
+});
+
 test('a GitHub error while setting « Captures à valider » does not stop the hand-over (#455)', async () => {
   const gh = shotsGh({ labels: [L.checks] });
   const add = gh.addLabels;
