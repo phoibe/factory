@@ -16,3 +16,6 @@
 {"t":"2026-11-18T17:16:01.351Z","kind":"test","cmd":"npm test 2>&1 | tail -15; CHROMIUM_PATH=… timeout 300 node --test e2e/chat-signatures.e2e.mjs 2>&1 | tail -12","ok":true,"id":"toolu_01S5qNetT11M9LRQHtrBPg84"}
 {"t":"2026-11-18T17:17:00.085Z","kind":"test","cmd":"git fetch -q origin main && git merge -q --no-edit origin/main 2>&1 | tail -2; npm test 2>&1 | grep -E \"^# (pass|fail)\"; node .factory/scripts/journal-check.mjs","ok":false,"id":"toolu_013veCYXb6mmZ3V8VAb5zhSM"}
 {"t":"2026-11-18T17:17:44.281Z","kind":"test","cmd":"git checkout --theirs panel/app.mjs panel/index.html docs/specs/README.md && sed -i \"s/chat.mjs?v=18'/chat.mjs?v=19'/\" panel/app.mjs && sed -i 's/app.mjs?v=70\"/app.mjs?v=71\"/' panel/index.html && node","ok":true,"id":"toolu_012XXpHvGE8zaVh89hB4gDsy"}
+{"t":"2026-11-18T17:23:22.082Z","kind":"skill","name":"impeccable","id":"toolu_01Bb5hypCDh86QujDJmJTS9z"}
+{"t":"2026-11-18T17:23:36.083Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: Agent chat design","id":"toolu_01PmjY9TdjJe61DpHJtFAqZb"}
+{"t":"2026-11-18T17:23:39.837Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01K9qLs15f9pxxfnS933xx6P"}
