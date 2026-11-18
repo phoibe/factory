@@ -338,11 +338,12 @@ export function eventsPart(ctx) {
     }
     // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
     // an agent on it. Only « fermer » (drop) still tidies up.
-    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type)) {
+    // Except the replay of an « ok » whose merge went through just before GitHub went down (issue #490): the PR is
+    // merged, the end of its delivery is done now (mergePr does not merge it again).
+    const mergedOk = ev.merged && action.type === 'merge';
+    if (ev.kind === 'pr' && ev.closed && ev.event !== 'pull_request' && !['ignore', 'drop'].includes(action.type) && !mergedOk) {
       log('closed PR: nothing is started');
-      // Merged: the replay of an « ok » whose merge went through just before an outage (issue #490). The tick's
-      // closeMerged ends the card; telling the owner the PR is « fermée » would be wrong.
-      if (ev.fromOwner && ev.text && !ev.merged) await gh.comment(n, say("Cette PR est fermée, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau."));
+      if (ev.fromOwner && ev.text) await gh.comment(n, say("Cette PR est fermée, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau."));
       return { action: { type: 'ignore', reason: 'PR fermée' }, outputs };
     }
     const applyLabels = async () => {

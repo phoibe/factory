@@ -195,8 +195,9 @@ export function watchPart(ctx) {
       if (Date.parse(run.created_at) < since || (run.run_attempt || 1) >= MAX_RATE_LIMIT_ATTEMPTS) continue;
       if (run.updated_at && Date.parse(run.updated_at) < moved) continue;
       const jobs = await gh.runJobs(run.id);
-      // Re-running a run re-runs all its failed jobs: never one whose agent failed (a second agent, issue #490).
-      if (jobs.some((j) => /(^|\/ )agent$/.test(j.name || '') && j.conclusion === 'failure')) continue;
+      // Re-running a run re-runs all its failed or cancelled jobs: never one whose agent ran and did not succeed (a
+      // second agent, issue #490). Its lock and the owner's messages are then freed and replayed by releaseStaleLocks.
+      if (jobs.some((j) => /(^|\/ )agent$/.test(j.name || '') && j.conclusion && !['success', 'skipped'].includes(j.conclusion))) continue;
       // A checks report stopped this way is made again by reportLost, from the checks' own result: not re-run twice.
       const stopped = jobs.filter((j) => (j.steps || []).some((st) => st.conclusion === 'failure' && (st.name === RATE_LIMIT_STEP || (/(^|\/ )decide$/.test(j.name || '') && SETUP_STEP.test(st.name || '')))));
       if (!stopped.length || stopped.every((j) => /(^|\/ )report$/.test(j.name || ''))) continue;

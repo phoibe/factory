@@ -3744,15 +3744,28 @@ test('a GitHub outage ends a decision on the « retried at the next tick » step
 });
 
 // Issue #490, review: the replay of an « ok » whose merge went through just before GitHub went down finds the PR
-// merged. It must not tell the owner the PR was « fermée » (the tick's closeMerged finishes the work quietly).
-test('the replay of an « ok » on a PR already merged says nothing and merges nothing again', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+// merged. The merge is not tried again and the owner is not told the PR is « fermée »: the end of the delivery
+// (labels, « C'est fusionné ✅ », the issue closed) is done now, as if the merge had just succeeded.
+test('the replay of an « ok » on a PR already merged finishes the delivery without merging again', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
-  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'), 'not merged twice');
   assert.equal(sent.length, 0);
-  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 10), 'no « PR fermée » message for a merged PR');
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fermée/.test(c[2])), 'no « PR fermée » message for a merged PR');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fusionné ✅/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1));
+});
+
+test('a change asked on a merged PR still gets the « PR fermée » answer (only the « ok » is finished quietly)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.awaitingProd] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'change la couleur du bouton', fromOwner: true });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fermée/.test(c[2])));
 });
 
 // Issue #490, review: an outage often stops a decision before the relay script even runs (checkout, setup-node), and
@@ -3761,13 +3774,15 @@ test('the tick re-runs a decision stopped by GitHub before the relay ran, never 
   const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
   const gh = fakeGh({ issues: [], prs: [] });
   const recent = new Date().toISOString();
-  const runs = [6, 7, 8, 9].map((id) => ({ id, run_attempt: 1, created_at: recent }));
+  const runs = [6, 7, 8, 9, 10].map((id) => ({ id, run_attempt: 1, created_at: recent }));
   const relayStep = 'Run node .factory-src/scripts/relay.mjs decide';
   const jobs = {
     6: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run actions/checkout@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] },
       { name: 'factory / agent', conclusion: 'skipped', steps: [] }],
     7: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/setup-node@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] }],
     8: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/checkout@v4', conclusion: 'success' }, { name: relayStep, conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    10: [{ name: 'factory / agent', conclusion: 'cancelled', steps: [] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
     9: [{ name: 'factory / decide', conclusion: 'success', steps: [] },
       { name: 'factory / agent', conclusion: 'failure', steps: [{ name: 'Run anthropics/claude-code-action@v1', conclusion: 'failure' }] },
       { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
