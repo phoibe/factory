@@ -15,3 +15,16 @@
 {"t":"2026-11-18T14:55:39.306Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\na=…\"- Ne parle ni de GitHub, ni d'issue, ni de commentaire : pour lui, c'est un chat.\"\"\"\nassert s.count(a)==1\ns=…\n- Une commande à copier va dans un bloc de code. Encadrés c","ok":true,"id":"toolu_01NC6sGL8itQ1ReydLdXi636"}
 {"t":"2026-11-18T14:55:41.801Z","kind":"test","cmd":"python3 -m unittest -q test_core 2>&1 | tail -3; cd /home/user/factory","ok":true,"id":"toolu_014gSbsKz8GNAC2kssAVKa2s"}
 {"t":"2026-11-18T14:58:34.668Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\na=…\"    const before = await meta.locator('[data-since]').innerText();\n    await page.waitForTimeout(1500);\n    assert.notEqual(await meta.locator('[data-since]').innerText(","ok":true,"id":"toolu_012QppkNz6x6RxzraehbKmLx"}
+{"t":"2026-11-18T14:58:59.431Z","kind":"skill","name":"requesting-code-review","id":"toolu_01TQBP56YRTb2mgNDxRFEiWW"}
+{"t":"2026-11-18T14:59:12.573Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #460","id":"toolu_014v6TKvmXypWq2qVkJ1KUhG"}
+{"t":"2026-11-18T15:01:14.635Z","kind":"skill","name":"impeccable","id":"toolu_013S4G5dZKo7N93VS4eza6Ni"}
+{"t":"2026-11-18T15:01:34.912Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_01GpKsCEzXvdnzNxzeJUUubi"}
+{"t":"2026-11-18T15:01:48.242Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/agent-comfort.e2e.mjs 2>&1 | tail -25","ok":true,"id":"toolu_012xaeE3tLxnQsPPum1reWYo"}
+{"t":"2026-11-18T15:01:52.330Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: design review","id":"toolu_01GpwwxqaAzg1ZdwNSEAeY8R"}
+{"t":"2026-11-18T15:02:00.583Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01Y9VP3p9mT1td6cetEuaAyV"}
+{"t":"2026-11-18T15:03:06.315Z","kind":"test","cmd":"ls a11y; CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head","ok":true,"id":"toolu_01LPrE9x6EvBgwGzn8gZ8i4i"}
+{"t":"2026-11-18T15:03:58.603Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01BZ7jCtuNk68zHGjZtzNZkc"}
+{"t":"2026-11-18T15:04:13.744Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 500 node --test e2e/agent-badge.e2e.mjs e2e/agent-tab.e2e.mjs e2e/chat-switch.e2e.mjs e2e/read-token.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)|^not ok\" | head","ok":true,"id":"toolu_01W7qEoinustWE2sGkeJseDB"}
+{"t":"2026-11-18T15:04:46.157Z","kind":"skill","name":"receiving-code-review","id":"toolu_01QVKiLKWYZo6XzSEMTWeb1W"}
+{"t":"2026-11-18T15:05:23.134Z","kind":"test","cmd":"cat >> e2e/agent-comfort.e2e.mjs <<'EOF'\n\ntest('le temps écoulé ne repart pas de zéro quand la réponse est arrivée mais que l\\'agent n\\'a pas fini', async () => {\n  const at = (ago) => new Date(Date.n","ok":true,"id":"toolu_01JRomQJkpYfXzmZu9E9WZCn"}
+{"t":"2026-11-18T15:05:30.770Z","kind":"test","cmd":"sed -i \"s/ || messages.findLast((m) => m.who === 'me')?.at)/)/\" panel/app.mjs && CHROMIUM_PATH=… timeout 200 node --test --test-name-pattern=\"repart pas\" e2e/agent-comfort.e2e.mjs 2>&1 | grep -E \"^# (","ok":false,"id":"toolu_012mcYePZTmhE4gx2499A9kp"}

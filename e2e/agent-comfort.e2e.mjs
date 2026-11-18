@@ -155,3 +155,17 @@ test('un clic sur une image l\'agrandit ; Échap ou un clic à côté la referme
     await page.locator('#lightbox:not([open])').waitFor({ state: 'attached' });
   });
 });
+
+test('le temps écoulé ne repart pas de zéro quand la réponse est arrivée mais que l\'agent n\'a pas fini', async () => {
+  const at = (ago) => new Date(Date.now() - ago).toISOString();
+  const running = issue(10, 'Encore une question', ['factory:question', 'factory:running'], { body: 'Encore une question', created_at: at(50000), comments: 1 });
+  const answered = { 10: [{ id: 3, body: `${AGENT}\nVoici.`, user: { login: 'o' }, author_association: 'OWNER', created_at: at(2000) }] };
+  await withPanel({ issues: [running], comments: answered }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Encore une question' }).click();
+    const time = page.locator('.thinking-meta [data-since]');
+    await time.waitFor();
+    assert.match(await time.innerText(), /^0:(4\d|5\d)$/);
+  });
+});

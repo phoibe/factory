@@ -2323,7 +2323,7 @@ function richText(text) {
   return markdown(text).map((b) => {
     if (b.type === 'p') return el('p', {}, inlineNodes(b.inline));
     if (b.type === 'quote') return el('blockquote', {}, inlineNodes(b.inline));
-    if (b.type === 'callout') return el('p', { class: `callout ${b.tone}`, }, el('span', { class: 'visually-hidden' }, `${TONE_NAMES[b.tone]} : `), inlineNodes(b.inline));
+    if (b.type === 'callout') return el('p', { class: `callout ${b.tone}` }, el('span', { class: 'visually-hidden' }, `${TONE_NAMES[b.tone]} : `), inlineNodes(b.inline));
     if (b.type === 'pre') return el('div', { class: 'code' }, el('pre', {}, b.v), copyButton('Copier', 'copy-code', () => b.v));
     return el(b.type, {}, b.items.map((it) => el('li', {}, inlineNodes(it))));
   });
@@ -2449,7 +2449,7 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        thinkingMeta('Réfléchit…', chat.pending?.since || waitingSince(messages)))
+        thinkingMeta('Réfléchit…', chat.pending?.since || waitingSince(messages) || messages.findLast((m) => m.who === 'me')?.at))
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
@@ -2845,7 +2845,7 @@ $('chat-input').addEventListener('keydown', (e) => {
   }
 });
 $('chat-new').addEventListener('click', () => selectConversation('new'));
-$('lightbox').addEventListener('click', (e) => { if (e.target !== $('lightbox-img')) $('lightbox').close(); });
+$('lightbox').addEventListener('click', () => $('lightbox').close());
 $('lightbox').addEventListener('close', () => { $('lightbox-img').removeAttribute('src'); });
 $('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
 $('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));

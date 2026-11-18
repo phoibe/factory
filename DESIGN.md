@@ -187,4 +187,4 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Encadrés colorés** (exception assumée à « tout est gris ») : une ligne de l'agent qui commence par ⚠️ (orange doux `#fff4e5`, filet `#f3c58f`), ✅ (vert doux `#ebf6ef`, filet `#a9d8bc`) ou ➡️ (bleu doux). Filet d'un pixel tout autour, jamais de bordure latérale ; l'émoji reste visible, la couleur n'est jamais seule.
 - **Copier** : bouton discret (icône + « Copier ») en haut à droite d'un bloc de commande, et « Copier la réponse » sous chaque réponse ; « Copié ✓ » (vert) ou « Copie impossible » pendant 2 s.
 - **Attente** : « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », chiffres en mono.
-- **Image agrandie** : par-dessus la page sur un voile sombre ; Échap, un clic à côté ou le bouton × la referme.
+- **Image agrandie** : par-dessus la page sur un voile sombre (`rgb(0 0 0 / .8)`, plus opaque que le voile habituel pour isoler l'image) ; Échap, un clic à côté ou le bouton × la referme.
