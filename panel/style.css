@@ -326,13 +326,13 @@ html { touch-action: manipulation; }
 .issue-chip { display: block; max-width: 100%; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--you-line); background: var(--you-bg); color: var(--text); font-size: .8125rem; text-decoration: none; }
 .issue-chip strong { color: var(--text); }
 /* A request the agent proposes (issue #492): nothing is created until the owner clicks. */
-.proposal { width: 100%; max-width: 100%; display: grid; gap: 4px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.proposal { width: 100%; max-width: 100%; display: grid; gap: 4px; margin-top: 8px; padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
 .proposal p { margin: 0; }
 .proposal-kind { font-family: var(--mono); font-size: .8125rem; font-weight: 500; color: var(--muted); }
 .proposal-title { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .proposal details summary { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; min-height: 44px; box-sizing: border-box; list-style: none; cursor: pointer; color: var(--text); font-size: .8125rem; font-weight: 500; }
 .proposal details summary::-webkit-details-marker { display: none; }
-.proposal details summary::before { content: '▸'; content: '▸' / ''; display: inline-block; width: .875rem; line-height: 1; transition: transform .15s ease-out; }
+.proposal details summary::before { content: '▸'; content: '▸' / ''; display: inline-block; width: 1rem; font-size: 1rem; line-height: 1; transition: transform .15s ease-out; }
 .proposal details[open] summary::before { transform: rotate(90deg); }
 .proposal details summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .proposal details summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
@@ -341,10 +341,14 @@ html { touch-action: manipulation; }
 .proposal-body p + p { margin-top: 6px; }
 .proposal-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; }
 .proposal-error { color: var(--danger); font-weight: 500; }
-.proposal-done { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; align-self: start; width: fit-content; min-height: 44px; box-sizing: border-box; }
-p.proposal-done { color: var(--muted); }
-a.proposal-done:hover { text-decoration: underline; text-underline-offset: 3px; }
-.proposal.decided { background: transparent; }
+.proposal-actions .proposal-create { background: var(--text); border-color: var(--text); color: var(--bg); }
+.proposal-actions .proposal-create:hover { filter: brightness(1.15); }
+.proposal-actions button:disabled { opacity: .6; cursor: default; }
+.proposal-done { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; color: var(--muted); }
+.proposal-done.created { color: var(--text); }
+.proposal-check { color: var(--ok); font-weight: 600; }
+.proposal-done a { color: var(--text); text-underline-offset: 3px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; margin-left: 8px; }
+.proposal-actions button.ghost { color: var(--text); }
 .issue-chip:hover { border-color: var(--you); }
 .badge[hidden] { display: none; }
 

@@ -42,8 +42,9 @@ test('en cliquant « Créer cette demande », la carte affiche « Créée » ave
   await withPanel({ chatServer: { answer: 'Voici.', issues: [proposal] } }, async ({ page, url, writes }) => {
     const card = await ask(page, url);
     await card.getByRole('button', { name: 'Créer cette demande' }).dblclick();
-    const link = card.getByRole('link', { name: /Créée/ });
+    const link = card.getByRole('link', { name: /Voir la demande/ });
     await link.waitFor();
+    await card.getByText('Créée').waitFor();
     assert.match(await link.getAttribute('href'), /^https:\/\/github\.com\/o\/r\/issues\/\d+$/);
     // A double click creates one request only, kept in the queue like any feature asked for.
     assert.equal(created(writes).length, 1);
@@ -73,7 +74,7 @@ test('si la création échoue, la carte le dit et je peux réessayer', async () 
     await card.getByRole('button', { name: 'Créer cette demande' }).click();
     await card.getByText(/n'a pas pu être créée/).waitFor();
     await card.getByRole('button', { name: 'Créer cette demande' }).click();
-    await card.getByRole('link', { name: /Créée/ }).waitFor();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
     assert.equal(created(writes).filter((w) => w.ok).length, 1);
   });
 });
@@ -96,7 +97,7 @@ test('après « Signaler un bug », le bug ne démarre qu\'après mon clic sur �
     const bugs = () => writes.filter((w) => w.method === 'POST' && w.path === '/repos/o/r/issues' && w.body.title === 'Enregistrer plante');
     assert.equal(bugs().length, 0);
     await card.getByRole('button', { name: 'Créer cette demande' }).click();
-    await card.getByRole('link', { name: /Créée/ }).waitFor();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
     assert.equal(bugs().length, 1);
     assert.deepEqual(bugs()[0].body.labels, ['factory:bug']);
     // The choice is kept in the conversation, hidden from the chat and ignored by the factory (agent marker).

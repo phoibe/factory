@@ -2330,11 +2330,12 @@ function proposalCard(p) {
   const busy = chat.deciding.has(key);
   const kind = s.kind === 'bug' ? 'Bug' : 'Fonctionnalité';
   const outcome = s.state === 'created'
-    ? el('a', { class: 'proposal-done', href: safeGithubUrl(s.url), target: '_blank', rel: 'noopener' }, el('strong', {}, 'Créée'), ' · Voir la demande', el('span', { 'aria-hidden': 'true' }, ' ↗'))
-    : s.state === 'ignored' ? el('p', { class: 'proposal-done muted' }, 'Ignorée')
+    ? el('p', { class: 'proposal-done created' }, el('span', { class: 'proposal-check', 'aria-hidden': 'true' }, '✓'), el('strong', {}, 'Créée'),
+      el('a', { href: safeGithubUrl(s.url), target: '_blank', rel: 'noopener' }, 'Voir la demande', el('span', { 'aria-hidden': 'true' }, ' ↗')))
+    : s.state === 'ignored' ? el('p', { class: 'proposal-done' }, el('span', { 'aria-hidden': 'true' }, '✕'), 'Ignorée')
       : el('div', { class: 'proposal-actions' },
-        el('button', { type: 'button', disabled: busy, 'aria-busy': busy ? 'true' : false, onclick: () => decide(p, 'created') }, busy ? 'Création…' : 'Créer cette demande'),
-        el('button', { type: 'button', class: 'secondary', disabled: busy, onclick: () => decide(p, 'ignored') }, 'Ignorer'));
+        el('button', { type: 'button', class: 'proposal-create', disabled: busy, 'aria-busy': busy ? 'true' : false, onclick: () => decide(p, 'created') }, busy ? 'Création…' : 'Créer cette demande'),
+        el('button', { type: 'button', class: 'ghost', disabled: busy, onclick: () => decide(p, 'ignored') }, 'Ignorer'));
   return el('div', { class: `proposal${s.state === 'pending' ? '' : ' decided'}`, role: 'group', 'aria-label': `${kind} proposée : ${s.title}` },
     el('p', { class: 'proposal-kind' }, kind),
     el('p', { class: 'proposal-title' }, s.title),
@@ -2376,8 +2377,8 @@ async function decide(p, state) {
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
-  } catch (e) {
-    if (!gone()) { chat.refused.add(key); toast(`La demande n'a pas pu être créée. ${errorText(e)}`); }
+  } catch {
+    if (!gone()) chat.refused.add(key); // said on the card itself, next to the button to try again
   } finally {
     chat.deciding.delete(key);
     if (!gone()) drawChat();

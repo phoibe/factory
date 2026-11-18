@@ -24,3 +24,7 @@
 {"t":"2026-11-18T18:25:12.686Z","kind":"skill","name":"impeccable","id":"toolu_01P7WZAkxiYWG4bNqby77Dot"}
 {"t":"2026-11-18T18:25:43.638Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique A (review)","id":"toolu_013TGfbrE9UujC811K3MCNYP"}
 {"t":"2026-11-18T18:25:49.765Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique B (detector)","id":"toolu_01KrEccCkNXcHZvLvouDtqDr"}
+{"t":"2026-11-18T18:26:58.186Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 580 node --test \"e2e/*.e2e.mjs\" 2>&1 | grep -E \"^# (tests|pass|fail)|^not ok\" | head -20","ok":true,"id":"toolu_018Zz9SiVtXALxDKV75o9jQi"}
+{"t":"2026-11-18T18:27:10.583Z","kind":"test","cmd":"sed -i '/^\\.proposal\\.decided { border-style: dashed; }$/d' panel/style.css && sed -i \"s#getByRole('link', { name: /Créée/ })#getByRole('link', { name: /Voir la demande/ })#g\" e2e/confirm-request.e2e.","ok":true,"id":"toolu_017TZNNyJy7K4CySU9k6MFBU"}
+{"t":"2026-11-18T18:28:05.502Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design re-critique #492","id":"toolu_01Po6D3gigvGusZvcQvQH7bF"}
+{"t":"2026-11-18T18:28:33.824Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\ndef rep(a,b):\n    global s\n    assert a in s, a; s=…\nrep(\"content: '▸'; content: '▸' / ''; display: inline-block; width: .875rem; line-height: 1; transition: transform .15s ","ok":true,"id":"toolu_01DJWHwEKWX9zTEipvCphi8v"}
