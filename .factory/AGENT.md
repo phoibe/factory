@@ -48,7 +48,7 @@ tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir
 .factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
 session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore : fais-le,
 puis committe `.factory/journal/`. Un verrou
-refuse d'ouvrir la PR (ou de mettre `factory:checks` / `factory:visual-review`) tant qu'une étape manque :
+refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
 **Modèle et effort des sous-agents.** Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
@@ -126,11 +126,12 @@ Les PR sont aussi des issues : labels et commentaires d'une PR passent par `R/is
 
 ## Labels (la machine à états)
 
-Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage, `factory:audit` pour une review générale qui passe directement en `factory:building` ; une issue `factory:question` ne change jamais d'état, voir `stages/question.md`) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
+Sur l'issue (`factory:feature`, `factory:bug` ou `factory:project` pour le cadrage, `factory:audit` pour une review générale et `factory:ui-polish` pour une amélioration UI, qui passent directement en `factory:building` ; une issue `factory:question` ne change jamais d'état, voir `stages/question.md`) : `factory:grilling` → `factory:spec-review` → `factory:building` (jusqu'au merge) ;
 `factory:blocked` quand tu as besoin de lui pour débloquer ; `factory:queued` est géré par la factory.
-Sur la PR : `factory:visual-review` (captures à valider) **et** `factory:checks` (contrôles automatiques, posés
-ensemble : les contrôles tournent pendant qu'il regarde les captures, et son « ok » sur les captures vaut recette ;
-`factory:checks` se pose même si les contrôles sont désactivés) ; sans captures, ou quand aucun écran n'a changé d'apparence (rien à valider), `factory:checks` seul, puis
+Sur la PR : tu poses `factory:checks` (contrôles automatiques ; il se pose même si les contrôles sont désactivés). Si tu
+as poussé des captures, la factory les publie puis pose elle-même `factory:visual-review` (captures à valider) : la carte
+n'y entre qu'une fois les captures visibles (issue #455), ne pose jamais ce label toi-même. Les contrôles tournent pendant
+qu'il regarde les captures, et son « ok » sur les captures vaut recette. Puis
 `factory:acceptance` (recette, posé par la factory) ; `factory:fixing` posé par la factory pendant une correction.
 
 **Bloqué parce que tu attends la fusion d'une autre demande** (du même projet) : bloque-toi comme d'habitude
@@ -151,7 +152,7 @@ est oublié et tu reprends normalement.
   à cette issue ou PR, dis-lui en une phrase que c'est noté, puis retire `factory:running` comme d'habitude : la
   factory ferme alors elle-même l'issue et sa PR, et libère la place. Ne lui demande jamais de fermer à la main.
 - **Fermer de toi-même une demande inutile**, sans lui demander de confirmer : seulement une feature ou un bug (jamais
-  un cadrage `factory:project` ni une revue `factory:audit`), à n'importe quelle étape, et seulement dans trois cas
+  un cadrage `factory:project`, une revue `factory:audit` ni une amélioration UI `factory:ui-polish`, sauf les deux cas prévus par `stages/ui-polish.md`), à n'importe quelle étape, et seulement dans trois cas
   sans ambiguïté, avec une preuve (un lien) : **déjà réglée** par une autre demande ou PR, **en double** d'une
   demande encore ouverte, ou **obsolète** (elle porte sur quelque chose qui n'existe plus). Au moindre doute (réglée
   en partie, pas certain), pose-lui la question comme d'habitude, sans fermer. Pour fermer :
@@ -188,7 +189,7 @@ est oublié et tu reprends normalement.
   la factory le fait après les contrôles et la recette.
 - La PR contient `Closes #<n>` dans sa description, et un résumé en français pour le propriétaire en tête.
 - **Toujours à jour avec `main` avant de pousser pour la factory.** Juste avant d'ouvrir une PR, et avant chaque push
-  suivi de `factory:visual-review` ou `factory:checks` : `git fetch origin main && git merge origin/main` (pas de
+  suivi de `factory:checks` : `git fetch origin main && git merge origin/main` (pas de
   rebase), résous les conflits, relance les tests, puis pousse. Une PR en conflit ne déclenche aucun contrôle et
   reste bloquée jusqu'à ce que la factory s'en aperçoive.
 - **Tests navigateur dans le cloud** : le Chromium de la session est `/opt/pw-browsers/chromium`. Lance `test:a11y`

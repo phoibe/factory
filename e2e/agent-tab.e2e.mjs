@@ -3,7 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withPanel, issue } from './fixture.mjs';
 
-const question = issue(7, 'Combien de demandes en cours ?', ['factory:question'], { comments: 3 });
+const question = issue(7, 'Combien de demandes en cours ?', ['factory:question'], { comments: 3, updated_at: new Date(Date.now() - 600_000).toISOString() });
+// A more recent conversation: the tab opens on it (issue #477), so the answer in the other one stays unread.
+const latest = issue(8, 'Autre question', ['factory:question'], { comments: 1 });
 
 test('en ouvrant le menu « Plus » du tableau de suivi, je ne vois plus « Discuter avec l\'agent »', async () => {
   await withPanel({ viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
@@ -12,7 +14,7 @@ test('en ouvrant le menu « Plus » du tableau de suivi, je ne vois plus « Disc
     await page.locator('#more summary').click();
     await page.getByRole('button', { name: 'Review générale' }).waitFor();
     const items = (await page.locator('#more-menu > a, #more-menu > button:not([hidden])').allTextContents()).map((t) => t.trim());
-    assert.deepEqual(items.slice(0, 3), ['Signaler un bug', 'Review générale', 'Stack technique']);
+    assert.deepEqual(items.slice(0, 4), ['Signaler un bug', 'Review générale', 'Amélioration UI', 'Stack technique']);
     assert.equal(await page.getByText('Discuter avec l\'agent').count(), 0);
   });
 });
@@ -41,7 +43,7 @@ test('en cliquant sur « Agent », je retrouve mes conversations, et « Nouvelle
 });
 
 test('quand l\'agent m\'a répondu, la pastille apparaît bien sur l\'onglet « Agent »', async () => {
-  await withPanel({ issues: [question] }, async ({ page, url }) => {
+  await withPanel({ issues: [question, latest] }, async ({ page, url }) => {
     await page.addInitScript(() => localStorage.setItem('factory.chat.seen.o/r', JSON.stringify({ 7: 1 })));
     await page.goto(url);
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
@@ -51,7 +53,7 @@ test('quand l\'agent m\'a répondu, la pastille apparaît bien sur l\'onglet « 
 });
 
 test('la pastille de l\'onglet « Agent » se lit « 1 nouvelle réponse » à la voix', async () => {
-  await withPanel({ issues: [question] }, async ({ page, url }) => {
+  await withPanel({ issues: [question, latest] }, async ({ page, url }) => {
     await page.addInitScript(() => localStorage.setItem('factory.chat.seen.o/r', JSON.stringify({ 7: 1 })));
     await page.goto(url);
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();

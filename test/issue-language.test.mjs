@@ -28,7 +28,7 @@ test('the English rule of AGENT.md is limited to code, technical names and commi
 
 test('every stage that opens issues reminds that their title and text are in French', () => {
   const read = generated();
-  for (const stage of ['audit.md', 'spec.md', 'foundation.md', 'feedback.md', 'acceptance-fix.md', 'question.md']) {
+  for (const stage of ['audit.md', 'ui-polish.md', 'spec.md', 'foundation.md', 'feedback.md', 'acceptance-fix.md', 'question.md']) {
     assert.match(read(`stages/${stage}`), /(titre|texte)[^.]*en français/, stage);
   }
   const foundation = read('stages/foundation.md');

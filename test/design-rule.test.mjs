@@ -40,3 +40,18 @@ test('framing and foundation write the rule into DESIGN.md', () => {
     assert.match(read(f), new RegExp(`DESIGN\\.md[^]{0,300}${RULE}|${RULE}[^]{0,300}DESIGN\\.md`), f);
   }
 });
+
+// Issue #461: the general review must follow the design-pass rule (one full critique, then at most one light
+// P0/P1 check), not its own older "recritique, au plus 3 tours" loop.
+test('the general review follows the design-pass critique rule, not an old loop', () => {
+  for (const f of readdirSync(dir)) {
+    if (f === 'design-pass.md') continue;
+    const md = read(f);
+    if (!md.includes('design-pass.md')) continue;
+    assert.doesNotMatch(md, /recritique[^.]{0,40}au plus \d+ tours/i, `${f} restates a critique loop`);
+  }
+  const audit = read('audit.md');
+  assert.match(audit, /une seule critique complète[^.]*un seul contrôle léger[^.]*seulement si[^.]*P0\/P1/,
+    'audit.md must state the current rule');
+  assert.match(read('design-pass.md'), /Recritique, une fois au plus/, 'design-pass rule changed: update audit.md step 2');
+});
