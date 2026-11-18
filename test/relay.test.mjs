@@ -3748,3 +3748,13 @@ test('#440 review: a French title that merely starts with an ordinary word keeps
   assert.equal(plainTitle('Style : nouvelles couleurs'), 'Style : nouvelles couleurs');
   assert.equal(plainTitle('docs(readme): x'), 'x');
 });
+
+// The checks' duration is measured up to the end of the checks job itself, not to the start of its report (which may
+// have waited minutes for a busy dev-server runner).
+test('checksEndedAt reads the end of the run\'s checks job', async () => {
+  const { checksEndedAt } = await import('../scripts/relay/shared.mjs');
+  const jobs = [{ name: 'decide', completed_at: '2026-11-18T10:00:00Z' }, { name: 'checks', completed_at: '2026-11-18T10:06:00Z' }, { name: 'report', completed_at: null }];
+  assert.equal(checksEndedAt(jobs), Date.parse('2026-11-18T10:06:00Z'));
+  assert.equal(checksEndedAt([{ name: 'checks', completed_at: null }]), null);
+  assert.equal(checksEndedAt([]), null);
+});

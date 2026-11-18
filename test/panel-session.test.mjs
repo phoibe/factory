@@ -8,7 +8,7 @@ const fn = (name) => app.match(new RegExp(`(?:async )?function ${name}\\([^)]*\\
 test('la remise à zéro de la session est écrite une seule fois et vide les caches et le suivi en direct', () => {
   const reset = fn('resetSession');
   assert.ok(reset, 'resetSession doit exister');
-  for (const part of ['etags.clear()', 'boards.clear()', 'clearTimeout(live.timer)', 'clearInterval(live.tick)', 'TOKEN_KEY', 'READ_TOKEN_KEY']) assert.ok(reset.includes(part), part);
+  for (const part of ['etags.clear()', 'boards.clear()', 'clearTimeout(live.timer)', 'clearInterval(live.tick)', 'store.del(TOKEN_KEY)', 'store.del(READ_TOKEN_KEY)']) assert.ok(reset.includes(part), part);
   assert.equal(app.split('boards.clear()').length - 1, 1, 'plus aucune copie de la remise à zéro');
 });
 
@@ -28,4 +28,10 @@ test('se déconnecter efface aussi les noms de projets gardés ; un jeton expir�
   const reset = fn('resetSession');
   assert.match(reset, /if \(forget\) for \(const k of sessionKeys\(store\.keys\(\)\)\) store\.del\(k\)/);
   assert.match(fn('sessionExpired'), /resetSession\(\);/);
+  const always = reset.replace(/if \(forget\)[^\n]*\n/, '');
+  assert.doesNotMatch(always, /PROJECT_KEY\)|SEEN_KEY|pendingKey|sessionKeys/, 'outside a logout, the stored project names stay');
+});
+
+test('un projet devenu introuvable ne bloque pas le compteur des lancements du jour', () => {
+  assert.match(fn('refreshRuns'), /e\.status === 404\) return \{ data: \[\] \}/);
 });

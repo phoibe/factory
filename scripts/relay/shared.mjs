@@ -12,6 +12,13 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Just under the checks job's timeout-minutes in relay.yml, which is the project's « checksMinutes » (30 by default):
 // a cancelled run that lasted this long hit the limit (a hung test) and was not replaced by a newer run.
 export const checksTimeoutMs = (minutes) => ((Number(minutes) || 30) - 2) * 60_000;
+// When the run's checks job ended (ms), from GitHub's list of the run's jobs; null when unknown. Called from a reusable
+// workflow, its name carries the caller's prefix (« relay / checks »).
+export function checksEndedAt(jobs) {
+  const job = (jobs || []).find((j) => j?.name === 'checks' || String(j?.name || '').endsWith(' / checks'));
+  const at = Date.parse(job?.completed_at || '');
+  return Number.isFinite(at) ? at : null;
+}
 export const LOCK_MINUTES = 150; // longer than the agent's 120-minute job timeout
 // A routine session has no time limit (yolivesound #115): past LOCK_MINUTES, the lock holds while the agent's sign of
 // life (agent/scripts/alive.mjs, renewed every 10 min while it works) is under ALIVE_MINUTES old, up to LOCK_MAX_MINUTES.

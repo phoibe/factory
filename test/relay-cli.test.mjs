@@ -41,8 +41,13 @@ test('the command line « decide » still handles an event from start to end', (
 // later): a run replaced after 1 min must not pass for one stopped at a short time limit (5 min in Paramètres).
 test('the checks report measures the run before waiting for the queue lock', () => {
   const src = readFileSync(RELAY, 'utf8');
-  const at = src.indexOf('const reportAt = Date.now()');
+  const at = src.indexOf('const reportAt = ');
   const call = src.indexOf('withLock(gh.queueLock, () => relay.report(');
   assert.ok(at > 0 && call > at, 'the time is taken before the lock');
   assert.match(src.slice(call, src.indexOf('\n', call)), /now: reportAt/);
+});
+
+test('the checks report takes the end of the checks job when GitHub gives it', () => {
+  const src = readFileSync(RELAY, 'utf8');
+  assert.match(src, /const reportAt = checksEndedAt\(await gh\.runJobs\(process\.env\.GITHUB_RUN_ID\)\.catch\(\(\) => \[\]\)\) \?\? Date\.now\(\);/);
 });

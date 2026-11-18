@@ -248,6 +248,19 @@ class ServiceTest(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 10)
         self.assertIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."}, events)
 
+    def test_the_first_copy_has_more_time_than_an_update(self):
+        slow = os.path.join(self.tmp, "git-slow")
+        with open(slow, "w") as f:
+            f.write('#!/bin/sh\nsleep 0.6\nfor last; do :; done\nmkdir -p "$last/.git"\n')
+        os.chmod(slow, os.stat(slow).st_mode | stat.S_IEXEC)
+        repos = os.path.join(self.tmp, "repos-slow")
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=repos, git_bin=slow, git_timeout=0.2, clone_timeout=3,
+                         transport=httpx.MockTransport(self.gh))
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        self.assertNotIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."},
+                         [json.loads(l) for l in r.text.splitlines() if l.strip()])
+        self.assertTrue(os.path.isdir(os.path.join(repos, "phoibe/habitudes", ".git")))
+
     def test_a_failed_copy_leaves_no_half_made_project_behind(self):
         broken = os.path.join(self.tmp, "git-broken")
         with open(broken, "w") as f:
