@@ -3758,3 +3758,85 @@ test('checksEndedAt reads the end of the run\'s checks job', async () => {
   assert.equal(checksEndedAt([{ name: 'checks', completed_at: null }]), null);
   assert.equal(checksEndedAt([]), null);
 });
+
+// Issue #490: the owner's answer (« go », « ok ») came while GitHub was down: the run failed for good and the answer
+// was never seen. An outage now ends the run like the rate limit, on the step the tick re-runs, so the event is replayed.
+test('a GitHub outage ends a decision on the « retried at the next tick » step instead of losing the event', async () => {
+  const { retriedLater } = await import('../scripts/relay.mjs');
+  const { RateLimited } = await import('../scripts/lib/ratelimit.mjs');
+  const down = Object.assign(new Error('GET /repos/o/r/issues/1 -> 502 Bad Gateway'), { githubDown: true });
+  for (const cmd of ['decide', 'release', 'report']) {
+    assert.equal(retriedLater(cmd, down), true, cmd);
+    assert.equal(retriedLater(cmd, new RateLimited(120_000)), true, cmd);
+    assert.equal(retriedLater(cmd, new Error('TypeError: x is not a function')), false, cmd); // a code bug still fails
+  }
+  assert.equal(retriedLater('prod-report', down), false); // no step marks that run: it must fail visibly
+});
+
+// Issue #490, review: the replay of an « ok » whose merge went through just before GitHub went down finds the PR
+// merged. The merge is not tried again and the owner is not told the PR is « fermée »: the end of the delivery
+// (labels, « C'est fusionné ✅ », the issue closed) is done now, as if the merge had just succeeded.
+test('the replay of an « ok » on a PR already merged finishes the delivery without merging again', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'), 'not merged twice');
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fermée/.test(c[2])), 'no « PR fermée » message for a merged PR');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fusionné ✅/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1));
+});
+
+test('a change asked on a merged PR still gets the « PR fermée » answer (only the « ok » is finished quietly)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.awaitingProd] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'change la couleur du bouton', fromOwner: true });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fermée/.test(c[2])));
+});
+
+// Issue #490, review: an outage often stops a decision before the relay script even runs (checkout, setup-node), and
+// a re-run must never start an agent job again (a second agent, without the queue lock nor factory:running).
+test('the tick re-runs a decision stopped by GitHub before the relay ran, never a run whose agent job failed', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  const runs = [6, 7, 8, 9, 10].map((id) => ({ id, run_attempt: 1, created_at: recent }));
+  const relayStep = 'Run node .factory-src/scripts/relay.mjs decide';
+  const jobs = {
+    6: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run actions/checkout@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] },
+      { name: 'factory / agent', conclusion: 'skipped', steps: [] }],
+    7: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/setup-node@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] }],
+    8: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/checkout@v4', conclusion: 'success' }, { name: relayStep, conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    10: [{ name: 'factory / agent', conclusion: 'cancelled', steps: [] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    9: [{ name: 'factory / decide', conclusion: 'success', steps: [] },
+      { name: 'factory / agent', conclusion: 'failure', steps: [{ name: 'Run anthropics/claude-code-action@v1', conclusion: 'failure' }] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+  };
+  Object.assign(gh, { failedRuns: async () => runs, runJobs: async (id) => jobs[id], rerunFailed: async (id) => gh.calls.push(['rerun', id]) });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 6], ['rerun', 7]]);
+});
+
+// Issue #490, review: a merge GitHub answered with an outage (and that did not go through) is replayed by the tick,
+// not turned into a blocked card asking the owner to say « réessaie ».
+test('a merge stopped by a GitHub outage is passed on to be replayed, the card is not blocked', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, state: 'open', base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.merge = async () => { throw Object.assign(new Error('PUT /repos/r/pulls/10/merge -> 502 Bad Gateway'), { githubDown: true }); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await assert.rejects(relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true }), /502/);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.blocked)));
+});
+
+test('an « ok » on a PR merged days ago does not start its delivery again', async () => {
+  const old = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: old, pull_request: { merged_at: old }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fusionné ✅/.test(c[2])));
+  assert.ok(!gh.calls.some((c) => c[0] === 'close'));
+});

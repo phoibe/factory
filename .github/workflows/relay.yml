@@ -57,7 +57,7 @@ jobs:
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      # GitHub's rate limit or an outage stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
       - name: 'Rate limited: retried at the next tick'
         if: steps.relay.outputs.ratelimited == 'true'
         run: exit 1
@@ -152,7 +152,7 @@ jobs:
           PAYLOAD: ${{ needs.decide.outputs.payload }}
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
-      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      # GitHub's rate limit or an outage stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
       - name: 'Rate limited: retried at the next tick'
         if: steps.release.outputs.ratelimited == 'true'
         run: exit 1
@@ -258,7 +258,7 @@ jobs:
           FACTORY_ROUTINE_URL: ${{ secrets.FACTORY_ROUTINE_URL }}
           FACTORY_ROUTINE_TOKEN: ${{ secrets.FACTORY_ROUTINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      # GitHub's rate limit stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
+      # GitHub's rate limit or an outage stopped the relay: this run fails here and the next tick re-runs it (scripts/relay.mjs).
       - name: 'Rate limited: retried at the next tick'
         if: steps.report.outputs.ratelimited == 'true'
         run: exit 1

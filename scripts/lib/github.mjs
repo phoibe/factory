@@ -1,5 +1,5 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
-import { rateLimitDelay, RateLimited, MAX_PAUSE_MS } from './ratelimit.mjs';
+import { rateLimitDelay, RateLimited, MAX_PAUSE_MS, markGitHubDown } from './ratelimit.mjs';
 import { trustNotes } from './trust.mjs';
 import { LIVE_REF } from './version-tag.mjs';
 const HTML = 'application/vnd.github.full+json';
@@ -28,7 +28,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     for (let attempt = 0; ; attempt++) {
       let res;
       try { res = await fetchImpl(url, { method, ...init, signal: AbortSignal.timeout(timeoutMs) }); } catch (e) {
-        if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw e;
+        if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw markGitHubDown(e);
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
@@ -45,6 +45,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       await sleep(RETRY_DELAYS_MS[attempt]);
     }
   }
+  // A 5xx still there after the retries is GitHub's outage, not a refused call.
+  const down = (status, e) => (status >= 500 ? markGitHubDown(e) : e);
   async function request(method, path, body, accept = 'application/vnd.github+json') {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
@@ -57,7 +59,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
       body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 404 && method === 'GET') return null;
-    if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${await res.text()}`);
+    if (!res.ok) throw down(res.status, new Error(`${method} ${path} -> ${res.status} ${await res.text()}`));
     return res.status === 204 ? null : res.json();
   }
   // Follows the Link header so long histories (events, comments) are read in full.
@@ -66,7 +68,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     let url = `${api}${path.replace('{repo}', repo)}`;
     while (url) {
       const res = await send('GET', url, { headers: { authorization: `Bearer ${token}`, accept, 'x-github-api-version': '2022-11-28' } });
-      if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
+      if (!res.ok) throw down(res.status, new Error(`GET ${url} -> ${res.status}`));
       out.push(...(await res.json()));
       url = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get('link') || '')?.[1];
     }
