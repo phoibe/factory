@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
+import { formatUsage } from './lib/github-usage.mjs';
 import { isRateLimited, isGitHubDown } from './lib/ratelimit.mjs';
 import { withLock } from './lib/lock.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
@@ -58,6 +59,8 @@ export function writeOutputs(outputs) {
   }
 }
 
+let client = null; // this run's GitHub client, whose usage is printed at the end (issue #491)
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   // An empty value must never swallow the next option (« --sha --started 12 » would read « --started » as the sha).
@@ -65,6 +68,7 @@ async function main() {
   const repo = process.env.GITHUB_REPOSITORY;
   const ownerLogin = process.env.GITHUB_REPOSITORY_OWNER;
   const gh = github({ token: process.env.GITHUB_TOKEN, repo });
+  client = gh;
   const catalog = JSON.parse(readFileSync(join(ROOT, 'packs/catalog.json'), 'utf8'));
   const file = await gh.getContent('factory.config.json');
   const parsed = parseRawConfig(file ? Buffer.from(file.content, 'base64').toString('utf8') : null);
@@ -147,7 +151,7 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((e) => {
+  main().finally(() => { if (client) console.log(formatUsage(client.usage())); }).catch((e) => {
     console.error(e);
     // GitHub's « too many requests » or outage: the step `RATE_LIMIT_STEP` of relay.yml fails on this output, and the
     // next tick re-runs the run (retryRateLimited), so the event is taken up instead of lost.

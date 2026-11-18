@@ -291,6 +291,129 @@ test('a version tag naming a commit GitHub does not know resolves to null (404 o
   await assert.rejects(client([answer(403)]).resolveCommit('abc1234'));
 });
 
+// ---- Fewer counted reads (issue #491): an unchanged answer read again in the same run is a free 304 ----
+const tagged = (status, body, headers = {}) => ({ ok: status < 400, status, json: async () => body, text: async () => 'x', headers: new Map(Object.entries(headers)) });
+const recorder = (answers) => {
+  const sent = [];
+  const gh = github({ token: 't', repo: 'o/r', sleep: async () => {}, fetchImpl: async (url, init) => { sent.push({ url, method: init.method, headers: init.headers }); return answers.shift(); } });
+  return { gh, sent };
+};
+
+test('a read made again in the same run asks « changed? » and a 304 gives back the first answer, for free', async () => {
+  const { gh, sent } = recorder([
+    tagged(200, { number: 7, title: 'A' }, { etag: 'W/"a"', 'x-ratelimit-remaining': '900', 'x-ratelimit-limit': '1000' }),
+    tagged(304, null, { etag: 'W/"a"', 'x-ratelimit-remaining': '900', 'x-ratelimit-limit': '1000' }),
+  ]);
+  assert.equal((await gh.getIssue(7)).title, 'A');
+  assert.equal((await gh.getIssue(7)).title, 'A');
+  assert.equal(sent[0].headers['if-none-match'], undefined);
+  assert.equal(sent[1].headers['if-none-match'], 'W/"a"');
+  const u = gh.usage();
+  assert.equal(u.reads, 1);
+  assert.equal(u.free, 1);
+  assert.equal(u.remaining, 900);
+  assert.equal(u.limit, 1000);
+});
+
+test('a resource that changed between two reads is read fresh: never the old answer', async () => {
+  const { gh } = recorder([tagged(200, { number: 7, title: 'A' }, { etag: 'W/"a"' }), tagged(200, { number: 7, title: 'B' }, { etag: 'W/"b"' })]);
+  await gh.getIssue(7);
+  assert.equal((await gh.getIssue(7)).title, 'B');
+  assert.equal(gh.usage().reads, 2);
+});
+
+test('writes never use the cache, and are tallied apart', async () => {
+  const { gh, sent } = recorder([tagged(200, { number: 7 }, { etag: 'W/"a"' }), tagged(200, {}, {}), tagged(201, { id: 1 }, {})]);
+  await gh.getIssue(7);
+  await gh.updateIssue(7, { body: 'x' });
+  await gh.comment(7, 'hi');
+  assert.ok(sent.slice(1).every((s) => !s.headers['if-none-match']));
+  assert.deepEqual([gh.usage().reads, gh.usage().writes], [1, 2]);
+});
+
+test('the same address with another format is another answer', async () => {
+  const { gh, sent } = recorder([tagged(200, { number: 7 }, { etag: 'W/"a"' }), tagged(200, { number: 7, body_html: '<p>' }, { etag: 'W/"h"' })]);
+  await gh.getIssue(7);
+  await gh.getIssueHtml(7);
+  assert.equal(sent[1].headers['if-none-match'], undefined);
+});
+
+test('a 404 is not kept: the next read asks plainly', async () => {
+  const { gh, sent } = recorder([tagged(404, null, { etag: 'W/"n"' }), tagged(200, { number: 7 }, {})]);
+  assert.equal(await gh.getIssue(7), null);
+  assert.equal((await gh.getIssue(7)).number, 7);
+  assert.equal(sent[1].headers['if-none-match'], undefined);
+});
+
+test('each page of a long list has its own « changed? » question', async () => {
+  const next = { etag: 'W/"p1"', link: '<https://api.github.com/repos/o/r/issues?state=open&per_page=100&page=2>; rel="next"' };
+  const { gh, sent } = recorder([
+    tagged(200, [{ number: 1 }], next), tagged(200, [{ number: 2 }], { etag: 'W/"p2"' }),
+    tagged(304, null, next), tagged(304, null, { etag: 'W/"p2"' }),
+  ]);
+  assert.deepEqual((await gh.listOpenIssues()).map((i) => i.number), [1, 2]);
+  assert.deepEqual((await gh.listOpenIssues()).map((i) => i.number), [1, 2]);
+  assert.deepEqual(sent.slice(2).map((s) => s.headers['if-none-match']), ['W/"p1"', 'W/"p2"']);
+  assert.deepEqual([gh.usage().reads, gh.usage().free], [2, 2]);
+});
+
+test('reads are tallied by kind of address, numbers and commits put aside', async () => {
+  const { gh } = recorder([tagged(200, [], {}), tagged(200, [], {}), tagged(200, {}, {})]);
+  await gh.listComments(3);
+  await gh.listComments(4);
+  await gh.getCommit('0123456789abcdef0123456789abcdef01234567');
+  assert.deepEqual(gh.usage().routes, { 'GET /repos/{repo}/issues/:n/comments': 2, 'GET /repos/{repo}/git/commits/:sha': 1 });
+});
+
+test('the end-of-run summary says what was read, what was free and the reserve left', async () => {
+  const { formatUsage } = await import('../scripts/lib/github-usage.mjs');
+  const text = formatUsage({ reads: 12, free: 30, writes: 4, remaining: 870, limit: 1000, routes: { 'GET /repos/{repo}/issues': 7, 'GET /repos/{repo}/pulls': 3, 'GET /repos/{repo}/issues/:n': 2 } });
+  assert.match(text, /^GitHub usage: 12 counted reads, 30 free \(304\), 4 writes, reserve 870\/1000/);
+  assert.match(text, /\n  7 GET \/repos\/\{repo\}\/issues\n  3 GET \/repos\/\{repo\}\/pulls\n  2 GET/);
+  assert.match(formatUsage({ reads: 0, free: 0, writes: 0, remaining: null, limit: null, routes: {} }), /reserve unknown/);
+});
+
+test('the open cards of one label come from the one list of open issues, read once per run (issue #491)', async () => {
+  const open = [
+    { number: 3, created_at: '2026-11-03', labels: [{ name: 'factory:queued' }] },
+    { number: 2, created_at: '2026-11-02', labels: [{ name: 'factory:checks' }], pull_request: {} },
+    { number: 1, created_at: '2026-11-01', labels: [{ name: 'factory:queued' }, { name: 'factory:kept' }] },
+  ];
+  const { gh, sent } = recorder([tagged(200, open, { etag: 'W/"o"' }), tagged(304, null, { etag: 'W/"o"' }), tagged(200, [{ number: 9 }], {})]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [3, 1]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued', sort: 'created', direction: 'asc' })).map((i) => i.number), [1, 3]);
+  assert.match(sent[0].url, /\/issues\?state=open&per_page=100$/);
+  assert.equal(sent[1].headers['if-none-match'], 'W/"o"');
+  assert.deepEqual([gh.usage().reads, gh.usage().free], [1, 1]);
+  // Any other question (closed ones too) is still asked to GitHub as it is.
+  await gh.listIssues({ labels: 'factory:stack', state: 'all' });
+  assert.match(sent[2].url, /state=all.*labels=factory%3Astack/);
+});
+
+test('a long list read twice keeps all its pages: GitHub\'s 304 carries no « next page » link (review of #491)', async () => {
+  const next = { etag: 'W/"p1"', link: '<https://api.github.com/repos/o/r/issues/5/events?per_page=100&page=2>; rel="next"' };
+  const { gh } = recorder([
+    tagged(200, [{ id: 1 }], next), tagged(200, [{ id: 2 }], { etag: 'W/"p2"' }),
+    tagged(304, null, { etag: 'W/"p1"' }), tagged(304, null, { etag: 'W/"p2"' }),
+  ]);
+  assert.deepEqual((await gh.listEvents(5)).map((e) => e.id), [1, 2]);
+  assert.deepEqual((await gh.listEvents(5)).map((e) => e.id), [1, 2]);
+});
+
+const openItem = (number, label) => ({ number, created_at: `2026-11-${String(number).padStart(2, '0')}`, labels: [{ name: label }] });
+
+test('a label is matched like GitHub does, whatever its case (review of #491)', async () => {
+  const { gh } = recorder([tagged(200, [openItem(4, 'Factory:Queued')], { etag: 'W/"o"' })]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [4]);
+});
+
+test('with a full page of open cards or more, each label is asked to GitHub as before (review of #491)', async () => {
+  const many = Array.from({ length: 100 }, (_, k) => openItem(k + 1, 'factory:building'));
+  const { gh, sent } = recorder([tagged(200, many, { etag: 'W/"o"' }), tagged(200, [openItem(7, 'factory:queued')], {})]);
+  assert.deepEqual((await gh.listIssues({ labels: 'factory:queued' })).map((i) => i.number), [7]);
+  assert.match(sent[1].url, /labels=factory%3Aqueued/);
+});
+
 // Issue #490: an owner's « go » answered by a GitHub outage longer than the retries was lost. The client marks such
 // failures so the relay can end on its « retried at the next tick » step instead of failing for good.
 test('a GitHub outage that outlasts the retries is marked as such (5xx, or no answer at all)', async () => {

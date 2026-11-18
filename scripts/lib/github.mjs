@@ -22,6 +22,44 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
   // (a POST may have been applied before the connection broke).
   async function send(method, url, init) {
+    // Issue #491: a read already answered in this run asks GitHub « changed? » (If-None-Match). A 304 is not counted in
+    // the hourly limit and gives back the answer kept here; anything else is GitHub's current state. Always fresh.
+    const key = method === 'GET' ? `${init.headers?.accept || ''} ${url}` : null;
+    const kept = key ? cache.get(key) : null;
+    if (kept) init = { ...init, headers: { ...init.headers, 'if-none-match': kept.etag } };
+    const res = await sendRaw(method, url, init);
+    tally(method, url, res);
+    if (!key) return res;
+    // GitHub's 304 has no Link header: the « next page » link kept with the answer is served again, or a long list
+    // read twice would stop at its first page.
+    if (res.status === 304 && kept) {
+      const headers = { get: (h) => (/^link$/i.test(h) ? kept.link : res.headers.get(h)) };
+      return { ok: true, status: 200, headers, json: async () => structuredClone(kept.body), text: async () => JSON.stringify(kept.body) };
+    }
+    const etag = res.headers?.get?.('etag');
+    if (res.status !== 200 || !etag) { cache.delete(key); return res; }
+    const body = await res.json();
+    cache.set(key, { etag, link: res.headers.get('link') ?? null, body: structuredClone(body) });
+    return { ok: true, status: 200, headers: res.headers, json: async () => body, text: async () => JSON.stringify(body) };
+  }
+  // GitHub's usage seen by this client: counted reads per kind of address, free « nothing new » answers, writes, and
+  // the reserve left in the hour as GitHub last told it.
+  const cache = new Map();
+  const use = { reads: 0, free: 0, writes: 0, routes: {}, remaining: null, limit: null };
+  function tally(method, url, res) {
+    const left = Number(res.headers?.get?.('x-ratelimit-remaining'));
+    const limit = Number(res.headers?.get?.('x-ratelimit-limit'));
+    if (res.headers?.get?.('x-ratelimit-remaining') != null && Number.isFinite(left)) use.remaining = left;
+    if (res.headers?.get?.('x-ratelimit-limit') != null && Number.isFinite(limit)) use.limit = limit;
+    if (method !== 'GET') { use.writes++; return; }
+    if (res.status === 304) { use.free++; return; }
+    use.reads++;
+    const route = `GET ${routeOf(url)}`;
+    use.routes[route] = (use.routes[route] || 0) + 1;
+  }
+  const routeOf = (url) => url.replace(api, '').split('?')[0].replace(`/repos/${repo}`, '/repos/{repo}')
+    .split('/').map((part) => (/^\d+$/.test(part) ? ':n' : /^[0-9a-f]{40}$/.test(part) ? ':sha' : part)).join('/');
+  async function sendRaw(method, url, init) {
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
       let res;
@@ -73,6 +111,11 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     return out;
   }
   const enc = encodeURIComponent;
+  // All open issues and PRs, newest first (GitHub's order).
+  const listOpenIssues = () => paginate('/repos/{repo}/issues?state=open&per_page=100');
+  // A question the open list answers: one label, open ones, by creation date.
+  const fromOpenList = (q = {}) => typeof q.labels === 'string' && !q.labels.includes(',')
+    && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k)) && (q.sort ?? 'created') === 'created';
   const trusted = (list) => trustNotes(list, repo.split('/')[0]);
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
@@ -142,15 +185,28 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     catch (e) { if (!/404|422/.test(String(e))) throw e; await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${stateRef(name)}`, sha: commit.sha }); }
   };
   return {
+    usage: () => structuredClone(use),
     queueLock,
     getState,
     setState,
     request,
     getIssue: (n) => request('GET', `/repos/{repo}/issues/${n}`),
     getPr: (n) => request('GET', `/repos/{repo}/pulls/${n}`),
-    listIssues: (q) => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`),
+    // The open cards of one label (issue #491): filtered from the one list of open issues, read once per run and then
+    // only asked « changed? » (free when not), instead of one counted read per label. Other questions go to GitHub.
+    listIssues: async (q) => {
+      const ask = () => request('GET', `/repos/{repo}/issues?${new URLSearchParams({ state: 'open', per_page: '100', ...q })}`);
+      if (!fromOpenList(q)) return ask();
+      // Only when every open card fits on one page (the first page of listOpenIssues, same cached answer): a longer
+      // list would cost several pages per read and could shift between them. Labels match whatever their case, like GitHub.
+      const open = await request('GET', '/repos/{repo}/issues?state=open&per_page=100');
+      if (!Array.isArray(open) || open.length >= 100) return ask();
+      const wanted = q.labels.toLowerCase();
+      const list = open.filter((i) => (i.labels || []).some((l) => String(l.name ?? l).toLowerCase() === wanted));
+      return q.direction === 'asc' ? list.reverse() : list;
+    },
     listPulls: () => paginate('/repos/{repo}/pulls?state=open&per_page=100'),
-    listOpenIssues: () => paginate('/repos/{repo}/issues?state=open&per_page=100'),
+    listOpenIssues,
     // The repository's latest issue events, all cards together (newest first).
     listRepoEvents: () => request('GET', '/repos/{repo}/issues/events?per_page=100'),
     // Comments updated at or after `since` (ISO time): only what moved, not the whole thread.
