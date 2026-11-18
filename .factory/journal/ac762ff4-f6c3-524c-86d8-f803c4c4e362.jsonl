@@ -15,3 +15,4 @@
 {"t":"2026-11-18T17:53:34.415Z","kind":"test","cmd":"git status --short | head; npm test 2>&1 | tail -8","ok":true,"id":"toolu_011Q3TpZJJafqb6wP4uqRiz5"}
 {"t":"2026-11-18T17:55:15.010Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold_start=… Issue #490, review: the replay of an « ok » whose merge went through\")\nold_end=… Issue #490, review: an outage often stops a decision\")\nnew=…'// Issue #490, revie","ok":false,"id":"toolu_01DBCAJtnH22n5raiB5aVkpM"}
 {"t":"2026-11-18T17:55:59.218Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"      // Re-running a run re-runs all its failed jobs: never one whose agent failed (a second agent, issue #490).\n      if (jobs.some((j) => /(^|\\\\/ )agent$/.test(j.nam","ok":true,"id":"toolu_01SVaJkh5X4ftD8X1E9L9tKY"}
+{"t":"2026-11-18T17:56:13.319Z","kind":"agent","model":"opus","effort":"high","label":"Final review round 3","id":"toolu_0145ZxWETPACesLHwPas3Tbt"}
