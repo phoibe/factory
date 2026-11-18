@@ -75,6 +75,15 @@ test('quand GitHub limite les appels, la vérification des autres projets attend
   assert.equal(dotsDelay(3_600_000), 300_000);
 });
 
+// Issue #488: the other projects are checked every 10 s while the owner is active, every 30 s when calm or hidden.
+test('quand vous êtes actif, les autres projets sont vérifiés toutes les 10 secondes, sinon toutes les 30', async () => {
+  const { dotsDelay } = await import('../panel/projects.mjs');
+  assert.equal(dotsDelay(0, false), 10_000);
+  assert.equal(dotsDelay(0, true), 30_000);
+  assert.equal(dotsDelay(120_000, false), 120_000);
+  assert.equal(dotsDelay(3_600_000, false), 300_000);
+});
+
 // Issue #399: the project list is remembered on this device, and an unchanged repository is not read again.
 
 const repo = (name, pushed = '2026-11-01T10:00:00Z', extra = {}) => ({ id: 1, name, full_name: `o/${name}`, html_url: `https://github.com/o/${name}`, homepage: '', private: true, default_branch: 'main', archived: false, is_template: false, pushed_at: pushed, owner: { login: 'o' }, description: 'long', ...extra });

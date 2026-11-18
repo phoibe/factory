@@ -44,9 +44,9 @@ export function nextDots(prev, results) {
   return out;
 }
 
-// Milliseconds before the next check of the other projects: 30 s, or the wait GitHub asked for when it limits
-// the calls (at most 5 min, like the board).
-export const dotsDelay = (limitedMs = 0) => Math.min(Math.max(limitedMs, 30_000), 300_000);
+// Milliseconds before the next check of the other projects: 10 s while the owner is active, 30 s when calm or the
+// tab is hidden (issue #488), or the wait GitHub asked for when it limits the calls (at most 5 min, like the board).
+export const dotsDelay = (limitedMs = 0, idle = true) => Math.min(Math.max(limitedMs, idle ? 30_000 : 10_000), 300_000);
 
 // ---- The project list remembered on this device (issue #399) -------------------------------------------------
 // Opening the panel used to read factory.config.json in every repository. Now the list shows at once from the last

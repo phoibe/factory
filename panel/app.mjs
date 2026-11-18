@@ -300,7 +300,9 @@ function setDot(repo, dot) {
 // A project GitHub does not answer for keeps its last known dot.
 // One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
 const etags = new Map();
-let dotsTimer = null, dotsBusy = false;
+let dotsTimer = null, dotsBusy = false, dotsLast = 0;
+// Active owner: 10 s between rounds; calm for 2 minutes or tab hidden: 30 s (issue #488).
+const dotsIdle = () => isIdle(live.activity, Date.now(), document.hidden);
 async function projectDotOf(repo) {
   try {
     const issues = [];
@@ -328,9 +330,10 @@ async function projectDotOf(repo) {
 
 async function refreshDots() {
   clearTimeout(dotsTimer);
-  dotsTimer = setTimeout(refreshDots, dotsDelay());
+  dotsTimer = setTimeout(refreshDots, dotsDelay(0, dotsIdle()));
   if (!token || !projects.length || dotsBusy) return;
   dotsBusy = true;
+  dotsLast = Date.now();
   const session = token;
   try {
     const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
@@ -344,7 +347,7 @@ async function refreshDots() {
     if (JSON.stringify([...dots]) !== before) renderProjectList();
   } catch (err) {
     // GitHub limits the calls: no more requests until the wait it asked for (the dots stay as they were).
-    if (err?.rateLimited && token === session) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, dotsDelay(err.waitMs)); }
+    if (err?.rateLimited && token === session) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, dotsDelay(err.waitMs, dotsIdle())); }
   } finally {
     dotsBusy = false;
   }
@@ -1163,11 +1166,21 @@ for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchsta
     const wasIdle = isIdle(live.activity, Date.now(), document.hidden);
     live.activity = Date.now();
     if (wasIdle && current && !document.hidden && !live.busy) schedule();
+    // The dots come back to life too: a check at once instead of waiting out the 30 s (issue #488).
+    if (wasIdle && !document.hidden) wakeDots();
   }, { passive: true });
 }
 
 // Coming back to the tab refreshes at once (unless it just did); while hidden it keeps polling every 30 s.
+// Coming back to the tab checks the other projects' dots at once too (issue #488), unless they were just checked
+// (a round already running, or a gesture that started one, is not doubled).
+function wakeDots() {
+  if (!token || Date.now() - dotsLast < 5000) return;
+  refreshDots();
+}
+
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) wakeDots();
   if (!current) return clearTimeout(live.timer);
   if (document.hidden) return schedule();
   live.activity = Date.now();
