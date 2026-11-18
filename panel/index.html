@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=50">
+  <link rel="stylesheet" href="style.css?v=53">
 </head>
 <body>
   <header class="top">
@@ -88,6 +88,7 @@
               <button id="chat-bug" type="button" class="secondary small-btn">C'est un bug</button>
               <button id="chat-close" type="button" class="ghost small-btn">Terminer</button>
             </div>
+            <button id="chat-full" type="button" class="ghost chat-full" aria-label="Plein écran" title="Plein écran"><svg class="icon-expand" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg><svg class="icon-collapse" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 11h-6V5M13 11l7-7M5 13h6v6M11 13l-7 7"/></svg></button>
           </header>
           <ol id="chat-messages" class="messages"></ol>
           <p id="chat-announce" class="visually-hidden" role="status"></p>

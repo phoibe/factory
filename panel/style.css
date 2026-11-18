@@ -618,8 +618,22 @@ details.advanced fieldset > legend { font-weight: 600; }
 .rules-all-title { margin: 0 0 16px; font-size: 1.125rem; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { details.advanced > summary::before { transition: none; } }
 
-/* ---- Agent tab, issue #460: full width, a comfortable reading column, images enlarged on click ---- */
-body.chat-wide main { max-width: none; padding-bottom: 16px; }
+/* ---- Agent tab, issue #460: a comfortable reading column, images enlarged on click ---- */
+body.chat-wide main { padding-bottom: 16px; }
+/* Issue #473: the usual width by default; the two-arrow button turns on a true full screen, under the top bar and
+   beside the project list. Not on a phone, where the open conversation already fills the screen. */
+.chat-full { flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; }
+.chat-full .icon-collapse, body.chat-fullscreen .chat-full .icon-expand { display: none; }
+body.chat-fullscreen .chat-full .icon-collapse { display: block; }
+@media (min-width: 701px) {
+  body.chat-fullscreen main { max-width: none; padding: 0; }
+  /* The project name stays the page's title for screen readers, out of sight; the rest of the head goes. */
+  body.chat-fullscreen .project-head { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body.chat-fullscreen .project-head > :not(:first-child), body.chat-fullscreen .project-sub-line, body.chat-fullscreen .site-line, body.chat-fullscreen .project-switch, body.chat-fullscreen .tabs { display: none; }
+  body.chat-fullscreen #project-name { display: inline; } /* the title must keep the name where the switch button usually shows it */
+  body.chat-fullscreen #chat:not([hidden]):not(.needs-token) { height: max(240px, calc(100dvh - var(--chat-top, 300px))); border: 0; border-radius: 0; box-shadow: none; }
+}
+@media (max-width: 700px) { .chat-full { display: none; } }
 .messages, .composer, .pending-images { padding-inline: max(16px, calc((100% - 860px) / 2)); }
 .shot { cursor: zoom-in; }
 dialog.lightbox { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 0; border: 0; background: transparent; overflow: visible; }
