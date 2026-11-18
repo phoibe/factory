@@ -1,6 +1,6 @@
 // Pure helpers for the project list and its status dots (issue #314, tested in test/panel-projects.test.mjs).
-import { boardItems } from './lib.mjs?v=26';
-import { laneFor } from './live.mjs?v=12';
+import { boardItems } from './lib.mjs?v=27';
+import { laneFor } from './live.mjs?v=13';
 
 export const DOT_LABELS = { blocked: 'Bloqué', yours: 'À vous de jouer', working: 'En cours' };
 const RANK = { blocked: 3, yours: 2, working: 1 };

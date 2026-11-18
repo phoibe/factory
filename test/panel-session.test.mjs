@@ -8,7 +8,7 @@ const fn = (name) => app.match(new RegExp(`(?:async )?function ${name}\\(\\)[^]*
 test('la remise à zéro de la session est écrite une seule fois et vide les caches et le suivi en direct', () => {
   const reset = fn('resetSession');
   assert.ok(reset, 'resetSession doit exister');
-  for (const part of ['etags.clear()', 'boards.clear()', 'clearTimeout(live.timer)', 'clearInterval(live.tick)', 'TOKEN_KEY']) assert.ok(reset.includes(part), part);
+  for (const part of ['etags.clear()', 'boards.clear()', 'clearTimeout(live.timer)', 'clearInterval(live.tick)', 'sessionKeys(store.keys())']) assert.ok(reset.includes(part), part);
   assert.equal(app.split('boards.clear()').length - 1, 1, 'plus aucune copie de la remise à zéro');
 });
 
@@ -16,4 +16,10 @@ test('jeton expiré, déconnexion et refus au démarrage passent tous par resetS
   assert.match(fn('sessionExpired'), /resetSession\(\)/);
   assert.match(app, /\$\('logout'\)\.addEventListener\('click', \(\) => \{\s*resetSession\(\)/);
   assert.match(fn('start'), /err\.status !== 401[^]*resetSession\(\)/);
+});
+
+test('le compteur des lancements du jour relit les événements avec leur ETag (un « 304 » ne coûte rien)', () => {
+  const runs = fn('refreshRuns');
+  assert.match(runs, /cachedGet\(`\/repos\/\$\{p\.repo\.full_name\}\/issues\/events/);
+  assert.doesNotMatch(runs, /await api\(/);
 });
