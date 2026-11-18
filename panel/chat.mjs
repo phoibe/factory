@@ -326,12 +326,12 @@ export function readTokenProblem({ same, status, login, owner, readable, writabl
 export const newConversation = (id, firstText, now = '') => ({ id, title: titleFrom(firstText || 'Image envoyée'), state: 'open', created: now, updated: now, messages: [] });
 
 // Older answers carry `issues` (requests created at once, before issue #492); new ones carry pending `proposals`.
-export function addExchange(conv, mine, answer, now = '', proposals = []) {
+// `tag` names this answer's cards: the copy saved and a copy kept on screen (save failed) share it, so they share ids.
+export const cardTag = () => globalThis.crypto.randomUUID().slice(0, 8);
+export function addExchange(conv, mine, answer, now = '', proposals = [], tag = cardTag()) {
   conv.messages.push({ who: 'me', text: mine.text || '', images: [...(mine.images || [])], at: now });
   const agent = { who: 'agent', text: answer, at: now };
-  // The answer's place plus a random part: an answer rebuilt at the same place (after a failed save) gets new ids.
-  const at = `${conv.messages.length}-${Math.random().toString(36).slice(2, 8)}`;
-  if (proposals.length) agent.proposals = proposals.map((p, i) => ({ id: `${at}-${i}`, kind: p.kind, title: p.title, body: p.body, state: 'pending' }));
+  if (proposals.length) agent.proposals = proposals.map((p, i) => ({ id: `${tag}-${i}`, kind: p.kind, title: p.title, body: p.body, state: 'pending' }));
   conv.messages.push(agent);
   conv.updated = now;
   conv.state = 'open';

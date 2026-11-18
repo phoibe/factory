@@ -114,3 +114,12 @@ test('review #492: a card rebuilt at the same place after a failed save never sh
   assert.notEqual(a.messages[1].proposals[0].id, b.messages[1].proposals[0].id);
   assert.match(a.messages[1].proposals[0].id, /^[\w-]+$/);
 });
+
+test('review #492: the answer saved and its copy on screen share their card ids', () => {
+  const stored = newConversation('c1', 'x', 't0');
+  const onScreen = newConversation('c1', 'x', 't0');
+  onScreen.messages.push({ who: 'me', text: 'avant', at: 't' }, { who: 'agent', text: 'ok', at: 't' });
+  addExchange(stored, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }], 'k3x9');
+  addExchange(onScreen, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }], 'k3x9');
+  assert.equal(stored.messages.at(-1).proposals[0].id, onScreen.messages.at(-1).proposals[0].id);
+});

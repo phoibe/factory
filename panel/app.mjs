@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, decideProposal, decisionComment } from './chat.mjs?v=21';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, decideProposal, decisionComment, cardTag } from './chat.mjs?v=22';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2137,13 +2137,13 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Set() };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map() };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Set() });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map() });
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2488,7 +2488,7 @@ function proposalCard(p) {
     el('p', { class: 'proposal-kind' }, kind),
     el('p', { class: 'proposal-title' }, s.title),
     s.body ? el('details', {}, el('summary', {}, 'Lire le texte'), el('div', { class: 'proposal-body' }, richText(s.body))) : null,
-    s.state === 'pending' && chat.refused.has(key) ? el('p', { class: 'proposal-error', role: 'alert' }, 'La demande n\'a pas pu être créée. Réessayez dans un instant.') : null,
+    s.state === 'pending' && chat.refused.has(key) ? el('p', { class: 'proposal-error', role: 'alert' }, chat.refused.get(key) === 'ignored' ? 'Ce choix n\'a pas pu être enregistré. Réessayez dans un instant.' : 'La demande n\'a pas pu être créée. Réessayez dans un instant.') : null,
     outcome);
 }
 
@@ -2546,7 +2546,7 @@ async function decide(p, state) {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
   } catch {
-    refused.add(key); // said on the card itself, next to the button to try again
+    refused.set(key, state); // said on the card itself, next to the button to try again
   } finally {
     deciding.delete(key);
     if (!gone()) drawChat();
@@ -2898,13 +2898,14 @@ const SAVE_TRIES = 5;
 // Never throws: a failure is said under the answer or in a toast.
 async function finishExchange(repo, cid, mine, answer) {
   const proposals = wantedIssues(answer.issues);
+  const tag = cardTag(); // the same card ids whether the answer is saved or only kept on screen
   const text = answer.text || '';
   const at = stamp();
   const base = newConversation(cid, mine.text || answer.conversation?.title || '', at);
   try {
-    return { conv: await saveExchange(repo, cid, base, mine, text, at, proposals), saved: true };
+    return { conv: await saveExchange(repo, cid, base, mine, text, at, proposals, tag), saved: true };
   } catch {
-    const conv = addExchange(chat.conv?.id === cid ? structuredClone(chat.conv) : base, mine, `${text}\n\n_Cette réponse n'a pas pu être enregistrée._`, at, proposals);
+    const conv = addExchange(chat.conv?.id === cid ? structuredClone(chat.conv) : base, mine, `${text}\n\n_Cette réponse n'a pas pu être enregistrée._`, at, proposals, tag);
     conv.unsaved = true;
     return { conv, saved: false };
   }
@@ -2951,10 +2952,10 @@ async function ensureChatBranch(repo) {
   });
 }
 
-async function saveExchange(repo, cid, base, mine, text, at, proposals) {
+async function saveExchange(repo, cid, base, mine, text, at, proposals, tag) {
   await ensureChatBranch(repo);
   const conv = await writeChatFile(repo, `chats/${cid}.json`, (latest) => {
-    const next = addExchange(latest || structuredClone(base), mine, text, at, proposals);
+    const next = addExchange(latest || structuredClone(base), mine, text, at, proposals, tag);
     next.id = cid; // a stored id is never trusted
     return next;
   }, `chore(factory): chat ${cid}`);
