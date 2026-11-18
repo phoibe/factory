@@ -21,3 +21,10 @@ test('other create errors still fail', async () => {
   const gh = { request: async (m) => { if (m === 'GET') return []; throw new Error('POST x -> 500 boom'); } };
   await assert.rejects(ensureLabels(gh), /500/);
 });
+
+test('the « Amélioration UI » label exists and leads to its own stage (issue #462)', async () => {
+  const { L, LABEL_DEFS, buildStage } = await import('../scripts/lib/labels.mjs');
+  assert.equal(L.uiPolish, 'factory:ui-polish');
+  assert.ok(LABEL_DEFS.some(([name]) => name === 'factory:ui-polish'));
+  assert.equal(buildStage([L.uiPolish, L.queued]), 'ui-polish');
+});
