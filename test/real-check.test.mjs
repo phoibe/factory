@@ -91,7 +91,7 @@ test('only opening the PR is checked, and only on runs that build', () => {
 const stage = (f) => readFileSync(new URL(`../agent/${f}`, import.meta.url), 'utf8');
 
 test('the building stages ask for a read-only trial in real conditions', () => {
-  for (const f of ['stages/build.md', 'stages/bugfix.md', 'stages/foundation.md', 'stages/audit.md']) {
+  for (const f of ['stages/build.md', 'stages/bugfix.md', 'stages/foundation.md', 'stages/audit.md', 'stages/ui-polish.md']) {
     const text = stage(f);
     assert.match(text, /conditions réelles/, f);
     assert.match(text, /lecture seule/, f);

@@ -36,13 +36,13 @@ test('the factory\'s own trigger lets every waking label through, and no other',
 });
 
 test('an old project trigger drops « Garder » (factory:kept): it is seen as out of date', () => {
-  assert.deepEqual(missingWakeLabels(PULSARWHEEL), ['factory:stack', 'factory:kept', 'factory:blocked']);
+  assert.deepEqual(missingWakeLabels(PULSARWHEEL), ['factory:stack', 'factory:kept', 'factory:blocked', 'factory:ui-polish']);
 });
 
 test('the upgrade adds only the missing labels and keeps the owner\'s own changes', () => {
   const up = upgradeTrigger(PULSARWHEEL);
   assert.deepEqual(missingWakeLabels(up), []);
-  assert.match(up, /github\.event\.label\.name == 'factory:audit' \|\| github\.event\.label\.name == 'factory:stack' \|\| github\.event\.label\.name == 'factory:kept' \|\| github\.event\.label\.name == 'factory:blocked'\) &&\n/);
+  assert.match(up, /github\.event\.label\.name == 'factory:audit' \|\| github\.event\.label\.name == 'factory:stack' \|\| github\.event\.label\.name == 'factory:kept' \|\| github\.event\.label\.name == 'factory:blocked' \|\| github\.event\.label\.name == 'factory:ui-polish'\) &&\n/);
   assert.match(up, /cron: '7 \* \* \* \*'/);
   assert.match(up, /décision de Pierre/);
   assert.equal(up.split('\n').length, PULSARWHEEL.split('\n').length, 'no line added or removed');
@@ -54,7 +54,7 @@ test('a filter written on one line gets the labels in its issues clause, never i
   const one = "    if: (github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'factory:feature') && (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'factory:checks')\n";
   const up = upgradeTrigger(one);
   assert.match(up, /'factory:feature' \|\| github\.event\.label\.name == 'factory:bug'/);
-  assert.match(up, /'factory:blocked'\) && \(github\.event_name != 'pull_request' \|\| github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'factory:checks'\)\n$/);
+  assert.match(up, /'factory:ui-polish'\) && \(github\.event_name != 'pull_request' \|\| github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'factory:checks'\)\n$/);
   assert.deepEqual(missingWakeLabels(up), []);
   assert.deepEqual(missingWakeLabels("if: (github.event_name != 'issues' || github.event.action != 'labeled') && (x || github.event.label.name == 'factory:kept')"), WAKE_LABELS, 'a label in another clause does not count');
 });
@@ -77,4 +77,9 @@ test('a refused wake-up says plainly why and what to do', () => {
   assert.match(TRIGGER_REFUSED, /nouveau jeton/);
   for (const t of [TRIGGER_REFUSED, wakeErrorText({ status: 403 }), wakeErrorText({ status: 500 })]) assert.ok(t.length <= 130, `short enough to read at once: ${t}`);
   for (const s of [403, 500]) assert.match(wakeErrorText({ status: s }), /plus tard/);
+});
+
+test('« Amélioration UI » cards wake the factory, like a general review (issue #462)', () => {
+  assert.ok(WAKE_LABELS.includes('factory:ui-polish'));
+  assert.ok(missingWakeLabels(PULSARWHEEL).includes('factory:ui-polish'));
 });

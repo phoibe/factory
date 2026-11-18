@@ -40,6 +40,10 @@
    sortie de la tâche qu'elle a bien démarré (pas d'erreur de port déjà pris), puis
    `node .factory/scripts/shots.mjs capture --base-url http://localhost:3000 --routes /,/autre --out /tmp/shots/after`
    (avec l'option de l'étape 2 si besoin).
+3 bis. **Capture de la présentation** (`README.md`, voir `.factory/stages/readme.md`) : si la page d'accueil a pu
+   changer d'apparence, ou que la présentation n'a pas encore sa capture, copie `/tmp/shots/after/accueil--desktop.png`
+   dans `docs/readme/accueil.png`, committe et pousse-la avec la PR. Pas pour la factory elle-même, ni pour une appli
+   sans page d'accueil.
 4. **Avant** : `git worktree add /tmp/before origin/main`, `cd /tmp/before && npm ci`, puis
    `cd /tmp/before && node <outil> run -- sh -c 'npm run build && exec npm run start -- -p 3001'` (même `<outil>`
    qu'à l'étape 3 ; le `cd` dans la même commande, car il ne passe pas d'une commande à l'autre), attends qu'elle
@@ -67,7 +71,7 @@
    après à droite), la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
    **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
-   poussées, dès que la PR porte `factory:visual-review` (un tableau envoyé depuis ta session peut arriver abîmé sur
+   poussées, dès que tu poses `factory:checks` sur la PR (un tableau envoyé depuis ta session peut arriver abîmé sur
    GitHub, issue #378). Ne recopie aucun lien d'image dans tes messages.
 6. **Aucun écran n'a changé** (ou tous ceux qui différaient ont été écartés à l'étape 4 bis) : la sortie de l'outil
    contient alors `<!-- factory-shots-unchanged -->` et la phrase
@@ -84,4 +88,6 @@
    visuellement (en clair puis en sombre) (un écran que la feature ne devait pas toucher et qui a changé : corrige-le
    d'abord, ou explique pourquoi en une phrase), « Les captures suivent juste en dessous, publiées par la factory. »,
    puis « Répondez « ok » si cela vous convient (clair et sombre), ou dites-moi ce qu'il faut retoucher. ».
-   Mets ensuite `factory:visual-review` puis `factory:checks` sur la PR : la factory publie alors le tableau.
+   Mets ensuite `factory:checks` sur la PR, **jamais `factory:visual-review` toi-même** : la factory publie alors le
+   tableau, puis met elle-même la carte en « Captures à valider ». Ainsi la carte n'y entre qu'une fois les captures
+   visibles (issue #455) ; poser ce label avant qu'elles le soient, la factory te le retire.

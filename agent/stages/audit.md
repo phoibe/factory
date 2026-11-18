@@ -10,9 +10,11 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    fourchette, publie une nouvelle estimation pour ce qu'il reste.
 2. **Passe design sur tous les écrans** : fais la liste de **tous** les écrans de l'appli (pages, routes,
    états importants : vide, erreur, chargement, connecté ou non), pas seulement ceux d'un diff. Puis suis
-   `.factory/stages/design-pass.md` sur cette liste : skill `impeccable`, commande `critique` pour chaque
-   écran, correction de tout ce qu'il trouve, recritique, au plus 3 tours, avec la règle « Textes à l'écran »
-   de `design-pass.md` sur tous les écrans. Reste dans `DESIGN.md` ; si un
+   `.factory/stages/design-pass.md` sur cette liste : skill `impeccable`, une seule critique complète
+   (commande `critique`, avec ses deux évaluations) pour chaque écran, correction de tout ce qu'elle trouve, puis
+   un seul contrôle léger, et seulement si cette critique a trouvé des problèmes prioritaires (P0/P1), sans
+   nouvelle critique ensuite (étape 4 de `design-pass.md`), avec la
+   règle « Textes à l'écran » de `design-pass.md` sur tous les écrans. Reste dans `DESIGN.md` ; si un
    problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR.
 3. **Revue de code générale** : charge le skill `requesting-code-review` (outil Skill), puis fais relire
    **tout le code** (pas un diff) par des sous-agents neufs (`sonnet`, effort `medium`), un par grande partie de
@@ -40,7 +42,6 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    et la ligne « Essayé en vrai : … » / « Pas vérifié en vrai : … » de l'étape 7 bis de `build.md` (essai en
    conditions réelles, en lecture seule). Puis `Closes #<n>`, puis les détails techniques en anglais.
 7. **Captures** : si l'apparence a changé et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:visual-review` puis `factory:checks` sur la PR
-   (mais si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`)).
-   Sinon, mets `factory:checks`.
+   `.factory/stages/screenshots.md` sur les écrans modifiés. Dans tous les cas, mets ensuite `factory:checks` sur la PR :
+   s'il y a des captures, la factory les publie et pose elle-même `factory:visual-review`.
 8. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

@@ -92,9 +92,14 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    **Feature qui change une feature déjà rangée** : regarde le sommaire ; pour chaque ancienne spec que celle-ci
    modifie, lance `node .factory/scripts/specs.mjs modified <ancienne> <n>`. L'ancienne spec n'est jamais réécrite :
    elle reçoit seulement en tête la ligne « Modifiée par la demande n° … ».
-   Pas de spec rangée pour un cadrage (`factory:project`) ni une revue générale (`factory:audit`) ; les demandes livrées
+   Pas de spec rangée pour un cadrage (`factory:project`) ni une revue générale (`factory:audit`), ni une amélioration UI (`factory:ui-polish`) ; les demandes livrées
    avant cette règle ne se rattrapent pas. Si `save` répond que l'issue n'a aucune spec validée, il n'y a rien à ranger :
    ignore la ligne « spec rangée » du contrôle du journal.
+6 quater. **Présentation du projet** (`README.md`) : relis-la dans cette PR et mets-la à jour si la feature change
+   quelque chose de visible (une possibilité, la page d'accueil, l'adresse du site, la façon de lancer), au modèle de
+   `.factory/stages/readme.md` (en français, courte, capture de la page d'accueil, jamais de licence ajoutée). Une
+   présentation pas encore au modèle est remise à niveau d'un coup. Cela ne bloque jamais la PR. Pas pour la factory elle-même
+   (quand `repo` et `factory` du payload sont le même dépôt).
 7. **Vérifie** localement : `npm run typecheck`, `lint`, `test`, `build` (et `test:e2e`) doivent passer
    (skill `verification-before-completion`). Ne termine pas sur du rouge.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
@@ -122,8 +127,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    dans le résumé (« Rien ne change pour vous »). La factory la mettra en ligne dès que les contrôles sont verts,
    sans lui demander de recette. Au moindre changement visible ou d'usage, pas de marqueur.
 9. **Captures** : si l'interface change et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md`, puis mets les labels `factory:visual-review` puis `factory:checks` sur la PR
-   (les contrôles tournent pendant que le propriétaire regarde les captures ; son « ok » vaut recette). Mais
-   si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`) : pas de captures à valider sur un tableau vide.
+   `.factory/stages/screenshots.md`, puis mets `factory:checks` sur la PR : la factory publie les captures
+   et met elle-même la carte en « Captures à valider » (issue #455 ; les contrôles tournent pendant que le propriétaire
+   regarde les captures, son « ok » vaut recette). Ne pose jamais `factory:visual-review` toi-même.
    Sinon, mets directement `factory:checks` sur la PR.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.

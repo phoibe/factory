@@ -25,7 +25,7 @@ const ACTIONS = {
 
 // The steps an item goes through. Bugs, general reviews and stack sheets have no questions and no spec.
 export function stepsFor(labels) {
-  return ['factory:bug', 'factory:audit', 'factory:stack'].some((l) => labels.includes(l)) ? STEPS.slice(2) : STEPS;
+  return ['factory:bug', 'factory:audit', 'factory:ui-polish', 'factory:stack'].some((l) => labels.includes(l)) ? STEPS.slice(2) : STEPS;
 }
 
 // Where the card stands in its flow, or null when it cannot be told (a blocked item with no other state).

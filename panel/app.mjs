@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, githubBusy, wantedIssues, decideProposal, decisionComment } from './chat.mjs?v=18';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, decideProposal, decisionComment } from './chat.mjs?v=20';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -19,7 +19,7 @@ import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './c
 import { machineLine, repoKey } from './machine.mjs';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=3';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=4';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -30,6 +30,9 @@ const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
   'Ce qui demande une vraie nouvelle feature devient une issue à part.'].join('\n');
+const UI_POLISH_BODY = ['Amélioration UI demandée depuis le tableau.', '',
+  'Jusqu\'à 3 tours de critique design de tous les écrans (états vide, erreur, chargement et téléphone compris), chacun suivi de la correction de tout ce qu\'il a trouvé.', '',
+  'Seulement l\'apparence et la clarté des écrans : un vrai manque fonctionnel devient une idée à trier.'].join('\n');
 const $ = (id) => document.getElementById(id);
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -101,7 +104,7 @@ function toast(msg) {
 // Forgets everything of the session (token, projects, caches, live board): the next account never sees it.
 function resetSession() {
   triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer);
+  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); token = null; store.del(READ_TOKEN_KEY); readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -134,6 +137,7 @@ function show(id) {
   // The project list shows with a project only (none to choose from on the empty screen).
   $('projects').hidden = id !== 'project-view';
   document.body.classList.toggle('has-projects', id === 'project-view');
+  if (id !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   if (id !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
   if (typeof placeMenu === 'function') placeMenu();
 }
@@ -295,12 +299,15 @@ function setDot(repo, dot) {
   renderProjectList();
 }
 
-// The other projects are checked at start, then every 30 s. Their requests carry the last ETag (an unchanged
+// The other projects are checked at start, then every 10 s while the owner is active, 30 s when calm or hidden
+// (issue #488). Their requests carry the last ETag (an unchanged
 // answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
 // A project GitHub does not answer for keeps its last known dot.
 // One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
 const etags = new Map();
-let dotsTimer = null, dotsBusy = false;
+let dotsTimer = null, dotsBusy = false, dotsLast = 0, dotsPausedUntil = 0;
+// Active owner: 10 s between rounds; calm for 2 minutes or tab hidden: 30 s (issue #488).
+const dotsIdle = () => isIdle(live.activity, Date.now(), document.hidden);
 async function projectDotOf(repo) {
   try {
     const issues = [];
@@ -328,9 +335,12 @@ async function projectDotOf(repo) {
 
 async function refreshDots() {
   clearTimeout(dotsTimer);
-  dotsTimer = setTimeout(refreshDots, dotsDelay());
-  if (!token || !projects.length || dotsBusy) return;
+  // While GitHub's wait runs, every caller waits too: the next round comes at its end.
+  const paused = Math.min(dotsPausedUntil - Date.now(), 300_000);
+  dotsTimer = setTimeout(refreshDots, paused > 0 ? paused : dotsDelay(0, dotsIdle()));
+  if (paused > 0 || !token || !projects.length || dotsBusy) return;
   dotsBusy = true;
+  dotsLast = Date.now();
   const session = token;
   try {
     const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
@@ -344,7 +354,11 @@ async function refreshDots() {
     if (JSON.stringify([...dots]) !== before) renderProjectList();
   } catch (err) {
     // GitHub limits the calls: no more requests until the wait it asked for (the dots stay as they were).
-    if (err?.rateLimited && token === session) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, dotsDelay(err.waitMs)); }
+    if (err?.rateLimited && token === session) {
+      const wait = dotsDelay(err.waitMs, dotsIdle());
+      dotsPausedUntil = Date.now() + wait;
+      clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait);
+    }
   } finally {
     dotsBusy = false;
   }
@@ -380,6 +394,8 @@ async function openProject(fullName) {
   $('issues-link').textContent = issuesLinkText(null);
   // Everything under the name starts over at once, before any request (issue #319); the board's grey cards come with renderBoard.
   show('project-view');
+  // Another project always opens on « Suivi » (issue #475); a redraw of the same project keeps the tab.
+  if (switched) selectTab('board');
   resetChat();
   renderRules();
   loadMachine(current).catch(() => {});
@@ -741,7 +757,7 @@ function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:ui-polish') ? 'Amélioration UI' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
   const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;
@@ -1157,20 +1173,32 @@ async function renderBoard() {
   await refresh();
 }
 
-// Any sign of life from the owner brings the 8 s rhythm back (after 2 minutes of calm it slows to 30 s).
+// Any sign of life from the owner brings the 8 s rhythm (10 s for the dots) back (after 2 minutes of calm it slows to 30 s).
 for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart']) {
   window.addEventListener(type, () => {
     const wasIdle = isIdle(live.activity, Date.now(), document.hidden);
     live.activity = Date.now();
     if (wasIdle && current && !document.hidden && !live.busy) schedule();
+    // The dots come back to life too: a check at once instead of waiting out the 30 s (issue #488).
+    if (wasIdle && !document.hidden) wakeDots();
   }, { passive: true });
+}
+
+// A gesture after a calm moment, or a return to the tab, checks the other projects' dots at once (issue #488),
+// unless they were just checked (then the next round comes 10 s after it) or GitHub asked to wait.
+function wakeDots() {
+  if (!token) return;
+  const wait = dotsWake({ now: Date.now(), last: dotsLast, pausedUntil: dotsPausedUntil });
+  if (wait === 0) return refreshDots();
+  if (wait != null) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait); }
 }
 
 // Coming back to the tab refreshes at once (unless it just did); while hidden it keeps polling every 30 s.
 document.addEventListener('visibilitychange', () => {
+  // The owner is back: the active rhythm (8 s board, 10 s dots) starts now.
+  if (!document.hidden) { live.activity = Date.now(); wakeDots(); }
   if (!current) return clearTimeout(live.timer);
   if (document.hidden) return schedule();
-  live.activity = Date.now();
   if (Date.now() - live.last > 5000) refresh(); else schedule();
 });
 
@@ -1481,7 +1509,8 @@ async function updateTrigger(repo) {
   }
 }
 
-function selectTab(name) {
+// `focus`: also put the cursor in the tab's field (a click on « Agent », not the arrow keys moving along the tabs).
+function selectTab(name, focus = false) {
   const fromChat = !$('chat').hidden;
   for (const t of ['board', 'chat', 'rules']) {
     $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
@@ -1489,6 +1518,50 @@ function selectTab(name) {
   }
   // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
   if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
+  // Issue #460: the « Agent » tab uses exactly the height left under the header.
+  document.body.classList.toggle('chat-wide', name === 'chat');
+  if (name !== 'chat') setChatFull(false);
+  fitChat();
+  if (name === 'chat' && focus) focusChat();
+}
+
+// Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
+// while it is missing, the message box otherwise. Never on a phone: the keyboard would hide half the screen.
+function focusChat() {
+  if (!matchMedia('(pointer: fine)').matches) return;
+  const field = $(needsReadToken() ? 'read-token' : 'chat-input');
+  field.focus({ preventScroll: true }); // the browser would centre it, pushing the tabs off a short screen
+  // A laptop screen can leave the box just below the fold: show it whole, with its focus ring.
+  (field.closest('.composer') || field).scrollIntoView({ block: 'nearest' });
+}
+
+// Issue #473: the « Agent » tab at the usual width, or full screen (only the top bar and the project list stay).
+// Never remembered: a reload opens it at the usual width.
+function setChatFull(on) {
+  document.body.classList.toggle('chat-fullscreen', on);
+  const label = on ? 'Largeur normale' : 'Plein écran';
+  $('chat-full').setAttribute('aria-label', label);
+  $('chat-full').title = label;
+  fitChat();
+}
+$('chat-full').addEventListener('click', () => setChatFull(!document.body.classList.contains('chat-fullscreen')));
+// The full screen exists on a computer only: shrinking the window to a phone's width ends it.
+matchMedia('(max-width: 700px)').addEventListener('change', (e) => { if (e.matches && document.body.classList.contains('chat-fullscreen')) setChatFull(false); });
+// Échap leaves the full screen, unless it is closing a window opened over it (an enlarged image, a dialog).
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || !document.body.classList.contains('chat-fullscreen') || document.querySelector('dialog[open]')) return;
+  setChatFull(false);
+});
+
+function fitChat() {
+  const box = $('chat');
+  if (box.hidden) return;
+  box.style.setProperty('--chat-top', `${Math.max(0, box.getBoundingClientRect().top + scrollY)}px`);
+}
+addEventListener('resize', fitChat);
+if ('ResizeObserver' in window) {
+  const watch = new ResizeObserver(() => fitChat());
+  for (const n of document.querySelectorAll('.top, .project-head, .tabs')) watch.observe(n);
 }
 
 // A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
@@ -1926,6 +1999,7 @@ $('project-switch').addEventListener('click', () => {
 });
 $('projects-close').addEventListener('click', () => $('projects-dialog').close());
 $('general-review').addEventListener('click', () => startGeneralReview());
+$('ui-polish').addEventListener('click', () => startUiPolish());
 $('stack-open').addEventListener('click', () => openStack().catch(() => toast("La fiche ne s'est pas chargée.")));
 // A click on the dimmed page around the sheet closes it too (it only shows something).
 $('stack').addEventListener('click', (e) => { if (e.target === $('stack')) $('stack').close(); });
@@ -2025,26 +2099,31 @@ async function askStack(repo, btn) {
   }
 }
 
-// Opens an issue labeled factory:audit: the relay starts the general review run (or queues it).
-async function startGeneralReview() {
+// Opens a card the relay starts at once (or queues), with no questions and no spec: a general review (factory:audit)
+// or a UI improvement (factory:ui-polish, issue #462).
+async function startRun(buttonId, { question, title, label, body, done, failed }) {
   if (!current) return;
-  if (!confirm('Lancer une review générale de l\'appli ?')) return;
-  const btn = $('general-review');
+  if (!confirm(question)) return;
+  const btn = $(buttonId);
   btn.disabled = true;
   try {
     const issue = await api(`/repos/${current.repo.full_name}/issues`, {
       method: 'POST',
-      body: JSON.stringify({ title: 'Review générale de l\'appli', labels: ['factory:audit'], body: REVIEW_BODY }),
+      body: JSON.stringify({ title, labels: [label], body }),
     });
-    toast('Review générale lancée');
+    toast(done);
     if (issue?.html_url) window.open(issue.html_url, '_blank', 'noopener');
     await renderBoard();
   } catch (e) {
-    toast(`Impossible de lancer la review. ${errorText(e)}`);
+    toast(`${failed} ${errorText(e)}`);
   } finally {
     btn.disabled = false;
   }
 }
+const startGeneralReview = () => startRun('general-review', { question: 'Lancer une review générale de l\'appli ?',
+  title: 'Review générale de l\'appli', label: 'factory:audit', body: REVIEW_BODY, done: 'Review générale lancée', failed: 'Impossible de lancer la review.' });
+const startUiPolish = () => startRun('ui-polish', { question: 'Lancer une amélioration de l\'interface ?',
+  title: 'Amélioration UI de l\'appli', label: 'factory:ui-polish', body: UI_POLISH_BODY, done: 'Amélioration UI lancée', failed: 'Impossible de lancer l\'amélioration.' });
 // ---- Agent (chat) -------------------------------------------------------------------------------
 // A chat with the agent. Two ways to reach it:
 // - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within
@@ -2114,6 +2193,8 @@ const needsReadToken = () => Boolean(chat.server) && !readToken;
 function drawReadTokenCard() {
   const needed = needsReadToken();
   $('chat').classList.toggle('needs-token', needed);
+  // Issue #473: the card has no full-screen button, so never leave the owner in full screen without a way out.
+  if (needed && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('chat-setup').hidden = !needed;
   $('read-token-link').href = READ_TOKEN_URL;
   return needed;
@@ -2178,6 +2259,7 @@ async function openChat() {
   if (!current) return;
   if (chat.repo !== current.repo.full_name) return resetChat();
   if (drawReadTokenCard()) return;
+  pickDefaultConversation(); // the list fetched in the background, if any
   // Wakes the chat server up while the owner types (it sleeps when unused).
   if (chat.server && Date.now() - chat.warmed > 60_000) { chat.warmed = Date.now(); fetch(`${chat.server}/health`).catch(() => {}); }
   drawChat();
@@ -2199,6 +2281,7 @@ async function refreshServerChat() {
   const index = await branchJson('index.json');
   if (chat.repo !== repo) return;
   chat.list = serverList(index);
+  pickDefaultConversation();
   const id = chat.open;
   if (id && id !== 'new' && !chat.live) {
     const conv = await branchJson(`chats/${id}.json`);
@@ -2209,16 +2292,32 @@ async function refreshServerChat() {
   }
 }
 
+// Once per project, when its conversations first arrive (issue #477): open the most recent one still open,
+// else a new one. A draft already started keeps the new conversation.
+// Only while the tab is shown: a background check from another tab must not choose (nor poll) a conversation.
+function pickDefaultConversation() {
+  if (chat.open != null || !chat.list || $('chat').hidden) return;
+  const drafting = chat.live || chat.sending || chat.pending || chat.files.length || $('chat-input').value.trim();
+  chat.open = drafting ? 'new' : defaultConversation(chat.list, Boolean(chat.server));
+  if (chat.open === 'new') return;
+  $('chat').classList.add('viewing');
+  // Its answers are already there, not new ones: nothing to read out.
+  announced = { id: chat.open, count: Infinity };
+  drawChat(); // its title and « Chargement… » at once, never the new conversation meanwhile
+}
+
 async function refreshChat() {
   if (chat.busy) return;
   chat.busy = true;
   const repo = chat.repo;
+  const clicks = chat.clicks;
   try {
     if (chat.server) { await refreshServerChat(); chat.error = false; drawChat(); return; }
     const list = await chatGet(`/repos/${repo}/issues?labels=${encodeURIComponent(CHAT_LABEL)}&state=all&sort=updated&direction=desc&per_page=50`);
     if (chat.repo !== repo) return;
     chat.list = conversations(list);
     chat.error = false;
+    pickDefaultConversation();
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
@@ -2240,7 +2339,8 @@ async function refreshChat() {
     else if (!$('chat').hidden) toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
     chat.busy = false;
-    scheduleChat(chat.repo !== repo ? 0 : undefined); // the project changed meanwhile: check the new one now
+    // The project or the conversation changed meanwhile (the owner clicked another one): fetch it now.
+    scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
   }
 }
 
@@ -2282,11 +2382,35 @@ function inlineNodes(parts) {
   });
 }
 
+// Issue #460: one click copies a command or a whole answer; a short word on the button confirms it.
+async function copyText(btn, text) {
+  const label = btn.querySelector('.copy-label');
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+  btn.classList.toggle('copied', ok);
+  label.textContent = ok ? 'Copié ✓' : 'Copie impossible';
+  clearTimeout(btn.reset);
+  btn.reset = setTimeout(() => { btn.classList.remove('copied'); label.textContent = btn.dataset.label; }, 2000);
+}
+
+const COPY_ICON = () => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  return svg;
+};
+
+const copyButton = (label, cls, getText) => el('button', { type: 'button', class: `copy ${cls}`, 'data-label': label, onclick: (e) => copyText(e.currentTarget, getText()) },
+  COPY_ICON(), el('span', { class: 'copy-label', 'aria-live': 'polite' }, label));
+
+const TONE_NAMES = { warn: 'Attention', ok: 'Réussite', todo: 'À faire' };
+
 function richText(text) {
   return markdown(text).map((b) => {
     if (b.type === 'p') return el('p', {}, inlineNodes(b.inline));
     if (b.type === 'quote') return el('blockquote', {}, inlineNodes(b.inline));
-    if (b.type === 'pre') return el('pre', {}, b.v);
+    if (b.type === 'callout') return el('p', { class: `callout ${b.tone}` }, el('span', { class: 'visually-hidden' }, `${TONE_NAMES[b.tone]} : `), inlineNodes(b.inline));
+    if (b.type === 'pre') return el('div', { class: 'code' }, el('pre', {}, b.v), copyButton('Copier', 'copy-code', () => b.v));
     return el(b.type, {}, b.items.map((it) => el('li', {}, inlineNodes(it))));
   });
 }
@@ -2295,7 +2419,11 @@ function richText(text) {
 // fetched once and shown from a local copy.
 function chatImage(path) {
   const img = el('img', { alt: 'Image envoyée', loading: 'lazy' });
-  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener' }, img);
+  const link = el('a', { class: 'shot', target: '_blank', rel: 'noopener', 'aria-label': 'Agrandir l\'image', onclick: (e) => {
+    if (!img.src || e.metaKey || e.ctrlKey || e.shiftKey) return; // a new tab when asked for
+    e.preventDefault();
+    openLightbox(img.src);
+  } }, img);
   const show = (url) => { img.src = url; link.href = url; };
   if (path.startsWith('blob:')) { show(path); return link; }
   if (!chat.images.has(path)) {
@@ -2308,6 +2436,11 @@ function chatImage(path) {
   return link;
 }
 
+function openLightbox(src) {
+  $('lightbox-img').src = src;
+  $('lightbox').showModal();
+}
+
 function bubble(m) {
   const pics = (m.images || []).map(chatImage);
   const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), l] : [l])))];
@@ -2317,8 +2450,23 @@ function bubble(m) {
     ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
       el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Fonctionnalité créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
     ...(m.proposals || []).map(proposalCard),
-    el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'));
+    el('div', { class: 'msg-foot' },
+      el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'),
+      m.who === 'agent' && m.text ? copyButton('Copier la réponse', 'copy-answer', () => m.text) : null));
 }
+
+// « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », the time ticking every second (issue #460).
+const USUAL_WAIT = 'd\'habitude, environ 1 à 2 min';
+function thinkingMeta(label, since) {
+  const at = Date.parse(since || '') || Date.now();
+  return el('span', { class: 'meta thinking-meta' }, label, ' ',
+    el('span', { class: 'num', 'data-since': String(at) }, elapsed(Date.now() - at)),
+    el('span', { class: 'usual' }, ` · ${USUAL_WAIT}`));
+}
+setInterval(() => {
+  for (const n of document.querySelectorAll('[data-since]')) n.textContent = elapsed(Date.now() - Number(n.dataset.since));
+}, 1000);
+
 
 // ---- Requests the agent proposes (issue #492) ----------------------------------------------------
 // Nothing is created until the owner clicks « Créer cette demande » on the card under the answer.
@@ -2408,7 +2556,7 @@ function liveBubble() {
     live.text
       ? el('div', { class: 'bubble' }, richText(live.text))
       : el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-    el('span', { class: 'meta' }, live.status || 'Réfléchit…'));
+    thinkingMeta(live.status || 'Réfléchit…', live.since));
 }
 
 function drawLive() {
@@ -2452,10 +2600,11 @@ function drawChatList() {
 }
 
 function drawChat() {
+  fitChat();
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
   if (chat.server) return drawServerChat(isNew);
-  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || '';
+  $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || chat.list?.find((c) => c.number === chat.open)?.title || '';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
@@ -2469,7 +2618,7 @@ function drawChat() {
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
       ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        el('span', { class: 'meta' }, 'L\'agent réfléchit…'))
+        thinkingMeta('Réfléchit…', chat.pending?.since || waitingSince(messages) || messages.findLast((m) => m.who === 'me')?.at))
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
@@ -2525,6 +2674,7 @@ function drawServerChat(isNew) {
 function selectConversation(n) {
   if (chat.live && n !== chat.open) return toast('Attendez la fin de la réponse en cours.');
   chat.open = n;
+  chat.clicks = (chat.clicks || 0) + 1; // a check already running fetches the old one: refreshChat checks again at once
   chat.pending = null;
   if (chat.issue?.number !== n) { chat.issue = null; chat.comments = []; }
   if (chat.conv?.id !== n) chat.conv = null;
@@ -2608,7 +2758,7 @@ async function sendChat(text, withImages = true) {
   btn.disabled = true;
   chat.sending = true;
   try {
-    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url) }; drawChat(); }
+    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
     const paths = await uploadImages(repo, files);
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
@@ -2656,7 +2806,7 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.pending = { text, previews: files.map((f) => f.url) };
-  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…' };
+  const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages) {
     $('chat-input').value = '';
     chat.files = [];
@@ -2855,6 +3005,8 @@ $('chat-input').addEventListener('keydown', (e) => {
   }
 });
 $('chat-new').addEventListener('click', () => selectConversation('new'));
+$('lightbox').addEventListener('click', () => $('lightbox').close());
+$('lightbox').addEventListener('close', () => { $('lightbox-img').removeAttribute('src'); });
 $('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
 $('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));
 $('chat-bug').addEventListener('click', () => sendChat(ASK.bug, false));
@@ -2876,7 +3028,8 @@ $('chat-close').addEventListener('click', () => closeConversation());
 setupTabs(document.querySelector('.tabs'));
 watchNumbers($('app'));
 $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard(); });
-$('tab-chat').addEventListener('click', () => selectTab('chat'));
+// The arrow keys of the tab list click from code (untrusted): the keyboard stays on the tabs (WAI-ARIA tabs pattern).
+$('tab-chat').addEventListener('click', (e) => selectTab('chat', e.isTrusted));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));

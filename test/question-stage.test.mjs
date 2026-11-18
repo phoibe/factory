@@ -19,3 +19,17 @@ test('the question stage only proposes a request, the owner creates it with a cl
   assert.doesNotMatch(stage, /crée l'issue avec l'API REST/i);
   assert.doesNotMatch(stage, /state=closed/);
 });
+
+test('both chat agents know the coloured callouts and keep them for what matters (issue #460)', () => {
+  const server = readFileSync(new URL('../server/chat/core.py', import.meta.url), 'utf8');
+  for (const text of [stage, server]) {
+    assert.match(text, /⚠️[^\n]*orange/);
+    assert.match(text, /✅[^\n]*vert/);
+    assert.match(text, /➡️[^\n]*bleu/);
+    assert.match(text, /seulement\s+quand ça compte/);
+  }
+});
+
+test('the question agent never creates a ticket itself, by any means (issue #492)', () => {
+  assert.match(stage, /ni `gh api …\/issues`, ni `gh issue create`, ni autre moyen/);
+});

@@ -1,0 +1,19 @@
+{"t":"2026-11-18T15:19:04.462Z","kind":"run","stage":"build","issue":466,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-18T15:19:34.342Z","kind":"skill","name":"writing-plans","id":"toolu_01Vc5prySuwtFkXwtuTg3hMF"}
+{"t":"2026-11-18T15:19:46.429Z","kind":"skill","name":"executing-plans","id":"toolu_01S35aviWjtpKW47xVZk3oo6"}
+{"t":"2026-11-18T15:19:46.685Z","kind":"skill","name":"test-driven-development","id":"toolu_015ak7KuYZeDYmDXGWxbZRbN"}
+{"t":"2026-11-18T15:20:35.519Z","kind":"test","cmd":"cat > test/readme-rule.test.mjs <<'EOF'\n// Issue #466: every project's README (« présentation ») is written in French, follows GitHub's recommended\n// content, and is reviewed on each delivered featur","ok":false,"id":"toolu_01KQZBxyBdrVDiCmmsKkKQK3"}
+{"t":"2026-11-18T15:21:34.012Z","kind":"test","cmd":"cat > agent/stages/readme.md <<'EOF'\n# Guide : la présentation du projet (README)\n\nCe n'est pas une étape à part : `foundation.md` (nouveau projet) et `build.md` (chaque feature livrée) t'envoient ici","ok":false,"id":"toolu_01AJhurZgPbJ2WcGkmmPGa4G"}
+{"t":"2026-11-18T15:21:36.651Z","kind":"test","cmd":"node --test test/readme-rule.test.mjs 2>&1 | grep -A8 \"^not ok\" | head -30","ok":false,"id":"toolu_01TNWE352VzzPwXkrd9JjfPe"}
+{"t":"2026-11-18T15:22:24.883Z","kind":"test","cmd":"sed -i \"s#/courte?/#/courte/i#; s#/n'ajoute jamais de licence/#/n'ajoutes? jamais de licence/#\" test/readme-rule.test.mjs && npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\"; for s in typecheck lint b","ok":false,"id":"toolu_019P8h8pUXjYsCszByHMN1B9"}
+{"t":"2026-11-18T15:22:26.550Z","kind":"test","cmd":"node --test test/readme-rule.test.mjs 2>&1 | grep -A10 \"^not ok\" | head -14","ok":false,"id":"toolu_019KVznpifbzh5dSjYqQ8euS"}
+{"t":"2026-11-18T15:23:07.239Z","kind":"test","cmd":"sed -i \"s#/capture\\[^\\\\\\\\n\\]\\*page d'accueil/#/capture[^\\\\\\\\n]*page d'accueil/i#\" test/readme-rule.test.mjs && grep -n \"page d'accueil/\" test/readme-rule.test.mjs && npm test 2>&1 | grep -E \"^# (pass|","ok":true,"id":"toolu_01J7XxZVW5uk53hYG8QFiHqJ"}
+{"t":"2026-11-18T15:23:16.698Z","kind":"skill","name":"requesting-code-review","id":"toolu_011vG61gTYMVKRXnrrDuzceu"}
+{"t":"2026-11-18T15:23:26.963Z","kind":"agent","model":"opus","effort":"high","label":"Final code review #466","id":"toolu_01UunGNPdSbzWGMPZnjbGc7S"}
+{"t":"2026-11-18T15:25:07.364Z","kind":"test","cmd":"npm test 2>&1 | tail -15","ok":true,"id":"toolu_015oXk8MT4mWvnCNWHxvb8UR"}
+{"t":"2026-11-18T15:26:02.735Z","kind":"skill","name":"receiving-code-review","id":"toolu_01YNhySkzBmwhkNB6is7UJ5W"}
+{"t":"2026-11-18T15:27:00.135Z","kind":"test","cmd":"cat >> test/readme-rule.test.mjs <<'EOF'\n\ntest('the home-page screenshot sits between the address and the list of features, as the spec orders', () => {\n  const g = read('agent/stages/readme.md');\n  c","ok":false,"id":"toolu_01Ki6ZgZXDgtubzUpZM6X6vi"}
+{"t":"2026-11-18T15:27:48.247Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\np=…; s=…\nimg=…\ns=…\nold=…\nassert old in s\ns=… old+img,1)\nold_cap=… d\\'écran**'):s.index('## Quand la mettre à jour')]\nnew_cap=…'**Adresse** : prends-la dans les réglages du ","ok":true,"id":"toolu_01Nvh9HtD7AbP4ceiUhpR3dy"}
+{"t":"2026-11-18T15:27:53.335Z","kind":"skill","name":"verification-before-completion","id":"toolu_01BP8zUiLuqqFhLWdRBYfLLg"}
+{"t":"2026-11-18T15:28:43.607Z","kind":"test","cmd":"git add agent test && git commit -qm \"fix(agent): README screenshot order and timing, factory exclusion in build step (#466)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: ht","ok":true,"id":"toolu_01TCRcee3PfMUrTAnupgaPTK"}
+{"t":"2026-11-18T15:29:26.680Z","kind":"test","cmd":"git checkout --theirs docs/specs/README.md && node .factory/scripts/specs.mjs index && grep -c \"466\\|^- \" docs/specs/README.md && grep -n \"<<<<\\|>>>>\" docs/specs/README.md; git add docs/specs/README.m","ok":true,"id":"toolu_01YPwvTJDYPxpwhTkfFrQzPi"}

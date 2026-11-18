@@ -852,7 +852,7 @@ test('autoPick: urgent goes first, a feature starts by grilling and holds back o
 
 test('autoPick never takes held, running, waiting, question, project or release issues', async () => {
   const issues = [fi(1, L.feature, L.noPick), fi(2, L.question), fi(3, L.project), fi(4, 'factory:release'), fi(5, L.feature, L.grilling),
-    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement')];
+    fi(6, L.feature, L.specReview), fi(7, L.bug, L.blocked), fi(9, L.feature, L.running), fi(10, L.audit), fi(11, 'enhancement'), fi(12, L.uiPolish)];
   const { started } = await runPick(issues, { ...pickConfig, maxParallel: 20 });
   assert.deepEqual(started, []);
 });
@@ -2288,6 +2288,13 @@ test('a queued stack card starts the stack stage when a place frees', async () =
   assert.equal(payloadOf(sent[0].init.body).stage, 'stack');
 });
 
+test('a queued « Amélioration UI » card starts the ui-polish stage when a place frees (issue #462)', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.uiPolish, L.queued] }], prs: [] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
+  assert.equal(payloadOf(sent[0].init.body).stage, 'ui-polish');
+});
+
 test('a failed lookup of the stack sheet (not a 404) opens no card', async () => {
   const { gh } = stackWorld();
   gh.getContent = async (path) => { if (path === 'STACK.md') throw new Error('502 Bad Gateway'); return { content: '' }; };
@@ -3194,12 +3201,87 @@ test('the same captures are never posted twice, and nothing is posted outside th
   const again = shotsGh({ comments: [{ body, user: { login: 'github-actions[bot]' } }] });
   await relayFor(again).handle(labeledChecks);
   assert.ok(!again.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'already posted');
-  const noReview = shotsGh({ labels: [L.checks] });
-  await relayFor(noReview).handle({ ...labeledChecks, labels: [L.checks] });
-  assert.ok(!noReview.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures to validate');
+  const noLabel = shotsGh({ labels: [] });
+  await relayFor(noLabel).handle({ ...labeledChecks, action: 'opened', labels: [] });
+  assert.ok(!noLabel.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'not handed over yet');
   const empty = shotsGh({ dirs: [] });
   await relayFor(empty).handle(labeledChecks);
   assert.ok(!empty.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('shots:')), 'no captures pushed');
+});
+
+// Issue #455: the card enters « Captures à valider » only once its captures are visible in the PR, never before.
+const handedOver = { ...labeledChecks, labels: [L.checks] };
+const relayOf = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
+
+test('the factory puts the card in « Captures à valider » itself, right after posting its captures (#455)', async () => {
+  const gh = shotsGh({ labels: [L.checks] });
+  await relayOf(gh).handle(handedOver);
+  const post = gh.calls.findIndex((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted'));
+  const label = gh.calls.findIndex((c) => c[0] === 'add' && c[1] === 7 && c.includes(L.visualReview));
+  assert.ok(post >= 0, 'captures posted');
+  assert.ok(label > post, 'labelled after the table is there');
+});
+
+test('no captures pushed: the card stays in « Contrôles », never in « Captures à valider » (#455)', async () => {
+  const gh = shotsGh({ labels: [L.checks], dirs: [] });
+  await relayOf(gh).handle(handedOver);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)));
+});
+
+test('an agent that still sets « Captures à valider » before any capture is shown is put back in « Contrôles » at once (#455)', async () => {
+  const gh = shotsGh({ dirs: [] });
+  await relayOf(gh).handle({ ...labeledChecks, addedLabel: L.visualReview });
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 7 && c[2] === L.visualReview));
+});
+
+test('captures already shown and validated are not asked again when the checks are handed over once more (#455)', async () => {
+  const first = shotsGh({ labels: [L.checks] });
+  await relayOf(first).handle(handedOver);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  const ok = { body: `${VISUAL_OK_MARKER}\n${AGENT_MARKER}\nCaptures validées ✅`, user: { login: 'github-actions[bot]' } };
+  const again = shotsGh({ labels: [L.checks], comments: [{ body, user: { login: 'github-actions[bot]' } }, ok] });
+  await relayOf(again).handle(handedOver);
+  assert.ok(!again.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)));
+  assert.ok(!again.calls.some((c) => c[0] === 'remove' && c[2] === L.visualReview));
+});
+
+test('captures shown but never validated keep the card in « Captures à valider », even posted by an earlier event (#455)', async () => {
+  const first = shotsGh({ labels: [L.checks] });
+  await relayOf(first).handle(handedOver);
+  const body = first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  // The table went out on an earlier event, then the label was lost (the agent took it off for a retouch, a failed call…).
+  const later = shotsGh({ labels: [L.checks], comments: [{ body, user: { login: 'github-actions[bot]' } }] });
+  await relayOf(later).handle(handedOver);
+  assert.ok(later.calls.some((c) => c[0] === 'add' && c[1] === 7 && c.includes(L.visualReview)));
+});
+
+test('no screen changed since the captures shown: the card is not asked to validate them again (#455)', async () => {
+  const first = shotsGh({ labels: [L.checks] });
+  await relayOf(first).handle(handedOver);
+  const table = { body: first.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2], user: { login: 'github-actions[bot]' } };
+  const unchanged = { body: `${AGENT_MARKER}\n<!-- shots: claude/factory-assets -->\n<!-- factory-shots-unchanged -->\nJ'ai comparé tous les écrans : aucun n'a changé d'apparence.`, user: { login: 'phoibe' } };
+  const ok = { body: `${VISUAL_OK_MARKER}\n${AGENT_MARKER}\nCaptures validées ✅`, user: { login: 'github-actions[bot]' } };
+  const remark = { body: 'Le bouton est trop gros', user: { login: 'phoibe' } };
+  for (const comments of [[table, ok, unchanged], [table, remark, unchanged]]) {
+    const gh = shotsGh({ labels: [L.checks], comments });
+    await relayOf(gh).handle(handedOver);
+    assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.visualReview)), JSON.stringify(comments.map((c) => c.body.slice(0, 20))));
+  }
+});
+
+test('a GitHub error while setting « Captures à valider » does not stop the hand-over (#455)', async () => {
+  const gh = shotsGh({ labels: [L.checks] });
+  const add = gh.addLabels;
+  gh.addLabels = async (n, ls) => { if (ls.includes(L.visualReview)) throw new Error('HTTP 502'); return add(n, ls); };
+  await relayOf(gh).handle(handedOver);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 7 && c[2].includes('factory-shots-posted')));
+});
+
+test('a passing read failure of the captures does not take the card out of « Captures à valider » (#455)', async () => {
+  const gh = shotsGh();
+  gh.getContent = async () => { throw new Error('HTTP 502'); };
+  await relayOf(gh).handle({ ...labeledChecks, addedLabel: L.visualReview });
+  assert.ok(!gh.calls.some((c) => c[0] === 'remove' && c[2] === L.visualReview));
 });
 
 test('a table the agent already posted for the same captures is not posted again by the factory (#378, transition)', async () => {
@@ -3234,6 +3316,29 @@ test('green checks with captures waiting on the assets branch post them instead 
   await createRelay({ gh, repo: 'phoibe/factory', config: allStages, env: { ...env }, fetchImpl: fetchOk(sent), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
   assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('ecran--desktop--sombre.png')), 'captures posted');
   assert.ok(!sent.some((s) => /"stage":"skills-fix"/.test(JSON.parse(s.init.body).text)), 'no catch-up run');
+});
+
+test('green checks with captures never posted put the card in « Captures à valider » before asking anything (#455)', async () => {
+  const gh = prWithSkippedSteps();
+  const state = { comments: [], labels: [L.checks] };
+  gh.listComments = async () => state.comments;
+  gh.comment = async (n, body) => { gh.calls.push(['comment', n, body]); state.comments.push({ body, user: { login: 'github-actions[bot]' } }); };
+  gh.addLabels = async (n, ls) => { gh.calls.push(['add', n, ...ls]); if (n === 10) state.labels.push(...ls); };
+  gh.getIssue = async (n) => ({ number: n, state: 'open', labels: (n === 10 ? state.labels : [L.feature, L.building]).map((name) => ({ name })) });
+  const journal = [{ t: '1', kind: 'run', stage: 'build' }, { t: '2', kind: 'skill', name: 'writing-plans' }, { t: '3', kind: 'skill', name: 'test-driven-development' },
+    { t: '4', kind: 'skill', name: 'requesting-code-review' }, { t: '5', kind: 'skill', name: 'impeccable' }, { t: '6', kind: 'test', ok: false }, { t: '7', kind: 'test', ok: true }].map((e) => JSON.stringify(e)).join('\n');
+  gh.getContent = async (path, ref) => {
+    if (ref !== 'claude/factory-assets') return { content: Buffer.from(journal).toString('base64') };
+    if (path === 'pr-10') return [{ name: '2026-11-13T14-18-33-759Z', type: 'dir' }];
+    if (path === 'pr-10/2026-11-13T14-18-33-759Z/compare') return [{ name: 'ecran--desktop.png', type: 'file' }];
+    return null;
+  };
+  await createRelay({ gh, repo: 'phoibe/factory', config: allStages, env: { ...env }, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} }).report({ result: 'success', pr: 10 });
+  const post = gh.calls.findIndex((c) => c[0] === 'comment' && c[1] === 10 && c[2].includes('factory-shots-posted'));
+  const label = gh.calls.findIndex((c) => c[0] === 'add' && c[1] === 10 && c.includes(L.visualReview));
+  assert.ok(post >= 0 && label > post, 'table, then « Captures à valider »');
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'), 'not merged without the owner\'s « ok »');
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.acceptance)), 'no recette before the captures are validated');
 });
 
 test('an agent table whose dark rows arrived broken does not stop the factory from posting the right one (#378)', async () => {
@@ -3622,4 +3727,86 @@ test('#440 review: a French title that merely starts with an ordinary word keeps
   const { plainTitle } = await import('../scripts/relay/shared.mjs');
   assert.equal(plainTitle('Style : nouvelles couleurs'), 'Style : nouvelles couleurs');
   assert.equal(plainTitle('docs(readme): x'), 'x');
+});
+
+// Issue #490: the owner's answer (« go », « ok ») came while GitHub was down: the run failed for good and the answer
+// was never seen. An outage now ends the run like the rate limit, on the step the tick re-runs, so the event is replayed.
+test('a GitHub outage ends a decision on the « retried at the next tick » step instead of losing the event', async () => {
+  const { retriedLater } = await import('../scripts/relay.mjs');
+  const { RateLimited } = await import('../scripts/lib/ratelimit.mjs');
+  const down = Object.assign(new Error('GET /repos/o/r/issues/1 -> 502 Bad Gateway'), { githubDown: true });
+  for (const cmd of ['decide', 'release', 'report']) {
+    assert.equal(retriedLater(cmd, down), true, cmd);
+    assert.equal(retriedLater(cmd, new RateLimited(120_000)), true, cmd);
+    assert.equal(retriedLater(cmd, new Error('TypeError: x is not a function')), false, cmd); // a code bug still fails
+  }
+  assert.equal(retriedLater('prod-report', down), false); // no step marks that run: it must fail visibly
+});
+
+// Issue #490, review: the replay of an « ok » whose merge went through just before GitHub went down finds the PR
+// merged. The merge is not tried again and the owner is not told the PR is « fermée »: the end of the delivery
+// (labels, « C'est fusionné ✅ », the issue closed) is done now, as if the merge had just succeeded.
+test('the replay of an « ok » on a PR already merged finishes the delivery without merging again', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'), 'not merged twice');
+  assert.equal(sent.length, 0);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fermée/.test(c[2])), 'no « PR fermée » message for a merged PR');
+  assert.ok(gh.calls.some((c) => c[0] === 'remove' && c[1] === 10 && c[2] === L.acceptance));
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fusionné ✅/.test(c[2])));
+  assert.ok(gh.calls.some((c) => c[0] === 'close' && c[1] === 1));
+});
+
+test('a change asked on a merged PR still gets the « PR fermée » answer (only the « ok » is finished quietly)', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.awaitingProd] }] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'change la couleur du bouton', fromOwner: true });
+  assert.equal(sent.length, 0);
+  assert.ok(gh.calls.some((c) => c[0] === 'comment' && c[1] === 10 && /fermée/.test(c[2])));
+});
+
+// Issue #490, review: an outage often stops a decision before the relay script even runs (checkout, setup-node), and
+// a re-run must never start an agent job again (a second agent, without the queue lock nor factory:running).
+test('the tick re-runs a decision stopped by GitHub before the relay ran, never a run whose agent job failed', async () => {
+  const { RATE_LIMIT_STEP } = await import('../scripts/relay.mjs');
+  const gh = fakeGh({ issues: [], prs: [] });
+  const recent = new Date().toISOString();
+  const runs = [6, 7, 8, 9, 10].map((id) => ({ id, run_attempt: 1, created_at: recent }));
+  const relayStep = 'Run node .factory-src/scripts/relay.mjs decide';
+  const jobs = {
+    6: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run actions/checkout@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] },
+      { name: 'factory / agent', conclusion: 'skipped', steps: [] }],
+    7: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/setup-node@v4', conclusion: 'failure' }, { name: relayStep, conclusion: 'skipped' }] }],
+    8: [{ name: 'factory / decide', conclusion: 'failure', steps: [{ name: 'Run actions/checkout@v4', conclusion: 'success' }, { name: relayStep, conclusion: 'failure' }, { name: RATE_LIMIT_STEP, conclusion: 'skipped' }] }],
+    10: [{ name: 'factory / agent', conclusion: 'cancelled', steps: [] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+    9: [{ name: 'factory / decide', conclusion: 'success', steps: [] },
+      { name: 'factory / agent', conclusion: 'failure', steps: [{ name: 'Run anthropics/claude-code-action@v1', conclusion: 'failure' }] },
+      { name: 'factory / release', conclusion: 'failure', steps: [{ name: RATE_LIMIT_STEP, conclusion: 'failure' }] }],
+  };
+  Object.assign(gh, { failedRuns: async () => runs, runJobs: async (id) => jobs[id], rerunFailed: async (id) => gh.calls.push(['rerun', id]) });
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet }).handle({ kind: 'tick', event: 'schedule', labels: [], fromOwner: false });
+  assert.deepEqual(gh.calls.filter((c) => c[0] === 'rerun'), [['rerun', 6], ['rerun', 7]]);
+});
+
+// Issue #490, review: a merge GitHub answered with an outage (and that did not go through) is replayed by the tick,
+// not turned into a blocked card asking the owner to say « réessaie ».
+test('a merge stopped by a GitHub outage is passed on to be replayed, the card is not blocked', async () => {
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, state: 'open', base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  gh.merge = async () => { throw Object.assign(new Error('PUT /repos/r/pulls/10/merge -> 502 Bad Gateway'), { githubDown: true }); };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await assert.rejects(relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true }), /502/);
+  assert.ok(!gh.calls.some((c) => c[0] === 'add' && c.includes(L.blocked)));
+});
+
+test('an « ok » on a PR merged days ago does not start its delivery again', async () => {
+  const old = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: old, pull_request: { merged_at: old }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet });
+  await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fusionné ✅/.test(c[2])));
+  assert.ok(!gh.calls.some((c) => c[0] === 'close'));
 });

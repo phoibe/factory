@@ -63,6 +63,8 @@ export function expectations(stage, stages, ui, { small = false } = {}) {
   if (stage === 'bugfix') out.push({ skill: 'systematic-debugging', label: 'recherche de la cause', tdd: true });
   // The general review is asked for explicitly: both passes are expected whatever the stage toggles.
   if (stage === 'audit') return [{ skill: 'impeccable', label: 'passe design' }, { skill: 'requesting-code-review', label: 'revue de code' }];
+  // « Amélioration UI » (issue #462): the design rounds are the whole run.
+  if (stage === 'ui-polish') return [{ skill: 'impeccable', label: 'passe design' }];
   if (['build', 'bugfix', 'foundation'].includes(stage)) {
     if (on('review')) out.push({ skill: 'requesting-code-review', label: 'revue de code' });
     if (on('designPass') && ui) out.push({ skill: 'impeccable', label: 'passe design' });
@@ -169,7 +171,7 @@ export function routeLine(runs, { small = false } = {}) {
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
-  'skills-fix': 'Rattrapage des étapes', audit: 'Review générale', stack: 'Fiche stack technique',
+  'skills-fix': 'Rattrapage des étapes', audit: 'Review générale', 'ui-polish': 'Amélioration UI', stack: 'Fiche stack technique',
 };
 
 export function summarize(runs, { stages = {}, ui = false, small = false } = {}) {
@@ -191,7 +193,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
   const missing = missingSkills(runs, { stages, ui, small });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
   // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
-  const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit'].includes(r.stage))
+  const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit', 'ui-polish'].includes(r.stage))
     ? null : "_Pas de journal de construction dans cette PR : les skills utilisés n'ont pas pu être vérifiés._";
   const tdd = runs.filter((r) => expectations(r.stage, stages, ui).some((e) => e.tdd));
   const proof = tdd.length && tdd.every(redThenGreen) ? 'oui ✅ (un test a d\'abord échoué, puis est passé)' : tdd.length ? 'non ⚠️' : '—';
