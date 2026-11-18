@@ -21,7 +21,8 @@ const thread = { 7: [{ id: 1, body: `${AGENT}\n${ANSWER}`, user: { login: 'o' },
 async function openConversation(page, url) {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-  await page.locator('.conv', { hasText: 'Comment publier ?' }).click();
+  // The only conversation still open opens by itself (issue #477), on a phone too.
+  await page.locator('.conv.current', { hasText: 'Comment publier ?' }).waitFor({ state: 'attached' });
   await page.locator('#chat-messages .msg.agent').first().waitFor();
 }
 

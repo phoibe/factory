@@ -234,6 +234,13 @@ export function serverMessages(conv) {
 export const serverList = (index) => [...(index || [])]
   .sort((a, b) => (b.state === 'open') - (a.state === 'open') || Date.parse(b.updated) - Date.parse(a.updated));
 
+// The conversation the Agent tab opens on (issue #477): the most recent one still open, else a new one.
+// `list` is already sorted open first, most recent first (serverList / conversations).
+export function defaultConversation(list, server) {
+  const c = (list || []).find((x) => x.state === 'open');
+  return c ? (server ? c.id : c.number) : 'new';
+}
+
 // ---- Read-only token (issue #395) -----------------------------------------------------------------
 // The chat server only ever receives a second token that can read the projects, never change them. The panel
 // does the writes (conversation, issues) with the full token, which never leaves the browser.

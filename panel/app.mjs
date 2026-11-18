@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, githubBusy, wantedIssues, elapsed, waitingSince } from './chat.mjs?v=17';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, notCreatedNote, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince } from './chat.mjs?v=18';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2222,6 +2222,7 @@ async function refreshServerChat() {
   const index = await branchJson('index.json');
   if (chat.repo !== repo) return;
   chat.list = serverList(index);
+  pickDefaultConversation();
   const id = chat.open;
   if (id && id !== 'new' && !chat.live) {
     const conv = await branchJson(`chats/${id}.json`);
@@ -2230,6 +2231,15 @@ async function refreshServerChat() {
     const entry = chat.list.find((c) => c.id === id);
     if (chat.repo === repo && chat.open === id && conv && entry && threadShown()) markServerSeen(id, entry.updated);
   }
+}
+
+// Once per project, when its conversations first arrive (issue #477): open the most recent one still open,
+// else a new one. A draft already started keeps the new conversation.
+function pickDefaultConversation() {
+  if (chat.open != null) return;
+  const drafting = chat.live || chat.sending || chat.pending || chat.files.length || $('chat-input').value.trim();
+  chat.open = drafting ? 'new' : defaultConversation(chat.list, Boolean(chat.server));
+  if (chat.open !== 'new') $('chat').classList.add('viewing');
 }
 
 async function refreshChat() {
@@ -2242,6 +2252,7 @@ async function refreshChat() {
     if (chat.repo !== repo) return;
     chat.list = conversations(list);
     chat.error = false;
+    pickDefaultConversation();
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
