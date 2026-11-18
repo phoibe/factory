@@ -137,6 +137,7 @@ function show(id) {
   // The project list shows with a project only (none to choose from on the empty screen).
   $('projects').hidden = id !== 'project-view';
   document.body.classList.toggle('has-projects', id === 'project-view');
+  if (id !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   if (id !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
   if (typeof placeMenu === 'function') placeMenu();
 }
@@ -2154,6 +2155,8 @@ const needsReadToken = () => Boolean(chat.server) && !readToken;
 function drawReadTokenCard() {
   const needed = needsReadToken();
   $('chat').classList.toggle('needs-token', needed);
+  // Issue #473: the card has no full-screen button, so never leave the owner in full screen without a way out.
+  if (needed && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('chat-setup').hidden = !needed;
   $('read-token-link').href = READ_TOKEN_URL;
   return needed;

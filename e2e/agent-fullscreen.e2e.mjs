@@ -33,7 +33,9 @@ test('le bouton à deux flèches passe la conversation en plein écran, sous la 
     await openAgent(page, url);
     await full(page).click();
     await normal(page).waitFor();
-    assert.equal(await page.locator('.project-head').isVisible(), false, 'le haut du projet reste visible');
+    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), false, 'le haut du projet reste visible');
+    // The project name stays the page's title for screen readers, only out of sight.
+    assert.equal(await page.getByRole('heading', { level: 1 }).count(), 1, 'la page perd son titre');
     assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), false, 'les onglets restent visibles');
     const top = await page.locator('header.top').boundingBox();
     const list = await page.locator('#projects').boundingBox();
@@ -55,7 +57,7 @@ test('Échap ou un second clic sur le bouton reviennent à la largeur normale, a
     await full(page).click();
     await page.keyboard.press('Escape');
     await full(page).waitFor();
-    assert.equal(await page.locator('.project-head').isVisible(), true);
+    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), true);
     assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true);
     await full(page).click();
     await normal(page).click();
@@ -69,10 +71,11 @@ test('en plein écran, changer de projet garde l\'onglet Agent en plein écran',
     await openAgent(page, url);
     await full(page).click();
     await page.locator('#projects .project-item', { hasText: 'autre' }).click();
-    await page.waitForTimeout(300);
+    await page.locator('#projects .project-item[aria-current="true"]', { hasText: 'autre' }).waitFor();
+    await page.locator('#chat-new').waitFor();
     assert.equal(await page.locator('#chat').isVisible(), true, 'onglet Agent quitté');
     assert.equal(await normal(page).isVisible(), true, 'plein écran quitté');
-    assert.equal(await page.locator('.project-head').isVisible(), false);
+    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), false);
   });
 });
 
@@ -83,7 +86,7 @@ test('après un rechargement, l\'onglet Agent revient à la largeur normale', as
     await page.reload();
     await page.getByRole('tab', { name: 'Agent', exact: true }).click();
     await full(page).waitFor();
-    assert.equal(await page.locator('.project-head').isVisible(), true);
+    assert.equal(await page.getByRole('link', { name: 'Nouvelle fonctionnalité' }).isVisible(), true);
   });
 });
 
@@ -91,5 +94,48 @@ test('sur téléphone, pas de bouton plein écran', async () => {
   await withPanel({ issues: [question], comments: thread, viewport: { width: 390, height: 700 } }, async ({ page, url }) => {
     await openAgent(page, url);
     assert.equal(await full(page).isVisible(), false);
+  });
+});
+
+test('un clic sur une image agrandie puis Échap referme l\'image sans quitter le plein écran', async () => {
+  await withPanel({ issues: [question], comments: thread, viewport: desk }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).click();
+    await page.evaluate(() => document.querySelector('dialog.lightbox, dialog')?.showModal());
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    assert.equal(await normal(page).isVisible(), true, 'plein écran quitté');
+  });
+});
+
+test('le bouton garde le focus quand on bascule au clavier', async () => {
+  await withPanel({ issues: [question], comments: thread, viewport: desk }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).focus();
+    await page.keyboard.press('Enter');
+    await normal(page).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat-full');
+  });
+});
+
+test('si le jeton de lecture est redemandé en plein écran, on retrouve le haut du projet et les onglets', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', refuse: 401 }, viewport: desk }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await full(page).click();
+    await page.locator('#chat-input').fill('Encore là ?');
+    await page.locator('#chat-input').press('Enter');
+    await page.getByRole('heading', { name: 'Un jeton de lecture pour discuter' }).waitFor();
+    assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true, 'onglets cachés : pas de sortie');
+  });
+});
+
+test('se déconnecter en plein écran ne laisse pas la page de connexion collée à la barre du haut', async () => {
+  await withPanel({ issues: [question], comments: thread, viewport: desk }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).click();
+    await page.getByRole('button', { name: 'Se déconnecter' }).click();
+    await page.locator('#login').waitFor();
+    assert.equal(await page.evaluate(() => document.body.classList.contains('chat-fullscreen')), false);
   });
 });

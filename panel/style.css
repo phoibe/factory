@@ -627,8 +627,10 @@ body.chat-wide main { padding-bottom: 16px; }
 body.chat-fullscreen .chat-full .icon-collapse { display: block; }
 @media (min-width: 701px) {
   body.chat-fullscreen main { max-width: none; padding: 0; }
-  body.chat-fullscreen .project-head, body.chat-fullscreen .tabs { display: none; }
-  body.chat-fullscreen #chat:not([hidden]) { height: max(240px, calc(100dvh - var(--chat-top, 300px))); border: 0; border-radius: 0; box-shadow: none; }
+  /* The project name stays the page's title for screen readers, out of sight; the rest of the head goes. */
+  body.chat-fullscreen .project-head { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body.chat-fullscreen .project-head > :not(:first-child), body.chat-fullscreen .project-sub-line, body.chat-fullscreen .site-line, body.chat-fullscreen .project-switch, body.chat-fullscreen .tabs { display: none; }
+  body.chat-fullscreen #chat:not([hidden]):not(.needs-token) { height: max(240px, calc(100dvh - var(--chat-top, 300px))); border: 0; border-radius: 0; box-shadow: none; }
 }
 @media (max-width: 700px) { .chat-full { display: none; } }
 .messages, .composer, .pending-images { padding-inline: max(16px, calc((100% - 860px) / 2)); }
