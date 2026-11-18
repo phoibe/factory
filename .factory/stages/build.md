@@ -122,8 +122,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    dans le résumé (« Rien ne change pour vous »). La factory la mettra en ligne dès que les contrôles sont verts,
    sans lui demander de recette. Au moindre changement visible ou d'usage, pas de marqueur.
 9. **Captures** : si l'interface change et que l'étape screenshots est active, suis
-   `.factory/stages/screenshots.md`, puis mets les labels `factory:visual-review` puis `factory:checks` sur la PR
-   (les contrôles tournent pendant que le propriétaire regarde les captures ; son « ok » vaut recette). Mais
-   si l'outil dit qu'aucun écran n'a changé, mets `factory:checks` seul (voir `screenshots.md`) : pas de captures à valider sur un tableau vide.
+   `.factory/stages/screenshots.md`, puis mets `factory:checks` sur la PR : la factory publie les captures
+   et met elle-même la carte en « Captures à valider » (issue #455 ; les contrôles tournent pendant que le propriétaire
+   regarde les captures, son « ok » vaut recette). Ne pose jamais `factory:visual-review` toi-même.
    Sinon, mets directement `factory:checks` sur la PR.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
