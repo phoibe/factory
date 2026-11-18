@@ -53,3 +53,21 @@ test('sur téléphone, j\'arrive dans la conversation en cours, et la flèche re
     await page.locator('.conv', { hasText: 'Combien de demandes en cours ?' }).waitFor({ state: 'visible' });
   });
 });
+
+const AGENT = '<!-- factory-agent -->';
+const longThread = Array.from({ length: 6 }, (_, i) => ({ id: 10 + i, body: `${AGENT}\nPoint ${i}.\n\n${'Texte. '.repeat(80)}`, user: { login: 'o' }, author_association: 'OWNER', created_at: ago(20 - i) }));
+
+test('après quelques secondes sur le tableau, l\'onglet Agent s\'ouvre sur la fin de la conversation en cours', async () => {
+  await withPanel({ issues: [{ ...older, comments: 6 }], comments: { 7: longThread }, viewport: { width: 1280, height: 700 } }, async ({ page, url, reads }) => {
+    await page.goto(url);
+    await page.waitForTimeout(3500);
+    // The choice is made when the tab opens: nothing of the conversation is fetched before.
+    assert.equal(reads.filter((p) => p.startsWith('/repos/o/r/issues/7')).length, 0);
+    await openAgent(page);
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Point 5.' }).waitFor();
+    await page.waitForTimeout(500);
+    const { top, sh, ch } = await page.locator('#chat-messages').evaluate((n) => ({ top: n.scrollTop, sh: n.scrollHeight, ch: n.clientHeight }));
+    assert.ok(sh > ch, 'the thread is longer than the screen');
+    assert.ok(top + ch >= sh - 4, `scrolled to the end (${top} + ${ch} / ${sh})`);
+  });
+});

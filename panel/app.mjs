@@ -2201,6 +2201,7 @@ async function openChat() {
   if (!current) return;
   if (chat.repo !== current.repo.full_name) return resetChat();
   if (drawReadTokenCard()) return;
+  pickDefaultConversation(); // the list fetched in the background, if any
   // Wakes the chat server up while the owner types (it sleeps when unused).
   if (chat.server && Date.now() - chat.warmed > 60_000) { chat.warmed = Date.now(); fetch(`${chat.server}/health`).catch(() => {}); }
   drawChat();
@@ -2235,11 +2236,15 @@ async function refreshServerChat() {
 
 // Once per project, when its conversations first arrive (issue #477): open the most recent one still open,
 // else a new one. A draft already started keeps the new conversation.
+// Only while the tab is shown: a background check from another tab must not choose (nor poll) a conversation.
 function pickDefaultConversation() {
-  if (chat.open != null) return;
+  if (chat.open != null || !chat.list || $('chat').hidden) return;
   const drafting = chat.live || chat.sending || chat.pending || chat.files.length || $('chat-input').value.trim();
   chat.open = drafting ? 'new' : defaultConversation(chat.list, Boolean(chat.server));
-  if (chat.open !== 'new') $('chat').classList.add('viewing');
+  if (chat.open === 'new') return;
+  $('chat').classList.add('viewing');
+  // Its answers are already there, not new ones: nothing to read out.
+  announced = { id: chat.open, count: Infinity };
 }
 
 async function refreshChat() {
@@ -2253,6 +2258,7 @@ async function refreshChat() {
     chat.list = conversations(list);
     chat.error = false;
     pickDefaultConversation();
+    if (chat.open != null && chat.open !== 'new' && !chat.issue) drawChat(); // the picked one shows « Chargement… » meanwhile
     if (typeof chat.open === 'number') {
       const n = chat.open;
       const issue = await chatGet(`/repos/${repo}/issues/${n}`);
