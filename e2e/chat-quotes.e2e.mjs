@@ -43,21 +43,54 @@ test('sur un écran étroit, aucune ligne de la réponse ne commence par « » �
   }
 });
 
+async function copied(page, select) {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.evaluate(select);
+  await page.keyboard.press('Control+C');
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+
+// The rich copy (pasted into a mail or a document), as the browser put it on the clipboard.
+const copiedHtml = (page) => page.evaluate(async () => {
+  const [item] = await navigator.clipboard.read();
+  return item.types.includes('text/html') ? (await item.getType('text/html')).text() : '';
+});
+
+const openChat = async (page, url) => {
+  await page.goto(url);
+  await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+  await page.locator('.conv', { hasText: 'Où voir mes demandes ?' }).click();
+  await page.locator('#chat-messages .msg.agent .bubble').waitFor();
+};
+
 test('en copiant la réponse, je retrouve exactement le texte de l\'agent', async () => {
   await withPanel({ issues: [question], comments: thread, viewport: { width: 320, height: 800 } }, async ({ page, url }) => {
-    await page.goto(url);
-    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
-    await page.locator('.conv', { hasText: 'Où voir mes demandes ?' }).click();
-    const bubble = page.locator('#chat-messages .msg.agent .bubble');
-    await bubble.waitFor();
-    const copied = await bubble.evaluate((node) => {
+    await openChat(page, url);
+    const text = await copied(page, () => {
       const range = document.createRange();
-      range.selectNodeContents(node);
-      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
-      const data = new DataTransfer();
-      node.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
-      return data.getData('text/plain') || sel.toString();
+      range.selectNodeContents(document.querySelector('#chat-messages .msg.agent .bubble'));
+      getSelection().removeAllRanges(); getSelection().addRange(range);
     });
-    assert.equal(copied.trim(), answer);
+    assert.equal(text.trim(), answer);
+    const html = (await copiedHtml(page)).replace(/<[^>]*>/g, '');
+    assert.match(html, /« Suivi »/);
+    assert.doesNotMatch(html, /&nbsp;|\u00A0/);
+    // The screen keeps the guillemets glued once the copy is done.
+    await page.waitForTimeout(100);
+    assert.match(await page.locator('#chat-messages .msg.agent .bubble').innerText(), /« Suivi »/);
+  });
+});
+
+test('en copiant depuis le titre jusqu\'à la réponse, les guillemets ont des espaces ordinaires', async () => {
+  await withPanel({ issues: [question], comments: thread, viewport: { width: 320, height: 800 } }, async ({ page, url }) => {
+    await openChat(page, url);
+    const text = await copied(page, () => {
+      const range = document.createRange();
+      range.setStart(document.getElementById('chat-title'), 0);
+      range.setEndAfter(document.querySelector('#chat-messages .msg.agent .bubble'));
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+    });
+    assert.ok(text.includes('« Suivi »'), text);
+    assert.ok(!text.includes(' '), JSON.stringify(text));
   });
 });

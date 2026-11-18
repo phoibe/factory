@@ -169,17 +169,13 @@ test('serverUnread: an instant-mode conversation updated since the answer last s
   assert.equal(serverUnread({ id: 'a1', updated: 'garbage' }, { a1: '2026-11-06T10:00:00Z' }), false);
 });
 
-test('keepQuotes glues « and » to the word they surround, and nothing else', async () => {
-  const { keepQuotes } = await import('../panel/chat.mjs');
-  assert.equal(keepQuotes('l\'onglet « Suivi » ici'), 'l\'onglet « Suivi » ici');
-  assert.equal(keepQuotes('«  deux  »'), '« deux »');
-  assert.equal(keepQuotes('«Suivi»'), '«Suivi»');
-  assert.equal(keepQuotes('fin «\nsuite'), 'fin «\nsuite');
-  assert.equal(keepQuotes('a - b'), 'a - b');
-  assert.equal(keepQuotes(''), '');
-});
-
-test('plainCopy gives back ordinary spaces for the copied text', async () => {
-  const { plainCopy } = await import('../panel/chat.mjs');
-  assert.equal(plainCopy('« Suivi »'), '« Suivi »');
+test('quoteParts marks the spaces between « or » and their word, and nothing else', async () => {
+  const { quoteParts } = await import('../panel/chat.mjs');
+  assert.deepEqual(quoteParts('l\'onglet « Suivi » ici'), [
+    { t: 'text', v: 'l\'onglet «' }, { t: 'glue', v: ' ' }, { t: 'text', v: 'Suivi' }, { t: 'glue', v: ' ' }, { t: 'text', v: '» ici' }]);
+  assert.deepEqual(quoteParts('«  deux'), [{ t: 'text', v: '«' }, { t: 'glue', v: '  ' }, { t: 'text', v: 'deux' }]);
+  assert.deepEqual(quoteParts('«Suivi»'), [{ t: 'text', v: '«Suivi»' }]);
+  assert.deepEqual(quoteParts('déjà « collé »'), [{ t: 'text', v: 'déjà « collé »' }]);
+  assert.deepEqual(quoteParts('a - b'), [{ t: 'text', v: 'a - b' }]);
+  assert.deepEqual(quoteParts(''), []);
 });

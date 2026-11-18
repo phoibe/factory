@@ -104,10 +104,21 @@ export const serverUnread = (c, seen) => seen[c.id] != null && Date.parse(c.upda
 
 const SAFE_URL = /^https?:\/\//i;
 
-// Display only (issue #486): the space between « or » and its word becomes a no-break space, so a narrow
-// screen never leaves a guillemet alone at a line's edge. Copying gives the ordinary spaces back (plainCopy).
-export const keepQuotes = (text) => String(text || '').replace(/« +/g, '«\u00A0').replace(/ +»/g, '\u00A0»');
-export const plainCopy = (text) => String(text || '').replace(/\u00A0/g, ' ');
+// Display only (issue #486): the spaces between « or » and their word are marked as `glue`, which the page
+// shows as no-break spaces so a narrow screen never leaves a guillemet alone at a line's edge. A copy puts back
+// these spaces only, as they were: every other character of the message is copied untouched.
+export function quoteParts(text) {
+  const out = [];
+  const re = /(?<=«) +(?=\S)|(?<=\S) +(?=»)/g;
+  let at = 0;
+  for (let m; (m = re.exec(text));) {
+    if (m.index > at) out.push({ t: 'text', v: text.slice(at, m.index) });
+    out.push({ t: 'glue', v: m[0] });
+    at = re.lastIndex;
+  }
+  if (at < text.length) out.push({ t: 'text', v: text.slice(at) });
+  return out;
+}
 
 export function inline(text) {
   const out = [];
