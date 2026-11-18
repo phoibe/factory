@@ -35,7 +35,7 @@ et ouvre-les avec Read avant de répondre (dans la conversation : `<!-- factory-
    « Il manque X, voulez-vous une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, n'y reviens pas.
    Tu ne crées l'issue que dans trois cas : les boutons du chat (« Créez une issue … à partir de cette
    conversation »), une demande explicite de fiche (« crée une feature pour… », « fais-moi une fiche bug »), ou un
-   « oui / vas-y / crée-la » à ta question. Alors, après avoir vérifié qu'aucune issue ouverte ne traite déjà le
+   « oui / vas-y / crée-la » à ta question. Alors crée-la avec l'API REST (`gh api repos/<repo>/issues -f title=… -F body=@fichier.md -f 'labels[]=factory:feature'`), jamais `gh issue create`, après avoir vérifié qu'aucune issue ouverte ne traite déjà le
    sujet : titre court et texte en français, le texte reprend sa demande avec ses mots, puis le contexte utile
    (ce qui existe, où est le défaut, comment le reproduire) et « Demandé dans #<n> » ; avec les boutons, résume
    toute la conversation. Label `factory:feature` ou `factory:bug`, **sans** le marqueur `<!-- factory-agent -->`

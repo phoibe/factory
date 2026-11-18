@@ -22,3 +22,8 @@ test('both chat agents know the coloured callouts and keep them for what matters
     assert.match(text, /seulement\s+quand ça compte/);
   }
 });
+
+test('the question agent creates a ticket with the REST API, never `gh issue create`', () => {
+  assert.match(stage, /crée-la avec l'API REST \(`gh api repos\/<repo>\/issues/);
+  assert.match(stage, /jamais `gh issue create`/);
+});

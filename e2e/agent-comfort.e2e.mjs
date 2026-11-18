@@ -22,7 +22,7 @@ async function openConversation(page, url) {
   await page.goto(url);
   await page.getByRole('tab', { name: 'Agent', exact: true }).click();
   await page.locator('.conv', { hasText: 'Comment publier ?' }).click();
-  await page.locator('#chat-messages .msg.agent').waitFor();
+  await page.locator('#chat-messages .msg.agent').first().waitFor();
 }
 
 test('sur ordinateur, l\'onglet Agent occupe toute la largeur et la zone de saisie est visible en bas sans défiler', async () => {
@@ -167,5 +167,16 @@ test('le temps écoulé ne repart pas de zéro quand la réponse est arrivée ma
     const time = page.locator('.thinking-meta [data-since]');
     await time.waitFor();
     assert.match(await time.innerText(), /^0:(4\d|5\d)$/);
+  });
+});
+
+test('avec une longue conversation lue jusqu\'en bas, la page ne défile toujours pas', async () => {
+  const long = Array.from({ length: 6 }, (_, i) => ({ id: 10 + i, body: `${AGENT}\n⚠️ Point ${i}.\n\n✅ Fait ${i}.\n\n${'Texte. '.repeat(40)}`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString() }));
+  await withPanel({ issues: [question], comments: { 7: long }, viewport: { width: 820, height: 700 } }, async ({ page, url }) => {
+    await openConversation(page, url);
+    await page.locator('#chat-messages').evaluate((n) => { n.scrollTop = n.scrollHeight; });
+    await page.waitForTimeout(200);
+    const { sh, ih } = await page.evaluate(() => ({ sh: document.scrollingElement.scrollHeight, ih: innerHeight }));
+    assert.ok(sh <= ih + 1, `la page fait ${sh} px pour ${ih}`);
   });
 });

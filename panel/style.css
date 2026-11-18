@@ -251,7 +251,7 @@ html { touch-action: manipulation; }
 .chat-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .chat-tools[hidden] { display: none; }
 .small-btn { padding: 5px 10px; font-size: .8125rem; min-height: 44px; }
-.messages { list-style: none; margin: 0; padding: 20px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
+.messages { position: relative; list-style: none; margin: 0; padding: 20px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
 .msg { display: flex; flex-direction: column; gap: 4px; max-width: min(640px, 88%); }
 .msg.me { align-self: flex-end; align-items: flex-end; }
 .msg.agent { align-self: stretch; align-items: stretch; max-width: none; }
@@ -346,6 +346,7 @@ html { touch-action: manipulation; }
 #chat-attach { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 #chat-attach:hover { color: var(--text); }
 @media (max-width: 700px) { .pending-images { padding: 8px 12px 0; } .shot { width: 150px; } }
+.msg.agent .issue-chip { align-self: flex-start; }
 .issue-chip { display: block; max-width: 100%; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--you-line); background: var(--you-bg); color: var(--text); font-size: .8125rem; text-decoration: none; }
 .issue-chip strong { color: var(--text); }
 .issue-chip:hover { border-color: var(--you); }

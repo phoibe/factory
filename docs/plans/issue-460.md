@@ -40,7 +40,7 @@
 - Image click → `dialog#lightbox` (`showModal`), Esc or click outside the image closes.
 - Owner bubble: soft blue (`--you-bg`, `--you-line`); agent: no bubble, full conversation width.
 - `body.chat-wide` while the Agent tab is shown: `main` max-width none; messages column capped at 860 px and centred.
-- Height: `--chat-top` set from `#chat` top (on tab open, resize, ResizeObserver on `.top`/`.project-head`), `#chat` height `calc(100dvh - var(--chat-top) - 16px)`, min 320 px.
+- Height: `--chat-top` set from `#chat` top (on tab open, resize, ResizeObserver on `.top`/`.project-head`), `#chat` height `calc(100dvh - var(--chat-top) - 16px)`, min 240 px.
 - Callout CSS: `.callout.warn|ok|todo` tinted background + 1px border, new orange tokens in light/dark.
 - Journeys `e2e/agent-comfort.e2e.mjs`, one per checkable criterion of the spec.
 
