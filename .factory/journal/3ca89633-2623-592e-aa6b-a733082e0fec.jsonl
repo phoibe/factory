@@ -19,3 +19,6 @@
 {"t":"2026-11-18T17:23:22.082Z","kind":"skill","name":"impeccable","id":"toolu_01Bb5hypCDh86QujDJmJTS9z"}
 {"t":"2026-11-18T17:23:36.083Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A: Agent chat design","id":"toolu_01PmjY9TdjJe61DpHJtFAqZb"}
 {"t":"2026-11-18T17:23:39.837Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B: detector evidence","id":"toolu_01K9qLs15f9pxxfnS933xx6P"}
+{"t":"2026-11-18T17:24:38.913Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nanchor=…\nnew=…'test('cleanBody keeps French quotes stuck to their words, so a line never starts with »', () => {\n  assert.equal(cleanBody(\"dans l'onglet « Suivi ».\"), \"dans l","ok":false,"id":"toolu_01A8N8J5pDACkcAvjkNk55Y1"}
+{"t":"2026-11-18T17:25:17.882Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\nassert old in s\ns=…    .replace(/\\\\n{3,}/g, '\\\\n\\\\n')\\n    .replace(/«[ \\\\t]+/g, '«\\\\u202f') // a narrow no-break space keeps « » glued to their words\\n    .replace(/[ ","ok":true,"id":"toolu_01Si3nzaJckKWgPRpVnotYZP"}
+{"t":"2026-11-18T17:31:18.701Z","kind":"test","cmd":"git checkout panel/chat.mjs test/panel-chat.test.mjs && git status --short && npm test 2>&1 | grep -E \"^# (pass|fail)\" && CHROMIUM_PATH=… timeout 300 npm run -s test:e2e 2>&1 | grep -E \"^# (pass|fail)","ok":true,"id":"toolu_01Gh125dKxmr5xLpm3BVmBr9"}
