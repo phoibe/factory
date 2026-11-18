@@ -105,3 +105,41 @@ test('après « Signaler un bug », le bug ne démarre qu\'après mon clic sur �
     assert.match(note.body.body, /^<!-- factory-agent -->\n<!-- factory-proposal: 71-0 created https:\/\/github\.com\/o\/r\/issues\/\d+ -->$/);
   });
 });
+
+test('si j\'écris un message pendant la création, la demande n\'est créée qu\'une fois et la carte reste « Créée »', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 60000).toISOString(), html_url: 'u71' },
+  ] };
+  await withPanel({ issues: [conv], comments, issueDelay: 1500 }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await page.locator('#chat-input').fill('Merci !');
+    await page.locator('#chat-send').click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.waitForTimeout(1000);
+    assert.equal(await card.getByRole('button', { name: 'Créer cette demande' }).count(), 0);
+    assert.equal(writes.filter((w) => w.method === 'POST' && w.path === '/repos/o/r/issues' && w.body.title === 'Enregistrer plante').length, 1);
+  });
+});
+
+test('mon propre choix sur une carte ne compte pas comme une nouvelle réponse de l\'agent', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 60000).toISOString(), html_url: 'u71' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Ignorer' }).click();
+    await card.getByText('Ignorée').waitFor();
+    // The decision is one more comment on the conversation: it is already seen.
+    const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('factory.chat.seen.o/r') || '{}')['7']);
+    assert.equal(seen, 2);
+  });
+});

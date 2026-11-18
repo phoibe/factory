@@ -12,7 +12,7 @@ REPO_RE = re.compile(r"^[A-Za-z0-9-]+/(?!\.{1,2}$)[A-Za-z0-9._-]+$")
 CID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_ISSUES = 3  # one answer never opens more tickets than this (each one starts factory work)
 
-ASK_BLOCK = """Pour créer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
+ASK_BLOCK = """Pour proposer une feature ou un bug, écris à la toute fin de ta réponse un bloc par sujet :
 <creer-issue type="feature" titre="Titre court en français">
 Sa demande avec ses mots, puis le contexte utile que tu as trouvé (ce qui existe déjà, où est le défaut,
 comment le reproduire pour un bug).

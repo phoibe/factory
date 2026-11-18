@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=26';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, githubBusy, wantedIssues, decideProposal, decisionComment } from './chat.mjs?v=17';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, githubBusy, wantedIssues, decideProposal, decisionComment } from './chat.mjs?v=18';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=3';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=12';
@@ -2349,38 +2349,53 @@ function proposalCard(p) {
 async function decide(p, state) {
   const key = cardKey(p);
   if (chat.deciding.has(key) || chat.decided.has(key)) return;
-  const repo = chat.repo, open = chat.open, run = chat.run;
-  const gone = () => chat.repo !== repo || chat.run !== run;
-  chat.deciding.add(key);
-  chat.refused.delete(key);
+  const repo = chat.repo, open = chat.open, server = chat.server;
+  // Only leaving the project ends what this click may show (resetChat makes new maps); sending a message does not.
+  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused;
+  const gone = () => chat.decided !== decided;
+  const here = () => !gone() && chat.open === open;
+  deciding.add(key);
+  refused.delete(key);
   drawChat();
   let url;
   try {
     const path = `chats/${open}.json`;
-    if (chat.server) {
+    // An answer that could not be saved lives only on screen: its card is decided there too.
+    const unsaved = server && chat.conv?.id === open && chat.conv.unsaved ? chat.conv : null;
+    if (server && !unsaved) {
       const { data } = await chatFile(repo, path);
       const stored = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === p.id);
       if (stored && stored.state !== 'pending') {
-        if (!gone()) chat.conv = data;
+        if (here()) chat.conv = data;
         return;
       }
     }
     if (state === 'created') url = (await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(p)) })).html_url;
-    if (!gone()) chat.decided.set(key, { state, ...(url ? { url } : {}) });
+    decided.set(key, { state, ...(url ? { url } : {}) });
     try {
-      if (chat.server) {
-        const conv = await writeChatFile(repo, path, (latest) => { const next = latest || structuredClone(chat.conv); decideProposal(next, p.id, state, url); return next; }, `chore(factory): chat ${open}`);
-        if (!gone() && chat.open === open) chat.conv = conv;
+      if (unsaved) decideProposal(unsaved, p.id, state, url);
+      else if (server) {
+        const conv = await writeChatFile(repo, path, (latest) => {
+          // Never written from another conversation, nor when the card is gone or was decided meanwhile.
+          if (!latest || !decideProposal(latest, p.id, state, url)) throw new Error('not recorded');
+          return latest;
+        }, `chore(factory): chat ${open}`);
+        if (here()) chat.conv = conv;
       } else {
         await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(p.id, state, url) }) });
+        // The choice is one more comment on the conversation: already seen, never a « new answer ».
+        if (!gone() && chat.seen[open] != null) {
+          chat.seen[open] += 1;
+          store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
+        }
       }
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
   } catch {
-    if (!gone()) chat.refused.add(key); // said on the card itself, next to the button to try again
+    refused.add(key); // said on the card itself, next to the button to try again
   } finally {
-    chat.deciding.delete(key);
+    deciding.delete(key);
     if (!gone()) drawChat();
     if (url) renderBoard().catch(() => {});
   }

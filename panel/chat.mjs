@@ -250,22 +250,24 @@ export const wantedIssues = (list) => (Array.isArray(list) ? list : [])
 // ---- Requests the agent proposes (issue #492) ------------------------------------------------------
 // The agent never creates a bug or a feature: it writes a block per request (same format as the chat server's), and
 // the panel shows it as a card that only the owner's click turns into a request.
-const BLOCK = /<creer-issue\s+type="([^"]*)"\s+titre="([^"]*)"\s*>([\s\S]*?)<\/creer-issue>/g;
+// A block the agent wrapped in a code fence takes its fence with it: no empty code block is left on screen.
+const BLOCK = /(?:```[^\n]*\n\s*)?<creer-issue\s+type="([^"]*)"\s+titre="([^"]*)"\s*>([\s\S]*?)<\/creer-issue>(?:\s*\n\s*```)?/g;
+// The text comes back as written (images and markers are read afterwards), only without its blocks.
 export function proposalsFrom(text) {
   const found = [...String(text || '').matchAll(BLOCK)].map((m) => ({ kind: m[1].trim(), title: m[2], body: m[3].trim() }));
-  return { text: cleanBody(String(text || '').replace(BLOCK, '')), proposals: wantedIssues(found) };
+  return { text: String(text || '').replace(BLOCK, '').trim(), proposals: wantedIssues(found) };
 }
 
 // Issue mode: the owner's choice on a card is a hidden comment with the agent marker (so the factory does not start
 // an agent on it, and the chat shows nothing). The first decision on a card is the one that counts.
-const DECISION = /<!-- factory-proposal: ([\w-]+) (created|ignored)(?: (\S+))? -->/g;
+// Only a comment that is nothing but a decision counts: an answer of the agent can never mark its own card decided.
+const DECISION = /^<!-- factory-agent -->\n<!-- factory-proposal: ([\w-]+) (created|ignored)(?: (\S+))? -->$/;
 export const decisionComment = (id, state, url) => `${AGENT_MARKER}\n<!-- factory-proposal: ${id} ${state}${url ? ` ${url}` : ''} -->`;
 function decisionsFrom(comments) {
   const out = new Map();
   for (const c of comments) {
-    const body = c.body || '';
-    if (!body.includes(AGENT_MARKER)) continue;
-    for (const m of body.matchAll(DECISION)) if (!out.has(m[1])) out.set(m[1], { state: m[2], url: m[2] === 'created' ? safeGithubUrl(m[3]) : undefined });
+    const m = DECISION.exec(String(c.body || '').replace(/\r\n/g, '\n').trim());
+    if (m && !out.has(m[1])) out.set(m[1], { state: m[2], url: m[2] === 'created' ? safeGithubUrl(m[3]) : undefined });
   }
   return out;
 }

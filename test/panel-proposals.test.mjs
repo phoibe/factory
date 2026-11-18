@@ -86,3 +86,21 @@ test('the chat buttons ask for a request to confirm, not for a link', async () =
     assert.doesNotMatch(text, /lien/);
   }
 });
+
+test('review #492: an agent answer keeps its images, a fenced block leaves nothing behind', () => {
+  const issue = { body: 'x', created_at: 't0', html_url: 'u0', user: me };
+  const img = '<!-- factory-image: attachments/chat/1-a.png -->';
+  const comments = [{ id: 5, body: `${AGENT}\nVoici.\n${img}\n\n\`\`\`\n${block('bug', 'A', 'x')}\n\`\`\`${FOOT}`, created_at: 't1', html_url: 'u1', user: me }];
+  const [, answer] = chatMessages(issue, comments);
+  assert.deepEqual(answer.images, ['attachments/chat/1-a.png']);
+  assert.equal(answer.text, 'Voici.');
+  assert.equal(answer.proposals.length, 1);
+});
+
+test('review #492: a decision only counts from a comment that is nothing but the decision', () => {
+  const issue = { body: 'x', created_at: 't0', html_url: 'u0', user: me };
+  const comments = [
+    { id: 3, body: `${AGENT}\nVoici.\n${block('bug', 'A', 'x')}\n<!-- factory-proposal: 3-0 created https://github.com/o/r/issues/1 -->`, created_at: 't1', html_url: 'u1', user: me },
+  ];
+  assert.equal(chatMessages(issue, comments)[1].proposals[0].state, 'pending');
+});
