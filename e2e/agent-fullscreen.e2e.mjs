@@ -139,3 +139,26 @@ test('se déconnecter en plein écran ne laisse pas la page de connexion collée
     assert.equal(await page.evaluate(() => document.body.classList.contains('chat-fullscreen')), false);
   });
 });
+
+test('sur un écran moyen (800 px), le plein écran garde le nom du projet comme titre pour les lecteurs d\'écran', async () => {
+  await withPanel({ issues: [question], comments: thread, repos, viewport: { width: 800, height: 800 } }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).click();
+    await normal(page).waitFor();
+    assert.equal(await page.getByRole('heading', { level: 1, name: 'r' }).count(), 1, 'titre vide');
+  });
+});
+
+test('passer en plein écran, rétrécir la fenêtre à la taille d\'un téléphone puis l\'agrandir ne remet pas le plein écran', async () => {
+  await withPanel({ issues: [question], comments: thread, viewport: desk }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).click();
+    await page.setViewportSize({ width: 500, height: 800 });
+    await page.waitForTimeout(200);
+    await page.setViewportSize(desk);
+    await page.waitForTimeout(200);
+    if (!(await page.locator('#chat-full').isVisible())) await page.locator('.conv', { hasText: 'Comment publier ?' }).click();
+    await full(page).waitFor();
+    assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true);
+  });
+});

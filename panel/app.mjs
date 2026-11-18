@@ -1509,9 +1509,11 @@ function setChatFull(on) {
   fitChat();
 }
 $('chat-full').addEventListener('click', () => setChatFull(!document.body.classList.contains('chat-fullscreen')));
+// The full screen exists on a computer only: shrinking the window to a phone's width ends it.
+matchMedia('(max-width: 700px)').addEventListener('change', (e) => { if (e.matches && document.body.classList.contains('chat-fullscreen')) setChatFull(false); });
 // Échap leaves the full screen, unless it is closing a window opened over it (an enlarged image, a dialog).
 addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || e.defaultPrevented || !document.body.classList.contains('chat-fullscreen') || document.querySelector('dialog[open]')) return;
+  if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || !document.body.classList.contains('chat-fullscreen') || document.querySelector('dialog[open]')) return;
   setChatFull(false);
 });
 
