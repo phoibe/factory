@@ -86,7 +86,7 @@ def events_from_line(raw):
     return []
 
 
-BLOCK_RE = re.compile(r'<creer-issue\s+type="([^"]*)"\s+titre="([^"]*)"\s*>(.*?)</creer-issue>', re.S)
+BLOCK_RE = re.compile(r'<creer-issue\s+type="([^"]*)"\s+titre="([^\n]*?)"\s*>(.*?)</creer-issue>', re.S)
 
 
 def extract_issues(text):

@@ -22,7 +22,7 @@
 - **Pas de base de données classique** : tout est stocké dans GitHub.
 - **Demandes GitHub et leurs étiquettes** — vos demandes, leurs échanges et l'étape où elles en sont
 - **Branches dédiées** — les conversations de la discussion, les images collées, les captures avant/après et l'état du serveur de dev
-- **Navigateur** — votre jeton GitHub est gardé dans le navigateur du panneau ; la discussion en direct le transmet à son serveur à chaque message, sans qu'il soit conservé
+- **Navigateur** — votre jeton GitHub est gardé dans le navigateur du panneau et ne le quitte jamais ; la discussion en direct transmet à son serveur seulement un second jeton, limité à la lecture, sans qu'il soit conservé
 
 ## Bibliothèques
 ### Pour faire tourner le logiciel

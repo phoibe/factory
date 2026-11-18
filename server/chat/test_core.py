@@ -38,6 +38,16 @@ class IssueBlockTest(unittest.TestCase):
         self.assertEqual(answer, "C'est noté.")
         self.assertEqual(issues, [{"kind": "bug", "title": "Coche au mauvais jour en voyage", "body": "Quand je change de fuseau…"}])
 
+    def test_a_title_with_quotes_is_still_a_request_and_never_left_in_the_answer(self):
+        answer, issues = extract_issues('Noté.\n<creer-issue type="feature" titre="Bouton "Exporter" dans le menu">\nCorps\n</creer-issue>')
+        self.assertEqual(answer, "Noté.")
+        self.assertEqual(issues, [{"kind": "feature", "title": 'Bouton "Exporter" dans le menu', "body": "Corps"}])
+
+    def test_a_title_missing_its_closing_quote_never_swallows_the_text_after_it(self):
+        text = 'Voir <creer-issue type="bug" titre="Oups\nle <a href="x">lien</a> ici.</creer-issue>'
+        _, issues = extract_issues(text)
+        self.assertEqual(issues, [])
+
     def test_a_block_with_an_unknown_type_is_a_feature(self):
         _, issues = extract_issues('<creer-issue type="truc" titre="Export">x</creer-issue>')
         self.assertEqual(issues[0]["kind"], "feature")

@@ -19,7 +19,7 @@ import { launchesPart } from './relay/launches.mjs';
 import { deliveryPart } from './relay/delivery.mjs';
 import { watchPart } from './relay/watch.mjs';
 import { eventsPart } from './relay/events.mjs';
-import { ROOT, rateLimitHandled } from './relay/shared.mjs';
+import { ROOT, rateLimitHandled, checksEndedAt } from './relay/shared.mjs';
 
 // The engine lives in scripts/relay/: one file per job, composed by createRelay below. Their public names stay exported here.
 export { LOCK_MINUTES, PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, branchUpdates, IDLE_MINUTES, RATE_LIMIT_STEP, MAX_RATE_LIMIT_ATTEMPTS, rateLimitHandled, redoOf, isLiveEnv, linkedIssue, vercelPreview, isDocFile } from './relay/shared.mjs';
@@ -81,15 +81,17 @@ async function main() {
     // One decision at a time in the whole repository: see lib/lock.mjs.
     await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
   } else if (command === 'report') {
-    // A report may merge and then dequeue: same lock as the decisions.
-    await withLock(gh.queueLock, () => relay.report({ result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
+    // A report may merge and then dequeue: same lock as the decisions. The checks' duration is measured up to the end
+    // of the checks job (else now), never after the wait for a runner or for the lock (see report: a cancelled run is a hung test only when it reached the time limit).
+    const reportAt = checksEndedAt(await gh.runJobs(process.env.GITHUB_RUN_ID).catch(() => [])) ?? Date.now();
+    await withLock(gh.queueLock, () => relay.report({ now: reportAt, result: arg('result'), pr: Number(arg('pr')), runId: process.env.GITHUB_RUN_ID, sha: arg('sha'), started: Number(arg('started')) || null, transient: arg('transient') === 'server' ? 'server' : arg('transient') === 'true' }));
     await relay.retrySoon(Number(arg('pr'))); // first retry after an outage, outside the lock
     await relay.relaunchSoon(); // a fix whose launch failed for a passing reason: first relaunch, outside the lock
     await withLock(gh.queueLock, () => relay.notifyWaiting()); // the recette may just have started waiting for the owner
   } else if (command === 'release') {
     // The lock and the replay need no queue lock: done first, they never wait behind it. Then the place the run may
     // have freed is filled at once (issue #384), under the same lock as the decisions.
-    await relay.release(JSON.parse(process.env.PAYLOAD || '{}'));
+    await relay.release(JSON.parse(fromJobOutput(process.env.PAYLOAD) || '{}'));
     await withLock(gh.queueLock, () => relay.refill()).catch((e) => console.log(`queue check after the run: ${e.message}`));
   } else if (command === 'relaunch-soon') {
     // Its own job after a decision whose launch failed for a passing reason (issue #383): the first relaunch, 2 min later.

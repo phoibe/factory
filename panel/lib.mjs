@@ -256,3 +256,8 @@ export function releaseButton(pending, running = false) {
 
 // The project's site address, only when it is a web link: a `javascript:` (or any other) address is no site.
 export const siteLink = (...candidates) => candidates.find((u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim()))?.trim() || '';
+
+// The panel's stored keys that belong to the session (tokens, project names, drafts): all of them go at logout, so a
+// shared browser keeps no private project name. Only the display preference (« Avancé » opened) stays.
+const KEPT_KEYS = new Set(['factory.advanced']);
+export const sessionKeys = (keys) => keys.filter((k) => k.startsWith('factory.') && !KEPT_KEYS.has(k));

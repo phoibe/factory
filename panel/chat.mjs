@@ -128,6 +128,27 @@ export const serverUnread = (c, seen) => seen[c.id] != null && Date.parse(c.upda
 
 const SAFE_URL = /^https?:\/\//i;
 
+// Display only (issue #486): the spaces between « or » and their word are marked as `glue`, which the page
+// shows as no-break spaces so a narrow screen never leaves a guillemet alone at a line's edge. A copy puts back
+// these spaces only, as they were: every other character of the message is copied untouched.
+// `after` / `before`: the text is followed / preceded by a bold, italic, link or code part, which holds the word.
+export function quoteParts(text, { before = false, after = false } = {}) {
+  const out = [];
+  const word = (c, edge) => (c == null ? edge : c !== '«' && c !== '»' && !/\s/.test(c));
+  let at = 0;
+  for (const m of text.matchAll(/ +/g)) {
+    const end = m.index + m[0].length;
+    const prev = m.index ? text[m.index - 1] : undefined;
+    const next = end < text.length ? text[end] : undefined;
+    if (!((prev === '«' && word(next, after)) || (next === '»' && word(prev, before)))) continue;
+    if (m.index > at) out.push({ t: 'text', v: text.slice(at, m.index) });
+    out.push({ t: 'glue', v: m[0] });
+    at = end;
+  }
+  if (at < text.length) out.push({ t: 'text', v: text.slice(at) });
+  return out;
+}
+
 export function inline(text) {
   const out = [];
   const pushText = (v) => {
@@ -345,8 +366,11 @@ export function upsertIndex(index, conv) {
 
 // An issue the agent proposed. A feature the owner asked for is kept (never an « idée à trier »), and the agent
 // marker leaves it to the queue instead of starting it at once; a bug starts right away.
+// The factory's hidden notes are taken out of the proposed text: written with the owner's token they would count.
+const NOTES = /<!--\s*factory-[\s\S]*?-->/g;
+const withoutNotes = (text) => { let s = String(text ?? ''); for (let prev = null; prev !== s;) { prev = s; s = s.replace(NOTES, ''); } return s; };
 export function issueRequest({ kind, title, body }) {
-  const text = `${body}\n\n_Demandé depuis le chat du tableau de suivi._`;
+  const text = `${withoutNotes(body)}\n\n_Demandé depuis le chat du tableau de suivi._`;
   return kind === 'bug'
     ? { title, labels: ['factory:bug'], body: text }
     : { title, labels: ['factory:feature', 'factory:kept'], body: `${AGENT_MARKER}\n${text}` };

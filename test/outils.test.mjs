@@ -33,3 +33,19 @@ for (const tool of ['Nouveau projet.command', 'Adopter un projet.command', 'Reti
     assert.doesNotMatch(out, /C'est fini/);
   });
 }
+
+// The factory script itself fails (a refused token, a project that already exists): the window must not say « C'est fini ».
+for (const tool of ['Nouveau projet.command', 'Adopter un projet.command', 'Retirer un projet.command']) {
+  test(`${tool}: a failed setup never ends on « C'est fini »`, () => {
+    const bin = mkdtempSync(join(tmpdir(), 'outils-'));
+    writeFileSync(join(bin, 'curl'), '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nprintf \'echo "Erreur : jeton refusé"\\nexit 3\\n\' > "$2"\n');
+    chmodSync(join(bin, 'curl'), 0o755);
+    const run = spawnSync('bash', [`outils/${tool}`], {
+      encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: bin, TERM: 'dumb' }, input: '',
+    });
+    const out = run.stdout + run.stderr;
+    assert.match(out, /Erreur : jeton refusé/);
+    assert.doesNotMatch(out, /C'est fini/);
+    assert.match(out, /n'a pas abouti/);
+  });
+}
