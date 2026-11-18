@@ -1508,7 +1508,7 @@ function selectTab(name, focus = false) {
 function focusChat() {
   if (!matchMedia('(pointer: fine)').matches) return;
   const field = $(needsReadToken() ? 'read-token' : 'chat-input');
-  field.focus();
+  field.focus({ preventScroll: true }); // the browser would centre it, pushing the tabs off a short screen
   // A laptop screen can leave the box just below the fold: show it whole, with its focus ring.
   (field.closest('.composer') || field).scrollIntoView({ block: 'nearest' });
 }

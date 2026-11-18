@@ -7,7 +7,7 @@ Pas de questions : la demande était claire.
 **En une phrase** : dès qu'on ouvre l'onglet « Agent », le curseur est dans la zone de saisie et on peut taper sa question tout de suite.
 
 ### Ce que j'ai décidé pour vous
-- Sur ordinateur, le curseur se place dans la zone de saisie à chaque ouverture de l'onglet « Agent » (clic sur l'onglet ou flèches du clavier).
+- Sur ordinateur, le curseur se place dans la zone de saisie à chaque ouverture de l'onglet « Agent » (clic ou touche Entrée sur l'onglet ; avec les flèches du clavier, le curseur reste sur les onglets pour pouvoir passer de l'un à l'autre).
 - Sur téléphone, rien ne change : placer le curseur ferait surgir le clavier et cacherait la moitié de l'écran, alors qu'on arrive d'abord sur la liste des conversations. C'est déjà la règle quand on choisit une conversation.
 - Si le jeton de lecture n'est pas encore enregistré, le curseur se place dans le champ du jeton, puisque c'est la seule chose à remplir.
 - Si une réponse de l'agent est en cours, le curseur se place quand même dans la zone de saisie : vous pouvez préparer votre message suivant.
