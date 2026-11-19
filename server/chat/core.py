@@ -19,8 +19,8 @@ comment le reproduire pour un bug).
 </creer-issue>
 (type="bug" pour un bug). Ce bloc n'est qu'une proposition : le chat l'affiche sous ta réponse comme une carte, et
 rien n'est créé tant que le propriétaire n'a pas cliqué « Créer cette demande ». Dis-lui simplement de relire la carte
-et de cliquer s'il est d'accord (ou de te dire ce qu'il faut changer) ; ne mets pas de lien toi-même. Si tu corriges
-une carte encore en attente, propose la nouvelle et dis-lui d'ignorer l'ancienne."""
+et de cliquer s'il est d'accord (ou de te dire ce qu'il faut changer) ; ne mets pas de lien toi-même.
+S'il te demande de corriger une carte encore en attente, propose la nouvelle et dis-lui d'ignorer l'ancienne."""
 
 SYSTEM = """Tu es l'agent de la software factory du projet {repo}. Le propriétaire te parle depuis le chat de son
 tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherches ciblées, pas plus).
@@ -40,9 +40,9 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
   ci-dessous), et c'est son clic qui les crée. Quand la discussion révèle un manque ou un défaut (il écrit « ajoute… »,
   « je voudrais… », « ça ne marche pas quand… », ou c'est ta réponse qui le montre), réponds d'abord, puis mets
   directement la carte sous ta réponse, sans lui demander d'abord s'il veut une fiche : la carte est déjà la question.
-- Une carte par sujet : s'il l'a ignorée ou a dit non, ne la repropose pas dans la conversation (une carte encore en
-  attente non plus : corrige-la seulement s'il le demande). Pas de carte pour une simple question (« est-ce que X
-  existe ? ») quand rien ne manque ni ne cloche.
+- Une carte par sujet : s'il l'a ignorée ou a dit non, ne la repropose pas dans la conversation,
+  sauf s'il la redemande (bouton ou demande explicite). Une carte encore en attente non plus : corrige-la seulement s'il le
+  demande. Pas de carte pour une simple question (« est-ce que X existe ? ») quand rien ne manque ni ne cloche.
 - Avant chaque carte, vérifie qu'aucune demande ouverte ne traite déjà le sujet (la liste est jointe à son message) :
   si c'est le cas, dis-lui qu'elle est déjà prévue, avec son titre, au lieu de proposer une carte.
 - Les boutons du chat envoient « Créez une issue … à partir de cette conversation », et il peut demander explicitement
@@ -157,7 +157,8 @@ CARD_STATES = {"pending": "en attente de son clic", "created": "créée par le p
 MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
 
 
-def build_prompt(conv, message, image_files, open_requests=()):
+def build_prompt(conv, message, image_files, open_requests=None):
+    """open_requests: the project's open requests, or None when they could not be read."""
     parts = []
     history = conv.get("messages") or []
     if history:
@@ -180,9 +181,13 @@ def build_prompt(conv, message, image_files, open_requests=()):
         if len(kept) < len(lines):
             kept.insert(0, "(les premiers messages de la conversation ont été omis)")
         parts.append("Conversation jusqu'ici :\n" + "\n\n".join(kept))
-    if open_requests:
-        # Issue #506: the card comes right away, so the agent first checks that no open request covers the subject.
-        parts.append("Demandes déjà ouvertes (pour ne pas en proposer une en double) :\n"
+    # Issue #506: the card comes right away, so the agent first checks that no open request covers the subject.
+    if open_requests is None:
+        parts.append("Demandes déjà ouvertes : liste indisponible pour ce message (propose la carte si besoin).")
+    elif not open_requests:
+        parts.append("Demandes déjà ouvertes : aucune.")
+    else:
+        parts.append("Demandes déjà ouvertes (pour ne pas en proposer une en double ; la liste peut être incomplète) :\n"
                      + "\n".join(f"- n° {r['number']} : {r['title']}" for r in open_requests))
     parts.append("Nouveau message du propriétaire :\n" + (message or "(seulement des images)"))
     if image_files:

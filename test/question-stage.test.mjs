@@ -39,4 +39,7 @@ test('the question agent shows the card right away, without asking first (issue 
   assert.match(stage, /simple question/);
   assert.match(stage, /ne la repropose pas/);
   assert.match(stage, /aucune issue ouverte ne traite déjà le sujet/);
+  assert.match(stage, /select\(\.pull_request \| not\)/);
+  assert.match(stage, /factory:question/);
+  assert.match(stage, /sauf s'il la redemande/);
 });

@@ -70,6 +70,8 @@ class CreationNeedsAnExplicitActionTest(unittest.TestCase):
         self.assertIn("simple question", SYSTEM)
         self.assertIn("ne la repropose pas", SYSTEM)
         self.assertIn("aucune demande ouverte ne traite déjà le sujet", SYSTEM)
+        self.assertIn("sauf s'il la redemande", SYSTEM)
+        self.assertIn("S'il te demande de corriger une carte", ASK_BLOCK)
 
     def test_the_trigger_matches_the_panel_buttons(self):
         import pathlib, re
@@ -104,7 +106,8 @@ class PromptTest(unittest.TestCase):
         prompt = build_prompt(conv, "Export ?", [], open_requests=[{"number": 12, "title": "Exporter en PDF"}])
         self.assertIn("Demandes déjà ouvertes", prompt)
         self.assertIn("n° 12 : Exporter en PDF", prompt)
-        self.assertNotIn("Demandes déjà ouvertes", build_prompt(conv, "Export ?", []))
+        self.assertIn("Demandes déjà ouvertes : aucune", build_prompt(conv, "Export ?", [], open_requests=[]))
+        self.assertIn("indisponible", build_prompt(conv, "Export ?", [], open_requests=None))
 
     def test_history_message_and_images(self):
         conv = new_conversation("c1", "Minuit ?", now="2026-11-04T10:00:00Z")
