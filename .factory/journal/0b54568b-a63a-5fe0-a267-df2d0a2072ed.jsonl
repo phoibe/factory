@@ -28,3 +28,9 @@
 {"t":"2026-11-19T09:13:02.127Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\ns=… openRequests(live.repo === repo ? live.issues : null) }),\",\"openRequests: boardRequests(repo) }),\")\ns=… Sends a message to the chat server and shows the answer as it is ","ok":true,"id":"toolu_01PYGnuGhFPV75HLkKVNLLjh"}
 {"t":"2026-11-19T09:13:51.297Z","kind":"test","cmd":"grep -n '\"\\(typecheck\\|lint\\|build\\)\"' package.json; (npm run typecheck && npm run lint && npm run build) 2>&1 | tail -5; npm test 2>&1 | grep -E \"^# (pass|fail)\"; V=… $V -m unittest discover -s serve","ok":true,"id":"toolu_014BarTZLY76rhzbsAbD8Coq"}
 {"t":"2026-11-19T09:16:53.779Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 590 npm run test:e2e 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01WxdUmC8ov3uumNJiySnVne"}
+{"t":"2026-11-19T09:17:09.017Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^# (pass|fail)|^not ok\"; git add agent server test e2e panel .factory/journal && git commit -qm \"Chat: the panel sends the open requests (","ok":true,"id":"toolu_01Qcddu6ykSYRJztczQUPb6T"}
+{"t":"2026-11-19T09:17:11.480Z","kind":"skill","name":"verification-before-completion","id":"toolu_01BrqDKNYw1ibtxz4yYSBDWv"}
+{"t":"2026-11-19T09:17:35.888Z","kind":"skill","name":"writing-plans","id":"toolu_01BeYGKR7fAwbE3ED4h3q8Gq"}
+{"t":"2026-11-19T09:17:51.727Z","kind":"skill","name":"impeccable","id":"toolu_01Rad6n9WPJT7CSNjdmMdhh1"}
+{"t":"2026-11-19T09:18:52.066Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique A (review)","id":"toolu_017K3vD1poXzBomcips15VSp"}
+{"t":"2026-11-19T09:18:56.919Z","kind":"agent","model":"sonnet","effort":"medium","label":"Design critique B (detector)","id":"toolu_01JmYoFPLqD7rYPXYdqoq5kU"}
