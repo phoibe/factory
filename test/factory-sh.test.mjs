@@ -280,10 +280,16 @@ test('a private project is reminded to run the dev-server command, filled in for
   assert.match(out, /docs\/serveur-de-dev\.md/);
 });
 
+test('a private project is reminded to tick it in the « factory runners » key, with the link (issue #504)', async () => {
+  const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', '']);
+  assert.match(out, /Pensez à cocher ce projet dans la clé factory runners, sinon il tournera sur les machines GitHub payantes/);
+  assert.match(out, /https:\/\/github\.com\/settings\/personal-access-tokens/);
+});
+
 test('a public project gets no dev-server reminder', async () => {
   const { out } = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_PUBLIC: 'phoibe/mon-appli' });
   assert.match(out, /C'est prêt/);
-  assert.doesNotMatch(out, /dev-server\.sh|serveur de dev/);
+  assert.doesNotMatch(out, /dev-server\.sh|serveur de dev|factory runners/);
 });
 
 });

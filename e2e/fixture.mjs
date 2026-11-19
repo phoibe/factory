@@ -36,7 +36,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0 }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -137,7 +137,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (offline && offline.has(path)) return route.abort('internetdisconnected');
         return failing && failing.has(path) ? json({ message: 'Server Error' }, 500) : json({});
       }
-      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '', ...(pushed[full] ? { pushed_at: pushed[full] } : {}) })));
+      if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '', created_at: created[full] || '2026-01-01T00:00:00Z', ...(pushed[full] ? { pushed_at: pushed[full] } : {}) })));
       // The factory's own branch files (dev server status and general setting, issue #271).
       const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
       if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);

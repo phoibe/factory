@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=56">
+  <link rel="stylesheet" href="style.css?v=57">
 </head>
 <body>
   <header class="top">
@@ -39,6 +39,7 @@
     </section>
 
     <section id="project-view" hidden>
+      <div id="runner-alert" class="runner-alert" role="status" hidden></div>
       <div class="project-head">
         <div>
           <h1 class="project-title"><span id="project-name"></span><button id="project-switch" type="button" class="project-switch" aria-haspopup="dialog"><span id="project-switch-name"></span><span class="switch-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><span id="switch-dot" class="pdot" hidden></span></span></button></h1>
@@ -162,6 +163,6 @@
     <button type="button" class="lightbox-close" aria-label="Fermer" autofocus>×</button>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=80"></script>
+  <script type="module" src="app.mjs?v=81"></script>
 </body>
 </html>
