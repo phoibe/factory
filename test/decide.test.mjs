@@ -392,3 +392,12 @@ test('an « Amélioration UI » card is built right away with its own stage, or 
   assert.deepEqual(go.add, [L.building]);
   assert.equal(decide(opened, config, { inFlight: 2 }).type, 'queue');
 });
+
+test('a « Mises en page » card is built right away with its own stage, or queued when the factory is full (issue #509)', () => {
+  const opened = ev({ event: 'issues', action: 'opened', labels: [L.layouts, L.kept] });
+  const go = decide(opened, config, { inFlight: 0 });
+  assert.equal(go.type, 'fire');
+  assert.equal(go.stage, 'layouts');
+  assert.deepEqual(go.add, [L.building]);
+  assert.equal(decide(opened, config, { inFlight: 2 }).type, 'queue');
+});

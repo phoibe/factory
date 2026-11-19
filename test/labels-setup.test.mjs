@@ -32,3 +32,10 @@ test('the « Amélioration UI » label exists and leads to its own stage (issue 
 test('every label description fits GitHub\'s 100-character limit, or the sync fails in every project', () => {
   for (const [name, , description] of LABEL_DEFS) assert.ok(description.length <= 100, `${name}: ${description.length} characters`);
 });
+
+test('the « Mises en page » card label exists and leads to its own stage (issue #509)', async () => {
+  const { L, LABEL_DEFS, buildStage } = await import('../scripts/lib/labels.mjs');
+  assert.equal(L.layouts, 'factory:layouts');
+  assert.ok(LABEL_DEFS.some(([name]) => name === 'factory:layouts'));
+  assert.equal(buildStage([L.layouts, L.queued]), 'layouts');
+});

@@ -1,6 +1,6 @@
 // Part of the relay engine (scripts/relay.mjs): merging, production (release, live check, rollback, redo), the site version tag and the stack sheet.
 // Its functions reach the other parts through the shared context `ctx` built by createRelay.
-import { L, AGENT_MARKER, UPDATE_BRANCH_MARKER, REVERT_MARKER, PROD_BUG_MARKER, releaseNote } from '../lib/labels.mjs';
+import { L, AGENT_MARKER, UPDATE_BRANCH_MARKER, REVERT_MARKER, PROD_BUG_MARKER, LAYOUTS_MARKER, hasLayoutsSection, releaseNote } from '../lib/labels.mjs';
 import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-core.mjs';
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
 import { isRateLimited, isGitHubDown } from '../lib/ratelimit.mjs';
@@ -694,6 +694,25 @@ export function deliveryPart(ctx) {
     await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
   }
 
+  // Issue #509: a project whose design document (DESIGN.md) has no « Mises en page » section gets one card that
+  // describes its current screens there, once (marker in the body, any state: a card closed or abandoned is never
+  // reopened by itself), as soon as its synced agent instructions have the `layouts` stage. It starts at once, or
+  // first free place, like a stack card. Never while the framing is under way, never for a project with no design.
+  async function ensureDesignLayouts() {
+    if (!gh.getContent || !gh.createIssue) return;
+    const design = await gh.getContent('DESIGN.md');
+    if (!design?.content || hasLayoutsSection(Buffer.from(design.content, 'base64').toString('utf8'))) return;
+    if (((await gh.listIssues({ labels: L.layouts, state: 'all' })) || []).length) return;
+    if (!(await gh.getContent('.factory/stages/layouts.md'))) return;
+    if (((await gh.listIssues({ labels: L.project })) || []).some((i) => !i.pull_request)) return;
+    const body = [AGENT_MARKER, LAYOUTS_MARKER, 'La factory complète le **document de design** de ce projet avec sa partie « Mises en page » : pour chaque type d\'écran, la disposition, la navigation, la largeur, la place des libellés, les volets repliables et ce qui change sur téléphone.', '',
+      'Elle décrit les écrans tels qu\'ils sont aujourd\'hui, sans rien changer à l\'appli : seul le document change.'].join('\n');
+    const card = await gh.createIssue('Décrire les mises en page des écrans', body, [L.layouts, L.kept]);
+    log(`design layouts: card #${card.number} opened`);
+    const labels = await liveLabels(card.number);
+    await handle({ kind: 'issue', event: 'issues', action: 'opened', number: card.number, labels, fromOwner: true, fromAgent: false, openedRecently: false });
+  }
+
   // A sheet written before the « Mise en production » section (or without a readable first line) gets one card that
   // completes it, once, as soon as the synced agent instructions know the section: the factory then knows by itself
   // whether a merge puts the project in production. Never while the framing is under way.
@@ -767,5 +786,5 @@ export function deliveryPart(ctx) {
   }
 
 
-  return { mergeDocsPr, mergePr, readDelivery, afterMerge, moveProduction, followMain, holdForApproval, ensurePreprod, syncPreprod, findChangelog, cutChangelog, tagRelease, releaseList, mergedAt, releaseToProduction, endRelease, releaseChecking, releaseLive, rollbackRelease, checkLive, redoAfterRevert, startRedo, liveUrl, deployFailed, prodReport, redoBody, findRedo, settledPr, syncVersionTag, ensureVersionTagCard, ensureStackSheet, ensureDeliveryLine, unstickRedos, startUndoneRedo, recheckedRedo };
+  return { mergeDocsPr, mergePr, readDelivery, afterMerge, moveProduction, followMain, holdForApproval, ensurePreprod, syncPreprod, findChangelog, cutChangelog, tagRelease, releaseList, mergedAt, releaseToProduction, endRelease, releaseChecking, releaseLive, rollbackRelease, checkLive, redoAfterRevert, startRedo, liveUrl, deployFailed, prodReport, redoBody, findRedo, settledPr, syncVersionTag, ensureVersionTagCard, ensureStackSheet, ensureDesignLayouts, ensureDeliveryLine, unstickRedos, startUndoneRedo, recheckedRedo };
 }

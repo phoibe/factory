@@ -2322,6 +2322,49 @@ test('a failed lookup of the stack sheet (not a 404) opens no card', async () =>
   assert.ok(!gh.calls.some((c) => c[0] === 'create'));
 });
 
+// Issue #509: a project whose DESIGN.md has no « Mises en page » section gets one « Décrire les mises en page » card,
+// once, as soon as its synced agent instructions know the `layouts` stage. Never during the framing.
+function layoutsWorld({ design = '# Design\n\n## 8. Do\'s and Don\'ts\n', files = ['DESIGN.md', 'STACK.md', '.factory/stages/layouts.md', '.factory/AGENT.md'], issues = [], closed = [] } = {}) {
+  const { gh, state } = stackWorld({ files, issues, closed });
+  const get = gh.getContent;
+  gh.getContent = async (path) => (path === 'DESIGN.md' && files.includes(path) ? { content: Buffer.from(design).toString('base64') } : get(path));
+  return { gh, state };
+}
+
+test('a project whose design document has no layouts gets its card, started at once (issue #509)', async () => {
+  const { gh } = layoutsWorld();
+  const sent = [];
+  await guardTick(gh, sent);
+  const created = gh.calls.find((c) => c[0] === 'create');
+  assert.ok(created, 'card created');
+  assert.equal(created[1], 'Décrire les mises en page des écrans');
+  assert.ok(created[3].includes(L.layouts) && created[3].includes(L.kept));
+  assert.equal(payloadOf(sent.at(-1).init.body).stage, 'layouts');
+});
+
+test('no layouts card when the section exists, one was already opened, or the project is not ready (issue #509)', async () => {
+  const cases = {
+    'section exists': layoutsWorld({ design: '# Design\n\n## 9. Mises en page\n\nAucun écran.\n' }),
+    'section exists, plain title': layoutsWorld({ design: '# Design\n\n## Mises en page\n' }),
+    'no design document': layoutsWorld({ files: ['STACK.md', '.factory/stages/layouts.md', '.factory/AGENT.md'] }),
+    'card closed before': layoutsWorld({ closed: [{ number: 3, open: false, labels: [L.layouts] }] }),
+    'card open': layoutsWorld({ issues: [{ number: 3, labels: [L.layouts, L.queued] }] }),
+    'framing under way': layoutsWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] }),
+    'instructions not synced yet': layoutsWorld({ files: ['DESIGN.md', 'STACK.md', '.factory/AGENT.md'] }),
+  };
+  for (const [name, { gh }] of Object.entries(cases)) {
+    await guardTick(gh, []);
+    assert.ok(!gh.calls.some((c) => c[0] === 'create'), name);
+  }
+});
+
+test('a queued « Mises en page » card starts the layouts stage when a place frees (issue #509)', async () => {
+  const gh = fakeGh({ issues: [{ number: 4, labels: [L.layouts, L.queued] }], prs: [] });
+  const sent = [];
+  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
+  assert.equal(payloadOf(sent[0].init.body).stage, 'layouts');
+});
+
 test('the panel « ok » written on the issue is applied to the PR that delivers it', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] }], prs: [{ number: 7, body: 'Closes #1', head: { sha: 's' }, labels: [L.visualReview] }] });
   const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
@@ -3777,7 +3820,9 @@ test('a GitHub outage ends a decision on the « retried at the next tick » step
 // merged. The merge is not tried again and the owner is not told the PR is « fermée »: the end of the delivery
 // (labels, « C'est fusionné ✅ », the issue closed) is done now, as if the merge had just succeeded.
 test('the replay of an « ok » on a PR already merged finishes the delivery without merging again', async () => {
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: '2026-11-18T10:00:00Z', pull_request: { merged_at: '2026-11-18T10:00:00Z' }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  // Merged an hour ago: the replay only finishes a merge from the last 24 hours (a fixed date expires).
+  const mergedAt = new Date(Date.now() - 3600_000).toISOString();
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: mergedAt, pull_request: { merged_at: mergedAt }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });

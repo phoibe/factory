@@ -36,7 +36,8 @@ const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
 const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked];
-const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack].some((l) => has(labels, l));
+// `layouts` cards are only opened by the factory itself (handled at once), so no label event needs to start them.
+const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack, L.layouts].some((l) => has(labels, l));
 // A project issue (framing) always grills, whatever the config: the vision and the stack are decided there.
 const grillStage = (labels) => (has(labels, L.project) ? 'framing' : 'grilling');
 // The steps a factory PR can be at. An open PR with none of them (and not blocked) is stuck: no one will act on it.
@@ -49,8 +50,8 @@ function startIssue(ev, config, ctx) {
   // A question is answered right away, never queued, and changes no state: each follow-up gets an answer.
   if (has(ev.labels, L.question)) return fire('question');
   if (has(ev.labels, L.project)) return fire('framing', { add: [L.grilling] });
-  // A bug, a general review, a UI improvement or a stack sheet needs no spec: it is built right away, or queued.
-  if ([L.bug, L.audit, L.uiPolish, L.stack].some((l) => has(ev.labels, l))) {
+  // A bug, a general review, a UI improvement, a stack sheet or the design layouts need no spec: it is built right away, or queued.
+  if ([L.bug, L.audit, L.uiPolish, L.stack, L.layouts].some((l) => has(ev.labels, l))) {
     if (ctx.inFlight >= config.maxParallel) return { type: 'queue', add: [L.queued], remove: [], reason: 'factory pleine' };
     return fire(buildStage(ev.labels), { add: [L.building] });
   }

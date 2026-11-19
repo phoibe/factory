@@ -483,7 +483,7 @@ export function launchesPart(ctx) {
   // then bugs, then the rest, oldest first. Ideas the agent proposed are left for the owner to sort. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
   async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
-    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.uiPolish, L.stack, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
+    const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.uiPolish, L.stack, L.layouts, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
       L.building, L.blocked, L.running, L.pending];
     const open = async (label) => ((await gh.listIssues({ labels: label, sort: 'created', direction: 'asc' })) || []).filter((i) => !i.pull_request);
     // Picked features still waiting for the owner's answers (questions or spec): at most `maxQuestions` of them.
