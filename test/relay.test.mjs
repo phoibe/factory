@@ -3821,9 +3821,9 @@ test('a GitHub outage ends a decision on the « retried at the next tick » step
 // merged. The merge is not tried again and the owner is not told the PR is « fermée »: the end of the delivery
 // (labels, « C'est fusionné ✅ », the issue closed) is done now, as if the merge had just succeeded.
 test('the replay of an « ok » on a PR already merged finishes the delivery without merging again', async () => {
-  // Merged an hour ago: the replay only finishes a merge from the last 24 hours (a fixed date expires).
-  const mergedAt = new Date(Date.now() - 3600_000).toISOString();
-  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: mergedAt, pull_request: { merged_at: mergedAt }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
+  // Merged an hour ago (never a fixed date: past 24 h the replay is no longer finished, and the test broke the next day).
+  const at = new Date(Date.now() - 3600_000).toISOString();
+  const gh = fakeGh({ issues: [{ number: 1, labels: [L.building] }], prs: [{ number: 10, open: false, state: 'closed', merged: true, merged_at: at, pull_request: { merged_at: at }, base: { ref: 'main' }, body: 'Closes #1', head: { sha: 'abc' }, labels: [L.acceptance] }] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.handle({ kind: 'pr', event: 'issue_comment', action: 'created', number: 10, labels: [], text: 'ok', fromOwner: true });
