@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, ASK, safeGithubUrl } from '../panel/chat.mjs';
+import { openRequests, cleanBody, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, ASK, safeGithubUrl } from '../panel/chat.mjs';
 
 const AGENT = '<!-- factory-agent -->';
 const FOOT = '\n\n---\n_Généré par [Claude Code](https://claude.ai/code) · software factory_';
@@ -265,4 +265,17 @@ test('issueRequest takes the factory notes out of a proposed request', async () 
     assert.doesNotMatch(body.replace('<!-- factory-agent -->', ''), /factory-/);
     assert.match(body, /Texte\s+suite/);
   }
+});
+
+test('the board chat gets the open requests from the panel, without pull requests nor chats (issue #506)', () => {
+  const issues = [
+    { number: 7, title: 'Exporter en PDF', labels: ['factory:feature'] },
+    { number: 8, title: 'Une PR', pull_request: {}, labels: [] },
+    { number: 9, title: 'Une discussion', labels: ['factory:question'] },
+    { number: 10, title: 'Labels en objets', labels: [{ name: 'factory:bug' }] },
+    { number: 11, title: 'Discussion en objets', labels: [{ name: 'factory:question' }] },
+  ];
+  assert.deepEqual(openRequests(issues), [{ number: 7, title: 'Exporter en PDF' }, { number: 10, title: 'Labels en objets' }]);
+  assert.equal(openRequests(null), null);
+  assert.equal(openRequests(Array.from({ length: 300 }, (_, i) => ({ number: i, title: 't', labels: [] }))).length, 200);
 });

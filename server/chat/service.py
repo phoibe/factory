@@ -33,6 +33,7 @@ from core import (
 ATTACHMENTS = "factory-attachments"
 FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched again
 MAX_IMAGES = 4
+MAX_OPEN_REQUESTS = 200  # the panel sends the open requests of the board (issue #506)
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
 GIT_TIMEOUT = 60  # seconds for one update of the project's copy: a stalled GitHub must not hold the project's lock
@@ -195,9 +196,15 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         if refused:
             await gh.close()
             return JSONResponse({"error": refused}, 403)
-        return StreamingResponse(answer(gh, token, repo, body.get("conversation"), message, images), media_type="application/x-ndjson")
+        # Issue #506: the agent shows a card right away, so it checks first that no open request covers the subject.
+        # The panel sends them (it reads them with the owner's token; the read-only one may not list issues).
+        wanted = body.get("openRequests")
+        open_requests = [{"number": r["number"], "title": str(r.get("title") or "")} for r in wanted[:MAX_OPEN_REQUESTS]
+                         if isinstance(r, dict) and type(r.get("number")) is int] if isinstance(wanted, list) else None
+        return StreamingResponse(answer(gh, token, repo, body.get("conversation"), message, images, open_requests),
+                                 media_type="application/x-ndjson")
 
-    async def answer(gh, token, repo, cid, message, images):
+    async def answer(gh, token, repo, cid, message, images, open_requests):
         def ev(obj):
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
@@ -241,7 +248,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=claude_env(), limit=16 * 1024 * 1024)
             try:
-                proc.stdin.write(build_prompt(conv, message, files).encode())
+                proc.stdin.write(build_prompt(conv, message, files, open_requests).encode())
                 await proc.stdin.drain()
                 proc.stdin.close()
             except (BrokenPipeError, ConnectionResetError):

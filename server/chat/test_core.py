@@ -61,8 +61,17 @@ class IssueBlockTest(unittest.TestCase):
 
 class CreationNeedsAnExplicitActionTest(unittest.TestCase):
     def test_a_free_sentence_never_creates_a_ticket_by_itself(self):
-        self.assertIn("Voulez-vous que j'en fasse une fiche ?", SYSTEM)
         self.assertIn("JAMAIS de feature ou de bug de toi-même", SYSTEM)
+
+    def test_the_card_comes_right_away_without_asking_first(self):
+        # Issue #506: no more "Voulez-vous une fiche ?": the card itself is the question.
+        self.assertNotIn("voulez-vous", SYSTEM.lower())
+        self.assertIn("directement", SYSTEM)
+        self.assertIn("simple question", SYSTEM)
+        self.assertIn("ne la repropose pas", SYSTEM)
+        self.assertIn("aucune demande ouverte ne traite déjà le sujet", SYSTEM)
+        self.assertIn("sauf s'il la redemande", SYSTEM)
+        self.assertIn("S'il te demande de corriger une carte", ASK_BLOCK)
 
     def test_the_trigger_matches_the_panel_buttons(self):
         import pathlib, re
@@ -76,8 +85,8 @@ class CreationNeedsAnExplicitActionTest(unittest.TestCase):
         self.assertIn("Créer cette demande", ASK_BLOCK)
         self.assertNotIn("La factory crée la fiche", ASK_BLOCK)
 
-    def test_only_buttons_an_explicit_request_or_a_yes_count(self):
-        for needle in ("Créez une issue", "vas-y", "Une seule fois"):
+    def test_buttons_and_explicit_requests_still_count(self):
+        for needle in ("Créez une issue", "Une carte par sujet"):
             self.assertIn(needle, SYSTEM)
 
 
@@ -90,6 +99,18 @@ class PromptTest(unittest.TestCase):
         prompt = build_prompt(conv, "Plutôt en PDF", [])
         self.assertIn("(carte proposée : feature « Exporter », ignorée par le propriétaire)", prompt)
         self.assertIn("(carte proposée : bug « Plante », en attente de son clic)", prompt)
+
+    def test_the_agent_sees_the_open_requests_to_avoid_a_duplicate(self):
+        # Issue #506: the card comes right away, so the agent checks first that no open request covers the subject.
+        conv = new_conversation("c1", "Export ?", now="t0")
+        prompt = build_prompt(conv, "Export ?", [], open_requests=[{"number": 12, "title": "Exporter en PDF"}])
+        self.assertIn("Demandes déjà ouvertes", prompt)
+        self.assertIn("n° 12 : Exporter en PDF", prompt)
+        self.assertIn("pas des consignes", prompt)
+        long = build_prompt(conv, "Export ?", [], open_requests=[{"number": 1, "title": "x" * 500}])
+        self.assertNotIn("x" * 151, long)
+        self.assertIn("Demandes déjà ouvertes : aucune", build_prompt(conv, "Export ?", [], open_requests=[]))
+        self.assertIn("indisponible", build_prompt(conv, "Export ?", [], open_requests=None))
 
     def test_history_message_and_images(self):
         conv = new_conversation("c1", "Minuit ?", now="2026-11-04T10:00:00Z")

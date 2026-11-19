@@ -50,6 +50,7 @@ class FakeGitHub:
         self.raw_calls = 0
         self.writes = []
         self.probe_limited = False  # every write that is not the write probe
+        self.issue_queries = []  # the server never lists the issues: the read-only token may not see them
 
 
     def __call__(self, request):
@@ -69,6 +70,8 @@ class FakeGitHub:
             return httpx.Response(422 if writer else 403, json={})
         if method != "GET":
             self.writes.append((method, path))
+        if path.endswith("/issues") and method == "GET":
+            self.issue_queries.append(dict(request.url.params))
         if "/branches/" in path:
             return httpx.Response(200 if path.rsplit("/", 1)[1] in self.branches else 404, json={})
         if "/contents/" in path:
@@ -119,7 +122,9 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
 
     def test_a_message_streams_the_answer_and_hands_the_issues_to_the_panel(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "images": ["attachments/chat/1-a.jpg"]})
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "images": ["attachments/chat/1-a.jpg"],
+                                       "openRequests": [{"number": 7, "title": "Exporter en PDF"}, {"number": "x", "title": "Bizarre"},
+                                                        {"number": 8, "title": "T" * 500}, "pas un objet"]})
         self.assertEqual(r.status_code, 200, r.text)
         kinds = [e["type"] for e in events]
         self.assertIn("reset", kinds)
@@ -135,6 +140,17 @@ class ServiceTest(unittest.TestCase):
         prompt = open(self.claude + ".prompt").read()
         self.assertIn("Je peux exporter ?", prompt)
         self.assertIn("1-a.jpg", prompt)
+        # Issue #506: the panel sends the open requests (the read-only token may not list issues on a private project).
+        self.assertIn("n° 7 : Exporter en PDF", prompt)
+        self.assertNotIn("Bizarre", prompt)
+        self.assertNotIn("T" * 151, prompt)
+        self.assertEqual(self.gh.issue_queries, [])
+
+    def test_without_the_open_requests_the_agent_is_told_the_list_is_missing(self):
+        for value in (None, "nimporte", 3):
+            r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "openRequests": value})
+            self.assertEqual(events[-1]["type"], "done", events)
+            self.assertIn("indisponible", open(self.claude + ".prompt").read())
 
     def test_the_server_never_writes_to_github(self):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})

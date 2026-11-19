@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys } from './lib.mjs?v=27';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag } from './chat.mjs?v=23';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests } from './chat.mjs?v=24';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=13';
@@ -2868,6 +2868,9 @@ async function sendChat(text, withImages = true) {
   }
 }
 
+// The open requests of the board shown, for the chat agent's duplicate check (issue #506); null when not loaded.
+const boardRequests = (repo) => openRequests(live.repo === repo ? live.issues : null);
+
 // Sends a message to the chat server and shows the answer as it is written.
 async function sendToServer(text, files, withImages) {
   if (chat.live) return;
@@ -2896,7 +2899,8 @@ async function sendToServer(text, files, withImages) {
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
       headers: { authorization: `Bearer ${readToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths }),
+      // The open requests of this project, so the agent never proposes a duplicate (issue #506).
+      body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths, openRequests: boardRequests(repo) }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
