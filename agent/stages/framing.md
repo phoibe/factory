@@ -162,8 +162,8 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Hors sujet** ;
 - **Design** : la scène d'usage, les trois mots du ressenti, les inspirations et anti-inspirations, ce qui
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
-  visuelle choisie avec ses quatre lignes ; ou, pour un design repris, « Design repris de <projet> » suivi de ce
-  qu'il veut y changer ;
+  visuelle choisie avec ses quatre lignes ; ou, pour un design repris, « Design repris de <projet> (`<propriétaire>/<dépôt>`) »
+  suivi de ce qu'il veut y changer ;
 - **Stack** : chaque brique avec sa raison en une phrase, **hébergeur compris** ;
 - **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
   cliquer, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;

@@ -2340,6 +2340,7 @@ test('a project whose design document has no layouts gets its card, started at o
   assert.equal(created[1], 'Décrire les mises en page des écrans');
   assert.ok(created[3].includes(L.layouts) && created[3].includes(L.kept));
   assert.equal(payloadOf(sent.at(-1).init.body).stage, 'layouts');
+  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 50 && c[2] === L.building));
 });
 
 test('no layouts card when the section exists, one was already opened, or the project is not ready (issue #509)', async () => {

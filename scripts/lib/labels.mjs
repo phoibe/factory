@@ -114,7 +114,7 @@ export const isIdea = (issue) => {
   return String(issue?.body || '').includes(AGENT_MARKER) && !labels.includes(L.kept);
 };
 
-// Issue #509: in the body of the factory's « Décrire les mises en page des écrans » card.
+// Issue #509: in the body of the factory's « Décrire les mises en page des écrans » card, to tell it apart in GitHub.
 export const LAYOUTS_MARKER = '<!-- factory-layouts -->';
 // True when a DESIGN.md already has its « Mises en page » section (`## Mises en page`, `## 9. Mises en page`…).
 export const hasLayoutsSection = (text) => /^##\s+(?:\d+\.\s*)?Mises en page\b/im.test(String(text || ''));

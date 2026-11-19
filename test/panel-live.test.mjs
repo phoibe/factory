@@ -175,6 +175,11 @@ test('a stack sheet card has no questions and no spec, like a bug', async () => 
   assert.deepEqual(stepsFor(['factory:stack']), stepsFor(['factory:bug']));
 });
 
+test('a « Mises en page » card has no questions and no spec, like a stack sheet (issue #509)', async () => {
+  const { stepsFor } = await import('../panel/live.mjs');
+  assert.deepEqual(stepsFor(['factory:layouts']), stepsFor(['factory:stack']));
+});
+
 // Issue #298: a card blocked only while it waits for another request's merge asks nothing of the owner.
 import { waitsText, waitsEta, stillWaited } from '../panel/live.mjs';
 test('a blocked card that waits for a merge sits in the queue lane, not in « À vous »', () => {

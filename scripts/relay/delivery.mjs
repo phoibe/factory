@@ -695,8 +695,8 @@ export function deliveryPart(ctx) {
   }
 
   // Issue #509: a project whose design document (DESIGN.md) has no « Mises en page » section gets one card that
-  // describes its current screens there, once (marker in the body, any state: a card closed or abandoned is never
-  // reopened by itself), as soon as its synced agent instructions have the `layouts` stage. It starts at once, or
+  // describes its current screens there, once (any `factory:layouts` card, in any state: a card closed or abandoned is
+  // never reopened by itself), as soon as its synced agent instructions have the `layouts` stage. It starts at once, or
   // first free place, like a stack card. Never while the framing is under way, never for a project with no design.
   async function ensureDesignLayouts() {
     if (!gh.getContent || !gh.createIssue) return;

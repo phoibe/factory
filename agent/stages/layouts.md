@@ -24,7 +24,10 @@ ses pages, pas seulement ses couleurs. Pas de questions, pas de spec : tu décri
 6. **PR** (API REST, voir AGENT.md) : résumé en français (« Le document de design décrit maintenant la mise en page de
    vos écrans : … », la liste des types d'écran en une ligne chacun avec leurs écrans), la ligne « Essayé en vrai : … »
    (les écrans ouverts) et « Pas vérifié en vrai : rien d'autre, seul le document change », puis `Closes #<n>`, puis
-   les détails en anglais. Pas de marqueur « rien à tester » : il valide la PR en relisant le texte. Pas de captures.
+   les détails en anglais. Pas de marqueur « rien à tester » : comme pour une demande normale, il peut relire le texte
+   et le corriger avant la mise en ligne. Pas de captures.
    Mets `factory:checks` sur la PR.
 7. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR, qui finit par
-   « Relisez la description des écrans dans la PR et répondez « ok » si elle leur ressemble. »
+   « Relisez la description de vos écrans dans la PR : si un point ne leur ressemble pas, écrivez-le dans la PR. »
+   Ne lui promets pas d'attendre un « ok » : la suite est celle d'une demande normale (contrôles, puis recette ou
+   mise en ligne selon le projet).

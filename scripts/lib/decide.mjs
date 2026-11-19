@@ -36,7 +36,6 @@ const has = (labels, l) => labels.includes(l);
 const ignore = (reason) => ({ type: 'ignore', reason });
 const fire = (stage, extra = {}) => ({ type: 'fire', stage, add: [], remove: [], ...extra });
 const STATE_LABELS = [L.grilling, L.specReview, L.queued, L.building, L.blocked];
-// `layouts` cards are only opened by the factory itself (handled at once), so no label event needs to start them.
 const isFactoryIssue = (labels) => [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack, L.layouts].some((l) => has(labels, l));
 // A project issue (framing) always grills, whatever the config: the vision and the stack are decided there.
 const grillStage = (labels) => (has(labels, L.project) ? 'framing' : 'grilling');
@@ -66,6 +65,7 @@ function onIssue(ev, config, ctx) {
     if (ev.action === 'reopened' && closeReason(ev.labels)) return { type: 'reopen', reason: "demande fermée par l'agent, rouverte" };
     // A card that gets blocked gives up its place: the queue can move on.
     if (ev.action === 'labeled' && ev.addedLabel === L.blocked && has(ev.labels, L.building)) return { type: 'dequeue', reason: 'carte bloquée : sa place est libre' };
+    // `layouts` cards are only opened by the factory itself (handled at once), so no label event needs to start them.
     const starting = ev.action === 'opened' || (ev.action === 'labeled' && [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack].includes(ev.addedLabel));
     if (!starting || !isFactoryIssue(ev.labels)) return ignore('événement non pertinent');
     if (ev.action === 'labeled' && ev.openedRecently) return ignore("label posé à l'ouverture : l'ouverture s'en charge");

@@ -40,6 +40,8 @@ capture dans le document), toujours avec la même grille :
 
 Règles :
 - Un projet sans aucun écran a une partie qui dit seulement « Aucun écran pour l'instant. » : rien d'inventé.
+  Exception : un design repris d'un autre projet garde toutes ses sous-parties, même sans écran encore
+  (« Écrans concernés : aucun pour l'instant ») ; ne les retire jamais.
 - Un écran qui mélange deux modèles va sous le plus proche, avec une phrase sur ce qui diffère ; une vraie
   différence devient une nouvelle sous-partie.
 - Si le document n'a pas encore cette partie et que tu modifies `DESIGN.md`, ajoute-la d'après les écrans actuels.

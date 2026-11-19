@@ -57,8 +57,8 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
      composants de base) ;
    - `.impeccable/config.json` avec `"buildPath": "code"`.
    Ces jetons sont la seule source des couleurs et des polices de l'appli : le squelette les applique.
-   **Design repris** (la fiche dit « Design repris de <projet> ») : lis le `DESIGN.md` et `.impeccable/design.json` de
-   ce projet (`gh api repos/<dépôt>/contents/DESIGN.md -H "Accept: application/vnd.github.raw"` ; si la lecture est
+   **Design repris** (la fiche dit « Design repris de <projet> (`<dépôt>`) ») : lis le `DESIGN.md` et
+   `.impeccable/design.json` de ce projet (`gh api repos/<dépôt>/contents/<fichier> -H "Accept: application/vnd.github.raw"` ; si la lecture est
    refusée, ajoute d'abord ce dépôt à ta session en lecture, avec l'outil `add_repo` s'il existe, et sinon bloque-toi
    en lui expliquant quel accès manque) et recopie-les
    à l'identique, thème **et** partie « Mises en page », en changeant seulement le nom du produit et ce que la fiche
