@@ -73,6 +73,14 @@ ressentis et des exemples. Ce qu'il faut savoir :
 7. **Le mouvement** : animations et petites récompenses visuelles bienvenues, discrètes, ou aucune.
 8. **L'accessibilité** : un besoin particulier (vue, daltonisme, gros caractères, usage d'une seule main).
 
+**Design repris** : avant ces questions, propose une option claire, « Reprendre le design d'un de vos projets »,
+avec la liste de ses projets qui ont déjà un `DESIGN.md` : les autres dépôts du même propriétaire trouvés par
+`gh api -X GET search/code -f q='filename:DESIGN.md user:<propriétaire>' --jq '.items[].repository.full_name'`
+(la liste de ses dépôts, `users/<propriétaire>/repos`, est souvent refusée dans le cloud), nommés comme dans le tableau. S'il la choisit, le nouveau projet reçoit le thème **et** toutes les mises en
+page de ce projet, à l'identique (étape 3 de `foundation.md`) : ne pose alors du questionnaire ci-dessous que ce qu'il
+veut changer, et pas de round « direction visuelle ». Si tu ne peux lire aucun autre projet, demande-lui lequel
+reprendre. Recommande-la (➡️) seulement s'il a cité un de ses projets comme modèle.
+
 N'en garde que celles dont la réponse n'est pas déjà claire. S'il répond « comme vous voulez » à une question,
 note-la « déléguée » et choisis toi-même à partir de ses autres réponses.
 
@@ -154,7 +162,8 @@ Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-ag
 - **Hors sujet** ;
 - **Design** : la scène d'usage, les trois mots du ressenti, les inspirations et anti-inspirations, ce qui
   existe déjà, la personnalité et le ton, la densité, le mouvement, l'accessibilité, puis la direction
-  visuelle choisie avec ses quatre lignes ;
+  visuelle choisie avec ses quatre lignes ; ou, pour un design repris, « Design repris de <projet> (`<propriétaire>/<dépôt>`) »
+  suivi de ce qu'il veut y changer ;
 - **Stack** : chaque brique avec sa raison en une phrase, **hébergeur compris** ;
 - **Hébergement** : où l'appli sera en ligne et, si ce n'est pas l'hébergeur déjà branché, quoi créer et où
   cliquer, et comment débrancher l'hébergeur déjà branché, s'il y en a un ;

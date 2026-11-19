@@ -37,7 +37,8 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
      expliquée simplement (voir « Ouvrir une issue » dans AGENT.md : pas de `factory:kept`, elle ira dans « Idées à trier » ; jamais une idée déjà
      refusée) et cite-la dans la PR.
    - Reste dans `DESIGN.md`. Si une correction l'exige vraiment, change le design validé dans `DESIGN.md` aussi, et
-     annonce-le **en tête** du résumé de la PR (il pourra le refuser au moment des captures).
+     annonce-le **en tête** du résumé de la PR (il pourra le refuser au moment des captures). Si elle existe, tiens à
+     jour sa partie « Mises en page » (étape 3 bis de `design-pass.md`, jamais pour un design repris).
 6. **Vérifie** localement (`typecheck`, `lint`, `test`, `build`, `test:a11y`, `test:e2e` : une correction visuelle peut
    casser un parcours ou l'accessibilité), puis `node .factory/scripts/journal-check.mjs` : il doit dire que rien ne
    manque.

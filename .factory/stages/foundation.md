@@ -24,7 +24,9 @@ ne refais **pas** l'appli et ne change pas son comportement.
 2. Écris `PRODUCT.md` (étape 2 ci-dessous) d'après la fiche validée, et `stack` dans `factory.config.json`.
 3. **Design** : si le look actuel est gardé, skill `impeccable`, commande `document` (`reference/document.md`)
    pour écrire `DESIGN.md` et `.impeccable/design.json` à partir des écrans existants, règle
-   « Textes à l'écran » comprise. Si un nouveau look a
+   « Textes à l'écran » comprise, et sa partie « Mises en page » décrite d'après ces écrans (section du même nom de
+   `.factory/stages/design-pass.md`), sauf si la fiche dit que ce projet suit le design d'un autre : alors
+   règle « Design repris » de cette section (ligne en tête et copie exacte de la référence). Si un nouveau look a
    été choisi, écris les documents comme à l'étape 3 ci-dessous et ouvre une issue « Appliquer le nouveau
    design » au lieu de toucher aux écrans ici.
 4. **Contrôles** : ajoute seulement ce qui manque pour que les scripts npm `typecheck`, `lint`, `test`,
@@ -50,11 +52,21 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    - `DESIGN.md` à la racine, au format de `reference/document.md` (jetons de couleurs, typographie, formes,
      espacements, composants de base, puis les huit sections, dont « Do's and Don'ts » nourri des
      anti-inspirations, de ce qui le ferait se sentir mal et de la règle « Textes à l'écran » de
-     `.factory/stages/design-pass.md`, à rappeler aussi à `impeccable`) ;
+     `.factory/stages/design-pass.md`, à rappeler aussi à `impeccable`), puis la partie « Mises en page » au
+     format de la section du même nom de `design-pass.md`, avec la mise en page de la page d'accueil du squelette ;
    - `.impeccable/design.json`, le complément de `DESIGN.md` (nuances, ombres, mouvement, points de rupture,
      composants de base) ;
    - `.impeccable/config.json` avec `"buildPath": "code"`.
    Ces jetons sont la seule source des couleurs et des polices de l'appli : le squelette les applique.
+   **Design repris** (la fiche dit « Design repris de <projet> (`<dépôt>`) ») : lis le `DESIGN.md` et
+   `.impeccable/design.json` de ce projet (`gh api repos/<dépôt>/contents/<fichier> -H "Accept: application/vnd.github.raw"` ; si la lecture est
+   refusée, ajoute d'abord ce dépôt à ta session en lecture, avec l'outil `add_repo` s'il existe, et sinon bloque-toi
+   en lui expliquant quel accès manque) et recopie-les
+   à l'identique, thème **et** partie « Mises en page », en changeant seulement le nom du produit et ce que la fiche
+   demande de changer, avec en tête de `DESIGN.md` la ligne « Design repris de <projet> (`<dépôt>`) » (les
+   constructions suivantes savent ainsi qu'elles ne changent jamais ses mises en page, règle « Design repris » de
+   `design-pass.md`). Le nouveau projet ne reste pas lié à l'autre : une copie, jamais une mise à jour automatique
+   ensuite (il la redemande s'il veut recopier la référence).
 4. **Stack** : dans `factory.config.json`, remplace la valeur de `stack` par la stack validée, en une phrase.
    Ne touche à rien d'autre dans ce fichier.
 5. **Squelette** de l'appli avec cette stack, versions stables et récentes (pas de préversion) :
