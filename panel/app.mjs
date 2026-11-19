@@ -16,10 +16,10 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey } from './machine.mjs';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs?v=2';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=5';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=6';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -71,6 +71,8 @@ let readToken = store.get(READ_TOKEN_KEY);
 // Ask the browser not to clear the token when it tidies its storage (mobile browsers do).
 if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
+// Private projects the dev server's check did not see, and the timer of their banner (issue #504).
+let forgotten = new Set(), runnerTimer = null, runnerRound = 0;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
 let dots = new Map();
 // What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
@@ -109,7 +111,7 @@ function resetSession({ forget = false } = {}) {
   triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
   store.del(TOKEN_KEY); store.del(PROJECTS_KEY); store.del(READ_TOKEN_KEY);
   if (forget) for (const k of sessionKeys(store.keys())) store.del(k);
-  token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0;
+  token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
 }
@@ -227,6 +229,7 @@ async function checkProjects() {
   const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
   projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
   if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
+  refreshRunnerAlert().catch(() => {});
   if (!projects.length) {
     current = null;
     clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
@@ -273,10 +276,12 @@ function projectItems() {
   return sortProjects(projects).map((p) => {
     const name = p.repo.full_name, here = current && current.repo.full_name === name;
     return el('li', {}, el('button', { type: 'button', class: 'project-item', 'data-repo': name, 'aria-current': here ? 'true' : null, title: p.repo.name, onclick: () => pickProject(name) },
-      dotNode(dots.get(name) || null), el('span', { class: 'pname' }, p.repo.name)));
+      dotNode(dots.get(name) || null), el('span', { class: 'pname' }, p.repo.name),
+      ...(forgotten.has(p.repo.name) ? [el('span', { class: 'pwarn', role: 'img', 'aria-label': 'Pas vu par le serveur de dev', title: 'Pas vu par le serveur de dev' }, '!')] : [])));
   });
 }
 
+const OTHER_FORGOTTEN = "Un autre projet n'est pas vu par le serveur de dev";
 const OTHERS = { blocked: 'Un autre projet est bloqué', yours: 'Un autre projet attend votre réponse' };
 // Redrawn every time a dot changes: the focused project keeps the focus.
 function renderProjectList() {
@@ -286,6 +291,13 @@ function renderProjectList() {
   if (focused) document.querySelector(`${$('projects-dialog').open ? '#projects-dialog-list' : '#projects-list'} [data-repo="${CSS.escape(focused)}"]`)?.focus();
   const other = current ? othersDot(dots, current.repo.full_name) : null;
   const sd = $('switch-dot');
+  // Issue #504: no red or blue elsewhere, but another project the dev server does not see: an orange dot.
+  const warn = !other && current && [...forgotten].some((n) => n !== current.repo.name);
+  if (warn) {
+    sd.hidden = false; sd.className = 'pdot pdot-warn';
+    sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHER_FORGOTTEN); sd.title = OTHER_FORGOTTEN;
+    return;
+  }
   sd.hidden = !other;
   sd.className = other ? `pdot pdot-${other}` : 'pdot';
   if (other) { sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHERS[other]); sd.title = OTHERS[other]; }
@@ -1270,7 +1282,44 @@ const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => 
   el('label', { for: `${name}-${v}` }, t)));
 
 // The « Machine des tâches » line for this project, with the dev server's state for it.
-const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default' });
+const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default', created: current.repo.created_at || null });
+
+// The button to the owner's GitHub tokens, with the one sentence that says what to do there (issue #504).
+// Message, then the step, then the button (design pass): the same orange box in the banner and in the settings.
+const runnerAlertBox = (text, attrs = {}) => el('div', { class: 'runner-alert', ...attrs },
+  el('p', { class: 'runner-alert-text' }, text),
+  el('p', { class: 'runner-alert-help muted small' }, RUNNER_KEYS_HELP),
+  el('a', { class: 'button secondary', href: RUNNER_KEYS_URL, target: '_blank', rel: 'noopener' }, 'Ajouter à la clé factory runners', el('span', { 'aria-hidden': 'true' }, ' ↗')));
+
+// ---- Private projects the dev server does not see (issue #504) --------------------------------------------------------
+// Read for every project at once: a banner above whichever project is open, and an orange mark in the project list.
+async function refreshRunnerAlert() {
+  clearTimeout(runnerTimer);
+  runnerTimer = setTimeout(() => refreshRunnerAlert().catch(() => {}), 15 * 60_000);
+  if (!token || !projects.length) return;
+  const session = token, round = ++runnerRound;
+  const [settings, status] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json')]);
+  const list = await Promise.all(projects.map(async (p) => {
+    let own = 'default';
+    try { own = JSON.parse(fromBase64(p.file?.content || '')).machine || 'default'; } catch { /* unreadable rules: the general setting */ }
+    return { name: p.repo.name, hash: await repoKey(String(p.repo.id)), isPrivate: Boolean(p.repo.private), created: p.repo.created_at || null, project: own };
+  }));
+  if (token !== session || round !== runnerRound) return; // a newer round answers instead
+  const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
+  // The settings line follows the same fresh status (it was read when the project opened).
+  if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
+    const fresh = JSON.stringify(status.json) !== JSON.stringify(machine.status);
+    machine.status = status.json;
+    if (fresh && !$('rules-panel').hidden) renderRules();
+  }
+  // Rebuilt only when the names change: a screen reader does not hear it again, a focused link keeps the focus.
+  if (names.join('\n') === [...forgotten].join('\n')) return;
+  forgotten = new Set(names);
+  const box = $('runner-alert');
+  box.hidden = !names.length;
+  box.replaceChildren(...(names.length ? [runnerAlertBox(runnerAlertText(names))] : []));
+  renderProjectList();
+}
 
 // This project's machine. A warning is shown above « Avancé » instead (issue #342), never twice.
 function machineFieldset(update, line) {
@@ -1401,7 +1450,8 @@ function renderRules() {
   const name = current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
-  const alert = line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
+  const alert = line.keys ? [runnerAlertBox(line.text, { role: 'status' })]
+    : line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
   const summary = advancedSummary({
     machine: effectiveMachine({ isPrivate: current.repo.private, project: c.machine, general: machine.general }),
     checksOn: CHECKS.filter(([k]) => c.checks[k]).length, checksTotal: CHECKS.length,
@@ -1645,6 +1695,7 @@ async function start() {
       projects = remembered.projects;
       refreshStable().catch(() => {});
       refreshRuns();
+      refreshRunnerAlert().catch(() => {});
       await openProject(store.get(PROJECT_KEY));
       refreshDots();
       return checkProjects();
@@ -1667,6 +1718,7 @@ async function start() {
   }
   refreshStable().catch(() => {});
   refreshRuns();
+  refreshRunnerAlert().catch(() => {});
   if (!projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
   refreshDots(); // after the board: the open project's dot comes from it

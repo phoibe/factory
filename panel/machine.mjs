@@ -1,8 +1,9 @@
 // The « Machine des tâches » line of the settings (issue #271), from the dev server check's status file.
 // `hash`: the project's key in that file (repoKey); `project`: its own setting, `default` follows `general`.
-export function machineLine({ status, hash, isPrivate, general, project }) {
+// `created`: the repository's creation date; `now`: for tests (issue #504).
+export function machineLine({ status, hash, isPrivate, general, project, created = null, now = Date.now() }) {
   if (!isPrivate) return { text: 'Projet public : ses tâches tournent toujours sur les machines GitHub, gratuites pour lui.', tone: 'muted' };
-  const wanted = project === 'default' ? general : project;
+  const wanted = wantedMachine(project, general);
   if (wanted === 'github') return { text: 'Ses tâches tournent sur les machines GitHub, comme demandé.', tone: 'muted' };
   if (!status) return { text: 'Serveur de dev : pas encore vérifié, machines GitHub en attendant.', tone: 'muted' };
   const entry = status.projects?.[hash];
@@ -11,6 +12,7 @@ export function machineLine({ status, hash, isPrivate, general, project }) {
     return { text: "Serveur de dev : clé d'accès manquante (expirée ou refusée). Plus de secours automatique sur les machines GitHub : renouvelez la clé.", tone: 'warn' };
   }
   if (status.key !== 'ok') return { text: "Serveur de dev : clé d'accès manquante. Les tâches tournent sur les machines GitHub.", tone: 'warn' };
+  if (!entry && missedBy(status, created, now)) return { text: `Ce projet ${NOT_SEEN}`, tone: 'warn', keys: true };
   if (entry?.error) return { text: "Serveur de dev : la bascule n'a pas pu se faire, nouvel essai au prochain contrôle (15 minutes au plus).", tone: 'warn' };
   const reason = entry?.reason;
   if (reason === 'online') return { text: 'Serveur de dev : en ligne.', tone: 'ok' };
@@ -23,4 +25,40 @@ export function machineLine({ status, hash, isPrivate, general, project }) {
 export async function repoKey(fullName) {
   const bytes = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(fullName).toLowerCase()));
   return [...new Uint8Array(bytes)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ---- A private project the dev server's key does not see (issue #504) ------------------------------------------------
+// The check only sees the projects ticked in the « factory runners » key: a forgotten one is simply absent from its
+// status file, and its jobs keep running on GitHub's paid machines. Only the panel, which sees every project, can tell.
+// GitHub cannot link to one token: the list of the owner's tokens, where they click « factory runners ».
+export const RUNNER_KEYS_URL = 'https://github.com/settings/personal-access-tokens';
+export const RUNNER_KEYS_HELP = 'Cliquez sur factory runners, cochez le projet, puis enregistrez.';
+const NOT_SEEN = "n'est pas vu par le serveur de dev : ses tâches consomment vos minutes GitHub.";
+// The status file is rewritten at least hourly: an older one means the check itself stopped, whose own alerts speak.
+const FRESH_MS = 2 * 60 * 60_000;
+
+// Like the check's decideMachine: an unknown value (a typo) follows the general setting.
+const wantedMachine = (project, general) => (project === 'github' || project === 'dev-server' ? project : general);
+
+// True when a recent check, made with a working key after the project was created, did not list it.
+function missedBy(status, created, now) {
+  if (!status || status.key !== 'ok' || !status.checkedAt || !created) return false;
+  const at = Date.parse(status.checkedAt), born = Date.parse(created);
+  return Number.isFinite(at) && Number.isFinite(born) && now - at < FRESH_MS && at > born;
+}
+
+// `projects`: [{ name, hash, isPrivate, created, project }] (`project`: its own machine setting, `default` follows
+// `general`). Returns the names of the private projects meant for the dev server that the last check did not see.
+export function forgottenProjects({ status, general, projects, now = Date.now() }) {
+  return (projects || []).filter((p) => {
+    if (!p.isPrivate) return false;
+    return wantedMachine(p.project, general) !== 'github' && !status?.projects?.[p.hash] && missedBy(status, p.created, now);
+  }).map((p) => p.name);
+}
+
+// One banner for every forgotten project.
+export function runnerAlertText(names) {
+  if (names.length === 1) return `${names[0]} ${NOT_SEEN}`;
+  const list = `${names.slice(0, -1).join(', ')} et ${names.at(-1)}`;
+  return `${list} ne sont pas vus par le serveur de dev : leurs tâches consomment vos minutes GitHub.`;
 }

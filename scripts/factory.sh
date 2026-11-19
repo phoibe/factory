@@ -293,6 +293,10 @@ dev_server_reminder() {
   if copy "$cmd"; then echo "  Je viens de la copier pour vous : il suffit de la coller (Cmd+V) dans le terminal du serveur."; fi
   echo "  Le guide pas à pas : $DEV_SERVER_GUIDE"
   echo "  Tant que ce n'est pas fait, le projet n'a pas de runner sur le serveur."
+  echo
+  echo "  Pensez à cocher ce projet dans la clé factory runners, sinon il tournera sur les machines GitHub payantes :"
+  echo "  ouvrez https://github.com/settings/personal-access-tokens, cliquez sur factory runners, cochez le projet,"
+  echo "  puis enregistrez. Le panneau vous le rappellera s'il reste oublié."
 }
 
 # Questions posées quand le script est lancé sans arguments.

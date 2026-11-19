@@ -666,3 +666,10 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .lightbox { cursor: zoom-out; }
 .lightbox-close { position: fixed; top: 12px; right: 12px; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 0; background: rgb(0 0 0 / .45); color: #fff; font-size: 1.125rem; line-height: 1; }
 @media (max-width: 700px) { .messages, .composer, .pending-images { padding-inline: 12px; } }
+
+/* Issue #504: a private project the dev server does not see. The orange of the « ⚠️ » callouts (DESIGN.md). */
+.runner-alert { margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--warn-line); border-radius: 10px; background: var(--warn-soft); color: var(--text); }
+.runner-alert-text { margin: 0 0 4px; font-weight: 600; }
+.runner-alert-help { margin: 0 0 12px; }
+.pdot-warn { width: 10px; height: 10px; background: var(--warn-line); box-shadow: 0 0 0 1px var(--text); }
+.pwarn { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--warn-line); border-radius: 50%; background: var(--warn-soft); color: var(--text); font-size: 12px; font-weight: 700; line-height: 1; }

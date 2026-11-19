@@ -62,7 +62,7 @@ export function dotsWake({ now, last, pausedUntil }) {
 // visit, and a repository is read again only when something was pushed to it since (`pushed_at` changed): adding,
 // changing or removing its settings file is a push. A repository read again carries its last ETag, so an unchanged
 // file is a 304 that GitHub does not count against the hourly limit.
-const REPO_FIELDS = ['id', 'name', 'full_name', 'html_url', 'homepage', 'private', 'default_branch', 'archived', 'is_template', 'pushed_at'];
+const REPO_FIELDS = ['id', 'name', 'full_name', 'html_url', 'homepage', 'private', 'default_branch', 'archived', 'is_template', 'pushed_at', 'created_at'];
 export const slimRepo = (r) => Object.fromEntries(REPO_FIELDS.filter((k) => k in r).map((k) => [k, r[k]]));
 const slimFile = (f) => (f ? { content: f.content, sha: f.sha } : null);
 

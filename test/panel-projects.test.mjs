@@ -151,3 +151,7 @@ test('l\'étiquette du compte distingue deux jetons sans contenir le jeton', asy
   assert.notEqual(a, await tokenTag('ghp_secret2'));
   assert.ok(!a.includes('secret'));
 });
+
+test('the remembered repository keeps its creation date (issue #504: a new project is not alerted too early)', () => {
+  assert.equal(slimRepo({ full_name: 'o/r', created_at: '2026-11-18T08:00:00Z', owner: {} }).created_at, '2026-11-18T08:00:00Z');
+});
