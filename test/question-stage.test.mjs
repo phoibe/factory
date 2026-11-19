@@ -42,4 +42,5 @@ test('the question agent shows the card right away, without asking first (issue 
   assert.match(stage, /select\(\.pull_request \| not\)/);
   assert.match(stage, /factory:question/);
   assert.match(stage, /sauf s'il la redemande/);
+  assert.match(stage, /déjà proposé une sur ce sujet[^.]*en attente, ignorée ou refusée/);
 });

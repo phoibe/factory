@@ -228,10 +228,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             # Issue #506: the agent shows a card right away, so it needs the open requests to avoid a duplicate.
             # Only advisory: GitHub refusing it (rate limit, outage) must never cost the owner his answer.
             try:
-                listed = await gh.get("/repos/{repo}/issues", state="open", per_page=100) or []
+                listed = await asyncio.wait_for(gh.get("/repos/{repo}/issues", state="open", per_page=100), 5) or []
                 open_requests = [{"number": i["number"], "title": i["title"]} for i in listed if "pull_request" not in i
                                  and not any(lb.get("name") == "factory:question" for lb in i.get("labels") or [])]
-            except httpx.HTTPError:
+            except Exception:  # an error, a slow GitHub or an unexpected answer: the agent goes on without the list
                 open_requests = None
             yield ev({"type": "status", "text": "Réfléchit…"})
             # The prompt goes through stdin: a long conversation does not fit in a command-line argument.

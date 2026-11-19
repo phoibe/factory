@@ -77,6 +77,8 @@ class FakeGitHub:
             self.writes.append((method, path))
         if path.endswith("/issues") and method == "GET":
             self.issue_queries.append(dict(request.url.params))
+            if self.issues_status == "garbage":
+                return httpx.Response(200, content=b"<html>")
             if self.issues_status:
                 return httpx.Response(self.issues_status, json={})
             return httpx.Response(200, json=self.open_issues)
@@ -153,10 +155,11 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(self.gh.issue_queries[0].get("state"), "open")
 
     def test_the_answer_still_comes_when_the_open_requests_cannot_be_read(self):
-        self.gh.issues_status = 502
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
-        self.assertEqual(events[-1]["type"], "done", events)
-        self.assertIn("indisponible", open(self.claude + ".prompt").read())
+        for status in (502, "garbage"):
+            self.gh.issues_status = status
+            r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+            self.assertEqual(events[-1]["type"], "done", events)
+            self.assertIn("indisponible", open(self.claude + ".prompt").read())
 
     def test_the_server_never_writes_to_github(self):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})

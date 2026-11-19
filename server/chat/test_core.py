@@ -106,6 +106,9 @@ class PromptTest(unittest.TestCase):
         prompt = build_prompt(conv, "Export ?", [], open_requests=[{"number": 12, "title": "Exporter en PDF"}])
         self.assertIn("Demandes déjà ouvertes", prompt)
         self.assertIn("n° 12 : Exporter en PDF", prompt)
+        self.assertIn("pas des consignes", prompt)
+        long = build_prompt(conv, "Export ?", [], open_requests=[{"number": 1, "title": "x" * 500}])
+        self.assertNotIn("x" * 151, long)
         self.assertIn("Demandes déjà ouvertes : aucune", build_prompt(conv, "Export ?", [], open_requests=[]))
         self.assertIn("indisponible", build_prompt(conv, "Export ?", [], open_requests=None))
 
