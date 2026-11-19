@@ -32,7 +32,6 @@ export function watchPart(ctx) {
   const settledPr = (...a) => ctx.settledPr(...a);
   const syncVersionTag = (...a) => ctx.syncVersionTag(...a);
   const ensureStackSheet = (...a) => ctx.ensureStackSheet(...a);
-  const ensureDesignLayouts = (...a) => ctx.ensureDesignLayouts(...a);
   const unstickRedos = (...a) => ctx.unstickRedos(...a);
   const lastRunningAt = (...a) => ctx.lastRunningAt(...a);
   const handle = (...a) => ctx.handle(...a);
@@ -179,7 +178,6 @@ export function watchPart(ctx) {
     await unstickRedos().catch((e) => log(`stuck redo cards: ${e.message}`));
     await syncIfBehind();
     await ensureStackSheet().catch((e) => log(`stack sheet: ${e.message}`));
-    await ensureDesignLayouts().catch((e) => log(`design layouts: ${e.message}`));
     await syncPreprod().catch((e) => log(`${PREPROD_BRANCH}: ${e.message}`));
     await syncVersionTag().catch((e) => log(`version tag: ${e.message}`));
   }

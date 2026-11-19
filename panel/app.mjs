@@ -1,9 +1,9 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys } from './lib.mjs?v=27';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests } from './chat.mjs?v=24';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=13';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes } from './trust.mjs';
@@ -806,7 +806,7 @@ function card(c, lane, minutes, now, moved) {
   const plan = live.plans.get(c.number);
   const typical = plan && minutes.bySize ? { ...minutes, building: minutes.bySize[plan.size] } : minutes;
   const e = estimate(c, live.events, typical, now, plan);
-  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:ui-polish') ? 'Amélioration UI' : c.labels.includes('factory:stack') ? 'Fiche stack' : c.labels.includes('factory:layouts') ? 'Mises en page' : 'Fonctionnalité';
+  const kind = c.column === 'release' ? 'Mise en production' : c.labels.includes('factory:bug') ? 'Bug' : c.labels.includes('factory:audit') ? 'Review générale' : c.labels.includes('factory:ui-polish') ? 'Amélioration UI' : c.labels.includes('factory:stack') ? 'Fiche stack' : 'Fonctionnalité';
   const running = c.labels.includes('factory:running');
   // Issue #383: its launch failed for a moment, the factory starts it again by itself at that time.
   const relaunch = !running && relaunchWaits(c) ? relaunchLine(readRelaunch(c.body), undefined, now) : null;

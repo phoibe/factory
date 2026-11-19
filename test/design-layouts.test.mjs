@@ -2,8 +2,10 @@
 // and checked by the design pass; a project framed from another project's design copies its layouts too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
-import { hasLayoutsSection } from '../scripts/lib/labels.mjs';
+import { readFileSync } from 'node:fs';
+
+// True when a DESIGN.md has its « Mises en page » section (`## Mises en page`, `## 9. Mises en page`…).
+const hasLayoutsSection = (text) => /^##\s+(?:\d+\.\s*)?Mises en page\b/im.test(String(text || ''));
 
 const stage = (f) => readFileSync(new URL(`../agent/stages/${f}`, import.meta.url), 'utf8');
 const SECTION = 'Mises en page';
@@ -12,7 +14,8 @@ test('design-pass.md defines the « Mises en page » section with its fixed grid
   const section = stage('design-pass.md').split(`\n## ${SECTION}\n`)[1]?.split('\n## ')[0];
   assert.ok(section, `missing "## ${SECTION}" section`);
   for (const term of ['Disposition générale', 'Sommaire ou navigation', 'Largeur', 'Libellés et explications',
-    'Volets repliables', 'Sur téléphone', 'Écrans concernés', 'schéma', 'capture', 'Aucun écran pour l\'instant']) {
+    'Volets repliables', 'Sur téléphone', 'Écrans concernés', 'schéma', 'capture', 'Aucun écran pour l\'instant',
+    'largeurs chiffrées']) {
     assert.ok(section.includes(term), `the grid does not mention "${term}"`);
   }
 });
@@ -20,7 +23,7 @@ test('design-pass.md defines the « Mises en page » section with its fixed grid
 test('the design pass completes a late document and fixes a screen that contradicts it', () => {
   const md = stage('design-pass.md');
   assert.match(md, /Mise en page ajoutée au design : …/);
-  assert.match(md, /contredit[^.]*mise en page[^.]*\. C'est l'écran qui est corrigé, pas le\s+document/);
+  assert.match(md, /contredit[^.]*mise en page[^.]*\. C'est l'écran\s+qui est corrigé, pas le\s+document/);
   assert.match(md, /juge l'écran\s+aussi sur sa mise en page/);
 });
 
@@ -41,14 +44,19 @@ test('the framing offers to reuse the design of another project', () => {
   assert.ok(stage('framing.md').includes('« Reprendre le design d\'un de vos projets »'));
 });
 
-test('the layouts stage only describes the current screens in DESIGN.md', () => {
-  assert.ok(existsSync(new URL('../agent/stages/layouts.md', import.meta.url)));
-  const md = stage('layouts.md');
-  assert.match(md, /seul fichier[^.]*`DESIGN\.md`/);
-  assert.ok(md.includes(`## ${SECTION}`) || md.includes(`« ${SECTION} »`));
-  assert.match(md, /design-pass\.md/);
-  assert.match(md, /factory:checks/);
-  assert.match(md, /Pas vérifié en vrai/);
+test('a reused design never gets the project\'s own layouts written over the reference ones (PR #512)', () => {
+  const md = stage('design-pass.md');
+  assert.match(md, /Design repris de <projet> \(`<dépôt>`\)/);
+  assert.match(md, /ne la modifie jamais avec ce qui est propre à ce projet/);
+  assert.match(md, /ne complète jamais le document/);
+  assert.match(md, /Mise en page absente de <projet de référence>/);
+  assert.match(stage('build.md'), /design repris\*\* ne change jamais cette partie/);
+  assert.match(stage('foundation.md'), /en tête de `DESIGN\.md` la ligne « Design repris de/);
+});
+
+test('a project without the section only gets it on request, never in passing (PR #512)', () => {
+  assert.match(stage('design-pass.md'), /ne la reçoit que sur demande du\s+propriétaire[^]{0,200}Ne la crée jamais en passant/);
+  assert.match(stage('build.md'), /\*\*sans\*\* cette partie ne la\s+reçoit que si la demande la réclame/);
 });
 
 test('the general review and the UI improvement keep the layouts in DESIGN.md current', () => {

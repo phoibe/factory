@@ -38,13 +38,29 @@ capture dans le document), toujours avec la même grille :
 - **Sur téléphone** : ce qui change sous la largeur d'un téléphone ;
 - **Écrans concernés** : les écrans réels qui suivent ce modèle, par leur nom à l'écran.
 
+Écris-la assez précisément pour qu'un autre projet refasse la même page sans voir l'écran : largeurs chiffrées, ordre
+exact des blocs, ce qui est aligné avec quoi. Elle peut servir de **référence** à d'autres projets (Pulsar Wheel pour
+Pulsar Novae et Pulsar Magnetar).
+
 Règles :
 - Un projet sans aucun écran a une partie qui dit seulement « Aucun écran pour l'instant. » : rien d'inventé.
-  Exception : un design repris d'un autre projet garde toutes ses sous-parties, même sans écran encore
-  (« Écrans concernés : aucun pour l'instant ») ; ne les retire jamais.
 - Un écran qui mélange deux modèles va sous le plus proche, avec une phrase sur ce qui diffère ; une vraie
   différence devient une nouvelle sous-partie.
-- Si le document n'a pas encore cette partie et que tu modifies `DESIGN.md`, ajoute-la d'après les écrans actuels.
+- **Partie absente** : un projet dont `DESIGN.md` n'a pas encore cette partie ne la reçoit que sur demande du
+  propriétaire (une demande qui la réclame, ou un nouveau projet à sa fondation). Ne la crée jamais en passant,
+  dans une autre construction : ce projet suit peut-être le design d'un autre.
+- **Design repris** : un projet dont `DESIGN.md` commence par la ligne « Design repris de <projet> (`<dépôt>`) »
+  suit la mise en page de ce projet de référence. Sa partie « Mises en page » est la copie à l'identique de celle de
+  la référence : ne la modifie jamais avec ce qui est propre à ce projet (ni nouvelle sous-partie, ni nom d'écran,
+  ni largeur changée) ; ses écrans la suivent. Elle ne change que quand le propriétaire demande de la recopier à
+  nouveau depuis la référence. Pour la recopier : lis le `DESIGN.md` de la référence
+  (`gh api repos/<dépôt>/contents/DESIGN.md -H "Accept: application/vnd.github.raw"` ; si la lecture est refusée,
+  ajoute d'abord ce dépôt à ta session en lecture avec l'outil `add_repo` s'il existe, sinon bloque-toi en lui
+  expliquant quel accès manque) et remplace toute la partie par la sienne. Si la référence n'a pas encore de partie
+  « Mises en page », bloque-toi et dis-lui de la demander d'abord dans le projet de référence.
+- **Un projet existant qui doit suivre un autre projet** (« Pulsar Novae doit suivre Pulsar Wheel ») : sur sa
+  demande, ajoute en tête de `DESIGN.md` la ligne « Design repris de <projet> (`<dépôt>`) » et recopie la partie
+  comme ci-dessus.
 
 ## Étapes
 
@@ -65,12 +81,15 @@ Règles :
    Ne corrige que ce qui reste dans le périmètre de la feature et dans
    `DESIGN.md` ; si une correction demande de changer le design validé (nouvelle couleur, nouveau
    composant), fais-la dans `DESIGN.md` aussi et signale-le dans la PR.
-3 bis. **Mises en page à jour** : vérifie que chaque écran créé ou modifié figure dans la partie « Mises en page » de
-   `DESIGN.md` (sous son type d'écran, dans « Écrans concernés »). Un écran qui contredit une mise en page déjà
-   décrite (autre disposition, autre largeur, libellés ailleurs) est un défaut. C'est l'écran qui est corrigé, pas le
-   document. Si le document est en retard (mise en page nouvelle non décrite, écran absent de la liste, partie
-   manquante), complète-le toi-même dans la même PR et ajoute au résumé de la PR une ligne
+3 bis. **Mises en page à jour** (seulement si `DESIGN.md` a sa partie « Mises en page ») : vérifie que chaque écran
+   créé ou modifié figure dans cette partie (sous son type d'écran, dans « Écrans concernés »). Un écran qui contredit
+   une mise en page déjà décrite (autre disposition, autre largeur, libellés ailleurs) est un défaut. C'est l'écran
+   qui est corrigé, pas le document. Si le document est en retard (mise en page nouvelle non décrite, écran absent
+   de la liste), complète-le toi-même dans la même PR et ajoute au résumé de la PR une ligne
    « Mise en page ajoutée au design : … » (le type d'écran et l'écran, en mots simples).
+   **Design repris** : ne complète jamais le document (règle « Design repris » ci-dessus). Un écran dont le type
+   n'existe pas dans la référence va sous la mise en page la plus proche, et le résumé de la PR le dit en une ligne :
+   « Mise en page absente de <projet de référence> : … », pour qu'il la demande là-bas s'il le veut.
 4. **Recritique, une fois au plus**, et seulement si la première critique a trouvé des problèmes prioritaires
    (P0 ou P1) : une seule évaluation suffit pour ce contrôle (pas les deux sous-agents), centrée sur ces
    problèmes. Corrige ce qu'elle trouve encore, sans nouvelle critique. Sans problème prioritaire au départ,

@@ -2322,48 +2322,15 @@ test('a failed lookup of the stack sheet (not a 404) opens no card', async () =>
   assert.ok(!gh.calls.some((c) => c[0] === 'create'));
 });
 
-// Issue #509: a project whose DESIGN.md has no « Mises en page » section gets one « Décrire les mises en page » card,
-// once, as soon as its synced agent instructions know the `layouts` stage. Never during the framing.
-function layoutsWorld({ design = '# Design\n\n## 8. Do\'s and Don\'ts\n', files = ['DESIGN.md', 'STACK.md', '.factory/stages/layouts.md', '.factory/AGENT.md'], issues = [], closed = [] } = {}) {
-  const { gh, state } = stackWorld({ files, issues, closed });
+// Issue #509 (owner, PR #512): describing the screen layouts is never started in every project by the factory itself.
+// Some projects take their design from a reference project (Pulsar Novae and Magnetar from Pulsar Wheel) and must not
+// write their own layouts over it: the owner asks for it, project by project.
+test('the factory never opens a layouts card by itself in a project whose design has no layouts (issue #509)', async () => {
+  const { gh } = stackWorld({ files: ['DESIGN.md', 'STACK.md', 'PRODUCT.md', '.factory/stages/stack.md', '.factory/stages/layouts.md', '.factory/AGENT.md'] });
   const get = gh.getContent;
-  gh.getContent = async (path) => (path === 'DESIGN.md' && files.includes(path) ? { content: Buffer.from(design).toString('base64') } : get(path));
-  return { gh, state };
-}
-
-test('a project whose design document has no layouts gets its card, started at once (issue #509)', async () => {
-  const { gh } = layoutsWorld();
-  const sent = [];
-  await guardTick(gh, sent);
-  const created = gh.calls.find((c) => c[0] === 'create');
-  assert.ok(created, 'card created');
-  assert.equal(created[1], 'Décrire les mises en page des écrans');
-  assert.ok(created[3].includes(L.layouts) && created[3].includes(L.kept));
-  assert.equal(payloadOf(sent.at(-1).init.body).stage, 'layouts');
-  assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 50 && c[2] === L.building));
-});
-
-test('no layouts card when the section exists, one was already opened, or the project is not ready (issue #509)', async () => {
-  const cases = {
-    'section exists': layoutsWorld({ design: '# Design\n\n## 9. Mises en page\n\nAucun écran.\n' }),
-    'section exists, plain title': layoutsWorld({ design: '# Design\n\n## Mises en page\n' }),
-    'no design document': layoutsWorld({ files: ['STACK.md', '.factory/stages/layouts.md', '.factory/AGENT.md'] }),
-    'card closed before': layoutsWorld({ closed: [{ number: 3, open: false, labels: [L.layouts] }] }),
-    'card open': layoutsWorld({ issues: [{ number: 3, labels: [L.layouts, L.queued] }] }),
-    'framing under way': layoutsWorld({ issues: [{ number: 2, labels: [L.project, L.grilling] }] }),
-    'instructions not synced yet': layoutsWorld({ files: ['DESIGN.md', 'STACK.md', '.factory/AGENT.md'] }),
-  };
-  for (const [name, { gh }] of Object.entries(cases)) {
-    await guardTick(gh, []);
-    assert.ok(!gh.calls.some((c) => c[0] === 'create'), name);
-  }
-});
-
-test('a queued « Mises en page » card starts the layouts stage when a place frees (issue #509)', async () => {
-  const gh = fakeGh({ issues: [{ number: 4, labels: [L.layouts, L.queued] }], prs: [] });
-  const sent = [];
-  await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).dequeue();
-  assert.equal(payloadOf(sent[0].init.body).stage, 'layouts');
+  gh.getContent = async (path) => (path === 'DESIGN.md' ? { content: Buffer.from('# Design\n\n## 8. Do\'s and Don\'ts\n').toString('base64') } : get(path));
+  await guardTick(gh, []);
+  assert.ok(!gh.calls.some((c) => c[0] === 'create' && (/mises en page/i.test(String(c[1])) || String(c[3]).includes('factory:layouts'))));
 });
 
 test('the panel « ok » written on the issue is applied to the PR that delivers it', async () => {

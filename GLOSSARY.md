@@ -77,5 +77,5 @@ La façon de disposer un type d'écran (page de configuration, tableau de bord, 
 _À éviter_ : layout, gabarit, template
 
 **Design repris** :
-Le document de design qu'un nouveau projet copie, au cadrage, sur un autre projet du propriétaire : thème et mises en page à l'identique. La copie ne reste pas liée à l'original.
+Le document de design qu'un projet copie sur un autre projet du propriétaire, le projet de référence (Pulsar Wheel pour Pulsar Novae et Pulsar Magnetar) : thème et mises en page à l'identique, au cadrage ou sur sa demande. Le projet suit ensuite les mises en page de la référence sans jamais les modifier avec les siennes. La copie ne reste pas liée à l'original : elle n'est recopiée que sur sa demande.
 _À éviter_ : design hérité, design partagé
