@@ -188,3 +188,59 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Copier** : bouton discret (icône + « Copier ») en haut à droite d'un bloc de commande, et « Copier la réponse » sous chaque réponse ; « Copié ✓ » (vert) ou « Copie impossible » pendant 2 s.
 - **Attente** : « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », chiffres en mono.
 - **Image agrandie** : par-dessus la page sur un voile sombre (`rgb(0 0 0 / .8)`, plus opaque que le voile habituel pour isoler l'image) ; Échap, un clic à côté ou le bouton × la referme.
+
+## Mises en page
+
+### Projet (en-tête commun aux onglets)
+- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
+- **Sommaire ou navigation** : les onglets soulignés en encre ; la liste des projets, colonne de 240 px collée au bord droit, sert à changer de projet.
+- **Largeur** : contenu de 1100 px au plus, aligné à gauche de l'espace laissé par la liste des projets.
+- **Libellés et explications** : aucun texte d'explication ; seuls les titres, les libellés des boutons et la ligne d'état.
+- **Volets repliables** : aucun.
+- **Sur téléphone** : la liste des projets disparaît ; le nom du projet en haut, avec sa flèche, l'ouvre en plein écran. Les boutons se réduisent à « Nouvelle fonctionnalité » et « Plus », qui replie les autres actions. Les onglets restent sur une ligne.
+- **Écrans concernés** : Suivi, Agent, Paramètres (leur partie haute).
+
+### Tableau de suivi (onglet « Suivi »)
+- **Disposition générale** : une colonne de sections empilées, chacune avec son titre et son nombre en puce mono : d'abord « À vous de jouer » (ou la carte calme « Aucune fonctionnalité en cours » avec le point « En direct »), puis les agents au travail, la file d'attente, les idées à trier et « Terminé ». Dans chaque section, une grille de cartes de même taille (280 px au moins chacune, autant par ligne que la largeur le permet).
+- **Sommaire ou navigation** : aucun ; l'ordre des sections est fixe, ce qui attend une réponse toujours en haut.
+- **Largeur** : la largeur du contenu du projet (1100 px au plus).
+- **Libellés et explications** : le titre de section et son nombre ; une section vide dit une seule phrase dans un cadre en pointillés (« Rien de livré pour l'instant. »).
+- **Volets repliables** : les cartes « Mise en production » repliables (liste des modifications) ; le reste est ouvert.
+- **Sur téléphone** : une carte par ligne, la carte « À vous » en tête ; les boutons d'une carte prennent toute la largeur.
+- **Écrans concernés** : Suivi.
+
+### Page de réglages (onglet « Paramètres »)
+- **Disposition générale** : un titre « Ce projet : <nom> », puis une suite de blocs encadrés (cadre surface, filet d'un pixel, coins arrondis) avec leur titre posé sur le cadre : Mise en production, Site en ligne, Étapes, Demandes en parallèle. Dans un bloc, un réglage par ligne, séparé du suivant par un filet. Les réglages techniques sont rangés tout en bas, sous « Avancé » (dont une dernière partie « Tous les projets », séparée par un filet, pour les réglages communs). Une barre « Enregistrer » avec l'état (« Tout est enregistré ») reste collée en bas de l'écran quand on fait défiler.
+- **Sommaire ou navigation** : aucun ; l'ordre des blocs suit l'importance.
+- **Largeur** : la largeur du contenu du projet ; les champs texte prennent toute la largeur du bloc, les champs nombre sont courts.
+- **Libellés et explications** : libellé en gras au-dessus du champ, ou à droite de la case à cocher ou du bouton radio ; un réglage qui dépend d'un autre est décalé en dessous de lui, en gris. Pas d'aide sous les champs.
+- **Volets repliables** : « Avancé », replié par défaut, avec une ligne de résumé grise sous son titre (« Serveur de dev · 7 contrôles sur 7 · … »).
+- **Sur téléphone** : mêmes blocs sur une colonne, pleine largeur.
+- **Écrans concernés** : Paramètres.
+
+### Discussion (onglet « Agent »)
+- **Disposition générale** : un grand cadre en deux colonnes qui occupe toute la hauteur restante de l'écran : à gauche (290 px, fond un ton à côté) « Nouvelle conversation » puis la liste des conversations ; à droite l'en-tête de la conversation (titre, bouton plein écran), les messages, et la zone de saisie toujours visible en bas (image, champ, envoi).
+- **Sommaire ou navigation** : la liste des conversations à gauche.
+- **Largeur** : la largeur des autres onglets ; les messages dans une colonne de lecture de 860 px au plus, centrée. Plein écran sur demande (voir « Issue 460 additions »).
+- **Libellés et explications** : une conversation vide montre un titre et trois exemples de messages à toucher, centrés ; rien d'autre.
+- **Volets repliables** : les propositions de demande dans une réponse (détail repliable).
+- **Sur téléphone** : une seule colonne : la liste des conversations, puis la conversation ouverte à sa place ; pas de plein écran.
+- **Écrans concernés** : Agent.
+
+### Page d'accueil réduite (connexion, aucun projet)
+- **Disposition générale** : une seule carte centrée, titre, une phrase au plus, puis le champ et le bouton.
+- **Sommaire ou navigation** : aucun.
+- **Largeur** : 560 px au plus, centrée.
+- **Libellés et explications** : libellé au-dessus du champ ; message d'erreur court sous le champ.
+- **Volets repliables** : aucun.
+- **Sur téléphone** : la carte prend toute la largeur, marges de 16 px.
+- **Écrans concernés** : connexion à GitHub, « Aucun projet pour l'instant », jeton de lecture de la discussion.
+
+### Fenêtre (par-dessus le projet)
+- **Disposition générale** : une fenêtre centrée sur le voile : titre en haut, contenu, puis les boutons en bas à droite (l'action principale en dernier).
+- **Sommaire ou navigation** : aucun ; Échap ou « Fermer » la referme.
+- **Largeur** : selon le contenu : 380 px (code QR), 640 px (stack technique, mise en production), toujours la largeur de l'écran moins 32 px au plus.
+- **Libellés et explications** : titre court ; le texte de la fiche lue en 65 caractères par ligne au plus.
+- **Volets repliables** : aucun.
+- **Sur téléphone** : presque plein écran, marges de 16 px, le contenu défile et les boutons restent en bas.
+- **Écrans concernés** : Ouvrir sur votre téléphone, Stack technique, Mettre en production, Pas encore en ligne, liste des projets (téléphone), image agrandie.

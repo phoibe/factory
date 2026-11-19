@@ -15,7 +15,8 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    un seul contrôle léger, et seulement si cette critique a trouvé des problèmes prioritaires (P0/P1), sans
    nouvelle critique ensuite (étape 4 de `design-pass.md`), avec la
    règle « Textes à l'écran » de `design-pass.md` sur tous les écrans. Reste dans `DESIGN.md` ; si un
-   problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR.
+   problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR. Si elle existe, tiens à
+   jour sa partie « Mises en page » (étape 3 bis de `design-pass.md`, jamais pour un design repris).
 3. **Revue de code générale** : charge le skill `requesting-code-review` (outil Skill), puis fais relire
    **tout le code** (pas un diff) par des sous-agents neufs (`sonnet`, effort `medium`), un par grande partie de
    l'appli si elle est grosse. Ils cherchent : bugs, failles de sécurité et données personnelles, erreurs mal

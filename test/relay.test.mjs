@@ -2322,6 +2322,17 @@ test('a failed lookup of the stack sheet (not a 404) opens no card', async () =>
   assert.ok(!gh.calls.some((c) => c[0] === 'create'));
 });
 
+// Issue #509 (owner, PR #512): describing the screen layouts is never started in every project by the factory itself.
+// Some projects take their design from a reference project (Pulsar Novae and Magnetar from Pulsar Wheel) and must not
+// write their own layouts over it: the owner asks for it, project by project.
+test('the factory never opens a layouts card by itself in a project whose design has no layouts (issue #509)', async () => {
+  const { gh } = stackWorld({ files: ['DESIGN.md', 'STACK.md', 'PRODUCT.md', '.factory/stages/stack.md', '.factory/stages/layouts.md', '.factory/AGENT.md'] });
+  const get = gh.getContent;
+  gh.getContent = async (path) => (path === 'DESIGN.md' ? { content: Buffer.from('# Design\n\n## 8. Do\'s and Don\'ts\n').toString('base64') } : get(path));
+  await guardTick(gh, []);
+  assert.ok(!gh.calls.some((c) => c[0] === 'create' && (/mises en page/i.test(String(c[1])) || String(c[3]).includes('factory:layouts'))));
+});
+
 test('the panel « ok » written on the issue is applied to the PR that delivers it', async () => {
   const gh = fakeGh({ issues: [{ number: 1, labels: [L.feature] }], prs: [{ number: 7, body: 'Closes #1', head: { sha: 's' }, labels: [L.visualReview] }] });
   const relay = createRelay({ gh, repo: 'r', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });

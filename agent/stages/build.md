@@ -81,6 +81,12 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    (critique impeccable de chaque écran créé ou modifié, puis correction de tout ce qu'elle trouve), en
    respectant `DESIGN.md` (pas de nouvelle couleur ou police hors de ce fichier) et la règle
    « Textes à l'écran » de `design-pass.md`.
+   **Mises en page** (même si la passe design est désactivée), quand `DESIGN.md` a sa partie « Mises en page » : quand
+   ta PR crée un écran disposé d'une façon nouvelle, ajoute sa mise en page à cette partie (format de la section du
+   même nom de `design-pass.md`) dans la même PR. Quand l'écran suit une mise en page déjà décrite, ajoute son nom à la
+   ligne « Écrans concernés » de ce type d'écran. Deux exceptions (règles de cette section de `design-pass.md`) : un
+   **design repris** ne change jamais cette partie, ses écrans la suivent ; un document **sans** cette partie ne la
+   reçoit que si la demande la réclame.
 6 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.
 6 ter. **Spec rangée** : la spec validée devient un document du projet, dans cette PR (elle arrive dans le projet à
    la fusion ; une demande abandonnée n'en laisse donc aucune). Lance `node .factory/scripts/specs.mjs save <n>`
