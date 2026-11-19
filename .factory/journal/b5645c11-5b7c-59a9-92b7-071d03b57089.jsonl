@@ -18,3 +18,4 @@
 {"t":"2026-11-19T11:21:29.630Z","kind":"test","cmd":"cd /home/user/factory; CHROMIUM_PATH=… timeout 500 node --test e2e/machine.e2e.mjs e2e/advanced-settings.e2e.mjs e2e/projects*.e2e.mjs 2>&1 | grep -E \"^not ok|# (pass|fail)\"; ls e2e | head -50","ok":true,"id":"toolu_01VmeJ6Bbcgb2JcMNZ7s6G3d"}
 {"t":"2026-11-19T11:21:42.362Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique A design review","id":"toolu_013owRQNUEHq6sLZAJr2sTKY"}
 {"t":"2026-11-19T11:21:50.657Z","kind":"agent","model":"sonnet","effort":"medium","label":"Critique B detector evidence","id":"toolu_01Mpe9nvr1sNiPtD5bryjTZQ"}
+{"t":"2026-11-19T11:22:14.805Z","kind":"test","cmd":"cd /home/user/factory; CHROMIUM_PATH=… timeout 590 node --test e2e/request-size.e2e.mjs e2e/dots-refresh.e2e.mjs e2e/project-memory.e2e.mjs e2e/project-list.e2e.mjs e2e/errors.e2e.mjs e2e/read-token.e","ok":true,"id":"toolu_01VM8L6WpREEmKRMADXQWsoy"}
