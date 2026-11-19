@@ -74,9 +74,9 @@ ressentis et des exemples. Ce qu'il faut savoir :
 8. **L'accessibilité** : un besoin particulier (vue, daltonisme, gros caractères, usage d'une seule main).
 
 **Design repris** : avant ces questions, propose une option claire, « Reprendre le design d'un de vos projets »,
-avec la liste de ses projets qui ont déjà un `DESIGN.md` : les autres dépôts du même propriétaire
-(`gh api "users/<propriétaire>/repos?per_page=100" --jq '.[].full_name'`) où `gh api repos/<dépôt>/contents/DESIGN.md`
-répond, nommés comme dans le tableau. S'il la choisit, le nouveau projet reçoit le thème **et** toutes les mises en
+avec la liste de ses projets qui ont déjà un `DESIGN.md` : les autres dépôts du même propriétaire trouvés par
+`gh api -X GET search/code -f q='filename:DESIGN.md user:<propriétaire>' --jq '.items[].repository.full_name'`
+(la liste de ses dépôts, `users/<propriétaire>/repos`, est souvent refusée dans le cloud), nommés comme dans le tableau. S'il la choisit, le nouveau projet reçoit le thème **et** toutes les mises en
 page de ce projet, à l'identique (étape 3 de `foundation.md`) : ne pose alors du questionnaire ci-dessous que ce qu'il
 veut changer, et pas de round « direction visuelle ». Si tu ne peux lire aucun autre projet, demande-lui lequel
 reprendre. Recommande-la (➡️) seulement s'il a cité un de ses projets comme modèle.
