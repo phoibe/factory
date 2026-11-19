@@ -33,6 +33,7 @@ from core import (
 ATTACHMENTS = "factory-attachments"
 FETCH_EVERY = 30  # seconds: a project copy fresher than this is not fetched again
 MAX_IMAGES = 4
+MAX_OPEN_REQUESTS = 200  # the panel sends the open requests of the board (issue #506)
 MAX_MESSAGE = 20000  # characters
 CLAUDE_TIMEOUT = 180  # seconds for one answer
 GIT_TIMEOUT = 60  # seconds for one update of the project's copy: a stalled GitHub must not hold the project's lock
@@ -195,9 +196,15 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         if refused:
             await gh.close()
             return JSONResponse({"error": refused}, 403)
-        return StreamingResponse(answer(gh, token, repo, body.get("conversation"), message, images), media_type="application/x-ndjson")
+        # Issue #506: the agent shows a card right away, so it checks first that no open request covers the subject.
+        # The panel sends them (it reads them with the owner's token; the read-only one may not list issues).
+        wanted = body.get("openRequests")
+        open_requests = [{"number": r["number"], "title": str(r.get("title") or "")} for r in wanted[:MAX_OPEN_REQUESTS]
+                         if isinstance(r, dict) and type(r.get("number")) is int] if isinstance(wanted, list) else None
+        return StreamingResponse(answer(gh, token, repo, body.get("conversation"), message, images, open_requests),
+                                 media_type="application/x-ndjson")
 
-    async def answer(gh, token, repo, cid, message, images):
+    async def answer(gh, token, repo, cid, message, images, open_requests):
         def ev(obj):
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
@@ -225,14 +232,6 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     with open(f, "wb") as out:
                         out.write(data)
                     files.append(f)
-            # Issue #506: the agent shows a card right away, so it needs the open requests to avoid a duplicate.
-            # Only advisory: GitHub refusing it (rate limit, outage) must never cost the owner his answer.
-            try:
-                listed = await asyncio.wait_for(gh.get("/repos/{repo}/issues", state="open", per_page=100), 5) or []
-                open_requests = [{"number": i["number"], "title": i["title"]} for i in listed if "pull_request" not in i
-                                 and not any(lb.get("name") == "factory:question" for lb in i.get("labels") or [])]
-            except Exception:  # an error, a slow GitHub or an unexpected answer: the agent goes on without the list
-                open_requests = None
             yield ev({"type": "status", "text": "Réfléchit…"})
             # The prompt goes through stdin: a long conversation does not fit in a command-line argument.
             proc = await asyncio.create_subprocess_exec(

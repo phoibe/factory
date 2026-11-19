@@ -3,6 +3,12 @@
 // The owner never sees GitHub: the panel shows it as a chat.
 
 export const LABEL = 'factory:question';
+
+// The open requests the board chat checks before showing a card (issue #506): no pull request, no chat.
+export const openRequests = (issues) => (Array.isArray(issues)
+  ? issues.filter((i) => !i.pull_request && !(i.labels || []).some((l) => (l?.name ?? l) === LABEL))
+    .slice(0, 200).map((i) => ({ number: i.number, title: i.title }))
+  : null);
 const AGENT_MARKER = '<!-- factory-agent -->';
 const WAIT_MS = 10 * 60_000; // past this, a message nobody answered is « late »
 

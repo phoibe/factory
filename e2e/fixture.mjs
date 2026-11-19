@@ -63,8 +63,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       await page.route(`${CHAT}/**`, async (route) => {
         const req = route.request();
         if (req.method() === 'OPTIONS' || !req.url().endsWith('/chat')) return route.fulfill({ status: 204, headers: cors });
-        const { conversation, message } = req.postDataJSON();
-        chatCalls.push({ token: req.headers().authorization, message });
+        const { conversation, message, openRequests } = req.postDataJSON();
+        chatCalls.push({ token: req.headers().authorization, message, openRequests });
         if (chatServer.refuse) return route.fulfill({ status: chatServer.refuse, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Jeton refusé par GitHub.' }) });
         if (chatServer.delay) await new Promise((r) => setTimeout(r, chatServer.delay));
         const id = conversation || `c${Object.keys(chatBranch.chats).length + chatCalls.length}`;
