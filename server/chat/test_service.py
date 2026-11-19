@@ -50,6 +50,10 @@ class FakeGitHub:
         self.raw_calls = 0
         self.writes = []
         self.probe_limited = False  # every write that is not the write probe
+        self.open_issues = [
+            {"number": 7, "title": "Exporter en PDF", "labels": [{"name": "factory:feature"}]},
+            {"number": 8, "title": "Une PR", "pull_request": {}, "labels": []},
+            {"number": 9, "title": "Une autre discussion", "labels": [{"name": "factory:question"}]}]
 
 
     def __call__(self, request):
@@ -69,6 +73,8 @@ class FakeGitHub:
             return httpx.Response(422 if writer else 403, json={})
         if method != "GET":
             self.writes.append((method, path))
+        if path.endswith("/issues") and method == "GET":
+            return httpx.Response(200, json=self.open_issues)
         if "/branches/" in path:
             return httpx.Response(200 if path.rsplit("/", 1)[1] in self.branches else 404, json={})
         if "/contents/" in path:
@@ -135,6 +141,10 @@ class ServiceTest(unittest.TestCase):
         prompt = open(self.claude + ".prompt").read()
         self.assertIn("Je peux exporter ?", prompt)
         self.assertIn("1-a.jpg", prompt)
+        # Issue #506: the open requests, to avoid proposing a duplicate (no pull request, no chat).
+        self.assertIn("n° 7 : Exporter en PDF", prompt)
+        self.assertNotIn("Une PR", prompt)
+        self.assertNotIn("Une autre discussion", prompt)
 
     def test_the_server_never_writes_to_github(self):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})

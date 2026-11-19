@@ -225,6 +225,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     with open(f, "wb") as out:
                         out.write(data)
                     files.append(f)
+            # Issue #506: the agent shows a card right away, so it needs the open requests to avoid a duplicate.
+            listed = await gh.get("/repos/{repo}/issues", state="open", per_page=100) or []
+            open_requests = [{"number": i["number"], "title": i["title"]} for i in listed if "pull_request" not in i
+                             and not any(lb.get("name") == "factory:question" for lb in i.get("labels") or [])]
             yield ev({"type": "status", "text": "Réfléchit…"})
             # The prompt goes through stdin: a long conversation does not fit in a command-line argument.
             proc = await asyncio.create_subprocess_exec(
@@ -241,7 +245,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=claude_env(), limit=16 * 1024 * 1024)
             try:
-                proc.stdin.write(build_prompt(conv, message, files).encode())
+                proc.stdin.write(build_prompt(conv, message, files, open_requests).encode())
                 await proc.stdin.drain()
                 proc.stdin.close()
             except (BrokenPipeError, ConnectionResetError):

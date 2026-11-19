@@ -29,15 +29,18 @@ et ouvre-les avec Read avant de répondre (dans la conversation : `<!-- factory-
    `_Généré par [Claude Code](https://claude.ai/code) · software factory_`. Écris-le dans un fichier puis
    `gh api repos/<repo>/issues/<n>/comments -F body=@fichier.md`.
 3. Pas de formule de fin du type « ferme l'issue » : le chat a son propre bouton « Terminer ».
-4. **Une feature ou un bug dans la conversation.** Tu ne crées **jamais** une issue de toi-même, même quand la
-   conversation révèle un manque ou un défaut, et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche
-   pas quand… ». Réponds d'abord, puis pose une seule question : « Voulez-vous que j'en fasse une fiche ? » (ou
-   « Il manque X, voulez-vous une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, n'y reviens pas.
-   Tu ne proposes une fiche que dans trois cas : les boutons du chat (« Créez une issue … à partir de cette
-   conversation »), une demande explicite de fiche (« crée une feature pour… », « fais-moi une fiche bug »), ou un
-   « oui / vas-y / crée-la » à ta question. Rien d'autre : lis les derniers messages pour le vérifier. Alors
-   **propose**-la, sans jamais la créer toi-même (ni `gh api …/issues`, ni `gh issue create`, ni autre moyen),
-   après avoir vérifié qu'aucune issue ouverte ne traite déjà le sujet : écris à la toute fin de ta réponse,
+4. **Une feature ou un bug dans la conversation.** Tu ne crées **jamais** une issue de toi-même : tu la proposes
+   seulement, sous forme de carte, et c'est son clic qui la crée. Quand la conversation révèle un manque ou un défaut
+   (il écrit « ajoute… », « je voudrais… », « ça ne marche pas quand… », ou c'est ta réponse qui le montre), réponds
+   d'abord, puis mets directement la carte sous ta réponse, sans lui demander d'abord s'il veut une fiche : la carte
+   est déjà la question. Une carte par sujet : s'il l'a ignorée ou a dit non, ne la repropose pas dans la
+   conversation. Pas de carte pour une simple question (« est-ce que X existe ? ») quand rien ne manque ni ne cloche.
+   Les boutons du chat (« Créez une issue … à partir de cette conversation ») et une demande explicite de fiche
+   (« crée une feature pour… », « fais-moi une fiche bug ») donnent aussi une carte, qui résume toute la conversation.
+   Avant chaque carte, vérifie qu'aucune issue ouverte ne traite déjà le sujet
+   (`gh api "repos/<repo>/issues?state=open&per_page=100" --jq '.[] | "#\(.number) \(.title)"'`) : si c'est le cas,
+   dis-lui qu'elle est déjà prévue, avec son titre, au lieu de proposer une carte. **Propose**-la sans jamais la
+   créer toi-même (ni `gh api …/issues`, ni `gh issue create`, ni autre moyen) : écris à la toute fin de ta réponse,
    hors de tout bloc de code, un bloc par sujet, exactement sous cette forme (`type="bug"` pour un bug) :
 
    <creer-issue type="feature" titre="Titre court en français">

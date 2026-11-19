@@ -36,14 +36,18 @@ tableau de suivi et attend ta réponse en direct : sois rapide (quelques recherc
 - Une commande à copier va dans un bloc de code. Encadrés colorés : une ligne qui commence par ⚠️ s'affiche en orange
   (un risque), ✅ en vert (c'est fait), ➡️ en bleu (ce qu'il doit faire) ; au plus un ou deux par réponse,
   seulement quand ça compte, jamais pour décorer.
-- Tu ne crées JAMAIS de feature ou de bug de toi-même, même quand la discussion révèle un manque ou un défaut,
-  et même s'il écrit « ajoute… », « je voudrais… » ou « ça ne marche pas quand… » : tu réponds d'abord à sa
-  demande, puis tu poses une seule question, « Voulez-vous que j'en fasse une fiche ? » (ou « Il manque X, voulez-vous
-  une fiche ? »). Une seule fois par sujet : s'il ne répond pas ou dit non, tu n'y reviens pas dans la conversation.
-- Tu ne proposes une fiche que dans trois cas : il écrit « Créez une issue … à partir de cette conversation » (c'est ce
-  que les boutons du chat envoient), il demande explicitement une fiche (« crée une feature pour… », « fais-moi
-  une fiche bug »), ou il répond oui / vas-y / crée-la à ta question (vérifie que ton message précédent la posait). Rien d'autre. Résume alors toute la
-  conversation. Une fiche par sujet.
+- Tu ne crées JAMAIS de feature ou de bug de toi-même : tu les proposes seulement, sous forme de carte (bloc
+  ci-dessous), et c'est son clic qui les crée. Quand la discussion révèle un manque ou un défaut (il écrit « ajoute… »,
+  « je voudrais… », « ça ne marche pas quand… », ou c'est ta réponse qui le montre), réponds d'abord, puis mets
+  directement la carte sous ta réponse, sans lui demander d'abord s'il veut une fiche : la carte est déjà la question.
+- Une carte par sujet : s'il l'a ignorée ou a dit non, ne la repropose pas dans la conversation (une carte encore en
+  attente non plus : corrige-la seulement s'il le demande). Pas de carte pour une simple question (« est-ce que X
+  existe ? ») quand rien ne manque ni ne cloche.
+- Avant chaque carte, vérifie qu'aucune demande ouverte ne traite déjà le sujet (la liste est jointe à son message) :
+  si c'est le cas, dis-lui qu'elle est déjà prévue, avec son titre, au lieu de proposer une carte.
+- Les boutons du chat envoient « Créez une issue … à partir de cette conversation », et il peut demander explicitement
+  une fiche (« crée une feature pour… », « fais-moi une fiche bug ») : propose alors la carte en résumant toute la
+  conversation.
 
 """ + ASK_BLOCK
 
@@ -153,7 +157,7 @@ CARD_STATES = {"pending": "en attente de son clic", "created": "créée par le p
 MAX_PROMPT_CHARS = 60000  # a conversation that never ends must still fit: only the most recent messages are sent
 
 
-def build_prompt(conv, message, image_files):
+def build_prompt(conv, message, image_files, open_requests=()):
     parts = []
     history = conv.get("messages") or []
     if history:
@@ -176,6 +180,10 @@ def build_prompt(conv, message, image_files):
         if len(kept) < len(lines):
             kept.insert(0, "(les premiers messages de la conversation ont été omis)")
         parts.append("Conversation jusqu'ici :\n" + "\n\n".join(kept))
+    if open_requests:
+        # Issue #506: the card comes right away, so the agent first checks that no open request covers the subject.
+        parts.append("Demandes déjà ouvertes (pour ne pas en proposer une en double) :\n"
+                     + "\n".join(f"- n° {r['number']} : {r['title']}" for r in open_requests))
     parts.append("Nouveau message du propriétaire :\n" + (message or "(seulement des images)"))
     if image_files:
         parts.append("Images jointes à ce message (ouvre-les avec Read avant de répondre) :\n" + "\n".join(image_files))
