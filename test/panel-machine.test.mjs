@@ -91,7 +91,12 @@ test('the settings line warns instead of « pris en compte au prochain contrôle
   const line = machineLine({ ...base, status: checked({}), created: '2026-11-01T00:00:00Z', now: NOW });
   assert.equal(line.tone, 'warn');
   assert.equal(line.keys, true);
-  assert.match(line.text, /n'est pas vu par le serveur de dev : ses tâches consomment vos minutes GitHub/);
+  assert.equal(line.text, "Ce projet n'est pas vu par le serveur de dev : ses tâches consomment vos minutes GitHub.");
   const fresh = machineLine({ ...base, status: checked({}), created: '2026-11-19T11:55:00Z', now: NOW });
   assert.match(fresh.text, /pris en compte au prochain contrôle/);
+});
+
+test('an unknown machine value follows the general setting, like the dev server check (review of #504)', () => {
+  assert.deepEqual(forgottenProjects({ status: checked({}), general: 'github', projects: [p('typo', { project: 'Github' })], now: NOW }), []);
+  assert.match(machineLine({ ...base, project: 'Github', general: 'github', status: checked({}), created: '2026-11-01T00:00:00Z', now: NOW }).text, /comme demandé/);
 });

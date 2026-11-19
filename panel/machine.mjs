@@ -3,7 +3,7 @@
 // `created`: the repository's creation date; `now`: for tests (issue #504).
 export function machineLine({ status, hash, isPrivate, general, project, created = null, now = Date.now() }) {
   if (!isPrivate) return { text: 'Projet public : ses tâches tournent toujours sur les machines GitHub, gratuites pour lui.', tone: 'muted' };
-  const wanted = project === 'default' ? general : project;
+  const wanted = wantedMachine(project, general);
   if (wanted === 'github') return { text: 'Ses tâches tournent sur les machines GitHub, comme demandé.', tone: 'muted' };
   if (!status) return { text: 'Serveur de dev : pas encore vérifié, machines GitHub en attendant.', tone: 'muted' };
   const entry = status.projects?.[hash];
@@ -12,7 +12,7 @@ export function machineLine({ status, hash, isPrivate, general, project, created
     return { text: "Serveur de dev : clé d'accès manquante (expirée ou refusée). Plus de secours automatique sur les machines GitHub : renouvelez la clé.", tone: 'warn' };
   }
   if (status.key !== 'ok') return { text: "Serveur de dev : clé d'accès manquante. Les tâches tournent sur les machines GitHub.", tone: 'warn' };
-  if (!entry && missedBy(status, created, now)) return { text: `Serveur de dev : ce projet ${NOT_SEEN}`, tone: 'warn', keys: true };
+  if (!entry && missedBy(status, created, now)) return { text: `Ce projet ${NOT_SEEN}`, tone: 'warn', keys: true };
   if (entry?.error) return { text: "Serveur de dev : la bascule n'a pas pu se faire, nouvel essai au prochain contrôle (15 minutes au plus).", tone: 'warn' };
   const reason = entry?.reason;
   if (reason === 'online') return { text: 'Serveur de dev : en ligne.', tone: 'ok' };
@@ -37,6 +37,9 @@ const NOT_SEEN = "n'est pas vu par le serveur de dev : ses tâches consomment vo
 // The status file is rewritten at least hourly: an older one means the check itself stopped, whose own alerts speak.
 const FRESH_MS = 2 * 60 * 60_000;
 
+// Like the check's decideMachine: an unknown value (a typo) follows the general setting.
+const wantedMachine = (project, general) => (project === 'github' || project === 'dev-server' ? project : general);
+
 // True when a recent check, made with a working key after the project was created, did not list it.
 function missedBy(status, created, now) {
   if (!status || status.key !== 'ok' || !status.checkedAt || !created) return false;
@@ -49,8 +52,7 @@ function missedBy(status, created, now) {
 export function forgottenProjects({ status, general, projects, now = Date.now() }) {
   return (projects || []).filter((p) => {
     if (!p.isPrivate) return false;
-    const wanted = !p.project || p.project === 'default' ? general : p.project;
-    return wanted !== 'github' && !status?.projects?.[p.hash] && missedBy(status, p.created, now);
+    return wantedMachine(p.project, general) !== 'github' && !status?.projects?.[p.hash] && missedBy(status, p.created, now);
   }).map((p) => p.name);
 }
 

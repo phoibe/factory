@@ -72,7 +72,7 @@ let readToken = store.get(READ_TOKEN_KEY);
 if (token) navigator.storage?.persist?.().catch(() => {});
 let catalog, defaults, projects = [], current = null;
 // Private projects the dev server's check did not see, and the timer of their banner (issue #504).
-let forgotten = new Set(), runnerTimer = null;
+let forgotten = new Set(), runnerTimer = null, runnerRound = 0;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
 let dots = new Map();
 // What is known of each repository's settings file (issue #399): full name -> { pushed, etag, file | null }.
@@ -281,6 +281,7 @@ function projectItems() {
   });
 }
 
+const OTHER_FORGOTTEN = "Un autre projet n'est pas vu par le serveur de dev";
 const OTHERS = { blocked: 'Un autre projet est bloqué', yours: 'Un autre projet attend votre réponse' };
 // Redrawn every time a dot changes: the focused project keeps the focus.
 function renderProjectList() {
@@ -290,6 +291,13 @@ function renderProjectList() {
   if (focused) document.querySelector(`${$('projects-dialog').open ? '#projects-dialog-list' : '#projects-list'} [data-repo="${CSS.escape(focused)}"]`)?.focus();
   const other = current ? othersDot(dots, current.repo.full_name) : null;
   const sd = $('switch-dot');
+  // Issue #504: no red or blue elsewhere, but another project the dev server does not see: an orange dot.
+  const warn = !other && current && [...forgotten].some((n) => n !== current.repo.name);
+  if (warn) {
+    sd.hidden = false; sd.className = 'pdot pdot-warn';
+    sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHER_FORGOTTEN); sd.title = OTHER_FORGOTTEN;
+    return;
+  }
   sd.hidden = !other;
   sd.className = other ? `pdot pdot-${other}` : 'pdot';
   if (other) { sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHERS[other]); sd.title = OTHERS[other]; }
@@ -1277,8 +1285,11 @@ const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => 
 const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default', created: current.repo.created_at || null });
 
 // The button to the owner's GitHub tokens, with the one sentence that says what to do there (issue #504).
-const runnerKeysLink = () => [el('a', { class: 'button secondary', href: RUNNER_KEYS_URL, target: '_blank', rel: 'noopener' }, 'Ajouter à la clé factory runners', el('span', { 'aria-hidden': 'true' }, ' ↗')),
-  el('span', { class: 'muted small' }, RUNNER_KEYS_HELP)];
+// Message, then the step, then the button (design pass): the same orange box in the banner and in the settings.
+const runnerAlertBox = (text, attrs = {}) => el('div', { class: 'runner-alert', ...attrs },
+  el('p', { class: 'runner-alert-text' }, text),
+  el('p', { class: 'runner-alert-help muted small' }, RUNNER_KEYS_HELP),
+  el('a', { class: 'button secondary', href: RUNNER_KEYS_URL, target: '_blank', rel: 'noopener' }, 'Ajouter à la clé factory runners', el('span', { 'aria-hidden': 'true' }, ' ↗')));
 
 // ---- Private projects the dev server does not see (issue #504) --------------------------------------------------------
 // Read for every project at once: a banner above whichever project is open, and an orange mark in the project list.
@@ -1286,19 +1297,27 @@ async function refreshRunnerAlert() {
   clearTimeout(runnerTimer);
   runnerTimer = setTimeout(() => refreshRunnerAlert().catch(() => {}), 15 * 60_000);
   if (!token || !projects.length) return;
-  const session = token;
+  const session = token, round = ++runnerRound;
   const [settings, status] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json')]);
   const list = await Promise.all(projects.map(async (p) => {
     let own = 'default';
     try { own = JSON.parse(fromBase64(p.file?.content || '')).machine || 'default'; } catch { /* unreadable rules: the general setting */ }
     return { name: p.repo.name, hash: await repoKey(String(p.repo.id)), isPrivate: Boolean(p.repo.private), created: p.repo.created_at || null, project: own };
   }));
-  if (token !== session) return;
+  if (token !== session || round !== runnerRound) return; // a newer round answers instead
   const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
+  // The settings line follows the same fresh status (it was read when the project opened).
+  if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
+    const fresh = JSON.stringify(status.json) !== JSON.stringify(machine.status);
+    machine.status = status.json;
+    if (fresh && !$('rules-panel').hidden) renderRules();
+  }
+  // Rebuilt only when the names change: a screen reader does not hear it again, a focused link keeps the focus.
+  if (names.join('\n') === [...forgotten].join('\n')) return;
   forgotten = new Set(names);
   const box = $('runner-alert');
   box.hidden = !names.length;
-  box.replaceChildren(...(names.length ? [el('p', { class: 'runner-alert-text' }, runnerAlertText(names)), el('p', { class: 'runner-alert-actions' }, ...runnerKeysLink())] : []));
+  box.replaceChildren(...(names.length ? [runnerAlertBox(runnerAlertText(names))] : []));
   renderProjectList();
 }
 
@@ -1431,8 +1450,8 @@ function renderRules() {
   const name = current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
-  const alert = line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text),
-    ...(line.keys ? [el('p', { class: 'machine-keys' }, ...runnerKeysLink())] : [])] : [];
+  const alert = line.keys ? [runnerAlertBox(line.text, { role: 'status' })]
+    : line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
   const summary = advancedSummary({
     machine: effectiveMachine({ isPrivate: current.repo.private, project: c.machine, general: machine.general }),
     checksOn: CHECKS.filter(([k]) => c.checks[k]).length, checksTotal: CHECKS.length,

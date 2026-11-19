@@ -9,6 +9,13 @@ const recent = () => new Date(Date.now() - 5 * 60_000).toISOString();
 // The dev server's last check, a few minutes ago, saw only the projects whose key is given.
 const checked = (...seen) => ({ 'status.json': { key: 'ok', checkedAt: recent(), projects: Object.fromEntries(seen.map((h) => [h, { machine: 'dev-server', reason: 'online' }])) } });
 const banner = (page) => page.locator('#runner-alert');
+// The banner's own read of the check is done (the open project's settings read it too: two reads at least).
+const settled = async (page, reads) => {
+  for (let i = 0; i < 100 && reads.filter((r) => r.endsWith('/contents/status.json')).length < 2; i++) await page.waitForTimeout(50);
+  assert.ok(reads.filter((r) => r.endsWith('/contents/status.json')).length >= 2, 'the check was read');
+  await page.locator('#projects-list .project-item').first().waitFor();
+  await page.waitForTimeout(300);
+};
 
 test('le bandeau orange nomme le projet oublié, et son bouton ouvre la page des clés GitHub', async () => {
   await withPanel({ repos: ['o/r', 'o/pulsar'], factoryFiles: checked(H1) }, async ({ page, url }) => {
@@ -43,35 +50,42 @@ test("les réglages du projet affichent l'avertissement à la place de « pris e
     await page.goto(url);
     await page.getByRole('tab', { name: 'Paramètres' }).click();
     const rules = page.locator('#rules');
-    await rules.getByText("Serveur de dev : ce projet n'est pas vu par le serveur de dev", { exact: false }).waitFor();
-    await rules.getByRole('link', { name: /Ajouter à la clé factory runners/ }).waitFor();
+    // The same orange box as the banner, never the red line of a failure.
+    const box = rules.locator('.runner-alert');
+    await box.getByText("Ce projet n'est pas vu par le serveur de dev : ses tâches consomment vos minutes GitHub.").waitFor();
+    await box.getByRole('link', { name: /Ajouter à la clé factory runners/ }).waitFor();
+    assert.equal(await rules.locator('.machine-alert').count(), 0);
     assert.equal(await rules.getByText(/pris en compte au prochain contrôle/).count(), 0);
   });
 });
 
 test('un projet public, ou réglé « machines GitHub », ne fait apparaître aucun bandeau', async () => {
-  await withPanel({ repos: ['o/r', 'o/pub'], publicRepos: ['o/pub'], config: { machine: 'github' }, factoryFiles: checked() }, async ({ page, url }) => {
+  await withPanel({ repos: ['o/r', 'o/pub'], publicRepos: ['o/pub'], config: { machine: 'github' }, factoryFiles: checked() }, async ({ page, url, reads }) => {
     await page.goto(url);
-    await page.getByRole('tab', { name: 'Paramètres' }).waitFor();
-    await page.waitForTimeout(800);
+    await settled(page, reads);
     assert.equal(await banner(page).isHidden(), true);
   });
 });
 
 test('un projet coché dans la clé (présent dans le contrôle) ne fait apparaître aucun bandeau', async () => {
-  await withPanel({ repos: ['o/r', 'o/pulsar'], factoryFiles: checked(H1, H2) }, async ({ page, url }) => {
+  await withPanel({ repos: ['o/r', 'o/pulsar'], factoryFiles: checked(H1, H2) }, async ({ page, url, reads }) => {
     await page.goto(url);
-    await page.getByRole('tab', { name: 'Paramètres' }).waitFor();
-    await page.waitForTimeout(800);
+    await settled(page, reads);
     assert.equal(await banner(page).isHidden(), true);
   });
 });
 
 test("un projet tout neuf, créé après le dernier contrôle, n'est pas encore signalé", async () => {
-  await withPanel({ repos: ['o/r', 'o/neuf'], created: { 'o/neuf': new Date().toISOString() }, factoryFiles: checked(H1) }, async ({ page, url }) => {
+  await withPanel({ repos: ['o/r', 'o/neuf'], created: { 'o/neuf': new Date().toISOString() }, factoryFiles: checked(H1) }, async ({ page, url, reads }) => {
     await page.goto(url);
-    await page.getByRole('tab', { name: 'Paramètres' }).waitFor();
-    await page.waitForTimeout(800);
+    await settled(page, reads);
     assert.equal(await banner(page).isHidden(), true);
+  });
+});
+
+test('sur le téléphone, le bouton des projets porte le signal orange quand un autre projet est oublié', async () => {
+  await withPanel({ repos: ['o/r', 'o/pulsar'], viewport: { width: 390, height: 844 }, factoryFiles: checked(H1) }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('#switch-dot.pdot-warn[aria-label="Un autre projet n\'est pas vu par le serveur de dev"]').waitFor();
   });
 });
