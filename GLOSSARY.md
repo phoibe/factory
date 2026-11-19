@@ -61,3 +61,21 @@ _À éviter_ : menu déroulant, sélecteur
 **Point d'état** :
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
+
+## Design
+
+**Document de design** :
+Le document qui décrit l'allure validée d'un projet : son thème et ses mises en page. Toute interface du projet le suit, et la relecture du design juge les écrans à partir de lui.
+_À éviter_ : charte, guide de style, design system
+
+**Thème** :
+La partie du document de design qui fixe les couleurs, les polices, les formes, les espacements et les composants de base.
+_À éviter_ : skin, habillage
+
+**Mise en page** :
+La façon de disposer un type d'écran (page de configuration, tableau de bord, liste, détail…) : disposition générale, sommaire ou navigation, largeur, place des libellés et des explications, volets repliables, et ce qui change sur téléphone. Chacune est décrite en mots dans le document de design, avec la liste des écrans réels qui la suivent.
+_À éviter_ : layout, gabarit, template
+
+**Design repris** :
+Le document de design qu'un nouveau projet copie, au cadrage, sur un autre projet du propriétaire : thème et mises en page à l'identique. La copie ne reste pas liée à l'original.
+_À éviter_ : design hérité, design partagé
