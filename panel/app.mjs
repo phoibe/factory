@@ -831,6 +831,7 @@ function card(c, lane, minutes, now, moved) {
         : lane === 'queued' && c.waits?.length ? el('p', { class: 'doing waits' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', {}, waitsText(c.waits, requestTitles()))) : null;
   const waiting = lane === 'pending';
   const asks = waiting || lane === 'yours'; // the card carries its answer buttons
+  const held = waiting ? heldSince(c, now) : null; // « envoyé il y a … » on a card on hold
   const preview = live.previews.get(c.number);
   // A waiting card keeps its status line « En attente de GitHub », then the same buttons as in « À vous de jouer ».
   const testIt = c.column === 'acceptance' && !running && !waiting;
@@ -842,7 +843,7 @@ function card(c, lane, minutes, now, moved) {
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, ...kindParts(kind, Boolean(c.pull_request), c.number, plan?.size).map((p) => (typeof p === 'string' ? p : el('span', { class: 'size-tag' }, p.size)))),
       // On hold, the top line tells since when the answer waits, not the time spent at the step (issue #517).
-      waiting ? (heldSince(c, now) ? el('span', { class: 'since', 'data-time': '' }, heldSince(c, now)) : null)
+      waiting ? (held ? el('span', { class: 'since', 'data-time': '' }, held) : null)
         : e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
