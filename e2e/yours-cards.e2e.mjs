@@ -112,6 +112,21 @@ test('un clic sur « Ok » fait passer la carte en « Prise en compte en cours�
   });
 });
 
+// Issue #517: once sent, the waiting card no longer reads « Envoi… » (as if stuck), and its top line tells since when
+// the answer waits, not the time spent at the step.
+test('après un « Ok » envoyé, la carte en attente dit « Envoyé ✓ » et depuis quand la réponse attend', async () => {
+  const visual = issue(2, 'Imprimer la liste', ['factory:feature', 'factory:visual-review'], { pull_request: { url: 'x' }, html_url: 'https://github.com/o/r/pull/2', updated_at: at(48) });
+  await withPanel({ issues: [visual] }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('.ticket.yours button.go[data-go="2"]').click();
+    const held = page.locator('.pending-zone .ticket.pending[data-number="2"]');
+    await held.waitFor();
+    await page.waitForFunction(() => document.querySelector('.pending-zone button.go[data-go="2"]')?.textContent.trim() === 'Envoyé ✓', null, { timeout: 10000 });
+    assert.match(await held.locator('button.go').getAttribute('aria-label'), /^ok envoyé pour #2 /);
+    assert.equal((await held.locator('.since').textContent()).trim(), 'envoyé à l\'instant');
+  });
+});
+
 test('une demande bloquée a une carte rouge avec « Bloqué »', async () => {
   const blocked = issue(4, 'Importer un fichier', ['factory:feature', 'factory:building', 'factory:blocked']);
   await withPanel({ issues: [blocked] }, async ({ page, url }) => {
@@ -195,5 +210,7 @@ test('une réponse écrite sur GitHub et pas encore prise attend en « Prise en 
     assert.equal((await held.locator('.ticket[data-number="2"] .doing').textContent()).trim(), 'En attente de GitHub');
     assert.equal(await held.locator('.ticket[data-number="2"] .alert').count(), 0, 'no warning before 10 min');
     assert.match(await held.locator('.ticket[data-number="3"] .alert').textContent(), /^Réponse pas encore prise en compte · GitHub tarde depuis 14 min$/);
+    assert.equal((await held.locator('.ticket[data-number="3"] .since').textContent()).trim(), 'envoyé il y a 14 min');
+    assert.equal((await held.locator('.ticket[data-number="2"] .since').textContent()).trim(), 'envoyé il y a 3 min');
   });
 });
