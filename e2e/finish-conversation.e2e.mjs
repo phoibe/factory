@@ -74,3 +74,32 @@ test('sans le serveur de discussion aussi, créer la demande de la dernière car
     await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
   });
 });
+
+test('si l\'agent est encore en train de me répondre, créer la demande ne termine pas la conversation', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question'], { body: 'Le bouton Enregistrer plante', comments: 2 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 60000).toISOString(), html_url: 'u71' },
+    { id: 72, body: 'Et aussi, le titre est trop petit.', user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u72' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7').length, 0);
+  });
+});
+
+test('le bouton « Terminer » range toujours la conversation à la main', async () => {
+  await withPanel({ chatServer: { answer: 'Voici.', issues: [] } }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    await page.locator('#chat-messages').getByText('Voici.').waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    await page.locator('#chat-close').click();
+    await page.getByText('Conversation rangée dans « Terminées »').waitFor();
+    assert.ok(closedIndex(writes));
+  });
+});

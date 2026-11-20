@@ -2663,7 +2663,9 @@ async function decide(p, state) {
           store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
         }
       }
-      if (!unsaved) finish = here() && finishesConversation(conversationCards(open, decided));
+      // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
+      if (!unsaved) finish = here() && !answering() && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`))
+        && finishesConversation(conversationCards(open, decided));
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
@@ -2676,6 +2678,10 @@ async function decide(p, state) {
   }
   if (finish) await closeConversation({ stay: true, said: state === 'created' ? 'Demande créée, conversation rangée dans « Terminées »' : undefined });
 }
+
+// The owner is waiting for an answer in the open conversation.
+const answering = () => Boolean(chat.live || chat.sending || chat.pending)
+  || (!chat.server && Boolean(chat.issue) && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
 
 // Every card of the open conversation, with the choices made on this screen (issue #516).
 function conversationCards(open, decided) {
@@ -3111,7 +3117,12 @@ async function closeConversation({ stay = false, said } = {}) {
   const server = chat.server;
   if (server ? !open || open === 'new' : typeof open !== 'number') return;
   try {
-    if (server) await closeServerConversation(open);
+    if (server) {
+      await closeServerConversation(open);
+      // Shown at once, even when a refresh is already running (it would skip this one).
+      if (chat.list) chat.list = chat.list.map((c) => (c.id === open ? { ...c, state: 'closed' } : c));
+      drawChat();
+    }
     else {
       await api(`/repos/${chat.repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
       chat.etags.clear();
