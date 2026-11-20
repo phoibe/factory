@@ -141,6 +141,9 @@ body:has(#chat:not([hidden])) #toast { bottom: calc(96px + env(safe-area-inset-b
 .ticket p { margin: 0; }
 .ticket-top { display: flex; justify-content: space-between; gap: 8px; font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ticket-top .since { flex-shrink: 0; white-space: nowrap; }
+/* On hold, « envoyé il y a 3 min » sits under the type on every width: one layout, and never « #12 » alone on a line. */
+.ticket.pending .ticket-top { flex-wrap: wrap; row-gap: 2px; }
+.ticket.pending .ticket-top .since { flex-basis: 100%; }
 .ticket-top .size-tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--track); color: var(--text); font-weight: 600; white-space: nowrap; }
 .ticket.yours .size-tag { background: var(--surface); box-shadow: inset 0 0 0 1px var(--you-line); }
 .cta { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--you); }

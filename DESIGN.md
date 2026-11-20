@@ -178,7 +178,8 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ## Issue 123 additions
 - **Téléphone** : en haut, seulement le nom du projet, l'état du site en ligne (« En ligne : à jour », « En ligne : 2 modifications d'écart »… sur une ligne discrète, en rouge quand la dernière publication a échoué), « Nouvelle fonctionnalité », « Plus » (menu qui replie les actions secondaires) puis la carte « À vous ». Sur un projet mis en production « sur accord », « Mise en production » prend la place de « Nouvelle fonctionnalité », qui devient la première ligne de « Plus » : toujours une seule ligne de boutons, le « go » ne bouge jamais. Sur ordinateur tout reste affiché.
-- **« go » immédiat** (#450) : un toucher envoie la réponse tout de suite ; le bouton affiche « Envoi… », sans compte à rebours ni fenêtre de confirmation. « Jeter » sur une idée part aussi au toucher.
+- **« go » immédiat** (#450) : un toucher envoie la réponse tout de suite ; le bouton affiche « Envoi… » le temps de l'envoi, puis « Envoyé ✓ » (gris, désactivé) jusqu'à ce que la carte change de colonne (#517), sans compte à rebours ni fenêtre de confirmation. « Jeter » sur une idée part aussi au toucher.
+- **Carte « Prise en compte en cours… »** (#517) : la ligne du haut dit depuis quand la réponse attend (« envoyé à l'instant », « envoyé il y a 3 min »), sous la ligne du type, au lieu du temps passé à l'étape.
 - **Chargement** : cartes grises calmes, sans animation. **Erreur de discussions** : message permanent + « Réessayer ».
 
 ## Issue 460 additions (onglet Agent)

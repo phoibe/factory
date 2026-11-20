@@ -58,3 +58,20 @@ export function holdLine(answeredAt, now) {
   if (answeredAt == null || now - answeredAt < LATE_MS) return { late: false, text: 'En attente de GitHub' };
   return { late: true, text: `Réponse pas encore prise en compte · GitHub tarde depuis ${humanMinutes((now - answeredAt) / 60_000)}` };
 }
+
+// The « go » / « Ok » button of a card (issue #517): « Envoi… » only while the answer leaves; once GitHub took it,
+// « Envoyé ✓ » until the card changes column, so that a sent answer never looks stuck. `word`: « go » or « ok ».
+export function goLabel(word, { sending = false, sent = false } = {}) {
+  if (sending) return { text: 'Envoi…', name: `Envoi du ${word}` };
+  if (sent) return { text: 'Envoyé ✓', name: `${word} envoyé` };
+  const text = word === 'ok' ? 'Ok' : 'go';
+  return { text, name: text };
+}
+
+// The top line of a card on hold (issue #517): since when its answer waits, not the time spent at the step.
+// `at`: the answer's time in ms (the untaken answer, or the moment the owner came back after answering), or null.
+export function sentLine(at, now) {
+  if (at == null) return null;
+  const minutes = (now - at) / 60_000;
+  return minutes < 1 ? 'envoyé à l\'instant' : `envoyé il y a ${humanMinutes(minutes)}`;
+}
