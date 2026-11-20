@@ -123,3 +123,17 @@ test('review #492: the answer saved and its copy on screen share their card ids'
   addExchange(onScreen, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }], 'k3x9');
   assert.equal(stored.messages.at(-1).proposals[0].id, onScreen.messages.at(-1).proposals[0].id);
 });
+
+import { finishesConversation } from '../panel/chat.mjs';
+
+test('finishesConversation: every card decided and at least one request created (issue #516)', () => {
+  const card = (state) => ({ id: state, state });
+  assert.equal(finishesConversation([card('created')]), true);
+  assert.equal(finishesConversation([card('created'), card('ignored')]), true);
+  // A card still waiting keeps the conversation open, whatever the others say.
+  assert.equal(finishesConversation([card('created'), card('pending')]), false);
+  // Nothing created: the conversation stays open, as before.
+  assert.equal(finishesConversation([card('ignored'), card('ignored')]), false);
+  assert.equal(finishesConversation([]), false);
+  assert.equal(finishesConversation(), false);
+});

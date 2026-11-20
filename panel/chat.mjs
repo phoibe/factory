@@ -340,6 +340,11 @@ export function decideProposal(conv, id, state, url) {
   return true;
 }
 
+// Issue #516: a conversation ends by itself once none of its cards waits for the owner's choice and at least one
+// request was created from it (ignoring every card keeps it open, as before).
+export const finishesConversation = (cards = []) => cards.length > 0
+  && cards.every((c) => c.state === 'created' || c.state === 'ignored') && cards.some((c) => c.state === 'created');
+
 // Why a pasted read token is refused, or null when it is fine.
 export function readTokenProblem({ same, status, login, owner, readable, writable }) {
   if (same || writable) return WRITABLE_TOKEN;
