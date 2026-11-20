@@ -2244,13 +2244,13 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map() };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map() });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() });
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2449,6 +2449,7 @@ async function refreshChat() {
     // The project or the conversation changed meanwhile (the owner clicked another one): fetch it now.
     scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
   }
+  if (chat.repo === repo) finishWhenDone();
 }
 
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
@@ -2633,13 +2634,13 @@ async function decide(p, state) {
   if (chat.deciding.has(key) || chat.decided.has(key)) return;
   const repo = chat.repo, open = chat.open, server = chat.server;
   // Only leaving the project ends what this click may show (resetChat makes new maps); sending a message does not.
-  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused;
+  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later;
   const gone = () => chat.decided !== decided;
   const here = () => !gone() && chat.open === open;
   deciding.add(key);
   refused.delete(key);
   drawChat();
-  let url, finish = false;
+  let url, finish = false, earlier = false;
   try {
     const path = `chats/${open}.json`;
     // An answer that could not be saved lives only on screen: its cards are decided there. Every other card is read
@@ -2677,8 +2678,16 @@ async function decide(p, state) {
         }
       }
       // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
-      if (!unsaved) finish = here() && !answering() && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`))
-        && finishesConversation(conversationCards(open, decided));
+      if (!unsaved && here()) {
+        // An answer still on its way: the end waits for it (finishWhenDone, issue #521).
+        if (answering()) later.set(open, state === 'created' || later.get(open) ? FINISHED_SAID : '');
+        else {
+          // The turn is over: this click decides now, and a mark left from the turn is used up here.
+          earlier = Boolean(later.get(open));
+          later.delete(open);
+          finish = !chat.conv?.unsaved && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
+        }
+      }
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
@@ -2689,7 +2698,23 @@ async function decide(p, state) {
     if (!gone()) drawChat();
     if (url) renderBoard().catch(() => {});
   }
-  if (finish) await closeConversation({ stay: true, said: state === 'created' ? 'Demande créée, conversation rangée dans « Terminées »' : undefined });
+  if (finish) await closeConversation({ stay: true, said: state === 'created' || earlier ? FINISHED_SAID : undefined });
+}
+
+const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées »';
+
+// Issue #521: a card decided while the agent was still on its turn ends the conversation once that turn is over, if
+// every card is then decided and a request was created (the answer may have brought new cards: then it stays open).
+function finishWhenDone() {
+  const open = chat.open;
+  if (!chat.later.has(open) || answering() || [...chat.deciding].some((k) => k.startsWith(`${open}:`))) return;
+  // Not loaded yet (the owner just came back to it), or no answer after a long wait: the next refresh checks again.
+  if (chat.server ? chat.conv?.id !== open : chat.issue?.number !== open) return;
+  if (!chat.server && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'late') return;
+  const said = chat.later.get(open);
+  chat.later.delete(open);
+  const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue.state === 'closed';
+  if (!closed && finishesConversation(conversationCards(open, chat.decided))) closeConversation({ stay: true, said: said || undefined });
 }
 
 // The owner is waiting for an answer in the open conversation.
@@ -2911,6 +2936,8 @@ async function sendChat(text, withImages = true) {
   const gone = () => chat.run !== run; // the owner switched project: nothing below may touch the new one
   btn.disabled = true;
   chat.sending = true;
+  const sentTo = chat.open;
+  chat.later.delete(sentTo); // writing again carries the conversation on: no end on the agent's previous turn (#521)
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
@@ -2941,6 +2968,7 @@ async function sendChat(text, withImages = true) {
   } catch (e) {
     if (gone()) return;
     chat.pending = null;
+    chat.later.delete(sentTo); // the turn never happened: no end of conversation on top of this error (#521)
     drawChat();
     toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
@@ -2962,6 +2990,7 @@ async function sendToServer(text, files, withImages) {
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
+  chat.later.delete(chat.open); // writing again carries the conversation on (#521)
   chat.pending = { text, previews: files.map((f) => f.url) };
   const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages) {
@@ -3016,7 +3045,10 @@ async function sendToServer(text, files, withImages) {
       for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
       chat.conv = conv;
       chat.open = conv.id;
-      if (!saved) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+      if (!saved) {
+        chat.later.delete(conv.id); // its answer lives only on screen: never put away on top of this warning (#521)
+        toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+      }
       else {
         const c = { id: conv.id, title: conv.title, updated: conv.updated, state: 'open' };
         chat.list = serverList([c, ...(chat.list || []).filter((x) => x.id !== c.id)]);
@@ -3028,6 +3060,7 @@ async function sendToServer(text, files, withImages) {
   } catch (e) {
     if (gone()) return;
     if (e.readToken) readTokenRefused(e.message);
+    chat.later.delete(chat.open); // the agent did not answer: the conversation stays open with the message to resend (#521)
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
@@ -3039,6 +3072,7 @@ async function sendToServer(text, files, withImages) {
       chat.live = null;
       btn.disabled = false;
       drawChat();
+      finishWhenDone();
     }
   }
 }
