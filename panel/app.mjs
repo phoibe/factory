@@ -2708,8 +2708,9 @@ const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées 
 function finishWhenDone() {
   const open = chat.open;
   if (!chat.later.has(open) || answering() || [...chat.deciding].some((k) => k.startsWith(`${open}:`))) return;
-  // Not loaded yet (the owner just came back to it): the next refresh checks again.
+  // Not loaded yet (the owner just came back to it), or no answer after a long wait: the next refresh checks again.
   if (chat.server ? chat.conv?.id !== open : chat.issue?.number !== open) return;
+  if (!chat.server && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'late') return;
   const said = chat.later.get(open);
   chat.later.delete(open);
   const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue.state === 'closed';
@@ -2935,6 +2936,7 @@ async function sendChat(text, withImages = true) {
   const gone = () => chat.run !== run; // the owner switched project: nothing below may touch the new one
   btn.disabled = true;
   chat.sending = true;
+  const sentTo = chat.open;
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
@@ -2965,7 +2967,7 @@ async function sendChat(text, withImages = true) {
   } catch (e) {
     if (gone()) return;
     chat.pending = null;
-    chat.later.delete(chat.open); // the turn never happened: no end of conversation on top of this error (#521)
+    chat.later.delete(sentTo); // the turn never happened: no end of conversation on top of this error (#521)
     drawChat();
     toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
@@ -3041,7 +3043,10 @@ async function sendToServer(text, files, withImages) {
       for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
       chat.conv = conv;
       chat.open = conv.id;
-      if (!saved) toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+      if (!saved) {
+        chat.later.delete(conv.id); // its answer lives only on screen: never put away on top of this warning (#521)
+        toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
+      }
       else {
         const c = { id: conv.id, title: conv.title, updated: conv.updated, state: 'open' };
         chat.list = serverList([c, ...(chat.list || []).filter((x) => x.id !== c.id)]);

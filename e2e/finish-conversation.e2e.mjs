@@ -207,3 +207,26 @@ test('si l\'agent n\'arrive pas à répondre, la conversation reste ouverte avec
     assert.equal(await page.locator('#chat-input').inputValue(), 'Et aussi autre chose');
   });
 });
+
+test('si la réponse arrive mais n\'a pas pu être enregistrée, la conversation reste ouverte avec son avertissement', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  const failing = new Set();
+  await withPanel({ chatServer, failing }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    Object.assign(chatServer, { delay: 3000, issues: [], answer: 'Autre réponse.' });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    const before = writes.length;
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    const saved = writes.slice(before).find((w) => w.method === 'PUT' && /chats\//.test(w.path));
+    failing.add(saved.path); // the answer cannot be saved any more
+    await page.getByText('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.').waitFor({ timeout: 10000 });
+    await page.waitForTimeout(1000);
+    assert.equal(closedIndex(writes), false);
+    assert.equal(await page.locator('#chat-messages').getByText(NOTICE).count(), 0);
+  });
+});
