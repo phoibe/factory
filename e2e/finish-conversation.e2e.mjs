@@ -163,3 +163,47 @@ test('si la fin du tour de l\'agent apporte une nouvelle carte, la conversation 
     assert.equal(writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7').length, 0);
   });
 });
+
+test('avec le serveur de discussion, une demande créée pendant que l\'agent répond termine la conversation dès sa réponse', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  await withPanel({ chatServer }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    Object.assign(chatServer, { delay: 2500, issues: [], answer: 'Autre réponse.' });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    assert.equal(closedIndex(writes), false); // the agent is still answering
+    await page.getByText('Demande créée, conversation rangée dans « Terminées »').waitFor({ timeout: 10000 });
+    await page.locator('#chat-messages').getByText(NOTICE).waitFor();
+    assert.ok(closedIndex(writes));
+  });
+});
+
+test('si l\'agent n\'arrive pas à répondre, la conversation reste ouverte avec mon message à renvoyer', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  await withPanel({ chatServer }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    // The agent fails after a while, once the card has been clicked.
+    await page.route('http://localhost:7777/chat', async (route) => {
+      const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      await new Promise((r) => setTimeout(r, 2500));
+      return route.fulfill({ status: 500, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Panne.' }) });
+    });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.getByText(/L'agent n'a pas pu répondre/).waitFor({ timeout: 10000 });
+    await page.waitForTimeout(1000);
+    assert.equal(closedIndex(writes), false);
+    assert.equal(await page.locator('#chat-input').inputValue(), 'Et aussi autre chose');
+  });
+});

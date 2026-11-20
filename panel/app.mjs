@@ -2640,7 +2640,7 @@ async function decide(p, state) {
   deciding.add(key);
   refused.delete(key);
   drawChat();
-  let url, finish = false;
+  let url, finish = false, earlier = false;
   try {
     const path = `chats/${open}.json`;
     // An answer that could not be saved lives only on screen: its cards are decided there. Every other card is read
@@ -2681,7 +2681,12 @@ async function decide(p, state) {
       if (!unsaved && here()) {
         // An answer still on its way: the end waits for it (finishWhenDone, issue #521).
         if (answering()) later.set(open, state === 'created' || later.get(open) ? FINISHED_SAID : '');
-        else finish = ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
+        else {
+          // The turn is over: this click decides now, and a mark left from the turn is used up here.
+          earlier = Boolean(later.get(open));
+          later.delete(open);
+          finish = ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
+        }
       }
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
@@ -2693,7 +2698,7 @@ async function decide(p, state) {
     if (!gone()) drawChat();
     if (url) renderBoard().catch(() => {});
   }
-  if (finish) await closeConversation({ stay: true, said: state === 'created' || later.get(open) ? FINISHED_SAID : undefined });
+  if (finish) await closeConversation({ stay: true, said: state === 'created' || earlier ? FINISHED_SAID : undefined });
 }
 
 const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées »';
@@ -2703,9 +2708,11 @@ const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées 
 function finishWhenDone() {
   const open = chat.open;
   if (!chat.later.has(open) || answering() || [...chat.deciding].some((k) => k.startsWith(`${open}:`))) return;
+  // Not loaded yet (the owner just came back to it): the next refresh checks again.
+  if (chat.server ? chat.conv?.id !== open : chat.issue?.number !== open) return;
   const said = chat.later.get(open);
   chat.later.delete(open);
-  const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue?.number !== open || chat.issue.state === 'closed';
+  const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue.state === 'closed';
   if (!closed && finishesConversation(conversationCards(open, chat.decided))) closeConversation({ stay: true, said: said || undefined });
 }
 
@@ -2958,6 +2965,7 @@ async function sendChat(text, withImages = true) {
   } catch (e) {
     if (gone()) return;
     chat.pending = null;
+    chat.later.delete(chat.open); // the turn never happened: no end of conversation on top of this error (#521)
     drawChat();
     toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
   } finally {
@@ -3045,6 +3053,7 @@ async function sendToServer(text, files, withImages) {
   } catch (e) {
     if (gone()) return;
     if (e.readToken) readTokenRefused(e.message);
+    chat.later.delete(chat.open); // the agent did not answer: the conversation stays open with the message to resend (#521)
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
