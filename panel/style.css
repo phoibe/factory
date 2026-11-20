@@ -66,6 +66,8 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 .savebar { position: sticky; z-index: 1; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 12px 0; display: flex; gap: 12px; align-items: center; }
 #toast { position: fixed; z-index: 3; left: 16px; right: 16px; bottom: 24px; width: fit-content; max-width: 560px; margin: 0 auto; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s; pointer-events: none; }
 #toast.show { opacity: 1; visibility: visible; }
+/* On the Agent tab the message box sits at the bottom: the toast goes above it, never over what I type (issue #516). */
+body:has(#chat:not([hidden])) #toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
 @media (max-width: 600px) { .top { flex-wrap: wrap; } nav { width: 100%; } }
 
 ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
