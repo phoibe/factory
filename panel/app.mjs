@@ -3126,9 +3126,11 @@ async function closeConversation({ stay = false, said } = {}) {
     else {
       await api(`/repos/${chat.repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
       chat.etags.clear();
+      if (chat.issue?.number === open) { chat.issue = { ...chat.issue, state: 'closed' }; drawChat(); }
     }
     toast(said || 'Conversation rangée dans « Terminées »');
     if (!stay) $('chat').classList.remove('viewing');
+    chat.clicks = (chat.clicks || 0) + 1; // a check already running read the old state: it checks again at once
     await refreshChat();
   } catch (e) {
     toast(`Impossible de terminer la conversation. ${errorText(e)}`);
