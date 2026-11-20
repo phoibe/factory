@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys } from './lib.mjs?v=27';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests } from './chat.mjs?v=24';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=25';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=3';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=13';
@@ -2639,7 +2639,7 @@ async function decide(p, state) {
   deciding.add(key);
   refused.delete(key);
   drawChat();
-  let url;
+  let url, finish = false;
   try {
     const path = `chats/${open}.json`;
     // An answer that could not be saved lives only on screen: its cards are decided there. Every other card is read
@@ -2676,6 +2676,9 @@ async function decide(p, state) {
           store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
         }
       }
+      // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
+      if (!unsaved) finish = here() && !answering() && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`))
+        && finishesConversation(conversationCards(open, decided));
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
@@ -2686,6 +2689,18 @@ async function decide(p, state) {
     if (!gone()) drawChat();
     if (url) renderBoard().catch(() => {});
   }
+  if (finish) await closeConversation({ stay: true, said: state === 'created' ? 'Demande créée, conversation rangée dans « Terminées »' : undefined });
+}
+
+// The owner is waiting for an answer in the open conversation.
+const answering = () => Boolean(chat.live || chat.sending || chat.pending)
+  || (!chat.server && Boolean(chat.issue) && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking');
+
+// Every card of the open conversation, with the choices made on this screen (issue #516).
+function conversationCards(open, decided) {
+  const messages = chat.server ? serverMessages(chat.conv?.id === open ? chat.conv : null)
+    : chat.issue?.number === open ? chatMessages(chat.issue, chat.comments) : [];
+  return messages.flatMap((m) => m.proposals || []).map((p) => ({ ...p, ...decided.get(`${open}:${p.id}`) }));
 }
 
 // The answer being written by the chat server, updated in place as it streams.
@@ -3101,32 +3116,34 @@ async function saveExchange(repo, cid, base, mine, text, at, proposals, tag) {
   return conv;
 }
 
-// In server mode, « Terminer » only marks the conversation in the branch's index.
-async function closeServerConversation() {
-  const meta = await api(`/repos/${chat.repo}/contents/index.json?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
-  const index = JSON.parse(fromBase64(meta.content)).map((c) => (c.id === chat.open ? { ...c, state: 'closed' } : c));
-  await api(`/repos/${chat.repo}/contents/index.json`, { method: 'PUT', body: JSON.stringify({
-    message: 'chore(factory): chat index', branch: CHAT_BRANCH, sha: meta.sha, content: toBase64(JSON.stringify(index, null, 1) + '\n') }) });
-}
+// In server mode, « Terminer » only marks the conversation in the branch's index. Saved like any other write: another
+// device may have saved the index meanwhile.
+const closeServerConversation = (id) => writeChatFile(chat.repo, 'index.json', (index) => {
+  if (!index) throw new Error('404');
+  return index.map((c) => (c.id === id ? { ...c, state: 'closed' } : c));
+}, 'chore(factory): chat index');
 
-async function closeConversation() {
-  if (chat.server && chat.open && chat.open !== 'new') {
-    try {
-      await closeServerConversation();
-      toast('Conversation rangée dans « Terminées »');
-      $('chat').classList.remove('viewing');
-      await refreshChat();
-    } catch (e) {
-      toast(`Impossible de terminer la conversation. ${errorText(e)}`);
-    }
-    return;
-  }
-  if (typeof chat.open !== 'number') return;
+// « Terminer », or the end of a conversation whose cards are all decided (issue #516): then the conversation stays on
+// screen (`stay`) and says how it ended (`said`).
+async function closeConversation({ stay = false, said } = {}) {
+  const open = chat.open;
+  const server = chat.server;
+  if (server ? !open || open === 'new' : typeof open !== 'number') return;
   try {
-    await api(`/repos/${chat.repo}/issues/${chat.open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
-    chat.etags.clear();
-    toast('Conversation rangée dans « Terminées »');
-    $('chat').classList.remove('viewing');
+    if (server) {
+      await closeServerConversation(open);
+      // Shown at once, even when a refresh is already running (it would skip this one).
+      if (chat.list) chat.list = chat.list.map((c) => (c.id === open ? { ...c, state: 'closed' } : c));
+      drawChat();
+    }
+    else {
+      await api(`/repos/${chat.repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
+      chat.etags.clear();
+      if (chat.issue?.number === open) { chat.issue = { ...chat.issue, state: 'closed' }; drawChat(); }
+    }
+    toast(said || 'Conversation rangée dans « Terminées »');
+    if (!stay) $('chat').classList.remove('viewing');
+    chat.clicks = (chat.clicks || 0) + 1; // a check already running read the old state: it checks again at once
     await refreshChat();
   } catch (e) {
     toast(`Impossible de terminer la conversation. ${errorText(e)}`);

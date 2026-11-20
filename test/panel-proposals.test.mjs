@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatMessages, serverMessages, addExchange, newConversation, decideProposal, decisionComment, proposalsFrom } from '../panel/chat.mjs';
+import { chatMessages, serverMessages, addExchange, newConversation, decideProposal, decisionComment, proposalsFrom, finishesConversation } from '../panel/chat.mjs';
 
 const AGENT = '<!-- factory-agent -->';
 const FOOT = '\n\n---\n_Généré par [Claude Code](https://claude.ai/code) · software factory_';
@@ -122,4 +122,16 @@ test('review #492: the answer saved and its copy on screen share their card ids'
   addExchange(stored, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }], 'k3x9');
   addExchange(onScreen, { text: 'x' }, 'Voici.', 't1', [{ kind: 'bug', title: 'A', body: '' }], 'k3x9');
   assert.equal(stored.messages.at(-1).proposals[0].id, onScreen.messages.at(-1).proposals[0].id);
+});
+
+test('finishesConversation: every card decided and at least one request created (issue #516)', () => {
+  const card = (state) => ({ id: state, state });
+  assert.equal(finishesConversation([card('created')]), true);
+  assert.equal(finishesConversation([card('created'), card('ignored')]), true);
+  // A card still waiting keeps the conversation open, whatever the others say.
+  assert.equal(finishesConversation([card('created'), card('pending')]), false);
+  // Nothing created: the conversation stays open, as before.
+  assert.equal(finishesConversation([card('ignored'), card('ignored')]), false);
+  assert.equal(finishesConversation([]), false);
+  assert.equal(finishesConversation(), false);
 });
