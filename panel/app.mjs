@@ -2685,7 +2685,7 @@ async function decide(p, state) {
           // The turn is over: this click decides now, and a mark left from the turn is used up here.
           earlier = Boolean(later.get(open));
           later.delete(open);
-          finish = ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
+          finish = !chat.conv?.unsaved && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
         }
       }
     } catch {
