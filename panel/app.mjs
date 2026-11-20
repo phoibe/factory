@@ -2937,6 +2937,7 @@ async function sendChat(text, withImages = true) {
   btn.disabled = true;
   chat.sending = true;
   const sentTo = chat.open;
+  chat.later.delete(sentTo); // writing again carries the conversation on: no end on the agent's previous turn (#521)
   try {
     if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
@@ -2989,6 +2990,7 @@ async function sendToServer(text, files, withImages) {
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
+  chat.later.delete(chat.open); // writing again carries the conversation on (#521)
   chat.pending = { text, previews: files.map((f) => f.url) };
   const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages) {

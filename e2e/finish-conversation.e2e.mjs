@@ -124,6 +124,34 @@ test('si je crée la demande pendant que l\'agent finit son tour, la conversatio
     conv.labels = conv.labels.filter((l) => l.name !== 'factory:running'); // its turn ends
     await page.getByText('Demande créée, conversation rangée dans « Terminées »').waitFor({ timeout: 15000 });
     assert.equal(closes()[0]?.body.state, 'closed');
+    conv.state = 'closed'; // as GitHub keeps it (the test server does not apply the panel's writes)
+    await page.locator('#chat-messages').getByText(NOTICE).waitFor(); // the end stays said once the toast is gone
+  });
+});
+
+test('si je réécris à l\'agent pendant qu\'il finit son tour, la conversation reste ouverte', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question', 'factory:running'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u71' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.locator('#chat-input').fill('Et aussi, le titre est trop petit.');
+    await page.locator('#chat-send').click();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    // GitHub lists my message, the agent answers it, and its turn ends.
+    comments[7].push({ id: 73, body: 'Et aussi, le titre est trop petit.', user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: 'u73' });
+    comments[7].push({ id: 74, body: `${AGENT}\nJe regarde.`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() + 1000).toISOString(), html_url: 'u74' });
+    conv.comments = comments[7].length;
+    conv.labels = conv.labels.filter((l) => l.name !== 'factory:running');
+    await page.locator('#chat-messages').getByText('Je regarde.').waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1000);
+    assert.equal(writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7').length, 0);
   });
 });
 
