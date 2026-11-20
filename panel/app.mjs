@@ -2244,13 +2244,13 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map() };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map() });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() });
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2449,6 +2449,7 @@ async function refreshChat() {
     // The project or the conversation changed meanwhile (the owner clicked another one): fetch it now.
     scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
   }
+  if (chat.repo === repo) finishWhenDone();
 }
 
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
@@ -2633,7 +2634,7 @@ async function decide(p, state) {
   if (chat.deciding.has(key) || chat.decided.has(key)) return;
   const repo = chat.repo, open = chat.open, server = chat.server;
   // Only leaving the project ends what this click may show (resetChat makes new maps); sending a message does not.
-  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused;
+  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later;
   const gone = () => chat.decided !== decided;
   const here = () => !gone() && chat.open === open;
   deciding.add(key);
@@ -2677,8 +2678,11 @@ async function decide(p, state) {
         }
       }
       // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
-      if (!unsaved) finish = here() && !answering() && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`))
-        && finishesConversation(conversationCards(open, decided));
+      if (!unsaved && here()) {
+        // An answer still on its way: the end waits for it (finishWhenDone, issue #521).
+        if (answering()) later.set(open, state === 'created' || later.get(open) ? FINISHED_SAID : '');
+        else finish = ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
+      }
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
     }
@@ -2689,7 +2693,20 @@ async function decide(p, state) {
     if (!gone()) drawChat();
     if (url) renderBoard().catch(() => {});
   }
-  if (finish) await closeConversation({ stay: true, said: state === 'created' ? 'Demande créée, conversation rangée dans « Terminées »' : undefined });
+  if (finish) await closeConversation({ stay: true, said: state === 'created' || later.get(open) ? FINISHED_SAID : undefined });
+}
+
+const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées »';
+
+// Issue #521: a card decided while the agent was still on its turn ends the conversation once that turn is over, if
+// every card is then decided and a request was created (the answer may have brought new cards: then it stays open).
+function finishWhenDone() {
+  const open = chat.open;
+  if (!chat.later.has(open) || answering() || [...chat.deciding].some((k) => k.startsWith(`${open}:`))) return;
+  const said = chat.later.get(open);
+  chat.later.delete(open);
+  const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue?.number !== open || chat.issue.state === 'closed';
+  if (!closed && finishesConversation(conversationCards(open, chat.decided))) closeConversation({ stay: true, said: said || undefined });
 }
 
 // The owner is waiting for an answer in the open conversation.
@@ -3039,6 +3056,7 @@ async function sendToServer(text, files, withImages) {
       chat.live = null;
       btn.disabled = false;
       drawChat();
+      finishWhenDone();
     }
   }
 }

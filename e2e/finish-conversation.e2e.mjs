@@ -103,3 +103,63 @@ test('le bouton « Terminer » range toujours la conversation à la main', async
     assert.ok(closedIndex(writes));
   });
 });
+
+// Issue #521: the card shows before the agent ends its turn; a click then creates the request, and the conversation
+// ends as soon as the agent is done.
+test('si je crée la demande pendant que l\'agent finit son tour, la conversation se termine dès qu\'il a fini', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question', 'factory:running'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u71' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.waitForTimeout(500);
+    const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
+    assert.equal(closes().length, 0); // the agent is still on it
+    conv.labels = conv.labels.filter((l) => l.name !== 'factory:running'); // its turn ends
+    await page.getByText('Demande créée, conversation rangée dans « Terminées »').waitFor({ timeout: 15000 });
+    assert.equal(closes()[0]?.body.state, 'closed');
+  });
+});
+
+test('une conversation dont les cartes étaient déjà décidées ne se termine pas toute seule à l\'ouverture', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question'], { body: 'Le bouton Enregistrer plante', comments: 2 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 60000).toISOString(), html_url: 'u71' },
+    { id: 72, body: `${AGENT}\n<!-- factory-proposal: 71-0 created https://github.com/o/r/issues/9 -->`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 30000).toISOString(), html_url: 'u72' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    await page.locator('.proposal', { hasText: 'Enregistrer plante' }).getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.waitForTimeout(1000);
+    assert.equal(writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7').length, 0);
+  });
+});
+
+test('si la fin du tour de l\'agent apporte une nouvelle carte, la conversation reste ouverte', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question', 'factory:running'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const comments = { 7: [
+    { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u71' },
+  ] };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    comments[7].push({ id: 73, body: `${AGENT}\nAutre chose.\n\n<creer-issue type="feature" titre="Exporter les données">\nIl veut exporter.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: 'u73' });
+    conv.comments = 2;
+    conv.labels = conv.labels.filter((l) => l.name !== 'factory:running');
+    await page.locator('.proposal', { hasText: 'Exporter les données' }).getByRole('button', { name: 'Créer cette demande' }).waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1000);
+    assert.equal(writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7').length, 0);
+  });
+});
