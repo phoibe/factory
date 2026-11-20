@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PENDING_MS, LATE_MS, noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from '../panel/pending.mjs';
+import { PENDING_MS, LATE_MS, noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from '../panel/pending.mjs';
 
 const item = (number, column) => ({ number, column });
 const T0 = 1_000_000;
@@ -86,4 +86,20 @@ test('the line of a card on hold says when GitHub is late, only after 10 minutes
   assert.deepEqual(holdLine(undefined, T0), { late: false, text: 'En attente de GitHub' });
   assert.deepEqual(holdLine(T0, T0 + LATE_MS - 1), { late: false, text: 'En attente de GitHub' });
   assert.deepEqual(holdLine(T0, T0 + 14 * 60_000), { late: true, text: 'Réponse pas encore prise en compte · GitHub tarde depuis 14 min' });
+});
+
+// Issue #517: the waiting card told « Envoi… » after a sent answer, and « depuis 48 min » counted the time at the step.
+test('the answer button says « Envoi… » only while it leaves, then « Envoyé ✓ »', () => {
+  assert.deepEqual(goLabel('go', { sending: true, sent: true }), { text: 'Envoi…', name: 'Envoi du go' });
+  assert.deepEqual(goLabel('ok', { sending: false, sent: true }), { text: 'Envoyé ✓', name: 'ok envoyé' });
+  assert.deepEqual(goLabel('ok', { sending: false, sent: false }), { text: 'Ok', name: 'Ok' });
+  assert.deepEqual(goLabel('go', {}), { text: 'go', name: 'go' });
+});
+
+test('a card on hold tells since when its answer waits, not the time at the step', () => {
+  assert.equal(sentLine(null, T0), null);
+  assert.equal(sentLine(undefined, T0), null);
+  assert.equal(sentLine(T0, T0 + 20_000), 'envoyé à l\'instant');
+  assert.equal(sentLine(T0, T0 + 3 * 60_000), 'envoyé il y a 3 min');
+  assert.equal(sentLine(T0, T0 + 75 * 60_000), 'envoyé il y a 1 h 15');
 });

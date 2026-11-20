@@ -2,7 +2,7 @@ import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSki
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests } from './chat.mjs?v=24';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
-import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine } from './pending.mjs?v=2';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=3';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=13';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
@@ -720,10 +720,12 @@ const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
 // link to the message to answer. The button's spoken name follows what a press does: send, or nothing while it is sent.
 const goWord = (c) => (c.reply === 'ok' ? 'ok' : 'go');
 const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
-const goName = (c) => `${isSent(c) ? `Envoi du ${goWord(c)}` : goText(c)} pour #${c.number} ${c.title}`;
+// « Envoi… » only while the answer leaves, then « Envoyé ✓ » until the card changes column (issue #517).
+const goState = (c) => goLabel(goWord(c), { sending: sendingGo.has(goKey(c)), sent: isSent(c) });
+const goName = (c) => `${goState(c).name} pour #${c.number} ${c.title}`;
 // An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
 const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
-const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, isSent(c) ? 'Envoi…' : goText(c));
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, goState(c).text);
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -839,7 +841,9 @@ function card(c, lane, minutes, now, moved) {
   const article = el('article', { class: `ticket ${lane}${blocked ? ' blocked' : ''}`, 'data-number': String(c.number) },
     el('div', { class: 'ticket-top' },
       el('span', { class: 'kind' }, ...kindParts(kind, Boolean(c.pull_request), c.number, plan?.size).map((p) => (typeof p === 'string' ? p : el('span', { class: 'size-tag' }, p.size)))),
-      e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
+      // On hold, the top line tells since when the answer waits, not the time spent at the step (issue #517).
+      waiting ? (heldSince(c, now) ? el('span', { class: 'since', 'data-time': '' }, heldSince(c, now)) : null)
+        : e.since != null ? el('span', { class: 'since', 'data-time': '' }, `depuis ${humanMinutes(e.since)}`) : null),
     el('h3', {}, waiting ? c.title : el('a', { class: 'main', href: live.targets.get(c.number) || c.html_url, target: '_blank', rel: 'noopener', 'data-key': String(c.number) }, c.title)),
     asks && c.column === 'blocked' ? el('span', { class: 'blocked-tag' }, 'Bloqué') : null,
     testIt && preview && !asks ? null : status,
@@ -878,6 +882,7 @@ function flip(before) {
 const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node.getBoundingClientRect()]));
 
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
+const sendingGo = new Set(); // the answers still on their way to GitHub (« Envoi… »); the others in sentGo read « Envoyé ✓ »
 // Both are keyed by project and number: #12 of one project is not #12 of another.
 // The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
 const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
@@ -901,6 +906,8 @@ async function postAnswer(repo, c, word) {
 async function sendGo(c, btn, repo, key) {
   try {
     await postAnswer(repo, c, goWord(c));
+    sendingGo.delete(key);
+    if (current?.repo.full_name === repo) { const b = goBtn(c, btn); b.textContent = goState(c).text; b.setAttribute('aria-label', goName(c)); }
     toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
     // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
     if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
@@ -908,6 +915,7 @@ async function sendGo(c, btn, repo, key) {
   } catch (e) {
     toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
+    sendingGo.delete(key);
     if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
     btn.textContent = goText(c);
@@ -920,8 +928,9 @@ function answerGo(c, btn) {
   const repo = current.repo.full_name, key = goKey(c);
   if (sentGo.has(key)) return;
   sentGo.add(key);
+  sendingGo.add(key);
   btn.disabled = true;
-  btn.textContent = 'Envoi…';
+  btn.textContent = goState(c).text;
   btn.setAttribute('aria-label', goName(c));
   sendGo(c, btn, repo, key);
 }
@@ -936,6 +945,9 @@ function skeleton() {
 const pendingKey = () => `factory.pending.${current.repo.full_name}`;
 function pendingState() { try { return JSON.parse(store.get(pendingKey()) || '{}') || {}; } catch { return {}; } }
 const savePending = (state) => { if (Object.keys(state).length) store.set(pendingKey(), JSON.stringify(state)); else store.del(pendingKey()); };
+// Since when the answer of a card on hold waits: its answer seen on GitHub, else the moment the owner came back (or
+// touched « Ok ») on this device.
+const heldSince = (c, now) => sentLine(live.answered.get(c.number) ?? pendingState()[c.number]?.backAt, now);
 function pendingZone(held, minutes, now) {
   if (!held.length) return null;
   return el('section', { class: 'lane lane-pending pending-zone', 'aria-label': 'Prise en compte en cours' },
