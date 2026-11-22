@@ -258,3 +258,118 @@ test('si la réponse arrive mais n\'a pas pu être enregistrée, la conversation
     assert.equal(await page.locator('#chat-messages').getByText(NOTICE).count(), 0);
   });
 });
+
+// Issue #535: the end that waits for the agent's turn happens wherever the owner is once that turn is over.
+const turnConv = () => issue(7, 'Le bouton plante', ['factory:question', 'factory:running'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+const turnThread = () => [
+  { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u71' },
+];
+// GitHub lists my choice, and the agent's turn ends.
+function endTurn(conv, thread) {
+  thread.push({ id: 72, body: `${AGENT}\n<!-- factory-proposal: 71-0 created https://github.com/o/r/issues/9 -->`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: 'u72' });
+  conv.comments = thread.length;
+  conv.labels = conv.labels.filter((l) => l.name !== 'factory:running');
+}
+
+test('si je passe à une autre conversation juste après avoir créé la demande, la première se range quand l\'agent a fini', async () => {
+  const conv = turnConv();
+  const other = issue(8, 'Une autre question', ['factory:question'], { body: 'Autre chose' });
+  const comments = { 7: turnThread(), 8: [] };
+  await withPanel({ issues: [conv, other], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.locator('.conv', { hasText: 'Une autre question' }).click();
+    endTurn(conv, comments[7]);
+    await page.getByText('Demande créée, « Le bouton plante » rangée dans « Terminées »').waitFor({ timeout: 15000 });
+    const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
+    for (let i = 0; i < 60 && !closes().length; i++) await page.waitForTimeout(250);
+    assert.equal(closes()[0]?.body.state, 'closed');
+  });
+});
+
+test('si je recharge la page juste après avoir créé la demande, la conversation se range quand l\'agent a fini', async () => {
+  const conv = turnConv();
+  const comments = { 7: turnThread() };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.reload();
+    endTurn(conv, comments[7]);
+    const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
+    for (let i = 0; i < 60 && !closes().length; i++) await page.waitForTimeout(250);
+    assert.equal(closes()[0]?.body.state, 'closed');
+  });
+});
+
+test('si je passe à une autre conversation pendant que la demande se crée, la première se range quand même', async () => {
+  const conv = issue(7, 'Le bouton plante', ['factory:question'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+  const other = issue(8, 'Une autre question', ['factory:question'], { body: 'Autre chose' });
+  const comments = { 7: turnThread(), 8: [] };
+  await withPanel({ issues: [conv, other], comments, writeDelay: 1500 }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    await page.locator('.proposal', { hasText: 'Enregistrer plante' }).getByRole('button', { name: 'Créer cette demande' }).click();
+    await page.locator('.conv', { hasText: 'Une autre question' }).click();
+    // GitHub lists my choice once it is saved.
+    for (let i = 0; i < 40 && !writes.some((w) => w.method === 'POST' && w.path === '/repos/o/r/issues/7/comments'); i++) await page.waitForTimeout(250);
+    endTurn(conv, comments[7]);
+    await page.getByText('Demande créée, « Le bouton plante » rangée dans « Terminées »').waitFor({ timeout: 15000 });
+    assert.equal(writes.find((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7')?.body.state, 'closed');
+  });
+});
+
+test('avec le serveur de discussion, si je change de projet pendant que l\'agent répond, la conversation se range à mon retour', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  await withPanel({ chatServer, repos: ['o/r', 'o/s'] }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    Object.assign(chatServer, { delay: 2500, issues: [], answer: 'Autre réponse.' });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    const saves = () => writes.filter((w) => w.method === 'PUT' && w.path === '/repos/o/r/contents/chats/c1.json').length;
+    const before = saves();
+    await page.locator('#projects .project-item[data-repo="o/s"]').click();
+    // The answer is saved on its project while I am on the other one.
+    for (let i = 0; i < 40 && saves() === before; i++) await page.waitForTimeout(250);
+    assert.ok(saves() > before);
+    assert.equal(closedIndex(writes), false);
+    await page.locator('#projects .project-item[data-repo="o/r"]').click();
+    for (let i = 0; i < 60 && !closedIndex(writes); i++) await page.waitForTimeout(250);
+    assert.ok(closedIndex(writes));
+  });
+});
+
+test('avec le serveur de discussion, si la réponse n\'est pas enregistrée pendant que je suis sur un autre projet, la conversation reste ouverte', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  const failing = new Set();
+  await withPanel({ chatServer, failing, repos: ['o/r', 'o/s'] }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    Object.assign(chatServer, { delay: 2500, issues: [], answer: 'Autre réponse.' });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    failing.add('/repos/o/r/contents/chats/c1.json'); // the answer cannot be saved any more
+    await page.locator('#projects .project-item[data-repo="o/s"]').click();
+    await page.waitForTimeout(4000); // the answer arrives, unsaved, while I am on the other project
+    await page.locator('#projects .project-item[data-repo="o/r"]').click();
+    await page.waitForTimeout(3000);
+    assert.equal(closedIndex(writes), false);
+  });
+});
