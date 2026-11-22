@@ -2249,16 +2249,20 @@ const EXAMPLES = [
 const LATER_KEY = 'factory.chat.later';
 function laterMarks(repo) {
   const key = `${LATER_KEY}.${repo}`;
-  let saved = [];
-  try { saved = JSON.parse(store.get(key) || '[]'); } catch {}
-  const marks = new Map(Array.isArray(saved) ? saved.filter((e) => Array.isArray(e) && e.length === 2) : []);
-  const save = () => (marks.size ? store.set(key, JSON.stringify([...marks])) : store.del(key));
+  // Read again at each use: another tab of the board may have added or used up one meanwhile.
+  const read = () => {
+    try {
+      const saved = JSON.parse(store.get(key) || '[]');
+      return new Map(Array.isArray(saved) ? saved.filter((e) => Array.isArray(e) && e.length === 2) : []);
+    } catch { return new Map(); }
+  };
+  const save = (marks) => (marks.size ? store.set(key, JSON.stringify([...marks])) : store.del(key));
   return {
-    has: (id) => marks.has(id),
-    get: (id) => marks.get(id),
-    set: (id, said) => { marks.set(id, said); save(); },
-    delete: (id) => { if (marks.delete(id)) save(); },
-    ids: () => [...marks.keys()],
+    has: (id) => read().has(id),
+    get: (id) => read().get(id),
+    set: (id, said) => { const marks = read(); marks.set(id, said); save(marks); },
+    delete: (id) => { const marks = read(); if (marks.delete(id)) save(marks); },
+    ids: () => [...read().keys()],
   };
 }
 
@@ -2466,8 +2470,9 @@ async function refreshChat() {
     chat.busy = false;
     // The project or the conversation changed meanwhile (the owner clicked another one): fetch it now.
     scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
+    // In both modes (the instant one returns early above), issue #535.
+    if (chat.repo === repo) finishWhenDone();
   }
-  if (chat.repo === repo) finishWhenDone();
 }
 
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
@@ -2750,9 +2755,12 @@ async function finishWhenDone() {
   }
 }
 
+// The instant-mode conversations whose answer is on its way (« owner/repo:id »), whatever project is on screen.
+const streaming = new Set();
+
 // The open conversation as the screen has it, or null while its agent is on it.
 function openThread(id) {
-  if (answering() || (chat.server ? chat.conv?.id !== id : chat.issue?.number !== id)) return null;
+  if (answering() || streaming.has(`${chat.repo}:${id}`) || (chat.server ? chat.conv?.id !== id : chat.issue?.number !== id)) return null;
   if (!chat.server && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'late') return null;
   const closed = chat.server ? chat.list?.find((c) => c.id === id)?.state === 'closed' : chat.issue.state === 'closed';
   return { closed, cards: conversationCards(id, chat.decided) };
@@ -2764,7 +2772,7 @@ async function otherThread(id) {
   const gone = { closed: true, cards: [] };
   try {
     if (chat.server) {
-      if (chat.live || chat.sending || !chat.list) return null;
+      if (chat.live || chat.sending || !chat.list || streaming.has(`${repo}:${id}`)) return null;
       const entry = chat.list.find((c) => c.id === id);
       if (!entry || entry.state === 'closed') return gone;
       const conv = await branchJson(`chats/${id}.json`);
@@ -3061,6 +3069,9 @@ async function sendToServer(text, files, withImages) {
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
   chat.later.delete(chat.open); // writing again carries the conversation on (#521)
+  // Its answer is on its way even if the owner goes to another project and back: no end meanwhile (#535).
+  const streamed = isNew ? null : `${repo}:${chat.open}`;
+  if (streamed) streaming.add(streamed);
   chat.pending = { text, previews: files.map((f) => f.url) };
   const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages) {
@@ -3137,6 +3148,7 @@ async function sendToServer(text, files, withImages) {
     autosize();
     toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
   } finally {
+    if (streamed) streaming.delete(streamed);
     if (!gone()) {
       chat.pending = null;
       chat.live = null;
