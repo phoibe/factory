@@ -258,3 +258,52 @@ test('si la réponse arrive mais n\'a pas pu être enregistrée, la conversation
     assert.equal(await page.locator('#chat-messages').getByText(NOTICE).count(), 0);
   });
 });
+
+// Issue #535: the end that waits for the agent's turn happens wherever the owner is once that turn is over.
+const turnConv = () => issue(7, 'Le bouton plante', ['factory:question', 'factory:running'], { body: 'Le bouton Enregistrer plante', comments: 1 });
+const turnThread = () => [
+  { id: 71, body: `${AGENT}\nVoici.\n\n<creer-issue type="bug" titre="Enregistrer plante">\nLe bouton plante.\n</creer-issue>`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date(Date.now() - 5000).toISOString(), html_url: 'u71' },
+];
+// GitHub lists my choice, and the agent's turn ends.
+function endTurn(conv, thread) {
+  thread.push({ id: 72, body: `${AGENT}\n<!-- factory-proposal: 71-0 created https://github.com/o/r/issues/9 -->`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: 'u72' });
+  conv.comments = thread.length;
+  conv.labels = conv.labels.filter((l) => l.name !== 'factory:running');
+}
+
+test('si je passe à une autre conversation juste après avoir créé la demande, la première se range quand l\'agent a fini', async () => {
+  const conv = turnConv();
+  const other = issue(8, 'Une autre question', ['factory:question'], { body: 'Autre chose' });
+  const comments = { 7: turnThread(), 8: [] };
+  await withPanel({ issues: [conv, other], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.locator('.conv', { hasText: 'Une autre question' }).click();
+    endTurn(conv, comments[7]);
+    const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
+    for (let i = 0; i < 60 && !closes().length; i++) await page.waitForTimeout(250);
+    assert.equal(closes()[0]?.body.state, 'closed');
+  });
+});
+
+test('si je recharge la page juste après avoir créé la demande, la conversation se range quand l\'agent a fini', async () => {
+  const conv = turnConv();
+  const comments = { 7: turnThread() };
+  await withPanel({ issues: [conv], comments }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Le bouton plante' }).click();
+    const card = page.locator('.proposal', { hasText: 'Enregistrer plante' });
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    await page.reload();
+    endTurn(conv, comments[7]);
+    const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
+    for (let i = 0; i < 60 && !closes().length; i++) await page.waitForTimeout(250);
+    assert.equal(closes()[0]?.body.state, 'closed');
+  });
+});

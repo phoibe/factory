@@ -2244,13 +2244,31 @@ const EXAMPLES = [
   'Je voudrais pouvoir exporter mes données.',
   'Le bouton « Enregistrer » ne réagit pas sur mon téléphone.',
 ];
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() };
+// Issue #535: the conversations to put away once the agent's turn is over (id → what to say), kept in the browser so
+// that a reload, another conversation or another project on the way does not lose them.
+const LATER_KEY = 'factory.chat.later';
+function laterMarks(repo) {
+  const key = `${LATER_KEY}.${repo}`;
+  let saved = [];
+  try { saved = JSON.parse(store.get(key) || '[]'); } catch {}
+  const marks = new Map(Array.isArray(saved) ? saved.filter((e) => Array.isArray(e) && e.length === 2) : []);
+  const save = () => (marks.size ? store.set(key, JSON.stringify([...marks])) : store.del(key));
+  return {
+    has: (id) => marks.has(id),
+    get: (id) => marks.get(id),
+    set: (id, said) => { marks.set(id, said); save(); },
+    delete: (id) => { if (marks.delete(id)) save(); },
+    ids: () => [...marks.keys()],
+  };
+}
+
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null) };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: new Map() });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name) });
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2687,6 +2705,9 @@ async function decide(p, state) {
           later.delete(open);
           finish = !chat.conv?.unsaved && ![...deciding].some((k) => k !== key && k.startsWith(`${open}:`)) && finishesConversation(conversationCards(open, decided));
         }
+      } else if (!unsaved && !gone()) {
+        // The owner went to another conversation meanwhile: it is put away from there, once its agent is done (#535).
+        later.set(open, state === 'created' || later.get(open) ? FINISHED_SAID : '');
       }
     } catch {
       if (!gone()) toast(state === 'created' ? 'Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.' : 'Ce choix n\'a pas pu être enregistré dans la conversation.');
@@ -2699,22 +2720,66 @@ async function decide(p, state) {
     if (url) renderBoard().catch(() => {});
   }
   if (finish) await closeConversation({ stay: true, said: state === 'created' || earlier ? FINISHED_SAID : undefined });
+  else if (!gone()) finishWhenDone();
 }
 
 const FINISHED_SAID = 'Demande créée, conversation rangée dans « Terminées »';
 
 // Issue #521: a card decided while the agent was still on its turn ends the conversation once that turn is over, if
 // every card is then decided and a request was created (the answer may have brought new cards: then it stays open).
-function finishWhenDone() {
-  const open = chat.open;
-  if (!chat.later.has(open) || answering() || [...chat.deciding].some((k) => k.startsWith(`${open}:`))) return;
-  // Not loaded yet (the owner just came back to it), or no answer after a long wait: the next refresh checks again.
-  if (chat.server ? chat.conv?.id !== open : chat.issue?.number !== open) return;
-  if (!chat.server && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'late') return;
-  const said = chat.later.get(open);
-  chat.later.delete(open);
-  const closed = chat.server ? chat.list?.find((c) => c.id === open)?.state === 'closed' : chat.issue.state === 'closed';
-  if (!closed && finishesConversation(conversationCards(open, chat.decided))) closeConversation({ stay: true, said: said || undefined });
+// Issue #535: checked for every conversation waiting for it, the open one or not, at each refresh.
+async function finishWhenDone() {
+  const later = chat.later;
+  if (chat.finishing === later || !later.ids().length) return;
+  chat.finishing = later;
+  try {
+    for (const id of later.ids()) {
+      if (chat.later !== later) return;
+      if ([...chat.deciding].some((k) => k.startsWith(`${id}:`))) continue;
+      const seen = id === chat.open ? openThread(id) : await otherThread(id);
+      // Still on its turn, not loaded yet, no answer after a long wait, or GitHub did not answer: the next refresh checks again.
+      if (!seen || chat.later !== later || !later.has(id)) continue;
+      const said = later.get(id);
+      later.delete(id);
+      if (!seen.closed && finishesConversation(seen.cards)) await closeConversation({ id, stay: true, said: said || undefined });
+    }
+  } finally {
+    if (chat.finishing === later) chat.finishing = null;
+  }
+}
+
+// The open conversation as the screen has it, or null while its agent is on it.
+function openThread(id) {
+  if (answering() || (chat.server ? chat.conv?.id !== id : chat.issue?.number !== id)) return null;
+  if (!chat.server && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'late') return null;
+  const closed = chat.server ? chat.list?.find((c) => c.id === id)?.state === 'closed' : chat.issue.state === 'closed';
+  return { closed, cards: conversationCards(id, chat.decided) };
+}
+
+// Another conversation, read again from GitHub, or null while its agent is on it (or when it cannot be read).
+async function otherThread(id) {
+  const repo = chat.repo;
+  const gone = { closed: true, cards: [] };
+  try {
+    if (chat.server) {
+      if (chat.live || chat.sending || !chat.list) return null;
+      const entry = chat.list.find((c) => c.id === id);
+      if (!entry || entry.state === 'closed') return gone;
+      const conv = await branchJson(`chats/${id}.json`);
+      return chat.repo === repo && conv ? { closed: false, cards: threadCards(id, serverMessages(conv), chat.decided) } : null;
+    }
+    if (typeof id !== 'number') return gone;
+    const issue = await chatGet(`/repos/${repo}/issues/${id}`);
+    if (issue.state === 'closed') return gone;
+    const comments = [];
+    const pages = Math.max(1, Math.ceil((issue.comments || 0) / 100));
+    for (let p = 1; p <= pages; p++) comments.push(...trustNotes(await chatGet(`/repos/${repo}/issues/${id}/comments?per_page=100&page=${p}`), repo.split('/')[0]));
+    const messages = chatMessages(issue, comments);
+    if (chat.repo !== repo || chatStatus(issue, messages) !== 'idle') return null;
+    return { closed: false, cards: threadCards(id, messages, chat.decided) };
+  } catch (e) {
+    return e?.status === 404 ? gone : null;
+  }
 }
 
 // The owner is waiting for an answer in the open conversation.
@@ -2725,8 +2790,11 @@ const answering = () => Boolean(chat.live || chat.sending || chat.pending)
 function conversationCards(open, decided) {
   const messages = chat.server ? serverMessages(chat.conv?.id === open ? chat.conv : null)
     : chat.issue?.number === open ? chatMessages(chat.issue, chat.comments) : [];
-  return messages.flatMap((m) => m.proposals || []).map((p) => ({ ...p, ...decided.get(`${open}:${p.id}`) }));
+  return threadCards(open, messages, decided);
 }
+
+// The cards of a conversation's messages, with the choices made on this screen.
+const threadCards = (id, messages, decided) => messages.flatMap((m) => m.proposals || []).map((p) => ({ ...p, ...decided.get(`${id}:${p.id}`) }));
 
 // The answer being written by the chat server, updated in place as it streams.
 function liveBubble() {
@@ -3159,8 +3227,8 @@ const closeServerConversation = (id) => writeChatFile(chat.repo, 'index.json', (
 
 // « Terminer », or the end of a conversation whose cards are all decided (issue #516): then the conversation stays on
 // screen (`stay`) and says how it ended (`said`).
-async function closeConversation({ stay = false, said } = {}) {
-  const open = chat.open;
+async function closeConversation({ id = chat.open, stay = false, said } = {}) {
+  const open = id;
   const server = chat.server;
   if (server ? !open || open === 'new' : typeof open !== 'number') return;
   try {
