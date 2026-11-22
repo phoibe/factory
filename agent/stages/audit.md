@@ -45,4 +45,5 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
 7. **Captures** : si l'apparence a changé et que l'étape screenshots est active, suis
    `.factory/stages/screenshots.md` sur les écrans modifiés. Dans tous les cas, mets ensuite `factory:checks` sur la PR :
    s'il y a des captures, la factory les publie et pose elle-même `factory:visual-review`.
-8. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
+8. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR et, s'il y a eu une passe design, la ligne
+   « Score design : … » (étape 7 de `design-pass.md`).

@@ -139,4 +139,5 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    et met elle-même la carte en « Captures à valider » (issue #455 ; les contrôles tournent pendant que le propriétaire
    regarde les captures, son « ok » vaut recette). Ne pose jamais `factory:visual-review` toi-même.
    Sinon, mets directement `factory:checks` sur la PR.
-10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
+10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR et, s'il y a eu une passe design, la ligne
+   « Score design : … » (étape 7 de `design-pass.md`).

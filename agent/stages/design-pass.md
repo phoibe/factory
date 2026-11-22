@@ -100,3 +100,14 @@ Règles :
    ce qui a été corrigé, avec une ligne par texte retiré (ex. « Texte d'introduction de la page Commandes
    retiré »), pour que le propriétaire puisse le réclamer s'il lui manque.
 6. Les rapports écrits dans `.impeccable/critique/` font partie de la PR.
+7. **Score dans la demande** : le propriétaire doit voir le score sans ouvrir la PR. Seulement pour une feature
+   (`build.md`), une amélioration UI (`ui-polish.md`) ou une review générale (`audit.md`) ; dans les autres étapes
+   (correction de bug, correction après recette, rattrapage, socle), n'ajoute aucune ligne de score à ton
+   message de fin, ni de message à part pour le score.
+   Le court message de fin que tu postes sur la demande (celui qui donne le lien de la PR) contient une ligne de
+   score, avec les mêmes chiffres que la section « Design » de la PR :
+   - première et dernière critique : « Score design : 24/40 → 32/40 » (une seule critique, suivie de
+     corrections : « Score design : 30/40 (corrigé, sans nouvelle critique) ») ;
+   - critique qui n'a rien trouvé à corriger : « Score design : 34/40, rien à corriger ».
+   Un seul message, à la fin (pas un par tour de critique). Sans passe design (aucun écran touché), pas de ligne
+   de score. Le score n'est pas recalculé lors des retouches demandées sur les captures (pas de nouvelle critique).
