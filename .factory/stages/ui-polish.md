@@ -25,7 +25,8 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    - **note le score** du tour ;
    - **si la critique ne trouve plus aucun problème, arrête-toi là** : pas de tour suivant. Si c'est dès le
      **premier** tour (rien à corriger du tout), n'ouvre pas de PR : écris sur l'issue une phrase claire (« L'interface
-     n'a rien montré à corriger : rien n'a changé. »), ajoute `factory:close` à l'issue (sans label de raison) et
+     n'a rien montré à corriger : rien n'a changé. »), suivie de la ligne
+     « Score design : <score>/40, rien à corriger », ajoute `factory:close` à l'issue (sans label de raison) et
      termine ;
    - sinon **corrige tout** ce qu'elle a trouvé (prioritaires, alertes des personas, observations mineures,
      alertes du détecteur), avec les commandes qu'elle suggère (`polish`, `layout`, `typeset`, `clarify`,
@@ -54,4 +55,5 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    anglais. Pas de spec à ranger.
 9. **Captures** : suis `.factory/stages/screenshots.md` sur les écrans modifiés, puis mets `factory:checks`
    sur la PR : la factory publie les captures et pose elle-même `factory:visual-review`.
-10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR.
+10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR et la ligne « Score design : X/40 → Y/40 »
+   (score du premier tour → score du dernier tour, étape 7 de `design-pass.md`).
