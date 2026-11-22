@@ -1,0 +1,9 @@
+{"t":"2026-11-22T10:03:02.683Z","kind":"run","stage":"build","issue":526,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-22T10:03:35.129Z","kind":"skill","name":"writing-plans","id":"toolu_01DUNn7Stb5P6yPoPNGPMNx1"}
+{"t":"2026-11-22T10:03:45.783Z","kind":"skill","name":"executing-plans","id":"toolu_01Xnwq9qre7LG3SkAy4oa2bS"}
+{"t":"2026-11-22T10:03:45.973Z","kind":"skill","name":"test-driven-development","id":"toolu_011dAaz6bAF5o96mDcLXvxLA"}
+{"t":"2026-11-22T10:04:27.911Z","kind":"test","cmd":"cat >> test/sync.test.mjs <<'EOF'\n\ntest('the documents step loads grilling and domain-modeling directly, never grill-with-docs (issue #526)', () => {\n  const dir = project();\n  sync({ projectDir: dir ","ok":false,"id":"toolu_01JPT2CrZDBna9swQ4r9P6Cf"}
+{"t":"2026-11-22T10:05:26.637Z","kind":"test","cmd":"python3 - <<'EOF'\np=…; s=…\ns=… aussi `.factory/stages/docs.md` : il remplace `grilling` et ajoute le\\n   glossaire\",\"lis aussi `.factory/stages/docs.md` : tu y charges aussi `domain-modeling`, qui ajo","ok":true,"id":"toolu_01TcyG1JEdm9m3PQEdrQ5DfE"}
+{"t":"2026-11-22T10:06:17.158Z","kind":"test","cmd":"git stash -u -q && git reset -q --hard origin/main && git stash pop -q; git status --short; npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"","ok":true,"id":"toolu_015L4cbwnnSPLGzvCrPbt7hA"}
+{"t":"2026-11-22T10:06:58.089Z","kind":"test","cmd":"git checkout -q origin/main -- .factory/synced.json && git reset -q && git stash drop -q && node scripts/sync.mjs . | tail -1 && git status --short && git diff --stat && grep -c \"Rattrapage\" .factory/","ok":true,"id":"toolu_0112pztmyPrVDvkbZF1Nwxsb"}
+{"t":"2026-11-22T10:07:38.869Z","kind":"test","cmd":"npm test -- test/sync.test.mjs 2>&1 | grep -E \"526\"; node .factory/scripts/specs.mjs save 526 2>&1 | tail -3","ok":true,"id":"toolu_01JHi58bvgd2KNquMTC42vYK"}

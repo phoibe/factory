@@ -176,3 +176,25 @@ test('a manifest id « . » never empties the whole skills folder, and a manifes
   writeFileSync(join(dir, '.factory/installed-skills.json'), JSON.stringify({ version: 1 }));
   sync({ projectDir: dir });
 });
+
+test('the documents step loads grilling and domain-modeling directly, never grill-with-docs (issue #526)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const docs = readFileSync(join(dir, '.factory/stages/docs.md'), 'utf8');
+  assert.match(docs, /`grilling`[^\n]*`domain-modeling`/);
+  assert.doesNotMatch(docs, /Charge `grill-with-docs`/);
+  assert.match(docs, /refus/);
+});
+
+test('a project without a glossary gets a one-off catch-up, at questions and at construction (issue #526)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const stage = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8');
+  const docs = stage('docs.md');
+  assert.match(docs, /## Rattrapage/);
+  assert.match(docs, /GLOSSARY\.md/);
+  assert.match(docs, /refus clairs/);
+  assert.match(docs, /même dépôt/);
+  assert.match(docs, /not_planned/);
+  for (const f of ['build.md', 'grilling.md', 'bugfix.md']) assert.match(stage(f), /Rattrapage/, f);
+});
