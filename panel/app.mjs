@@ -3068,7 +3068,9 @@ async function sendToServer(text, files, withImages) {
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
-  chat.later.delete(chat.open); // writing again carries the conversation on (#521)
+  // The marks of this project, even once the owner went to another one (they are read from the browser each time).
+  const marks = chat.later, sentTo = chat.open;
+  marks.delete(sentTo); // writing again carries the conversation on (#521)
   // Its answer is on its way even if the owner goes to another project and back: no end meanwhile (#535).
   const streamed = isNew ? null : `${repo}:${chat.open}`;
   if (streamed) streaming.add(streamed);
@@ -3122,12 +3124,13 @@ async function sendToServer(text, files, withImages) {
     if (!gone()) drawLive();
     const id = conversationId(answer.conversation?.id, isNew ? null : chat.open);
     const { conv, saved } = await finishExchange(repo, id, { text, images: paths }, answer);
+    // Its answer lives only on screen (or nowhere, on another project): never put away on top of it (#521, #535).
+    if (!saved) marks.delete(conv.id);
     if (!gone()) {
       for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
       chat.conv = conv;
       chat.open = conv.id;
       if (!saved) {
-        chat.later.delete(conv.id); // its answer lives only on screen: never put away on top of this warning (#521)
         toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
       }
       else {
@@ -3139,9 +3142,9 @@ async function sendToServer(text, files, withImages) {
       }
     }
   } catch (e) {
+    marks.delete(sentTo); // the agent did not answer: the conversation stays open with the message to resend (#521, #535)
     if (gone()) return;
     if (e.readToken) readTokenRefused(e.message);
-    chat.later.delete(chat.open); // the agent did not answer: the conversation stays open with the message to resend (#521)
     if (!$('chat-input').value) $('chat-input').value = text;
     // The images go back too: without them the message the owner resends would not be the same.
     if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }

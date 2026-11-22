@@ -351,3 +351,25 @@ test('avec le serveur de discussion, si je change de projet pendant que l\'agent
     assert.ok(closedIndex(writes));
   });
 });
+
+test('avec le serveur de discussion, si la réponse n\'est pas enregistrée pendant que je suis sur un autre projet, la conversation reste ouverte', async () => {
+  const chatServer = { answer: 'Voici.', issues: [first] };
+  const failing = new Set();
+  await withPanel({ chatServer, failing, repos: ['o/r', 'o/s'] }, async ({ page, url, writes }) => {
+    await ask(page, url);
+    const card = page.locator('.proposal', { hasText: first.title });
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    Object.assign(chatServer, { delay: 2500, issues: [], answer: 'Autre réponse.' });
+    await page.locator('#chat-input').fill('Et aussi autre chose');
+    await page.locator('#chat-send').click();
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
+    failing.add('/repos/o/r/contents/chats/c1.json'); // the answer cannot be saved any more
+    await page.locator('#projects .project-item[data-repo="o/s"]').click();
+    await page.waitForTimeout(4000); // the answer arrives, unsaved, while I am on the other project
+    await page.locator('#projects .project-item[data-repo="o/r"]').click();
+    await page.waitForTimeout(3000);
+    assert.equal(closedIndex(writes), false);
+  });
+});
