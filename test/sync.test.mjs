@@ -176,3 +176,45 @@ test('a manifest id « . » never empties the whole skills folder, and a manifes
   writeFileSync(join(dir, '.factory/installed-skills.json'), JSON.stringify({ version: 1 }));
   sync({ projectDir: dir });
 });
+
+test('the documents step loads grilling and domain-modeling directly, never grill-with-docs (issue #526)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const docs = readFileSync(join(dir, '.factory/stages/docs.md'), 'utf8');
+  assert.match(docs, /`grilling`[^\n]*`domain-modeling`/);
+  assert.doesNotMatch(docs, /Charge `grill-with-docs`/);
+  assert.match(docs, /refus/);
+});
+
+test('a project without a glossary gets a one-off catch-up, at questions and at construction (issue #526)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const stage = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8');
+  const docs = stage('docs.md');
+  assert.match(docs, /## Rattrapage/);
+  assert.match(docs, /GLOSSARY\.md/);
+  assert.match(docs, /refus clairs/);
+  assert.match(docs, /même dépôt/);
+  assert.match(docs, /not_planned/);
+  for (const f of ['build.md', 'grilling.md', 'bugfix.md']) assert.match(stage(f), /Rattrapage/, f);
+});
+
+test('the documents PR is cut from the base with exact git commands, reused or reset safely (issue #526 review)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const stage = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8');
+  const docs = stage('docs.md');
+  assert.match(docs, /git switch -C claude\/docs-<n> origin\/main/);
+  assert.match(docs, /--force-with-lease/);
+  assert.match(docs, /origin\/claude\/docs-<n>/, 'an open docs PR of the issue gets a commit on top');
+  assert.match(docs, /select\(\.pull_request == null\)/, 'pull requests are not read as requests');
+  assert.match(docs, /domain-modeling\//, 'gated on domain-modeling being installed too');
+  assert.match(docs, /Je n'ai pas pu fusionner/, 'a stuck docs PR does not block the catch-up forever');
+  assert.match(stage('bugfix.md'), /`claude\/issue-<n>-fix` depuis `origin\/main`/);
+  assert.match(stage('build.md'), /`claude\/issue-<n>-<mot-clé>` depuis `main` \(à jour : `origin\/main`\)/);
+  assert.match(docs, /avant d'écrire/, 'the docs branch is checked out before any document is written');
+  assert.doesNotMatch(docs, /sans les committer/, 'uncommitted documents do not survive a switch to a docs branch that has them');
+  assert.match(docs, /cherry-pick/, 'a commit left behind by a docs PR merged meanwhile is replayed on the base');
+  assert.match(docs, /fermée ou fusionnée/);
+  assert.match(docs, /fusionnée entre-temps/, 'a docs PR merged meanwhile does not swallow the new commit');
+});

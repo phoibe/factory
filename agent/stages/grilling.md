@@ -8,6 +8,9 @@ d'une demande » dans AGENT.md) et publie l'estimation au format de l'étape 0 d
 `<!-- factory-estimate … -->`, fourchette pour la construction), dans le message de ce run ou seule. Le tableau
 l'affiche dès maintenant.
 
+**Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
+`.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
+
 0. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle
    comme spec (`.factory/stages/spec.md`, sans redécouper), et elle démarre seule sauf si elle est sensible.
@@ -27,7 +30,7 @@ l'affiche dès maintenant.
    touche à l'argent, à la sécurité, aux comptes ou au partage de données personnelles, ou change la vision
    (`PRODUCT.md`) ou le design (`DESIGN.md`) validés. Au moindre doute, pose les questions.
 1. Charge le skill `grilling` et applique-le **en asynchrone** (si `grill-with-docs` est installé, lis aussi
-   `.factory/stages/docs.md` : il remplace `grilling` et ajoute le glossaire et les décisions) : un round = un commentaire, puis tu termines.
+   `.factory/stages/docs.md` : tu charges alors `grilling` et `domain-modeling`, qui ajoute le glossaire et les décisions) : un round = un commentaire, puis tu termines.
 2. Relis l'issue et toutes les réponses déjà données. Recalcule les questions encore ouvertes dont les
    prérequis sont réglés (la « frontière »).
 3. Cherche toi-même les faits dans le code du dépôt ; ne demande au propriétaire que des **décisions**
