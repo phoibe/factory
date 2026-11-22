@@ -27,8 +27,9 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
    `factory` du payload sont le même dépôt). Regarde aussi les PR ouvertes (`gh api "R/pulls?state=open"`, puis
    `gh api R/pulls/<numéro>/files` pour celles sur une branche `claude/docs-*`) : si l'une apporte déjà `GLOSSARY.md`,
    ouverte depuis moins d'un jour et sans le message « Je n'ai pas pu fusionner » de la factory, elle va être fusionnée :
-   ne refais rien. Plus ancienne ou en échec, elle est coincée : ajoute-lui le label `factory:close` (la factory la
-   ferme) et refais le rattrapage.
+   ne refais rien. Plus ancienne ou en échec, elle est coincée : si c'est celle de cette issue (`claude/docs-<n>`),
+   refais le rattrapage et pousse-le par-dessus (étape 2 plus bas, la factory retente alors la fusion) ; si c'est celle
+   d'une autre issue, ajoute-lui le label `factory:close` (la factory la ferme) et refais le rattrapage.
 2. **Relis** la fiche produit, `DESIGN.md`, les specs livrées (`docs/specs/`), puis les demandes du projet et leurs
    échanges : ouvertes, terminées et abandonnées
    (`gh api "R/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request == null)'` : les PR
@@ -53,18 +54,23 @@ S'il y a quelque chose d'écrit (`GLOSSARY.md`, `docs/adr/*.md`) :
 Une seule branche de documents par issue, `claude/docs-<n>` (n = numéro de l'issue) : le rattrapage et la fin des
 questions peuvent s'en servir tour à tour. Elle ne contient que ces documents : jamais de code, jamais autre chose.
 
-1. Committe ou mets de côté (`git stash -u`) ton travail en cours, puis `git fetch origin`.
-2. **Une PR de documents de cette issue est encore ouverte** : ajoute ton commit par-dessus,
-   `git switch -C claude/docs-<n> origin/claude/docs-<n>`, puis un simple `git push`. Pas de nouvelle PR.
-3. **Sinon** (pas de branche, ou sa PR déjà fusionnée) : `git switch -C claude/docs-<n> origin/{{base}}`, recopie tes
-   documents, commit (`docs: glossary and decisions (#<n>)`, en anglais), puis
+1. Garde les documents (`GLOSSARY.md`, `docs/adr/`) **sans les committer** : ils suivent tout seuls le changement de
+   branche. Le reste de ton travail en cours, s'il y en a (une construction relancée), committe-le d'abord sur ta
+   branche de travail. Puis `git fetch origin`.
+2. **Une PR de documents de cette issue est encore ouverte** : `git switch -C claude/docs-<n> origin/claude/docs-<n>`,
+   commit, puis un simple `git push`. Pas de nouvelle PR. Relis ensuite la PR : si elle a été fusionnée entre-temps,
+   ton commit n'y est pas entré : refais l'étape 3 (`--force-with-lease` sur la branche).
+3. **Sinon** (pas de branche, ou sa PR fermée ou fusionnée) : `git switch -C claude/docs-<n> origin/{{base}}`,
+   commit (`docs: glossary and decisions (#<n>)`, en anglais), puis
    `git push --force-with-lease -u origin claude/docs-<n>` (l'ancienne branche, déjà fusionnée, est remplacée : c'est
    la seule branche que tu peux ainsi écraser). Ouvre une PR vers `{{base}}` (API REST, voir AGENT.md), titre
    « Glossaire et décisions (#<n>) », **sans** `Closes`, sans label `factory:*`. La factory la fusionne toute seule :
    n'attends rien et ne la fusionne pas. Jamais d'autre nom de branche : la factory ne fusionne que `claude/docs-<n>`.
-4. Reviens où tu en étais : `git switch claude/issue-<n>-…` si ta branche de travail existe déjà (puis `git stash pop`
-   si tu avais mis de côté), sinon `git switch --detach origin/{{base}}` avant de créer ta branche de travail.
-   Vérifie avec `git log --oneline origin/{{base}}..HEAD` qu'aucun commit de documents n'y est passé.
+4. Reviens où tu en étais : `git switch claude/issue-<n>-…` si ta branche de travail existe déjà, sinon
+   `git switch --detach origin/{{base}}` puis crée ta branche de travail depuis `origin/{{base}}`. Ne committe jamais
+   les documents ailleurs que sur `claude/docs-<n>`. Avant d'ouvrir la PR de la feature, vérifie avec
+   `git diff --stat origin/{{base}}...HEAD` que ni `GLOSSARY.md` ni `docs/adr/` n'y figurent (sauf une décision que
+   la feature elle-même demande).
 
 Rien à écrire ? Ne crée ni branche ni PR.
 

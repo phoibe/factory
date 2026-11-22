@@ -14,7 +14,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    tu dépasses le haut de ta fourchette, publie une nouvelle estimation (même format) pour ce qu'il reste à faire.
 0 bis. **Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
    `.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
-1. **Branche** `claude/issue-<n>-<mot-clé>` depuis `{{base}}`.
+1. **Branche** `claude/issue-<n>-<mot-clé>` depuis `{{base}}` (à jour : `origin/{{base}}`).
 2. **Projet vide ?** Si le dépôt n'a pas encore d'application, crée-la selon la stack de `PRODUCT.md` (sans fiche produit, choisis-la avec les critères de `.factory/stages/framing.md`), avec dès le
    départ les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
