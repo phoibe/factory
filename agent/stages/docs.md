@@ -28,20 +28,21 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
    `gh api R/pulls/<numéro>/files` pour celles sur une branche `claude/docs-*`) : si l'une apporte déjà `GLOSSARY.md`,
    ouverte depuis moins d'un jour et sans le message « Je n'ai pas pu fusionner » de la factory, elle va être fusionnée :
    ne refais rien. Plus ancienne ou en échec, elle est coincée : si c'est celle de cette issue (`claude/docs-<n>`),
-   refais le rattrapage et pousse-le par-dessus (étape 2 plus bas, la factory retente alors la fusion) ; si c'est celle
+   refais le rattrapage par-dessus (sa branche, étape 2 de la petite PR plus bas, la factory retente alors la fusion) ; si c'est celle
    d'une autre issue, ajoute-lui le label `factory:close` (la factory la ferme) et refais le rattrapage.
 2. **Relis** la fiche produit, `DESIGN.md`, les specs livrées (`docs/specs/`), puis les demandes du projet et leurs
    échanges : ouvertes, terminées et abandonnées
    (`gh api "R/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request == null)'` : les PR
    en sont retirées ; celles fermées avec `state_reason` `not_planned` sont les
    abandons ; lis le fil de celles qui comptent).
-3. **Écris** (skill `domain-modeling`, outil Skill) :
+3. **Écris**, une fois placé sur la branche de documents (étapes 1 et 2 de la petite PR plus bas), avec le skill
+   `domain-modeling` (outil Skill) :
    - `GLOSSARY.md` : les mots du projet, avec les termes du propriétaire, en français ;
    - `docs/adr/` : les choix importants déjà faits, et ses **refus clairs** seulement (il a dit non, ou il a abandonné
      une idée en disant pourquoi), une phrase chacun. Une demande abandonnée sans explication n'est pas un refus : ne la
      note pas.
-4. **Envoie-les** dans la petite PR de documents décrite plus bas (branche `claude/docs-<n>`, n = numéro de l'issue de
-   ce run), puis reprends ton travail habituel : ta branche de travail part toujours de `origin/{{base}}`, jamais de la
+4. **Envoie-les** (étapes 3 à 5 de la petite PR plus bas : branche `claude/docs-<n>`, n = numéro de l'issue de ce
+   run), puis reprends ton travail habituel : ta branche de travail part toujours de `origin/{{base}}`, jamais de la
    branche de documents. Ces documents ne vont jamais dans la PR de la feature.
 5. Une phrase dans ton message suivant au propriétaire : « J'ai créé le glossaire et le registre des décisions du
    projet à partir de ce qui existait déjà. » Si quelque chose échoue, n'insiste pas et continue ton travail : le
@@ -49,24 +50,30 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
 
 ## La petite PR de documents (fin des questions, fiche projet publiée, ou rattrapage)
 
-S'il y a quelque chose d'écrit (`GLOSSARY.md`, `docs/adr/*.md`) :
+S'il y a quelque chose à écrire (`GLOSSARY.md`, `docs/adr/*.md`) :
 
 Une seule branche de documents par issue, `claude/docs-<n>` (n = numéro de l'issue) : le rattrapage et la fin des
 questions peuvent s'en servir tour à tour. Elle ne contient que ces documents : jamais de code, jamais autre chose.
+Place-toi dessus **avant d'écrire** le moindre document : écrits ailleurs, ils bloqueraient le changement de branche
+ou partiraient dans la PR de la feature.
 
-1. Garde les documents (`GLOSSARY.md`, `docs/adr/`) **sans les committer** : ils suivent tout seuls le changement de
-   branche. Le reste de ton travail en cours, s'il y en a (une construction relancée), committe-le d'abord sur ta
-   branche de travail. Puis `git fetch origin`.
-2. **Une PR de documents de cette issue est encore ouverte** : `git switch -C claude/docs-<n> origin/claude/docs-<n>`,
-   commit, puis un simple `git push`. Pas de nouvelle PR. Relis ensuite la PR : si elle a été fusionnée entre-temps,
-   ton commit n'y est pas entré : refais l'étape 3 (`--force-with-lease` sur la branche).
-3. **Sinon** (pas de branche, ou sa PR fermée ou fusionnée) : `git switch -C claude/docs-<n> origin/{{base}}`,
-   commit (`docs: glossary and decisions (#<n>)`, en anglais), puis
-   `git push --force-with-lease -u origin claude/docs-<n>` (l'ancienne branche, déjà fusionnée, est remplacée : c'est
-   la seule branche que tu peux ainsi écraser). Ouvre une PR vers `{{base}}` (API REST, voir AGENT.md), titre
-   « Glossaire et décisions (#<n>) », **sans** `Closes`, sans label `factory:*`. La factory la fusionne toute seule :
-   n'attends rien et ne la fusionne pas. Jamais d'autre nom de branche : la factory ne fusionne que `claude/docs-<n>`.
-4. Reviens où tu en étais : `git switch claude/issue-<n>-…` si ta branche de travail existe déjà, sinon
+1. Si tu as d'autre travail en cours (une construction relancée), committe-le d'abord sur ta branche de travail, en
+   ajoutant tes fichiers par leur nom (jamais `git add -A` ni `git commit -a`). Puis `git fetch origin`.
+2. Place-toi sur la branche de documents :
+   - **une PR de documents de cette issue est encore ouverte** : `git switch -C claude/docs-<n> origin/claude/docs-<n>`
+     (tu complètes ce qu'elle contient déjà) ;
+   - **sinon** (pas de branche, ou sa PR fermée ou fusionnée) : `git switch -C claude/docs-<n> origin/{{base}}`.
+3. Écris ou complète `GLOSSARY.md` et `docs/adr/`, puis commit (`docs: glossary and decisions (#<n>)`, en anglais).
+4. Pousse :
+   - **PR encore ouverte** : un simple `git push`, pas de nouvelle PR. Relis ensuite la PR : si elle a été
+     fusionnée entre-temps, ton commit n'y est pas entré : `git fetch origin`, `git switch -C claude/docs-<n> origin/{{base}}`,
+     `git cherry-pick <ton commit>`, puis pousse et ouvre une PR comme ci-dessous ;
+   - **sinon** : `git push --force-with-lease -u origin claude/docs-<n>` (l'ancienne branche, dont la PR est fermée ou
+     fusionnée, est remplacée : c'est la seule branche que tu peux ainsi écraser). Ouvre une PR vers `{{base}}` (API
+     REST, voir AGENT.md), titre « Glossaire et décisions (#<n>) », **sans** `Closes`, sans label `factory:*`. La
+     factory la fusionne toute seule : n'attends rien et ne la fusionne pas.
+   Jamais d'autre nom de branche : la factory ne fusionne que `claude/docs-<n>`.
+5. Reviens où tu en étais : `git switch claude/issue-<n>-…` si ta branche de travail existe déjà, sinon
    `git switch --detach origin/{{base}}` puis crée ta branche de travail depuis `origin/{{base}}`. Ne committe jamais
    les documents ailleurs que sur `claude/docs-<n>`. Avant d'ouvrir la PR de la feature, vérifie avec
    `git diff --stat origin/{{base}}...HEAD` que ni `GLOSSARY.md` ni `docs/adr/` n'y figurent (sauf une décision que

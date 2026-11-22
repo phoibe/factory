@@ -212,7 +212,9 @@ test('the documents PR is cut from the base with exact git commands, reused or r
   assert.match(docs, /Je n'ai pas pu fusionner/, 'a stuck docs PR does not block the catch-up forever');
   assert.match(stage('bugfix.md'), /`claude\/issue-<n>-fix` depuis `origin\/main`/);
   assert.match(stage('build.md'), /`claude\/issue-<n>-<mot-clé>` depuis `main` \(à jour : `origin\/main`\)/);
-  assert.match(docs, /sans les committer/, 'the documents move to the docs branch uncommitted');
+  assert.match(docs, /avant d'écrire/, 'the docs branch is checked out before any document is written');
+  assert.doesNotMatch(docs, /sans les committer/, 'uncommitted documents do not survive a switch to a docs branch that has them');
+  assert.match(docs, /cherry-pick/, 'a commit left behind by a docs PR merged meanwhile is replayed on the base');
   assert.match(docs, /fermée ou fusionnée/);
   assert.match(docs, /fusionnée entre-temps/, 'a docs PR merged meanwhile does not swallow the new commit');
 });
