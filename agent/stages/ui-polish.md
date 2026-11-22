@@ -25,7 +25,8 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    - **note le score** du tour ;
    - **si la critique ne trouve plus aucun problème, arrête-toi là** : pas de tour suivant. Si c'est dès le
      **premier** tour (rien à corriger du tout), n'ouvre pas de PR : écris sur l'issue une phrase claire (« L'interface
-     n'a rien montré à corriger : rien n'a changé. »), suivie de la ligne « Score design : <score>/40, rien à corriger », ajoute `factory:close` à l'issue (sans label de raison) et
+     n'a rien montré à corriger : rien n'a changé. »), suivie de la ligne
+     « Score design : <score>/40, rien à corriger », ajoute `factory:close` à l'issue (sans label de raison) et
      termine ;
    - sinon **corrige tout** ce qu'elle a trouvé (prioritaires, alertes des personas, observations mineures,
      alertes du détecteur), avec les commandes qu'elle suggère (`polish`, `layout`, `typeset`, `clarify`,
