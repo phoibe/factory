@@ -284,6 +284,7 @@ test('si je passe à une autre conversation juste après avoir créé la demande
     await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
     await page.locator('.conv', { hasText: 'Une autre question' }).click();
     endTurn(conv, comments[7]);
+    await page.getByText('Demande créée, « Le bouton plante » rangée dans « Terminées »').waitFor({ timeout: 15000 });
     const closes = () => writes.filter((w) => w.method === 'PATCH' && w.path === '/repos/o/r/issues/7');
     for (let i = 0; i < 60 && !closes().length; i++) await page.waitForTimeout(250);
     assert.equal(closes()[0]?.body.state, 'closed');

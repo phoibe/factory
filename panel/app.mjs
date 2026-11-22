@@ -2739,7 +2739,9 @@ async function finishWhenDone() {
       const seen = id === chat.open ? openThread(id) : await otherThread(id);
       // Still on its turn, not loaded yet, no answer after a long wait, or GitHub did not answer: the next refresh checks again.
       if (!seen || chat.later !== later || !later.has(id)) continue;
-      const said = later.get(id);
+      // Away from it, the message names the conversation: the one on screen is not the one put away.
+      const title = id === chat.open ? null : chat.list?.find((c) => (chat.server ? c.id : c.number) === id)?.title;
+      const said = title && later.get(id) ? `Demande créée, « ${title} » rangée dans « Terminées »` : later.get(id);
       later.delete(id);
       if (!seen.closed && finishesConversation(seen.cards)) await closeConversation({ id, stay: true, said: said || undefined });
     }
