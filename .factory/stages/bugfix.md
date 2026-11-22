@@ -7,7 +7,7 @@ Un bug signalé dans l'issue. Pas de grilling.
 
 1. Si le comportement attendu n'est pas clair, pose **une** question simple sur l'issue, mets
    `factory:blocked` et termine.
-2. Branche `claude/issue-<n>-fix`. Skill `systematic-debugging` : reproduis le bug par un test qui échoue,
+2. Branche `claude/issue-<n>-fix` depuis `origin/main`. Skill `systematic-debugging` : reproduis le bug par un test qui échoue,
    trouve la cause racine, corrige, le test passe. Si le bug se voit dans un navigateur et que le projet a
    `test:e2e`, ce test est un parcours dans `e2e/` : il protège ensuite chaque livraison.
    **Livraison retirée par la factory** (la description contient `<!-- factory-prod-check -->`) : la version en

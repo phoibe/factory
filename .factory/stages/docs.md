@@ -1,7 +1,8 @@
 # Étape : documents du projet (glossaire et décisions)
 
 À lire seulement par les étapes `grilling`, `framing`, `build` et `bugfix`, et seulement si le skill `grill-with-docs`
-est installé (le dossier `.claude/skills/grill-with-docs/` existe). Sinon, ne fais rien de ce qui suit : les questions se
+est installé (le dossier `.claude/skills/grill-with-docs/` existe) **ainsi que** `domain-modeling` (le dossier
+`.claude/skills/domain-modeling/` existe). Sinon, ne fais rien de ce qui suit : les questions se
 posent avec le skill `grilling`, sans aucun document.
 
 ## Pendant les questions
@@ -12,8 +13,10 @@ présence dit seulement que les documents sont activés. Les questions se posent
 un commentaire).
 Les documents s'écrivent **en français**, avec les mots du propriétaire ; un nom technique en anglais n'y figure
 que s'il est vraiment nécessaire. Le glossaire ne contient aucun détail d'implémentation.
-**Refus du propriétaire** : dès qu'il refuse une idée ou un choix (« non, on n'a pas besoin de… »), note-le aussitôt
-dans `docs/adr/` (une phrase : ce qui est refusé et pourquoi), sans attendre la fin des questions.
+**Refus du propriétaire** : chaque refus d'une idée ou d'un choix (« non, on n'a pas besoin de… ») devient une
+décision dans `docs/adr/` (une phrase : ce qui est refusé et pourquoi). Chaque round est un run à part, et rien
+n'est gardé entre deux : c'est la PR de documents de la fin des questions qui les écrit, en relisant **tout** le fil de
+l'issue, tous rounds compris. N'oublie aucun refus exprimé en cours de route.
 
 ## Rattrapage (projet sans glossaire)
 
@@ -21,11 +24,15 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
 
 1. **Seulement si** `GLOSSARY.md` n'existe pas sur `main` **et** que le projet a de quoi écrire (`PRODUCT.md` ou
    `docs/PRODUCT.md`, ou au moins une spec dans `docs/specs/`). Jamais pour la factory elle-même (quand `repo` et
-   `factory` du payload sont le même dépôt). Si une PR de documents ouverte (branche `claude/docs-*`) apporte déjà
-   `GLOSSARY.md`, elle n'est pas encore fusionnée : ne refais rien.
+   `factory` du payload sont le même dépôt). Regarde aussi les PR ouvertes (`gh api "R/pulls?state=open"`, puis
+   `gh api R/pulls/<numéro>/files` pour celles sur une branche `claude/docs-*`) : si l'une apporte déjà `GLOSSARY.md`,
+   ouverte depuis moins d'un jour et sans le message « Je n'ai pas pu fusionner » de la factory, elle va être fusionnée :
+   ne refais rien. Plus ancienne ou en échec, elle est coincée : ajoute-lui le label `factory:close` (la factory la
+   ferme) et refais le rattrapage.
 2. **Relis** la fiche produit, `DESIGN.md`, les specs livrées (`docs/specs/`), puis les demandes du projet et leurs
    échanges : ouvertes, terminées et abandonnées
-   (`gh api "R/issues?state=all&per_page=100" --paginate`, celles fermées avec `state_reason` `not_planned` sont les
+   (`gh api "R/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request == null)'` : les PR
+   en sont retirées ; celles fermées avec `state_reason` `not_planned` sont les
    abandons ; lis le fil de celles qui comptent).
 3. **Écris** (skill `domain-modeling`, outil Skill) :
    - `GLOSSARY.md` : les mots du projet, avec les termes du propriétaire, en français ;
@@ -33,7 +40,8 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
      une idée en disant pourquoi), une phrase chacun. Une demande abandonnée sans explication n'est pas un refus : ne la
      note pas.
 4. **Envoie-les** dans la petite PR de documents décrite plus bas (branche `claude/docs-<n>`, n = numéro de l'issue de
-   ce run), puis reprends ton travail habituel sur ta branche. Ces documents ne vont jamais dans la PR de la feature.
+   ce run), puis reprends ton travail habituel : ta branche de travail part toujours de `origin/main`, jamais de la
+   branche de documents. Ces documents ne vont jamais dans la PR de la feature.
 5. Une phrase dans ton message suivant au propriétaire : « J'ai créé le glossaire et le registre des décisions du
    projet à partir de ce qui existait déjà. » Si quelque chose échoue, n'insiste pas et continue ton travail : le
    rattrapage sera retenté au passage suivant (le glossaire manquera toujours).
@@ -42,12 +50,21 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
 
 S'il y a quelque chose d'écrit (`GLOSSARY.md`, `docs/adr/*.md`) :
 
-1. Crée la branche `claude/docs-<n>` (n = numéro de l'issue) depuis `main`, **à part** de toute branche de
-   feature. Elle ne contient que ces documents : jamais de code, jamais autre chose.
-2. Commit (`docs: glossary and decisions (#<n>)`, en anglais) et pousse.
-3. Ouvre une PR vers `main` (API REST, voir AGENT.md), titre « Glossaire et décisions (#<n>) », **sans**
-   `Closes`, sans label `factory:*`. La factory la fusionne toute seule : n'attends rien et ne la fusionne pas.
-4. Reviens sur la branche de l'issue si tu y travailles encore.
+Une seule branche de documents par issue, `claude/docs-<n>` (n = numéro de l'issue) : le rattrapage et la fin des
+questions peuvent s'en servir tour à tour. Elle ne contient que ces documents : jamais de code, jamais autre chose.
+
+1. Committe ou mets de côté (`git stash -u`) ton travail en cours, puis `git fetch origin`.
+2. **Une PR de documents de cette issue est encore ouverte** : ajoute ton commit par-dessus,
+   `git switch -C claude/docs-<n> origin/claude/docs-<n>`, puis un simple `git push`. Pas de nouvelle PR.
+3. **Sinon** (pas de branche, ou sa PR déjà fusionnée) : `git switch -C claude/docs-<n> origin/main`, recopie tes
+   documents, commit (`docs: glossary and decisions (#<n>)`, en anglais), puis
+   `git push --force-with-lease -u origin claude/docs-<n>` (l'ancienne branche, déjà fusionnée, est remplacée : c'est
+   la seule branche que tu peux ainsi écraser). Ouvre une PR vers `main` (API REST, voir AGENT.md), titre
+   « Glossaire et décisions (#<n>) », **sans** `Closes`, sans label `factory:*`. La factory la fusionne toute seule :
+   n'attends rien et ne la fusionne pas. Jamais d'autre nom de branche : la factory ne fusionne que `claude/docs-<n>`.
+4. Reviens où tu en étais : `git switch claude/issue-<n>-…` si ta branche de travail existe déjà (puis `git stash pop`
+   si tu avais mis de côté), sinon `git switch --detach origin/main` avant de créer ta branche de travail.
+   Vérifie avec `git log --oneline origin/main..HEAD` qu'aucun commit de documents n'y est passé.
 
 Rien à écrire ? Ne crée ni branche ni PR.
 

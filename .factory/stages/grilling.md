@@ -8,8 +8,9 @@ d'une demande » dans AGENT.md) et publie l'estimation au format de l'étape 0 d
 `<!-- factory-estimate … -->`, fourchette pour la construction), dans le message de ce run ou seule. Le tableau
 l'affiche dès maintenant.
 
-0 a. **Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
-   `.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
+**Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
+`.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
+
 0. **Tranche d'une feature déjà découpée ?** Si la description contient `<!-- factory-split -->`, la spec de cette
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle
    comme spec (`.factory/stages/spec.md`, sans redécouper), et elle démarre seule sauf si elle est sensible.

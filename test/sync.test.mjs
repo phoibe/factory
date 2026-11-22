@@ -198,3 +198,17 @@ test('a project without a glossary gets a one-off catch-up, at questions and at 
   assert.match(docs, /not_planned/);
   for (const f of ['build.md', 'grilling.md', 'bugfix.md']) assert.match(stage(f), /Rattrapage/, f);
 });
+
+test('the documents PR is cut from the base with exact git commands, reused or reset safely (issue #526 review)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const stage = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8');
+  const docs = stage('docs.md');
+  assert.match(docs, /git switch -C claude\/docs-<n> origin\/main/);
+  assert.match(docs, /--force-with-lease/);
+  assert.match(docs, /origin\/claude\/docs-<n>/, 'an open docs PR of the issue gets a commit on top');
+  assert.match(docs, /select\(\.pull_request == null\)/, 'pull requests are not read as requests');
+  assert.match(docs, /domain-modeling\//, 'gated on domain-modeling being installed too');
+  assert.match(docs, /Je n'ai pas pu fusionner/, 'a stuck docs PR does not block the catch-up forever');
+  assert.match(stage('bugfix.md'), /`claude\/issue-<n>-fix` depuis `origin\/main`/);
+});
