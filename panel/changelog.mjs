@@ -26,14 +26,10 @@ export function readChangelog(text) {
   if (at < 0) return null;
   // Any written line counts (bullet, « ### » subheading, paragraph: Pulsar Novae writes paragraphs, #540); blank
   // lines and HTML comments (a template's placeholder) do not.
-  let entries = 0;
-  let comment = false;
-  for (let i = at + 1; i < lines.length && !/^## \[/.test(lines[i]); i++) {
-    const rest = lines[i].replace(/<!--.*?-->/g, '');
-    if (comment) { if (rest.includes('-->')) comment = false; continue; }
-    if (rest.includes('<!--')) { comment = true; if (rest.slice(0, rest.indexOf('<!--')).trim()) entries++; continue; }
-    if (rest.trim()) entries++;
-  }
+  let end = at + 1;
+  while (end < lines.length && !/^## \[/.test(lines[end])) end++;
+  const body = lines.slice(at + 1, end).join('\n').replace(/<!--[^]*?(?:-->|$)/g, '');
+  const entries = body.split('\n').filter((l) => l.trim()).length;
   const last = lines.map((l) => VERSION_HEAD.exec(l)?.[1]).find(Boolean) || null;
   return { header: lines[at], last, entries };
 }

@@ -68,3 +68,11 @@ test('a « Non publié » section with only blank lines or HTML comments has not
   assert.equal(readChangelog(empty).entries, 0);
   assert.match(versionProblem(empty, '0.10.5'), /vide : rien à publier/);
 });
+
+test('text on the same line as a comment, before or after it, still counts (#540)', () => {
+  const at = (body) => readChangelog(`## [Non publié]\n${body}\n## [0.1.0]\n`).entries > 0;
+  assert.equal(at('- A <!-- note\nsuite -->'), true);
+  assert.equal(at('<!--\ncaché\n--> - A'), true);
+  assert.equal(at('<!-- x --> - A'), true);
+  assert.equal(at('<!--\nh\n--> <!-- encore\n- caché\n-->'), false);
+});
