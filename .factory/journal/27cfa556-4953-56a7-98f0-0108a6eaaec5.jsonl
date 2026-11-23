@@ -1,0 +1,7 @@
+{"t":"2026-11-23T12:51:46.398Z","kind":"run","stage":"bugfix","issue":540,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-23T12:51:54.021Z","kind":"skill","name":"systematic-debugging","id":"toolu_01BvrHJrvrpuWKNXqsPCb8Gg"}
+{"t":"2026-11-23T12:52:53.087Z","kind":"skill","name":"test-driven-development","id":"toolu_0144fW1vbYzACF3pNNXv2r4P"}
+{"t":"2026-11-23T12:53:01.202Z","kind":"test","cmd":"cat >> test/changelog.test.mjs <<'EOF'\n\n// Issue #540: Pulsar Novae writes its changes as paragraphs under « ### Modifié (…) » subheadings (its preprod\n// changelog, 2026-11-23, trimmed), not as « - »","ok":false,"id":"toolu_013Yb197QednwDw9tQnspXEq"}
+{"t":"2026-11-23T12:53:07.990Z","kind":"test","cmd":"sed -i 's/`entries`: items under the unreleased section/`entries`: written lines under the unreleased section/' panel/changelog.mjs && node --test test/changelog.test.mjs 2>&1 | grep -E \"^not ok|^# (p","ok":true,"id":"toolu_01GhGjrLTTTP82XfWpnpwvK1"}
+{"t":"2026-11-23T12:53:48.586Z","kind":"test","cmd":"sed -i \"s|'<!-- Ajoutez ici les modifications -->', '   ',|'<!-- Ajoutez ici les modifications -->', '   ', '<!--', '- exemple caché', '-->',|\" test/changelog.test.mjs && npm test 2>&1 | tail -8","ok":true,"id":"toolu_01Rmrd1qLawP1iQ258ymYWZY"}
+{"t":"2026-11-23T12:54:27.349Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail|tests)|^not ok\"; git log --oneline -5 -- panel/changelog.mjs; git diff --stat","ok":true,"id":"toolu_01GvcJjCdugagdfQfWYDFLnb"}

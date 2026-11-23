@@ -43,3 +43,28 @@ test('the version line of a request is read back', () => {
   assert.equal(versionOf(`Demandé.\n\n${versionLine('1.2.3')}\n\n- X (#1)`), '1.2.3');
   assert.equal(versionOf('Demandé depuis le tableau de bord.'), null);
 });
+
+// Issue #540: Pulsar Novae writes its changes as paragraphs under « ### Modifié (…) » subheadings (its preprod
+// changelog, 2026-11-23, trimmed), not as « - » bullets. The release was refused as « rien à publier ».
+const PARAGRAPHS = [
+  '# Changelog', '', 'Rappel de la convention : **`0.x.y`** jusqu\'à `1.0.0` :', '- aucun geste manuel', '',
+  '## [Non publié]', '',
+  '### Modifié (22/11/2026, issue #236 - la section « Capital » de /config devient explicite)', '',
+  'Une seule case « Capital de référence », avec à côté « € » (devise du compte) ou « % de la valeur nette du',
+  'compte », l\'équivalent dans l\'autre unité affiché dessous.', '',
+  '## [0.10.4] - 2026-11-20', '', '### Corrigé', '', 'Un paragraphe.', '',
+].join('\n');
+
+test('any content under « Non publié » counts: subheadings and paragraphs, not only bullets (#540)', () => {
+  assert.equal(readChangelog(PARAGRAPHS).entries, 3);
+  assert.equal(versionProblem(PARAGRAPHS, '0.10.5'), null);
+  const cut = cutVersion(PARAGRAPHS, '0.10.5', '2026-11-23');
+  assert.equal(readChangelog(cut).entries, 0, 'the new « Non publié » is empty again');
+  assert.match(sectionOf(cut, '0.10.5'), /^### Modifié \(22\/11\/2026.*\n\nUne seule case[^]*affiché dessous\.$/);
+});
+
+test('a « Non publié » section with only blank lines or HTML comments has nothing to publish (#540)', () => {
+  const empty = ['## [Non publié]', '', '<!-- Ajoutez ici les modifications -->', '   ', '<!--', '- exemple caché', '-->', '## [0.10.4] - 2026-11-20', '', '- X'].join('\n');
+  assert.equal(readChangelog(empty).entries, 0);
+  assert.match(versionProblem(empty, '0.10.5'), /vide : rien à publier/);
+});

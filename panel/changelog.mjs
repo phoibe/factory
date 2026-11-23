@@ -18,14 +18,22 @@ export function semverGreater(a, b) {
 }
 
 // What the changelog says: null when it has no unreleased section (the project does not version this way).
-// `last`: the latest released version (first « ## [a.b.c] » heading), `entries`: items under the unreleased section.
+// `last`: the latest released version (first « ## [a.b.c] » heading), `entries`: written lines under the unreleased section.
 export function readChangelog(text) {
   if (typeof text !== 'string') return null;
   const lines = text.split('\n');
   const at = lines.findIndex((l) => UNRELEASED.test(l));
   if (at < 0) return null;
+  // Any written line counts (bullet, « ### » subheading, paragraph: Pulsar Novae writes paragraphs, #540); blank
+  // lines and HTML comments (a template's placeholder) do not.
   let entries = 0;
-  for (let i = at + 1; i < lines.length && !/^## \[/.test(lines[i]); i++) if (/^- /.test(lines[i])) entries++;
+  let comment = false;
+  for (let i = at + 1; i < lines.length && !/^## \[/.test(lines[i]); i++) {
+    const rest = lines[i].replace(/<!--.*?-->/g, '');
+    if (comment) { if (rest.includes('-->')) comment = false; continue; }
+    if (rest.includes('<!--')) { comment = true; if (rest.slice(0, rest.indexOf('<!--')).trim()) entries++; continue; }
+    if (rest.trim()) entries++;
+  }
   const last = lines.map((l) => VERSION_HEAD.exec(l)?.[1]).find(Boolean) || null;
   return { header: lines[at], last, entries };
 }
