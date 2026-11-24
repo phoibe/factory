@@ -56,6 +56,14 @@ def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+async def tail_of(stream, keep=4096):
+    """Reads a stream to its end and keeps only its last bytes: a pipe nobody reads stalls the process writing to it."""
+    tail = b""
+    while chunk := await stream.read(65536):
+        tail = (tail + chunk)[-keep:]
+    return tail
+
+
 def new_id():
     return time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + "-" + "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
 
@@ -226,6 +234,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
         proc = None
+        errors = None
         folder = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
@@ -264,6 +273,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=claude_env(), limit=16 * 1024 * 1024)
+            errors = asyncio.create_task(tail_of(proc.stderr))  # read while stdout streams, bounded
             try:
                 proc.stdin.write(build_prompt(conv, message, files, open_requests).encode())
                 await proc.stdin.drain()
@@ -295,7 +305,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                         final, failed = e["text"], e["error"]
             await proc.wait()
             if final is None or failed:
-                err = (await proc.stderr.read()).decode(errors="replace")[-300:]
+                err = (await errors).decode(errors="replace")[-300:]
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
             # The panel creates the issues and saves the exchange with the owner's full token: the server never writes.
@@ -312,6 +322,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except ProcessLookupError:
                 pass
             finally:
+                if errors is not None and not errors.done():
+                    errors.cancel()
                 if folder:
                     shutil.rmtree(folder, ignore_errors=True)
                 await gh.close()

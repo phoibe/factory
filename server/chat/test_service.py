@@ -26,6 +26,12 @@ open(args[0] + ".args", "w").write(json.dumps(args[1:]))
 open(args[0] + ".env", "w").write(json.dumps(dict(os.environ)))
 if "LENT" in prompt:
     time.sleep(30)
+if "BAVARD" in prompt:  # more on stderr than the server buffers (2 x 16 MB) before the answer
+    sys.stderr.write("avertissement\n" * 3000000)
+    sys.stderr.flush()
+    if "PANNE" in prompt:
+        sys.stderr.write("la vraie erreur\n")
+        sys.exit(1)
 def out(o): print(json.dumps(o), flush=True)
 out({"type": "system", "subtype": "init"})
 out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Je regarde"}}})
@@ -352,6 +358,19 @@ class ServiceTest(unittest.TestCase):
         self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "LENT"})
         self.assertEqual(events[-1]["type"], "error", events)
+
+    def test_a_lot_of_stderr_does_not_stall_the_answer(self):
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 3
+        self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "BAVARD"})
+        self.assertEqual(events[-1]["type"], "done", events[-2:])
+
+    def test_a_lot_of_stderr_before_a_crash_gives_the_real_error(self):
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 3
+        self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
+        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "BAVARD PANNE"})
+        self.assertEqual(events[-1]["type"], "error", events[-2:])
+        self.assertIn("la vraie erreur", events[-1]["message"])
 
     def test_the_owner_is_compared_ignoring_case(self):
         r, events = self.post("good", {"repo": "Phoibe/habitudes", "message": "Salut"})
