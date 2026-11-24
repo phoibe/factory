@@ -87,3 +87,15 @@ test('a kept entry already rebuilt from the transcript (same id) is not written 
   importTranscript(root, 'phoibe/factory', { projectsDir: projects });
   assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'skill']);
 });
+
+test('a kept entry of another kind sharing an id with a transcript entry stays', () => {
+  const projects = mkdtempSync(join(tmpdir(), 'projects-'));
+  mkdirSync(join(projects, 'p'));
+  writeFileSync(join(projects, 'p', 's5.jsonl'), lines.slice(0, 4).join('\n'));
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const file = importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  const gate = JSON.stringify({ t: '3', kind: 'gate', id: 'b' });
+  writeFileSync(file, readFileSync(file, 'utf8') + gate + '\n');
+  importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'skill', 'test', 'gate']);
+});

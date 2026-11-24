@@ -86,8 +86,8 @@ export function specReminder(files, { stage = null, current = null } = {}, readF
 // as the entry to append to the journal of the branch's latest build or foundation run ({ file, entry }), or null when
 // there is nothing new to write. A later run that resumes the work (fix-checks, update-branch…) does not hide it.
 // `comments(repo, issue)` reads the request (it may throw: « unread »); without `repo` the request cannot be read
-// either. « unread » never replaces a measured entry, and an entry equal to the newest one of those runs is not
-// written again.
+// either. Only a run journaled with its models counts, as in upstreamCheck. « unread » never replaces a measured
+// entry, and an entry equal to the newest one of those runs is not written again.
 const MEASURED = ['proved', 'unproved', 'old'];
 const DOC_STAGES = ['build', 'foundation'];
 export function upstreamUpdate(files, readFile, { repo = null, comments, since = null } = {}) {
@@ -99,7 +99,7 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
     texts.push(text);
     // Appended at the end of its journal, the entry belongs to the journal's last run: only that one can take it.
     const run = parseJournal([text]).at(-1);
-    if (!run || !DOC_STAGES.includes(run.stage) || run.issue == null) continue;
+    if (!run || !run.models || !DOC_STAGES.includes(run.stage) || run.issue == null) continue;
     if (!best || String(run.t) > String(best.run.t)) best = { file, run };
   }
   if (!best) return null;
@@ -107,7 +107,7 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
   if (repo) { try { list = comments(repo, best.run.issue); } catch { /* GitHub unreachable: « unread » */ } }
   const entry = upstreamEntry(best.run, list, { since, owner: repo ? repo.split('/')[0] : null });
   const current = parseJournal(texts)
-    .filter((r) => DOC_STAGES.includes(r.stage) && Number(r.issue) === Number(best.run.issue) && r.upstream)
+    .filter((r) => r.models && DOC_STAGES.includes(r.stage) && Number(r.issue) === Number(best.run.issue) && r.upstream)
     .map((r) => r.upstream).sort((a, b) => String(a.t).localeCompare(String(b.t))).at(-1);
   if (!entry || (entry.status === 'unread' && MEASURED.includes(current?.status))) return null;
   const same = current && JSON.stringify([entry.doc, entry.status, entry.by]) === JSON.stringify([current.doc, current.status, current.by]);
@@ -157,7 +157,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
     }
     let files = branchFiles(git);
-    const since = upstreamSince(git);
+    // A root commit has no parent: git's « invalid object name » there is expected, not for the owner's log.
+    const since = upstreamSince((args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
     const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
     if (up) {
       appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');

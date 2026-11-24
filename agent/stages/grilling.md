@@ -3,9 +3,10 @@
 But : comprendre la feature demandée dans l'issue jusqu'à une compréhension partagée, avant toute spec.
 
 **Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
-(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui de ne rien publier ni poser aucun label (là
-où ce fichier dit « publie » ou « mets le label », il écrit le texte dans un fichier et te le rend). Toi, tu publies son
-texte, terminé par la ligne de `node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
+(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui qu'il n'écrit rien sur GitHub (commentaire,
+label, issue, PR) et ne pousse rien : là où ce fichier dit « publie », « mets le label » ou « ouvre une issue », il
+écrit le texte dans un fichier et te le rend. Toi, tu publies son texte, terminé par la ligne de
+`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
 
 **Avant tout : taille de la demande.** Dès ta première lecture (s'il n'y a pas encore d'estimation de ta part sur
 l'issue, ou si le propriétaire a donné une taille depuis), classe la demande en petite, moyenne ou grande (voir « Taille

@@ -77,7 +77,7 @@ test('upstreamCheck on a build or a foundation', () => {
   assert.equal(un.missing[0].alert, "Questions et fiche : l'outil n'a pas pu vérifier quel modèle les a faites (la dernière version publiée ne porte pas la preuve).");
   assert.match(un.missing[0].how, /^questions et fiche : la fiche publiée ne porte pas la ligne de preuve\./);
   assert.match(un.missing[0].how, /upstream\.mjs 42/);
-  assert.match(un.missing[0].how, /si `upstream\.mjs` refuse encore, ne republie rien/);
+  assert.match(un.missing[0].how, /si `upstream\.mjs` refuse encore, ne republie rien \(aucune nouvelle version pour le propriétaire\) et continue : le bilan le signalera$/);
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('old'))]), { lines: ['**Questions et fiche** : publiées avant la mise en place de cette preuve (non mesuré)'], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('unread', []))]), { lines: ["**Questions et fiche** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites : la demande n'a pas pu être relue)"], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('none', []))]), { lines: [], missing: [] });
@@ -331,4 +331,40 @@ test('upstreamUpdate never writes « unread » over a measured entry of an earli
   assert.equal(update(journals, { comments: fail }), null);
   assert.equal(update(journals, { comments: () => [spec(true, 5)] }), null, 'same as the newest entry');
   assert.equal(update(journals, { comments: () => [spec(false, 5)] })?.file, '.factory/journal/b.jsonl');
+});
+
+// A build journaled by older scripts (no `models`) is neither a target nor the newest entry, as in upstreamCheck.
+test('upstreamUpdate ignores a build journaled without models', () => {
+  const comments = () => [spec(true, 5)];
+  const old = { '.factory/journal/a.jsonl': j(runE('build', { models: undefined })), '.factory/journal/b.jsonl': j(runE('fix-checks')) };
+  assert.equal(update(old, { comments }), null, 'no target');
+  const journals = {
+    '.factory/journal/a.jsonl': j(runE('build', { models: undefined }), up('old', [])),
+    '.factory/journal/c.jsonl': j(runE('build')),
+  };
+  const res = update(journals, { comments: () => [spec(false, -5)] });
+  assert.equal(res?.file, '.factory/journal/c.jsonl', 'the entry of an old build does not count');
+  assert.equal(res.entry.status, 'old');
+});
+
+test('journal-check stays quiet when the instruction came with the first commit of the project', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'quiet-'));
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' });
+  git('init', '-q');
+  mkdirSync(join(dir, '.factory'));
+  writeFileSync(join(dir, '.factory/AGENT.md'), 'lance `node .factory/scripts/upstream.mjs <n>`\n');
+  git('add', '-A');
+  git('commit', '-qm', 'first');
+  git('remote', 'add', 'origin', 'https://github.com/o/p.git');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const script = new URL('../agent/scripts/journal-check.mjs', import.meta.url).pathname;
+  const res = spawnSync(process.execPath, [script], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: EMPTY_HOME } });
+  assert.doesNotMatch(res.stderr, /invalid object name '[0-9a-f]+\^'/);
+});
+
+test('upstream.mjs, when no run is found, does not advise publishing without the line blindly', () => {
+  const res = cli([], '12');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /si tu es à une construction .*ne republie rien et continue/);
+  assert.match(res.stderr, /sinon.*publie sans la ligne/);
 });

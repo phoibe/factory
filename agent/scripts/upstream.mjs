@@ -92,14 +92,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const marker = run ? upstreamMarker(run) : null;
   if (!marker) {
     // At build or foundation time the document is already published: a version without the proof changes nothing.
+    // Without a run the stage is unknown: both ways out are given.
     const repair = ['build', 'foundation'].includes(run?.stage);
+    const publish = "après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le signalera.";
     console.error([
       `Phase amont : aucun sous-agent du rôle \`plan\` n'a été vu dans ce run pour la demande #${n}.`,
       "Cause probable : le sous-agent a été lancé sans le paramètre `model`, ou avec un autre modèle que `models.plan.model` du payload.",
       "Lance-le avec `model` = `models.plan.model` (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant.",
       repair
         ? "Si elle refuse encore, ne republie rien : la version déjà publiée reste celle du propriétaire, le bilan le signalera."
-        : "Si elle refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le signalera.",
+        : run
+          ? `Si elle refuse encore ${publish}`
+          : `Si elle refuse encore : si tu es à une construction (build ou foundation), ne republie rien et continue, le bilan le signalera ; sinon, ${publish}`,
     ].join('\n'));
     process.exit(1);
   }
