@@ -1799,7 +1799,15 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   $('new-version').hidden = false;
+  fitBanner();
 }
+// The strip's height, for the phone rules that keep it above an open conversation (style.css).
+function fitBanner() {
+  const strip = $('new-version');
+  document.documentElement.style.setProperty('--new-version-h', `${strip.hidden ? 0 : strip.getBoundingClientRect().height}px`);
+}
+addEventListener('resize', fitBanner);
+if ('ResizeObserver' in window) new ResizeObserver(() => fitBanner()).observe($('new-version'));
 // « Recharger »: never loses what is typed or still arriving, says what to do first instead.
 $('new-version-reload').addEventListener('click', () => {
   const why = reloadBlocker(unsavedParts());

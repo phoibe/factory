@@ -238,3 +238,52 @@ test('le titre de l\'onglet n\'est réécrit que si le nombre change', async () 
     assert.deepEqual(await page.evaluate(() => window.__titles), ['(2) Factory']);
   });
 });
+
+// Phone: the conversation of the Agent tab fills the screen. Opens one (a new one if the list shows).
+async function openConversation(page) {
+  await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+  await page.locator('#chat.viewing, #chat-new:visible').first().waitFor();
+  if (!(await page.locator('#chat.viewing').count())) await page.locator('#chat-new').click();
+  await page.locator('#chat.viewing .chat-thread').waitFor();
+}
+// The strip is at the very top, full width, « Recharger » answers a tap, and the conversation starts under it.
+async function aboveConversation(page, size, label) {
+  const strip = await page.locator('#new-version').boundingBox();
+  assert.ok(Math.abs(strip.y) <= 1, `${label} : bandeau à y=${strip.y}`);
+  assert.ok(Math.abs(strip.x) <= 1 && Math.abs(strip.width - size.width) <= 1, `${label} : bandeau de ${strip.x} sur ${strip.width}`);
+  assert.equal(await hitReload(page), true, `${label} : « Recharger » est caché par la conversation`);
+  const back = await page.locator('#chat-back').boundingBox();
+  assert.ok(back.y >= strip.y + strip.height - 1, `${label} : le retour (${back.y}) est sous le bandeau (${strip.y + strip.height})`);
+  const input = await page.locator('#chat-input').boundingBox();
+  assert.ok(input.y + input.height <= size.height, `${label} : zone de saisie sous le bas de l'écran (${input.y + input.height})`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
+}
+// What a tap at the centre of « Recharger » reaches.
+const hitReload = (page) => page.locator('#new-version-reload').evaluate((b) => {
+  const r = b.getBoundingClientRect();
+  return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === b;
+});
+
+test('sur téléphone, dans une conversation de l\'onglet Agent, le bandeau reste visible au-dessus de la conversation', async () => {
+  for (const size of [phone, { width: 650, height: 844 }]) {
+    await withPanel({ issues: board, viewport: size, chatServer: { answer: 'Bien reçu.' } }, async ({ page, url }) => {
+      const v = await versions(page, url);
+      await open(page, url);
+      await openConversation(page);
+      await newVersion(page, v);
+      await banner(page).waitFor();
+      await aboveConversation(page, size, `${size.width} px`);
+      // Banner shown first, conversation opened after.
+      await page.locator('#chat-back').click();
+      await openConversation(page);
+      await aboveConversation(page, size, `${size.width} px, conversation rouverte`);
+      // Another tab, the conversation left open (the conversation covers the tabs: chosen from the keyboard's side).
+      await page.getByRole('tab', { name: 'Suivi' }).evaluate((t) => t.click());
+      await page.locator('#chat').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#chat.viewing').count(), 1, 'la conversation n\'est plus ouverte : le cas n\'est pas testé');
+      const strip = await page.locator('#new-version').boundingBox();
+      assert.ok(strip.y > 0, `${size.width} px, Suivi : bandeau à y=${strip.y}`);
+      assert.equal(await hitReload(page), true, `${size.width} px, Suivi : « Recharger » ne répond pas`);
+    });
+  }
+});
