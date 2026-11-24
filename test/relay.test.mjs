@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { createRelay, writeOutputs, eventFromPayload, linkedIssue, DELIVERY_MARKER } from '../scripts/relay.mjs';
 import { L, AGENT_MARKER, CHECKS_FAILED_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER, PROD_BUG_MARKER, VISUAL_OK_MARKER, UPDATE_BRANCH_MARKER } from '../scripts/lib/labels.mjs';
 import { RateLimited } from '../scripts/lib/ratelimit.mjs';
+import { LostTurnError } from '../scripts/lib/lock.mjs';
 import { answerForPr, forwardedAnswer } from '../scripts/lib/answer.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
@@ -1955,6 +1956,37 @@ test('sync: an update that does not go through is retried after 5 min, 30 min, 2
   content.content = Buffer.from(JSON.stringify({ fingerprint: (await import('../scripts/lib/fingerprint.mjs')).syncFingerprint(new URL('..', import.meta.url).pathname) })).toString('base64');
   assert.equal(await at(28 * H), false);
   assert.equal(stored.sync, undefined, 'success starts again from zero');
+});
+
+test('sync: a run that lost its turn sends no alert', async () => {
+  const content = { content: Buffer.from(JSON.stringify({ fingerprint: 'old' })).toString('base64') };
+  const stored = {};
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.getContent = async () => content;
+  gh.getState = async (name) => stored[name] || null;
+  gh.setState = async (name, value) => { if (value) stored[name] = value; else delete stored[name]; };
+  const sent = [];
+  let t = T;
+  const at = async (ms) => {
+    t = T + ms;
+    gh.calls.length = 0;
+    await createRelay({ gh, repo: 'phoibe/mon-appli', config, env: { ...env, NTFY_TOPIC: 'topic' }, fetchImpl: fetchOk(sent), now: () => t, log: quiet }).handle(tick);
+    return gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml');
+  };
+  const M = 60_000;
+  const H = 60 * M;
+  assert.equal(await at(0), true);
+  assert.equal(await at(4 * M), false);
+  assert.equal(await at(5 * M), true);
+  assert.equal(await at(30 * M), false);
+  assert.equal(await at(35 * M), true);
+  assert.equal(await at(2 * H + 30 * M), false);
+  assert.equal(await at(2 * H + 35 * M), true);
+  assert.equal(await at(20 * H), false);
+  const alerts = () => sent.filter((s) => s.url === 'https://ntfy.sh');
+  gh.assertTurn = () => { throw new LostTurnError('taken over by another run'); };
+  await at(24 * H);
+  assert.equal(alerts().length, 0);
 });
 
 // Issue #212: waiting minutes for a preview under the queue lock blocked every other decision and made the lock look dead.

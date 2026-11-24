@@ -77,6 +77,7 @@ export function launchesPart(ctx) {
         + 'et créez, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écrivez « réessaie » ici.', 'routine secrets missing');
     }
     let res;
+    gh.assertTurn?.(); // the routine call is the one launch that is not a GitHub write: asked explicitly
     try {
       res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
         method: 'POST',

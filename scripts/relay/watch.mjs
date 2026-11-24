@@ -296,6 +296,7 @@ export function watchPart(ctx) {
     const step = syncStep(state, { mine, theirs, now: now() });
     if (step.changed && gh.setState) await gh.setState('sync', step.state).catch((e) => log(`sync state: ${e.message}`));
     if (step.alert) {
+      gh.assertTurn?.(); // a phone alert is not a GitHub write: asked explicitly
       const project = repo.split('/')[1] || repo;
       const sent = await sendAlert({ topic: (env.NTFY_TOPIC || '').trim(), message: `La mise à jour du projet ${project} ne passe pas depuis hier. Je continue à réessayer une fois par jour.`, click: `https://github.com/${repo}/actions/workflows/factory-sync.yml`, fetchImpl });
       log(`sync failing for a day: alert ${sent ? 'sent' : 'not sent'}`);
