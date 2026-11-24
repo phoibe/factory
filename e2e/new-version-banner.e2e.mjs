@@ -110,7 +110,7 @@ test('sur téléphone, le bandeau est visible en entier, sans faire déborder la
     const box = await banner(page).boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= phone.width + 1, `bandeau de ${box.x} à ${box.x + box.width}`);
     const button = await reloadButton(page).boundingBox();
-    assert.ok(button.x + button.width <= phone.width && button.height >= 32, 'bouton coupé ou trop petit');
+    assert.ok(button.x + button.width <= phone.width && button.height >= 44, 'bouton coupé ou trop petit');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'la page déborde');
   });
 });
@@ -365,6 +365,49 @@ test('sur téléphone, le refus s\'affiche dans le bandeau, au-dessus de la conv
       const input = await page.locator('#chat-input').boundingBox();
       assert.ok(input.y + input.height <= size.height, `${label} : zone de saisie sous le bas de l'écran`);
       assert.equal(await page.locator('#chat-input').inputValue(), 'Un brouillon');
+    });
+  }
+});
+
+test('le bandeau est une bande fine, avec un bouton sans cadre', async () => {
+  await withPanel({ issues: board, viewport: desk }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    const look = await page.locator('#new-version').evaluate((n) => {
+      const s = getComputedStyle(n), b = getComputedStyle(n.querySelector('button'));
+      return { top: s.paddingTop, bottom: s.paddingBottom, color: s.color, border: b.borderTopColor, background: b.backgroundColor };
+    });
+    assert.equal(look.top, '6px');
+    assert.equal(look.bottom, '6px');
+    assert.equal(look.border, 'rgba(0, 0, 0, 0)', 'le bouton a un cadre');
+    assert.equal(look.background, 'rgba(0, 0, 0, 0)', 'le bouton a un fond');
+    assert.ok((await reloadButton(page).boundingBox()).height >= 44, 'zone de clic sous 44 px');
+    for (let i = 0; i < 12 && await page.evaluate(() => document.activeElement?.id) !== 'new-version-reload'; i++) await page.keyboard.press('Tab');
+    const ring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return { id: document.activeElement.id, style: s.outlineStyle, width: s.outlineWidth, color: s.outlineColor }; });
+    assert.equal(ring.id, 'new-version-reload', 'la touche Tab n\'atteint pas « Recharger »');
+    assert.equal(ring.style, 'solid');
+    assert.equal(ring.width, '2px');
+    assert.equal(ring.color, look.color, 'le contour de focus n\'est pas couleur encre');
+  });
+});
+
+test('sur téléphone, le texte et le bouton restent sur une seule rangée', async () => {
+  for (const size of [phone, { width: 320, height: 700 }]) {
+    await withPanel({ issues: board, viewport: size }, async ({ page, url }) => {
+      const v = await versions(page, url);
+      await open(page, url);
+      await newVersion(page, v);
+      await banner(page).waitFor();
+      const label = `${size.width} px`;
+      const text = await page.locator('#new-version-text').boundingBox();
+      const button = await reloadButton(page).boundingBox();
+      assert.ok(Math.abs((text.y + text.height / 2) - (button.y + button.height / 2)) <= 1, `${label} : texte et bouton ne sont pas sur la même rangée`);
+      assert.ok(button.x >= text.x + text.width - 1, `${label} : le bouton chevauche le texte`);
+      assert.ok(button.x + button.width <= size.width - 15, `${label} : le bouton touche le bord`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
+      if (size.width === 320) assert.ok(text.height > 30, `${label} : le texte ne passe pas à la ligne (${text.height} px)`);
     });
   }
 });
