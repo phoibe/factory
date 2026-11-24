@@ -27,7 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core import (
-    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, visible_text,
+    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, title_from,
+    visible_text,
 )
 
 ATTACHMENTS = "factory-attachments"
@@ -44,8 +45,24 @@ IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASC
 WRITE_PROBES = (("PUT", "contents/.factory-write-probe"), ("POST", "issues"), ("POST", "pulls"))
 
 
+def writable_scopes(header):
+    """A classic token lists its scopes in x-oauth-scopes on every answer. delete_repo, workflow or admin:* do not show
+    in the probes, so any scope other than read:* or user:email is refused (same rule as the panel). A fine-grained
+    token sends no header: the probes decide alone."""
+    scopes = [s.strip() for s in (header or "").split(",") if s.strip()]
+    return any(not (s.startswith("read:") or s == "user:email") for s in scopes)
+
+
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def tail_of(stream, keep=4096):
+    """Reads a stream to its end and keeps only its last bytes: a pipe nobody reads stalls the process writing to it."""
+    tail = b""
+    while chunk := await stream.read(65536):
+        tail = (tail + chunk)[-keep:]
+    return tail
 
 
 def new_id():
@@ -75,6 +92,14 @@ class GitHub:
         r.raise_for_status()
         return r.content if raw else r.json()
 
+    async def user(self):
+        """The token's account and, for a classic token, its scopes (None for a fine-grained token)."""
+        r = await self.client.get("/user")
+        if r.status_code == 404:
+            return None, None
+        r.raise_for_status()
+        return r.json(), r.headers.get("x-oauth-scopes")
+
     async def can_write(self):
         """True when the token may change the project's files, issues or pull requests."""
         answers = await asyncio.gather(*(self.client.request(m, f"/repos/{self.repo}/{p}", json={}) for m, p in WRITE_PROBES))
@@ -101,6 +126,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                        allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type"])
     fetched = {}
     locks = {}
+    readers = {}  # answers reading each project's copy: it is not reset under them
 
     @app.get("/health")
     async def health():
@@ -129,11 +155,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         return out.decode()
 
     async def project_copy(repo, token):
-        """An up-to-date read-only copy of the project's default branch, kept between messages."""
+        """An up-to-date read-only copy of the project's default branch, kept between messages.
+        The caller reads it until it calls done_reading(repo): meanwhile no other message resets or cleans it."""
         path = os.path.join(repos_dir, repo)
         lock = locks.setdefault(repo, asyncio.Lock())
         async with lock:
-            if time.time() - fetched.get(repo, 0) < FETCH_EVERY and os.path.isdir(path):
+            fresh = time.time() - fetched.get(repo, 0) < FETCH_EVERY or readers.get(repo, 0) > 0
+            if fresh and os.path.isdir(path):
+                readers[repo] = readers.get(repo, 0) + 1
                 return path
             auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
             git = [git_bin, "-c", f"http.extraHeader=Authorization: Basic {auth}"]
@@ -152,7 +181,11 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             fetched[repo] = time.time()
             if on_repo_change:
                 on_repo_change()
+            readers[repo] = readers.get(repo, 0) + 1
             return path
+
+    def done_reading(repo):
+        readers[repo] -= 1
 
     @app.post("/chat")
     async def chat(request: Request):
@@ -176,8 +209,9 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return JSONResponse({"error": "Image inconnue."}, 400)
         gh = GitHub(token, repo if "/" in repo else "x/x", github_api, transport)
         try:
+            scopes = None
             try:
-                me = await gh.get("/user")
+                me, scopes = await gh.user()
             except httpx.HTTPStatusError as e:
                 r = e.response
                 if busy(r):
@@ -187,7 +221,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
                 me = None
             refused = check_access(owner, (me or {}).get("login"), repo)
-            if not refused and await gh.can_write():
+            if not refused and (writable_scopes(scopes) or await gh.can_write()):
                 await gh.close()
                 return JSONResponse({"error": "Ce jeton peut modifier vos projets : la discussion n'accepte qu'un jeton de lecture.", "code": "writable"}, 403)
         except httpx.HTTPError:
@@ -209,6 +243,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
         proc = None
+        errors = None
+        reading = False
         folder = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
@@ -218,9 +254,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if cid:
                 conv, _ = await gh.read_json(f"chats/{cid}.json", None)
             cid = str(cid) if cid else new_id()
-            conv = conv or new_conversation(cid, message, now_iso())
+            conv = conv if isinstance(conv, dict) else new_conversation(cid, message, now_iso())
             conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
+            reading = True
             files = []
             # One folder per message: two messages of one conversation may run at once.
             os.makedirs("/tmp/chat", exist_ok=True)
@@ -247,6 +284,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=claude_env(), limit=16 * 1024 * 1024)
+            errors = asyncio.create_task(tail_of(proc.stderr))  # read while stdout streams, bounded
             try:
                 proc.stdin.write(build_prompt(conv, message, files, open_requests).encode())
                 await proc.stdin.drain()
@@ -278,11 +316,12 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                         final, failed = e["text"], e["error"]
             await proc.wait()
             if final is None or failed:
-                err = (await proc.stderr.read()).decode(errors="replace")[-300:]
+                err = (await errors).decode(errors="replace")[-300:]
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
             # The panel creates the issues and saves the exchange with the owner's full token: the server never writes.
-            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": conv["title"]}})
+            title = str(conv.get("title") or "") or title_from(message or "Image envoyée")  # a stored file may lack it
+            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": title}})
             yield ev({"type": "done"})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})
@@ -295,6 +334,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except ProcessLookupError:
                 pass
             finally:
+                if reading:
+                    done_reading(repo)
+                if errors is not None and not errors.done():
+                    errors.cancel()
                 if folder:
                     shutil.rmtree(folder, ignore_errors=True)
                 await gh.close()
