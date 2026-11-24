@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
-import { decodePng } from '../agent/scripts/shot-frames.mjs';
+import { decodePng, changeFrames, frameSizes, MAX_FRAMES, WHOLE_SCREEN } from '../agent/scripts/shot-frames.mjs';
 
 // Builds a PNG from raw scanlines (each row = [filter, ...bytes]); CRCs are left at zero.
 const chunk = (type, body) => {
@@ -44,4 +44,116 @@ test('decodePng refuses what it cannot read', () => {
   assert.throws(() => decodePng(Buffer.from('abc')), /not a PNG/);
   const good = png(2, 2, 2, [[0, 255, 0, 0, 0, 255, 0], [2, 0, 0, 0, 0, 1, 255]]);
   assert.throws(() => decodePng(good.subarray(0, Math.floor(good.length / 2))));
+});
+
+// White image; b(x0, y0, x1, y1, seed) paints a block whose pattern depends only on the seed and on the position
+// inside the block (so a moved block keeps the same pixels); seed null paints black.
+const img = (width, height, paint) => {
+  const data = new Uint8Array(width * height * 4).fill(255);
+  paint?.((x0, y0, x1, y1, seed) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data.set(seed === null ? [0, 0, 0] : [((x - x0) * 7 + (y - y0) * 13 + seed) % 251, ((x - x0) * 3 + (y - y0) * 5) % 241, seed % 200], (y * width + x) * 4); });
+  return { width, height, data };
+};
+const S = { red: 2, white: 1, pad: 2, min: 10, gap: 12, text: 16 };
+const base = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); });
+const frames = (a, b) => { const { before, after, whole } = changeFrames(a, b, S); return { before, after, whole }; };
+const added = img(200, 340, (b) => { b(20, 20, 80, 40, 1); b(30, 55, 120, 85, 5); b(20, 140, 180, 180, 2); });
+
+test('frame sizes follow the width of the capture', () => {
+  assert.deepEqual(frameSizes(1280), { red: 8, white: 2, pad: 8, min: 40, gap: 40, text: 46 });
+  assert.deepEqual(frameSizes(390), { red: 4, white: 2, pad: 6, min: 24, gap: 28, text: 16 });
+  assert.equal(MAX_FRAMES, 10);
+  assert.equal(WHOLE_SCREEN, 0.75);
+});
+
+test('identical images have no frame', () => {
+  assert.deepEqual(frames(base, base), { before: [], after: [], whole: false });
+});
+
+test('a change in place is framed on both sides, at the same place', () => {
+  const after = img(200, 300, (b) => { b(20, 20, 80, 40, 9); b(20, 100, 180, 140, 2); });
+  const box = [{ x: 15, y: 15, w: 70, h: 30 }];
+  assert.deepEqual(frames(base, after), { before: box, after: box, whole: false });
+});
+
+test('an added block is framed after only, and what it pushed down is not', () => {
+  assert.deepEqual(frames(base, added), { before: [], after: [{ x: 25, y: 50, w: 100, h: 40 }], whole: false });
+});
+
+test('a removed block is framed before only', () => {
+  assert.deepEqual(frames(added, base), { before: [{ x: 25, y: 50, w: 100, h: 40 }], after: [], whole: false });
+});
+
+test('what moved down and changed is framed on both sides', () => {
+  const after = img(200, 340, (b) => { b(20, 20, 80, 40, 1); b(30, 55, 120, 85, 5); b(20, 140, 180, 180, 2); b(120, 150, 160, 170, 7); });
+  assert.deepEqual(frames(base, after), {
+    before: [{ x: 115, y: 105, w: 50, h: 30 }],
+    after: [{ x: 25, y: 50, w: 100, h: 40 }, { x: 115, y: 145, w: 50, h: 30 }],
+    whole: false,
+  });
+});
+
+test('the empty bottom of a short page is never framed', () => {
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 80, 80, 3); b(20, 100, 180, 140, 2); });
+  const after = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 180, 100, 2); });
+  assert.deepEqual(frames(before, after), { before: [{ x: 15, y: 55, w: 70, h: 30 }], after: [], whole: false });
+  assert.deepEqual(frames(img(100, 100), img(100, 160, (b) => b(40, 120, 60, 140, 4))), { before: [], after: [{ x: 35, y: 115, w: 30, h: 30 }], whole: false });
+});
+
+test('a taller margin alone is framed full width', () => {
+  const after = img(200, 320, (b) => { b(20, 20, 80, 40, 1); b(20, 120, 180, 160, 2); });
+  assert.deepEqual(frames(base, after), { before: [], after: [{ x: 0, y: 95, w: 200, h: 30 }], whole: false });
+});
+
+test('a block moved sideways is a change', () => {
+  const after = img(200, 300, (b) => { b(60, 20, 120, 40, 1); b(20, 100, 180, 140, 2); });
+  const box = [{ x: 15, y: 15, w: 110, h: 30 }];
+  assert.deepEqual(frames(base, after), { before: box, after: box, whole: false });
+});
+
+test('one pixel in a corner gets a whole frame of the minimal size', () => {
+  const after = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); b(199, 299, 200, 300, null); });
+  const box = [{ x: 180, y: 280, w: 20, h: 20 }];
+  assert.deepEqual(frames(base, after), { before: box, after: box, whole: false });
+});
+
+test('two changes far apart on the same rows get two frames', () => {
+  const before = img(400, 100, (b) => { b(10, 40, 40, 60, 1); b(350, 40, 380, 60, 2); });
+  const after = img(400, 100, (b) => { b(10, 40, 40, 60, 3); b(350, 40, 380, 60, 4); });
+  const boxes = [{ x: 5, y: 35, w: 40, h: 30 }, { x: 345, y: 35, w: 40, h: 30 }];
+  assert.deepEqual(frames(before, after), { before: boxes, after: boxes, whole: false });
+});
+
+test('more than ten changes are merged down to ten frames', () => {
+  const squares = [];
+  for (let k = 0; k < 14; k++) squares.push([5, 5 + 20 * k, 8, 8 + 20 * k]);
+  for (let k = 0; k < 3; k++) squares.push([150, 5 + 100 * k, 153, 8 + 100 * k]);
+  const after = img(200, 300, (b) => squares.forEach(([x0, y0, x1, y1]) => b(x0, y0, x1, y1, null)));
+  const result = frames(img(200, 300), after);
+  assert.equal(result.after.length, 10);
+  assert.equal(result.before.length, 10);
+  for (const [x0, y0, x1, y1] of squares) {
+    assert.ok(result.after.some((f) => f.x <= x0 && f.y <= y0 && f.x + f.w >= x1 && f.y + f.h >= y1), `square ${x0},${y0} is framed`);
+  }
+});
+
+test('beyond three quarters of the screen there is no frame, only the mention', () => {
+  assert.deepEqual(frames(img(100, 100), img(100, 100, (b) => b(0, 10, 100, 90, null))), { before: [], after: [], whole: true });
+  const box = [{ x: 0, y: 5, w: 100, h: 80 }];
+  assert.deepEqual(frames(img(100, 100), img(100, 100, (b) => b(0, 10, 100, 80, null))), { before: box, after: box, whole: false });
+});
+
+test('different widths count as a whole new screen', () => {
+  assert.deepEqual(frames(img(100, 100), img(120, 100)), { before: [], after: [], whole: true });
+});
+
+test('a long page is compared quickly', () => {
+  const blocks = (b, shift) => { for (let k = 0; k < 125; k++) { const y = 40 * k + 10 + (40 * k >= 2000 ? shift : 0); b(100, y, 600, y + 20, k + 1); } };
+  const before = img(1280, 5000, (b) => blocks(b, 0));
+  const after = img(1280, 5200, (b) => { blocks(b, 200); b(100, 2050, 600, 2150, 999); });
+  const start = Date.now();
+  const result = changeFrames(before, after);
+  assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`);
+  assert.equal(result.whole, false);
+  assert.equal(result.before.length, 0);
+  assert.equal(result.after.length, 1);
 });

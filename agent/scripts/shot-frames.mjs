@@ -60,3 +60,206 @@ function unfilter(raw, stride, bpp, height) {
   }
   return out;
 }
+
+export const MAX_FRAMES = 10;
+export const WHOLE_SCREEN = 0.75;
+
+// Every size of a frame, in pixels of the capture: GitHub shrinks wide images, so they follow its width.
+export function frameSizes(width) {
+  const red = Math.max(4, Math.round(width / 160));
+  const white = 2;
+  const pad = Math.max(6, Math.round(width / 160));
+  const min = Math.max(24, Math.round(width / 32));
+  return { red, white, pad, min, gap: 2 * (red + white + pad) + 4, text: Math.max(16, Math.round(width / 28)) };
+}
+
+// The frames of each side of one before/after image. Box = outer rectangle of a frame, inside its image.
+export function changeFrames(before, after, sizes = frameSizes(after.width)) {
+  if (before.width !== after.width) return { before: [], after: [], whole: true, sizes };
+  const pairs = alignRows(before, after);
+  const cells = markChanges(before, after, pairs, sizes.gap);
+  const zones = cells.map((c, side) => {
+    const img = side === 0 ? before : after;
+    return mergeZones(groupMarks(c).map((z) => widen(z, sizes.min, img)), sizes.gap);
+  });
+  const area = (zs) => zs.reduce((sum, z) => sum + (z.x1 - z.x0) * (z.y1 - z.y0), 0);
+  if (area(zones[0]) > WHOLE_SCREEN * before.width * before.height || area(zones[1]) > WHOLE_SCREEN * after.width * after.height) {
+    return { before: [], after: [], whole: true, sizes };
+  }
+  const grow = sizes.pad + sizes.red + sizes.white;
+  const [b, a] = zones.map((zs, side) => {
+    const img = side === 0 ? before : after;
+    return zs.map((z) => toBox(z, grow, img)).sort((p, q) => p.y - q.y || p.x - q.x);
+  });
+  return { before: b, after: a, whole: false, sizes };
+}
+
+// Row ids: equal rows share an id, in both images.
+function rowIds(images) {
+  const ids = new Map();
+  return images.map(({ width, height, data }) => {
+    const bytes = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+    const out = new Int32Array(height);
+    for (let y = 0; y < height; y++) {
+      const key = bytes.toString('latin1', y * width * 4, (y + 1) * width * 4);
+      let id = ids.get(key);
+      if (id === undefined) { id = ids.size; ids.set(key, id); }
+      out[y] = id;
+    }
+    return out;
+  });
+}
+
+// Longest increasing chain of anchors (sorted by their before row) on their after row.
+function longestChain(anchors) {
+  const tails = [], prev = new Array(anchors.length);
+  anchors.forEach(([, j], k) => {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (anchors[tails[mid]][1] < j) lo = mid + 1; else hi = mid; }
+    prev[k] = lo > 0 ? tails[lo - 1] : -1;
+    tails[lo] = k;
+  });
+  const chain = [];
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) chain.push(anchors[k]);
+  return chain.reverse();
+}
+
+// Patience diff on whole rows: the matched [beforeRow, afterRow] pairs, in order.
+function alignRows(before, after) {
+  const [a, b] = rowIds([before, after]);
+  const pairs = [];
+  const stack = [[0, a.length, 0, b.length]];
+  while (stack.length) {
+    let [a0, a1, b0, b1] = stack.pop();
+    while (a0 < a1 && b0 < b1 && a[a0] === b[b0]) pairs.push([a0++, b0++]);
+    while (a0 < a1 && b0 < b1 && a[a1 - 1] === b[b1 - 1]) pairs.push([--a1, --b1]);
+    if (a0 === a1 || b0 === b1) continue;
+    const count = new Map();
+    for (let i = a0; i < a1; i++) { const c = count.get(a[i]) || [0, 0, -1]; c[0]++; c[2] = i; count.set(a[i], c); }
+    for (let j = b0; j < b1; j++) { const c = count.get(b[j]); if (c) { c[1]++; c[3] = j; } }
+    const anchors = [];
+    for (const c of count.values()) if (c[0] === 1 && c[1] === 1) anchors.push([c[2], c[3]]);
+    if (!anchors.length) continue;
+    anchors.sort((p, q) => p[0] - q[0]);
+    let pa = a0, pb = b0;
+    for (const [i, j] of longestChain(anchors)) {
+      stack.push([pa, i, pb, j]);
+      pairs.push([i, j]);
+      pa = i + 1; pb = j + 1;
+    }
+    stack.push([pa, a1, pb, b1]);
+  }
+  return pairs.sort((p, q) => p[0] - q[0]);
+}
+
+const samePixel = (d1, o1, d2, o2) => d1[o1] === d2[o2] && d1[o1 + 1] === d2[o2 + 1] && d1[o1 + 2] === d2[o2 + 2] && d1[o1 + 3] === d2[o2 + 3];
+
+// Marked pixels, gathered as they come into gap-sized cells that keep their tight bounds [x0, x1) × [y0, y1).
+class Cells {
+  constructor(gap) { this.gap = gap; this.map = new Map(); }
+  mark(x, y) {
+    const key = `${Math.floor(x / this.gap)},${Math.floor(y / this.gap)}`;
+    const c = this.map.get(key);
+    if (!c) this.map.set(key, { x0: x, y0: y, x1: x + 1, y1: y + 1 });
+    else { if (x < c.x0) c.x0 = x; if (y < c.y0) c.y0 = y; if (x >= c.x1) c.x1 = x + 1; if (y >= c.y1) c.y1 = y + 1; }
+  }
+}
+
+// Marks one run of unmatched rows [y0, y1) of img; [o0, o1) = the other side's run, compared row for row.
+function markRun(img, y0, y1, other, o0, o1, cells) {
+  const { width, height, data } = img;
+  const above = y0 > 0 ? y0 - 1 : -1, below = y1 < height ? y1 : -1;
+  for (let y = y0; y < y1; y++) {
+    const k = y - y0;
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * 4;
+      let marked;
+      if (o0 + k < o1) marked = !samePixel(data, o, other.data, ((o0 + k) * width + x) * 4);
+      else {
+        // Beyond the other side's run: a pixel that repeats the row above or below is only spacing.
+        marked = true;
+        if (above >= 0 && samePixel(data, o, data, (above * width + x) * 4)) marked = false;
+        if (below >= 0 && samePixel(data, o, data, (below * width + x) * 4)) marked = false;
+      }
+      if (marked) cells.mark(x, y);
+    }
+  }
+}
+
+// Differing pixels of each side, given the matched rows.
+function markChanges(before, after, pairs, gap) {
+  const cells = [new Cells(gap), new Cells(gap)], runs = [];
+  const bounds = [[-1, -1], ...pairs, [before.height, after.height]];
+  for (let p = 1; p < bounds.length; p++) {
+    const b0 = bounds[p - 1][0] + 1, b1 = bounds[p][0], a0 = bounds[p - 1][1] + 1, a1 = bounds[p][1];
+    if (b0 === b1 && a0 === a1) continue;
+    markRun(before, b0, b1, after, a0, a1, cells[0]);
+    markRun(after, a0, a1, before, b0, b1, cells[1]);
+    runs.push([b0, b1, a0, a1]);
+  }
+  if (cells[0].map.size || cells[1].map.size) return cells;
+  // Only spacing changed: say where, full width.
+  const fill = (c, y0, y1, width) => { for (let y = y0; y < y1; y++) for (let x = 0; x < width; x++) c.mark(x, y); };
+  for (const [b0, b1, a0, a1] of runs) { fill(cells[0], b0, b1, before.width); fill(cells[1], a0, a1, after.width); }
+  return cells;
+}
+
+// Cells into zones: 8-connected cells make one zone, the union of their bounds.
+function groupMarks({ map: cells }) {
+  const zones = [], seen = new Set();
+  for (const start of cells.keys()) {
+    if (seen.has(start)) continue;
+    seen.add(start);
+    const zone = { ...cells.get(start) }, todo = [start];
+    while (todo.length) {
+      const [cx, cy] = todo.pop().split(',').map(Number);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const key = `${cx + dx},${cy + dy}`;
+        const c = cells.get(key);
+        if (!c || seen.has(key)) continue;
+        seen.add(key); todo.push(key);
+        zone.x0 = Math.min(zone.x0, c.x0); zone.y0 = Math.min(zone.y0, c.y0); zone.x1 = Math.max(zone.x1, c.x1); zone.y1 = Math.max(zone.y1, c.y1);
+      }
+    }
+    zones.push(zone);
+  }
+  return zones;
+}
+
+const distance = (p, q) => Math.max(0, Math.max(p.x0, q.x0) - Math.min(p.x1, q.x1), Math.max(p.y0, q.y0) - Math.min(p.y1, q.y1));
+
+// Merges the two closest zones while they are closer than gap, or while there are too many.
+function mergeZones(zones, gap) {
+  const zs = zones.slice();
+  while (zs.length > 1) {
+    let best = Infinity, bi = 0, bj = 1;
+    for (let i = 0; i < zs.length; i++) for (let j = i + 1; j < zs.length; j++) {
+      const d = distance(zs[i], zs[j]);
+      if (d < best) { best = d; bi = i; bj = j; }
+    }
+    if (best >= gap && zs.length <= MAX_FRAMES) break;
+    const p = zs[bi], q = zs[bj];
+    zs[bi] = { x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1) };
+    zs.splice(bj, 1);
+  }
+  return zs;
+}
+
+// A segment [lo, hi) at least `length` long (at most `size`), centred on itself, kept inside [0, size).
+function span(lo, hi, length, size) {
+  const len = Math.min(Math.max(hi - lo, length), size);
+  const start = Math.min(Math.max(Math.round((lo + hi - len) / 2), 0), size - len);
+  return [start, start + len];
+}
+
+function widen(z, min, img) {
+  const [x0, x1] = span(z.x0, z.x1, min, img.width);
+  const [y0, y1] = span(z.y0, z.y1, min, img.height);
+  return { x0, y0, x1, y1 };
+}
+
+function toBox(z, grow, img) {
+  const [x0, x1] = span(z.x0, z.x1, z.x1 - z.x0 + 2 * grow, img.width);
+  const [y0, y1] = span(z.y0, z.y1, z.y1 - z.y0 + 2 * grow, img.height);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
