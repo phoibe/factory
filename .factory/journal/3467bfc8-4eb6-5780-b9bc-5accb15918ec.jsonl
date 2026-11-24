@@ -1,0 +1,2 @@
+{"t":"2026-11-24T16:26:47.342Z","kind":"run","stage":"skills-fix","issue":561,"pr":582,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
+{"t":"2026-11-24T16:34:27.290Z","kind":"test","cmd":"git merge --no-edit origin/main 2>&1 | tail -2 && for s in typecheck lint build; do npm run -s $s >/tmp/$s.log 2>&1 && echo \"$s ok\" || { echo \"$s FAIL\"; tail -20 /tmp/$s.log; }; done; npm test >/tmp/t","ok":true,"id":"toolu_012jcAEQx3hrjRofzf9xVBjp"}
