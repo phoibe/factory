@@ -15,6 +15,11 @@ const COPIED_RE = /<!-- factory-copied #(\d+) -->/;
 export const TAKEN = (copy) => `Merci pour votre proposition. Elle est reprise dans la demande #${copy}, où la suite se passe. Je ferme celle-ci.`;
 export const ALREADY = (copy) => `Cette demande est déjà reprise dans la demande #${copy} : c'est là que la suite se passe.`;
 export const COPY_FAILED = "Je n'ai pas pu créer la copie de cette demande : GitHub n'a pas répondu. Elle reste ouverte ; réécrivez ici pour réessayer.";
+// GitHub said no (not an outage): trying again would get the same answer.
+export const COPY_REFUSED = "Je n'ai pas pu créer la copie de cette demande : GitHub l'a refusée. Elle reste ouverte.";
+
+// A 4xx (other than the rate limit, rethrown above) is GitHub refusing the copy: writing again would not mend it.
+const REFUSED = / -> 4\d\d\b/;
 
 // The labels the copy starts with, as the original would: every kind of request decide() starts, and its urgency.
 const KINDS = [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack, L.urgent];
@@ -29,12 +34,37 @@ function cut(text, max) {
   return `${kept.trimEnd()} …`;
 }
 
+// The outsider's mentions (`@bob`, `@org/team`) are not sent again under the factory's name: a zero-width joiner after
+// the `@` keeps them readable but inert. An email (`a@b.com`) and code (fenced blocks, `inline`) are left as they are.
+const MENTION = /(^|[^\w`])@(?=[A-Za-z0-9])/g;
+function quietMentions(text) {
+  let fenced = false;
+  return text.split('\n').map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return line; }
+    if (fenced) return line;
+    return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part : part.replace(MENTION, '$1@\u200D'))).join('');
+  }).join('\n');
+}
+
+// Every line quoted, blank ones too: nothing the outsider writes can pass for the owner's part after it.
+const quote = (text) => text.split('\n').map((line) => `> ${line}`).join('\n');
+
+// The owner's own message: his panel images (`factory-image` notes, which mirrorAttachments reads) are kept, every
+// other hidden note is taken out as in an outsider's text.
+const IMAGE_NOTE = /<!-- factory-image: attachments\/[\w./-]+ -->/g;
+function ownerText(message) {
+  const images = String(message ?? '').match(IMAGE_NOTE) || [];
+  return [visibleText(message), ...images].filter(Boolean).join('\n');
+}
+
 // The copy's description: its marker, where it comes from (the login without @: nobody is notified), the visible text
-// of the original, then the owner's message when he wrote one.
+// of the original quoted, then the owner's message when he wrote one, unquoted.
 export function copyBody({ repo, original, message }) {
   const n = original.number;
-  const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`, '', cut(visibleText(original.body), MAX_ORIGINAL)];
-  const said = cut(visibleText(message), MAX_MESSAGE);
+  const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`];
+  const text = cut(visibleText(original.body), MAX_ORIGINAL);
+  if (text) lines.push('', quote(quietMentions(text)));
+  const said = cut(ownerText(message), MAX_MESSAGE);
   if (said) lines.push('', '---', '', '**Votre message :**', '', said);
   return lines.join('\n');
 }
@@ -69,13 +99,16 @@ export function takeoverPart(ctx) {
     const kinds = names(original.labels).filter((l) => KINDS.includes(l));
     let found = await findCopy(n);
     if (!found && !isOpen) return null; // a request the owner dropped: handled as today
+    // No kind of request to start the copy with: it would never start while the original is closed. Not taken over,
+    // like any outsider request that is not one for the factory.
+    if (!found && !kinds.some((l) => l !== L.urgent)) return null;
     if (!found) {
       try {
         const made = await gh.createIssue(original.title, copyBody({ repo, original, message }), [...kinds, L.kept]);
         found = { number: made.number, told: false };
       } catch (e) {
         if (isRateLimited(e)) throw e;
-        await gh.comment(n, say(COPY_FAILED));
+        await gh.comment(n, say(REFUSED.test(String(e?.message)) ? COPY_REFUSED : COPY_FAILED));
         return { type: 'takeover-failed', reason: `copie impossible : ${e.message}` };
       }
     }

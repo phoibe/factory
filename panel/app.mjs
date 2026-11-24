@@ -6,7 +6,7 @@ import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, 
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
-import { trustNotes, trustRead } from './trust.mjs';
+import { trustNotes, trustRead } from './trust.mjs?v=1';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';

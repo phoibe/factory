@@ -314,7 +314,10 @@ export function eventsPart(ctx) {
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
     let said = ev.text;
-    let ownerSaid = Boolean(ev.fromOwner && !ev.fromAgent);
+    // The owner's own word or gesture (a message, a label, a request he opens): not the agent's end of run, whose
+    // unlabeled event also comes as the owner's.
+    const ownerGesture = (ev.event === 'issue_comment' && ev.action === 'created') || (ev.event === 'issues' && ['labeled', 'opened'].includes(ev.action));
+    let ownerSaid = Boolean(ev.fromOwner && !ev.fromAgent && ownerGesture);
     // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
     // and its checks start again.
     let reopenedPr = null;
