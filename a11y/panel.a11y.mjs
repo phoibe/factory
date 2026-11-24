@@ -14,7 +14,7 @@ const axeSource = await readFile(require.resolve('axe-core/axe.min.js'), 'utf8')
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PANEL = join(ROOT, 'panel');
 // The Pages workflow copies these next to the panel files; the test server does the same.
-const EXTRA = { '/config-core.mjs': 'scripts/lib/config-core.mjs', '/ratelimit.mjs': 'scripts/lib/ratelimit.mjs', '/answer.mjs': 'scripts/lib/answer.mjs', '/waits.mjs': 'scripts/lib/waits.mjs', '/trust.mjs': 'scripts/lib/trust.mjs', '/catalog.json': 'packs/catalog.json', '/factory.config.json': 'defaults/factory.config.json' };
+const EXTRA = { '/config-core.mjs': 'scripts/lib/config-core.mjs', '/ratelimit.mjs': 'scripts/lib/ratelimit.mjs', '/answer.mjs': 'scripts/lib/answer.mjs', '/waits.mjs': 'scripts/lib/waits.mjs', '/trust.mjs': 'scripts/lib/trust.mjs', '/models.mjs': 'scripts/lib/models.mjs', '/catalog.json': 'packs/catalog.json', '/factory.config.json': 'defaults/factory.config.json' };
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json', '.woff2': 'font/woff2' };
 
 // A fake GitHub account: one project with a ticket waiting for the owner, one being built, one queued,
@@ -66,7 +66,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
         await page.route('https://api.github.com/**', fakeGithub);
         await page.addInitScript((on) => { if (on) localStorage.setItem('factory.token', 'fake-token-for-tests'); }, signedIn);
         await page.goto(`http://localhost:${server.address().port}/`);
-        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Agent', 'tab-chat', '.conv']] : [['Connexion', null, '#login:not([hidden])']];
+        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Agent', 'tab-chat', '.conv'], ['Réglages généraux', 'general-open', '#general fieldset']] : [['Connexion', null, '#login:not([hidden])']];
         for (const [name, tab, ready] of screens) {
           if (tab) {
             await page.waitForSelector('#project-view:not([hidden])');

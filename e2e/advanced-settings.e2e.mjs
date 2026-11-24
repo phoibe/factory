@@ -43,10 +43,15 @@ test('en ouvrant « Avancé », je retrouve la machine des tâches, le moteur de
   await withPanel({}, async ({ page, url }) => {
     await openSettings(page, url);
     await page.getByText('Avancé', { exact: true }).click();
-    for (const name of ['Machine des tâches', 'Moteur des agents', 'Contrôles automatiques', 'Contrôles supplémentaires', 'Machine des tâches par défaut']) {
+    for (const name of ['Machine des tâches', 'Moteur des agents', 'Contrôles automatiques', 'Contrôles supplémentaires']) {
       assert.equal(await page.getByRole('group', { name, exact: true }).isVisible(), true, name);
     }
     assert.ok(await advanced(page).getByRole('group', { name: /^Savoir-faire : / }).count() > 0);
+    // Issue #544: the general machine moved to the « Réglages généraux » page, reached from here.
+    assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 0);
+    await page.getByRole('button', { name: 'Changer le réglage de tous les projets' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.getByRole('group', { name: 'Machine des tâches', exact: true }).isVisible(), true);
   });
 });
 
