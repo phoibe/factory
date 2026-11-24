@@ -99,3 +99,25 @@ test('a kept entry of another kind sharing an id with a transcript entry stays',
   importTranscript(root, 'phoibe/factory', { projectsDir: projects });
   assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'skill', 'test', 'gate']);
 });
+
+// Review #556 (D2): Claude Code writes each sub-agent's tool calls to <session>/subagents/agent-*.jsonl.
+test("the sub-agents' transcripts are merged into the rebuilt journal, in time order", () => {
+  const projects = mkdtempSync(join(tmpdir(), 'projects-'));
+  mkdirSync(join(projects, 'p', 's6', 'subagents'), { recursive: true });
+  const at = (o, ts) => JSON.stringify({ ...o, timestamp: ts });
+  writeFileSync(join(projects, 'p', 's6.jsonl'), [at(prompt, '2026-11-24T10:00:00Z'),
+    at(use('m1', 'Agent', { model: 'opus', description: 'code' }), '2026-11-24T10:01:00Z'),
+    at(use('m2', 'Skill', { skill: 'requesting-code-review' }), '2026-11-24T10:09:00Z')].join('\n'));
+  writeFileSync(join(projects, 'p', 's6', 'subagents', 'agent-x.jsonl'), [
+    at({ type: 'user', message: { role: 'user', content: prompt.message.content } }, '2026-11-24T10:01:01Z'),
+    at(use('x1', 'Skill', { skill: 'test-driven-development' }), '2026-11-24T10:02:00Z'),
+    at(use('x2', 'Bash', { command: 'npm test' }), '2026-11-24T10:03:00Z'), at(result('x2', 'not ok 1 - x\n# fail 1'), '2026-11-24T10:03:05Z'),
+    at(use('x3', 'Bash', { command: 'npm test' }), '2026-11-24T10:05:00Z'), at(result('x3', '# pass 1\n# fail 0'), '2026-11-24T10:05:05Z')].join('\n'));
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const file = importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  const got = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  // A sub-agent's prompt quoting the routine payload does not start a new run.
+  assert.deepEqual(got.map((e) => e.kind), ['run', 'agent', 'skill', 'test', 'test', 'skill']);
+  assert.deepEqual(got.filter((e) => e.kind === 'test').map((e) => e.ok), [false, true]);
+  assert.deepEqual(got.filter((e) => e.kind === 'skill').map((e) => e.name), ['test-driven-development', 'requesting-code-review']);
+});

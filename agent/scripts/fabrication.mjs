@@ -184,32 +184,41 @@ export function roleOf(model, models) {
   return ['plan', 'review'].find((role) => models[role] && family(model) === family(models[role])) || null;
 }
 const roleAgents = (run) => (run.agents || []).map((a) => ({ a, role: roleOf(a.model, run.models) })).filter((x) => x.role);
-// The latest one: after a failed `plan` sub-agent, the `review` one that took over did the thinking.
-export function upstreamAgent(run) {
-  const last = roleAgents(run).at(-1);
-  return last ? { model: family(last.a.model), role: last.role } : null;
-}
 // The analysis comes before the fix: an agent with a role launched after the last red test is the final reviewer.
 const analyst = (run) => {
   const red = (run.tests || []).filter((x) => !x.ok).at(-1);
   return roleAgents(run).find(({ a }) => !red || String(a.t) < String(red.t)) || null;
 };
-export const bugAnalysed = (run) => Boolean(analyst(run));
 const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
 // The journal is a committed file: a hand-edited `by` must not break the comment.
 const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
+// Issue #559: a bugfix journaled since then (all its agents carry the `role` key) is proved only by the entry
+// journal-check wrote from the analysis sub-agent's record; an older one, or one journaled partly by older scripts,
+// keeps the rule by model.
+const bugMaker = (run) => {
+  const agents = run.agents || [];
+  if (agents.length && agents.every((a) => Object.hasOwn(a, 'role'))) {
+    const e = run.upstream;
+    return e?.doc === 'bug' && e.status === 'proved' ? makers(e.by)[0] || null : null;
+  }
+  const found = analyst(run);
+  return found ? { model: found.a.model, role: found.role } : null;
+};
 const UNCHECKED = "l'outil n'a pas pu vérifier quel modèle les a faites";
+// How the « unproved » step starts: the lock gives that refusal once per run (gate.mjs), since the agent may not
+// be able to fix it.
+export const UNPROVED_HOW = "questions et fiche : la fiche publiée n'a pas de preuve valable";
 
 export function upstreamCheck(runs) {
   const lines = [];
   const missing = [];
   const bugs = runs.filter((r) => r.stage === 'bugfix' && r.models);
   if (bugs.length) {
-    const found = bugs.map(analyst).find(Boolean);
-    if (found) lines.push(`**Analyse du bug** : faite par ${madeBy({ model: found.a.model, role: found.role })}`);
+    const found = bugs.map(bugMaker).find(Boolean);
+    if (found) lines.push(`**Analyse du bug** : faite par ${madeBy(found)}`);
     else missing.push({
       alert: "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.",
-      how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
+      how: "analyse du bug : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il lit le relevé du sous-agent d'analyse) ; s'il la demande encore, fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec la description `[role:plan:amont]` et `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
     });
   }
   const docs = runs.filter((r) => ['build', 'foundation'].includes(r.stage) && r.models && r.issue != null);
@@ -228,7 +237,7 @@ export function upstreamCheck(runs) {
       lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
     } else if (entry.status === 'unproved') missing.push({
       alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
-      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
+      how: `${UNPROVED_HOW} : la ligne de preuve manque, ou le texte ne correspond plus à ce que le sous-agent de réflexion a écrit. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
     else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);

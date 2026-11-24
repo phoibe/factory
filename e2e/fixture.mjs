@@ -29,6 +29,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // write probe (method, path, token) GitHub received. `chatServer.code`: the error code the chat server adds to `refuse`.
 // `tokenCheck`: how GitHub answers the read token's check: `head` the status of its `commits/HEAD` read (404: it
 // cannot see it; 'limited': a rate-limited 403), `secondaryLimit` its webhook probe a plain 403 saying « secondary rate limit ».
+// `scopes`: token → the x-oauth-scopes header its `/user` answers (a classic token in disguise, whatever its name).
 // `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
@@ -42,7 +43,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -100,6 +101,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       const auth = req.headers().authorization;
       if (path === '/user') {
         const login = { 'Bearer test': 'o', 'Bearer github_pat_lecture': 'o', 'Bearer github_pat_ecriture': 'o', 'Bearer github_pat_actions': 'o', 'Bearer github_pat_scopes': 'o', 'Bearer github_pat_autre': 'x' }[auth];
+        const scope = scopes[String(auth).replace(/^Bearer /, '')];
+        if (login && scope !== undefined) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': scope, 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
         if (auth === 'Bearer github_pat_scopes') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': 'repo', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
         // As the real GitHub: a fine-grained token gets an empty X-OAuth-Scopes.
         if (auth === 'Bearer github_pat_lecture') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': '', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });

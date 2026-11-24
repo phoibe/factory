@@ -74,6 +74,21 @@ test('an unreachable routine (network) is a passing failure too', async () => {
   assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
 });
 
+// A routine that never answers must not hold the queue lock for minutes: the call is given a time limit, and a call
+// stopped by it is a passing failure like any other.
+test('the routine call has a time limit, and a call stopped by it is retried quietly', async () => {
+  const gh = fakeGh({ issues: [{ number: 3, body: '', labels: [L.feature, L.specReview] }], prs: [] });
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push(init); throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
+  const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl, log: quiet, now: () => 0, sleep: async () => {} });
+  await relay.handle(go(3));
+  assert.ok(sent[0].signal instanceof AbortSignal, 'the call can be stopped');
+  assert.ok(!(await gh.getIssue(3)).labels.some((l) => l.name === L.running), 'the lock is given back');
+  assert.ok((await labelsOf(gh, 3)).includes(L.relaunch), 'the launch is saved for a relaunch');
+  assert.ok(readRelaunch((await gh.getIssue(3)).body));
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment'));
+});
+
 test('the relaunch that works starts the saved launch, then does what the first launch would have done', async () => {
   const gh = fakeGh({ issues: [{ number: 3, body: 'Ma demande', labels: [L.feature, L.specReview] }], prs: [] });
   const { relay, clock, sent } = make(gh, [529]);

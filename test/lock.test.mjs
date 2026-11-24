@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withLock, LostTurnError, isLostTurn, LOCK_TTL_MS, LOCK_MARGIN_MS } from '../scripts/lib/lock.mjs';
+import { withLock, LostTurnError, isLostTurn, isLockTimeout, LOCK_TTL_MS, LOCK_MARGIN_MS } from '../scripts/lib/lock.mjs';
 import { createRelay } from '../scripts/relay.mjs';
 import { L } from '../scripts/lib/labels.mjs';
 
@@ -237,4 +237,15 @@ test('a run whose work ended well but whose lock is no longer sure at the end do
   assert.deepEqual(run.logs.filter((m) => LOST.test(m)), []);
   assert.ok(run.logs.includes('queue lock: not given back, it will expire by itself'), run.logs.join('\n'));
   assert.ok(!store.log.includes('release'));
+});
+
+// A run that waited its whole time for the lock did nothing wrong: it is marked so that the tick re-runs it.
+test('the « waited too long » error says so, and only it does', async () => {
+  let t = 0;
+  const store = { acquire: async () => false, ageMs: async () => 10, release: async () => {} };
+  const e = await withLock(store, async () => {}, { waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }).catch((x) => x);
+  assert.match(e.message, /waited too long/);
+  assert.equal(e.lockTimeout, true);
+  assert.equal(isLockTimeout(e), true);
+  assert.equal(isLockTimeout(new Error('boom')), false);
 });

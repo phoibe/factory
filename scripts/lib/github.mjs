@@ -1,6 +1,6 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
 import { rateLimitDelay, RateLimited, MAX_PAUSE_MS, markGitHubDown } from './ratelimit.mjs';
-import { trustNotes } from './trust.mjs';
+import { trustNotes, trustBodies } from './trust.mjs';
 import { LIVE_REF } from './version-tag.mjs';
 const HTML = 'application/vnd.github.full+json';
 
@@ -18,7 +18,9 @@ const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the qu
 
 // `timeoutMs`: a request with no answer by then is abandoned (and retried like a network error): a hung connection
 // must not eat the whole job and lose the event it handles.
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timeoutMs = 60_000 }) {
+// `isPublic`: whether the project is public, when the caller knows it. Unknown, it is asked once, the first time an
+// outsider's issue or PR is read (issue #557).
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timeoutMs = 60_000, isPublic }) {
   const started = now();
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
@@ -93,10 +95,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // runs again before each retry of it.
   let turnCheck = null;
   const assertTurn = () => { turnCheck?.(); };
-  async function request(method, path, body, accept) {
-    return call(method, path, body, accept, method !== 'GET' ? assertTurn : undefined);
-  }
-  async function call(method, path, body, accept = 'application/vnd.github+json', guard = undefined) {
+  // `turn`: the check run before every (re)send; `request` passes it for every write, the lock's own calls none.
+  async function rawRequest(method, path, body, accept = 'application/vnd.github+json', turn = undefined) {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
       headers: {
@@ -106,13 +106,26 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
-    }, guard);
+    }, turn);
     if (res.status === 404 && method === 'GET') return null;
     if (!res.ok) throw down(res.status, new Error(`${method} ${path} -> ${res.status} ${await res.text()}`));
     return res.status === 204 ? null : res.json();
   }
+  // Issue #557: on a public project, the factory notes in the description of an issue or PR opened by an outsider have
+  // no effect. Every answer goes through here, so no method and no caller of request/paginate can skip it. An
+  // unreadable repository counts as public.
+  // Only a project known to be private (`false`) is left as is: an unknown visibility (null) counts as public.
+  let visibility = isPublic === undefined || isPublic === null ? null : Promise.resolve(isPublic !== false);
+  const publicRepo = () => (visibility ||= rawRequest('GET', '/repos/{repo}').then((r) => !r?.private, (e) => { visibility = null; throw e; }));
+  const owner = repo.split('/')[0];
+  async function guard(data) {
+    const clean = trustBodies(data, owner);
+    return clean === data || !(await publicRepo()) ? data : clean;
+  }
+  const request = async (method, path, body, accept) => guard(await rawRequest(method, path, body, accept, method !== 'GET' ? assertTurn : undefined));
+  const paginate = async (...args) => guard(await rawPaginate(...args));
   // Follows the Link header so long histories (events, comments) are read in full.
-  async function paginate(path, accept = 'application/vnd.github+json') {
+  async function rawPaginate(path, accept = 'application/vnd.github+json') {
     const out = [];
     let url = `${api}${path.replace('{repo}', repo)}`;
     while (url) {
@@ -129,18 +142,18 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // A question the open list answers: one label, open ones, by creation date.
   const fromOpenList = (q = {}) => typeof q.labels === 'string' && !q.labels.includes(',')
     && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k)) && (q.sort ?? 'created') === 'created';
-  const trusted = (list) => trustNotes(list, repo.split('/')[0]);
+  const trusted = (list) => trustNotes(list, owner);
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
   const LOCK_REF = 'factory/lock';
   let mine = null; // sha of the lock commit this run created (moved forward by each sign of life)
   let tree = null; // the lock's content, reused by the signs of life
   let seen = null; // sha of the lock commit last seen held by someone else
-  const lockSha = async () => (await call('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
+  const lockSha = async () => (await rawRequest('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
   const dropIf = async (sha) => {
     // The refs API has no compare-and-delete: check, then delete (a narrow window, far better than none).
     if (!sha || (await lockSha()) !== sha) return;
-    try { await call('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+    try { await rawRequest('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
   };
   const lockDate = { sha: null, at: 0 };
   // The lock's own calls are not guarded: a late sign of life may still save the turn, and whether to give the lock
@@ -150,16 +163,16 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async acquire() {
       seen = await lockSha();
       if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
-      tree = (await call('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
-      const commit = await call('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
-      try { await call('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
+      tree = (await rawRequest('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
+      const commit = await rawRequest('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
+      try { await rawRequest('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
       catch (e) { if (String(e).includes('422')) return false; throw e; }
     },
     async ageMs() {
       if (!seen) return null;
       // A commit never changes: its date is read once per lock commit, not at every poll of a waiting run.
       if (lockDate.sha !== seen) {
-        const commit = await call('GET', `/repos/{repo}/git/commits/${seen}`);
+        const commit = await rawRequest('GET', `/repos/{repo}/git/commits/${seen}`);
         if (!commit) return null;
         Object.assign(lockDate, { sha: seen, at: Date.parse(commit.committer.date) });
       }
@@ -171,9 +184,9 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async refresh() {
       const held = mine;
       if (!held) return false;
-      const commit = await call('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      const commit = await rawRequest('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
       let moved = true;
-      try { await call('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      try { await rawRequest('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
       catch (e) {
         if (!/422/.test(String(e))) throw e;
         // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
@@ -254,7 +267,16 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     },
     closeIssue: (n, reason = 'completed') => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: reason }),
     closePr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'closed' }),
-    updateIssue: (n, fields) => request('PATCH', `/repos/{repo}/issues/${n}`, fields),
+    // No factory note is written in the description of an outsider's request (issue #557): the body is left out.
+    updateIssue: async (n, fields) => {
+      let send = fields;
+      if (/<!--\s*factory-/.test(String(fields?.body ?? '')) && (await request('GET', `/repos/{repo}/issues/${n}`))?.untrusted) {
+        const { body: _dropped, ...rest } = fields;
+        if (!Object.keys(rest).length) return null;
+        send = rest;
+      }
+      return request('PATCH', `/repos/{repo}/issues/${n}`, send);
+    },
     reopenIssue: (n) => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'open' }),
     reopenPr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'open' }),
     createIssue: (title, body, labels = []) => request('POST', '/repos/{repo}/issues', { title, body, labels }),

@@ -232,6 +232,15 @@ test('the dispatched run hands the payload to the agent job', async () => {
   assert.equal(fromJobOutput(outputs.payload), '{"stage":"build"}');
 });
 
+test('a manual run with no payload starts no agent job', async () => {
+  for (const payload of ['', undefined]) {
+    const relay = createRelay({ gh: fakeGh({ issues: [], prs: [] }), repo: 'r', config, env, log: quiet });
+    const { action, outputs } = await relay.handle({ kind: 'dispatch', payload });
+    assert.notEqual(outputs.agent, 'true', String(payload));
+    assert.equal(action.type, 'ignore');
+  }
+});
+
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
   const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
@@ -804,7 +813,7 @@ test('any event starts a queued card when a place is free, without waiting for t
   const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }, { number: 8, labels: [L.feature, L.queued] }], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 8 && payloadOf(s.init.body).stage === 'build'));
 });
 
@@ -822,7 +831,7 @@ test('a factory label typed wrong by an agent is put back, so the card can be pi
   const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(state.issues[0].labels.includes(L.feature));
   assert.ok(!state.issues[0].labels.includes('une semaine à la fois:factory:feature'));
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 55));
@@ -2067,6 +2076,56 @@ test('outage: a lost report of checks that failed on an outage is made again as 
   assert.ok(readOutage(pr.body), 'the outage is still followed');
 });
 
+// The failed report job stays the latest check run until new checks run, so the tick replays the same lost report at
+// every pass. That replay must keep the schedule already planned: moving `next` forward at each tick meant no retry
+// ever started until the 3 hours had passed.
+const lostRuns = async () => [
+  { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
+  { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
+];
+async function ticksOnLostReport(marker, { from, to, every = 5 * 60_000, before } = {}) {
+  const { gh, pr, state } = outageWorld(marker);
+  state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
+  gh.checkRuns = lostRuns;
+  const clock = { t: from };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => clock.t, log: quiet, sleep: async () => {} });
+  if (before) await before(relay, pr);
+  const started = [];
+  for (; clock.t <= to; clock.t += every) {
+    const n = gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length;
+    await relay.handle(tick);
+    if (gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length > n) started.push(clock.t);
+  }
+  return { started, pr };
+}
+
+test('outage: a lost report replayed at every tick keeps the retry the report job planned', async () => {
+  // What the report job writes on the first outage: one try counted, the next one 2 + 45 minutes later.
+  const { started, pr } = await ticksOnLostReport({ sha: 'abc', since: T, tries: 1, next: T + 47 * 60_000 }, { from: T + 15 * 60_000, to: T + 90 * 60_000 });
+  assert.deepEqual(started, [T + 50 * 60_000], 'the retry starts once, at the first tick past its time');
+  assert.equal(readOutage(pr.body).tries, 2);
+});
+
+test('outage: a lost report made again by the tick with no outage followed yet plans its first retry about 2 minutes out', async () => {
+  const { started, pr } = await ticksOnLostReport(null, {
+    from: T + 5 * 60_000, to: T + 40 * 60_000,
+    before: async (relay, pr) => {
+      await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T, fromTick: true });
+      assert.deepEqual([readOutage(pr.body).tries, readOutage(pr.body).next], [0, T + 2 * 60_000]);
+      assert.equal(relay.outputs.retryInMs, undefined, 'no report job follows to start it');
+    },
+  });
+  assert.deepEqual(started, [T + 5 * 60_000], 'the next tick starts it, and only once');
+});
+
+test('outage: the report job\'s own first retry keeps the margin that stops the tick from starting it twice', async () => {
+  const { gh, pr } = outageWorld(null);
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  assert.equal(relay.outputs.retryInMs, 2 * 60_000);
+  assert.equal(readOutage(pr.body).next, T + 2 * 60_000 + 45 * 60_000);
+});
+
 test('outage: « réessaie » relaunches the checks even when the factory is full', async () => {
   const { gh, state } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
   state.issues.push({ number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building] });
@@ -2177,7 +2236,7 @@ test('an undo GitHub refuses to open: the redo card starts at once as a normal u
 });
 
 test('a relaunch finds the undo prepared but never opened: it opens it for the existing card, no second card', async () => {
-  const stuck = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
+  const stuck = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
   const issues = [stuck];
   const gh = undoSetup({ issues });
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur', git: () => '' });
@@ -2294,7 +2353,7 @@ test('a stuck card started without its undo says the delivery is still live (no 
 });
 
 test('a relaunch after a refused undo leaves alone the card already started: no undo, no second message', async () => {
-  const started = { number: 20, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
+  const started = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
   const issues = [started];
   const gh = undoSetup({ issues });
   const git = [];
@@ -2338,7 +2397,7 @@ test('any event brings a project whose agent instructions are behind the stable 
   // yoldmewhen2, 2026-11-06: the sync only ran on a config change or the rare tick, so its agents kept old rules.
   const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
   const synced = (fingerprint) => ({ content: Buffer.from(JSON.stringify({ fingerprint })).toString('base64') });
-  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true };
+  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true };
   for (const [fingerprint, expected] of [['old', true], [syncFingerprint('.'), false]]) {
     const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }], prs: [] });
     gh.getContent = async (path) => (path === '.factory/synced.json' ? synced(fingerprint) : null);

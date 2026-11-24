@@ -3,10 +3,10 @@
 // do them now instead of the owner seeing an alert. Usage: node .factory/scripts/journal-check.mjs
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
-import { latestRun, upstreamEntry } from './upstream.mjs';
+import { TEXT_PROOF, bugProof, latestRun, subagentRecord, upstreamEntry } from './upstream.mjs';
 import { defaultGh, repoFromRemote } from './specs.mjs';
 import { importTranscript } from './transcript.mjs';
 
@@ -90,7 +90,7 @@ export function specReminder(files, { stage = null, current = null } = {}, readF
 // entry, and an entry equal to the newest one of those runs is not written again.
 const MEASURED = ['proved', 'unproved', 'old'];
 const DOC_STAGES = ['build', 'foundation'];
-export function upstreamUpdate(files, readFile, { repo = null, comments, since = null } = {}) {
+export function upstreamUpdate(files, readFile, { repo = null, comments, since = null, textSince = null } = {}) {
   let best = null;
   const texts = [];
   for (const file of files.filter((f) => JOURNAL.test(f))) {
@@ -105,7 +105,7 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
   if (!best) return null;
   let list = null;
   if (repo) { try { list = comments(repo, best.run.issue); } catch { /* GitHub unreachable: « unread » */ } }
-  const entry = upstreamEntry(best.run, list, { since, owner: repo ? repo.split('/')[0] : null });
+  const entry = upstreamEntry(best.run, list, { since, textSince, owner: repo ? repo.split('/')[0] : null });
   const current = parseJournal(texts)
     .filter((r) => r.models && DOC_STAGES.includes(r.stage) && Number(r.issue) === Number(best.run.issue) && r.upstream)
     .map((r) => r.upstream).sort((a, b) => String(a.t).localeCompare(String(b.t))).at(-1);
@@ -114,16 +114,34 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
   return same ? null : { file: best.file, entry };
 }
 
+// Issue #559: for a bugfix, the proof that a thinking sub-agent analysed the bug, read from its own record
+// (`record(session, agent)`; the session is the journal's file name), as the entry to append to the journal of the
+// branch's latest run ({ file, entry }), or null. It only ever adds a « proved » entry: a later run, on a session
+// without the record, never removes one. A proved entry is only replaced by one naming another maker (the review
+// sub-agent that took over after an unusable analysis).
+export function bugUpdate(files, readFile, { record } = {}) {
+  const best = latestRun(files, readFile);
+  if (!best) return null;
+  const run = parseJournal([best.text]).at(-1);
+  if (!run || run.stage !== 'bugfix' || !run.models) return null;
+  const session = basename(best.file, '.jsonl');
+  const entry = bugProof(run, (a) => record(session, a));
+  const current = run.upstream?.doc === 'bug' && run.upstream.status === 'proved' ? run.upstream : null;
+  if (!entry || (current && JSON.stringify(current.by) === JSON.stringify(entry.by))) return null;
+  return { file: best.file, entry };
+}
+
 // Issue #550: since when the proof is asked for: the date of the latest commit that brought the upstream instruction
 // into .factory/AGENT.md (after a rollback of the factory and a new delivery, the new delivery). Null when unknown or
 // when the instruction is not there now: every spec then counts as « old ». In a shallow clone the parent of a commit
 // may be cut off: that commit then counts as the delivery, a later date, which only lets more specs count as « old ».
+// Issue #559: with { file, needle }, the delivery of another string into another file (the text proof, TEXT_PROOF).
 const INSTRUCTION = 'upstream.mjs';
-export function upstreamSince(git) {
-  const has = (rev) => { try { return git(['show', `${rev}:.factory/AGENT.md`]).includes(INSTRUCTION); } catch { return false; } };
+export function upstreamSince(git, { file = '.factory/AGENT.md', needle = INSTRUCTION } = {}) {
+  const has = (rev) => { try { return git(['show', `${rev}:${file}`]).includes(needle); } catch { return false; } };
   try {
     if (!has('HEAD')) return null;
-    const log = git(['log', '--format=%H %cI', `-S${INSTRUCTION}`, '--', '.factory/AGENT.md']).trim().split('\n').filter(Boolean);
+    const log = git(['log', '--format=%H %cI', `-S${needle}`, '--', file]).trim().split('\n').filter(Boolean);
     for (const line of log) {
       const [sha, date] = line.split(' ');
       if (has(sha) && !has(`${sha}^`)) return date || null;
@@ -158,13 +176,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     let files = branchFiles(git);
     // A root commit has no parent: git's « invalid object name » there is expected, not for the owner's log.
-    const since = upstreamSince((args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
-    const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
-    if (up) {
-      appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');
+    const quiet = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const since = upstreamSince(quiet);
+    const textSince = upstreamSince(quiet, { file: '.factory/scripts/upstream.mjs', needle: TEXT_PROOF });
+    const up = upstreamUpdate(files, read, { repo, since, textSince, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
+    const bug = bugUpdate(files, read, { record: (s, a) => subagentRecord(s, a.id) });
+    for (const u of [up, bug].filter(Boolean)) {
+      appendFileSync(join(root, u.file), JSON.stringify({ t: new Date().toISOString(), ...u.entry }) + '\n');
       console.log('Journal : preuve relevée : committe `.factory/journal/`.');
-      files = branchFiles(git);
     }
+    if (up || bug) files = branchFiles(git);
     if (!files.some((f) => JOURNAL.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
     else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {

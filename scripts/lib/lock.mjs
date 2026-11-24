@@ -31,6 +31,11 @@ export class LostTurnError extends Error {
 }
 export const isLostTurn = (e) => Boolean(e?.lostTurn);
 
+// A run that waited its whole time for the lock did nothing wrong, only too late: the relay ends it on the step the
+// tick re-runs (relay.mjs, retriedLater), so that its event is replayed instead of lost.
+export const isLockTimeout = (e) => Boolean(e?.lockTimeout);
+const lockTimeout = () => Object.assign(new Error('queue lock: waited too long'), { lockTimeout: true });
+
 const everyMs = (fn, ms) => { const id = setInterval(fn, ms); return () => clearInterval(id); };
 
 export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_WAIT_MS, pollMs = 4000, beatMs = LOCK_BEAT_MS,
@@ -41,7 +46,7 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
   const tryAcquire = async () => { const at = now(); if (await store.acquire()) { sureAt = at; return true; } return false; };
   while (!(await tryAcquire())) {
     const age = await store.ageMs();
-    if (now() - start > waitMs) throw new Error('queue lock: waited too long');
+    if (now() - start > waitMs) throw lockTimeout();
     if (age !== null && age > ttlMs) { await store.takeOver(); if (await tryAcquire()) break; } // one immediate try, then the usual wait
     await sleep(pollMs + Math.floor(Math.random() * 500));
   }

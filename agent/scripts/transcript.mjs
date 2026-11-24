@@ -4,7 +4,7 @@
 // and its result, written by Claude Code itself, so the journal is rebuilt from it.
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { FAILED_TEXT, agentEntry, isTestCommand, runFromPrompt, shownCommand } from './journal.mjs';
 
 const text = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (typeof b === 'string' ? b : b?.text || '')).join('\n') : '');
@@ -60,6 +60,19 @@ export function findTranscript(repo, { projectsDir = join(homedir(), '.claude/pr
   return best?.p || null;
 }
 
+// Claude Code writes each sub-agent's tool calls to <session>/subagents/agent-*.jsonl, not to the session file. Their
+// entries (never a run: a sub-agent's prompt may quote the routine's) are merged with the session's in time order.
+function withSubagents(p, main) {
+  const dir = join(dirname(p), basename(p, '.jsonl'), 'subagents');
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort(); } catch { return main; }
+  const subs = files.flatMap((f) => {
+    try { return fromTranscript(readFileSync(join(dir, f), 'utf8').split('\n')).filter((e) => e.kind !== 'run'); } catch { return []; }
+  });
+  return [...main, ...subs].map((e, i) => ({ e, i }))
+    .sort((a, b) => String(a.e.t ?? '').localeCompare(String(b.e.t ?? '')) || a.i - b.i).map((x) => x.e);
+}
+
 // Writes .factory/journal/<session>.jsonl from the transcript when the hooks wrote nothing for this run. A journal
 // already written from the transcript is rebuilt (the session went on since), keeping the entries other scripts
 // added to it (journal-check's « upstream » entries), each after the transcript entries older than it. A kept entry
@@ -71,7 +84,7 @@ export function importTranscript(root, repo, opts = {}) {
   const file = join(root, '.factory/journal', `${session}.jsonl`);
   const existing = existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : [];
   if (existing.some((e) => e.kind === 'run' && e.source !== 'transcript')) return file; // the hooks did it
-  const entries = fromTranscript(readFileSync(p, 'utf8').split('\n')).map((e) => ({ ...e, source: 'transcript' }));
+  const entries = withSubagents(p, fromTranscript(readFileSync(p, 'utf8').split('\n'))).map((e) => ({ ...e, source: 'transcript' }));
   if (!entries.some((e) => e.kind === 'run')) return null;
   const key = (e) => `${e.kind} ${e.id}`;
   const ids = new Set(entries.filter((e) => e.id != null).map(key));

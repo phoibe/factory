@@ -9,10 +9,10 @@ const recent = () => new Date(Date.now() - 5 * 60_000).toISOString();
 // The dev server's last check, a few minutes ago, saw only the projects whose key is given.
 const checked = (...seen) => ({ 'status.json': { key: 'ok', checkedAt: recent(), projects: Object.fromEntries(seen.map((h) => [h, { machine: 'dev-server', reason: 'online' }])) } });
 const banner = (page) => page.locator('#runner-alert');
-// The banner's own read of the check is done (the open project's settings read it too: two reads at least).
+// The banner's read of the check is done (one read, shared with the open project's settings since review #556).
 const settled = async (page, reads) => {
-  for (let i = 0; i < 100 && reads.filter((r) => r.endsWith('/contents/status.json')).length < 2; i++) await page.waitForTimeout(50);
-  assert.ok(reads.filter((r) => r.endsWith('/contents/status.json')).length >= 2, 'the check was read');
+  for (let i = 0; i < 100 && reads.filter((r) => r.endsWith('/contents/status.json')).length < 1; i++) await page.waitForTimeout(50);
+  assert.ok(reads.filter((r) => r.endsWith('/contents/status.json')).length >= 1, 'the check was read');
   await page.locator('#projects-list .project-item').first().waitFor();
   await page.waitForTimeout(300);
 };
