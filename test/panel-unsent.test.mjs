@@ -40,7 +40,7 @@ test('each conversation keeps its unsent messages in the order written', () => {
   const [first] = box.shown(7);
   assert.equal(first.kind, 'unsent');
   assert.equal(first.reason, 'Connexion perdue, réessayez.');
-  assert.equal(first.withImages, true);
+  assert.equal('withImages' in first, false); // a resend always takes the message's own images
   assert.deepEqual(first.files, []);
 });
 

@@ -469,14 +469,14 @@ export const unsentKey = (open) => (open === null || open === undefined || open 
 export const failureKind = ({ reached, readToken }) => (reached && !readToken ? 'unanswered' : 'unsent');
 
 export function unsentBox() {
-  const byKey = new Map(); // key → [{ id, text, files, withImages, kind, reason, retrying }]
+  const byKey = new Map(); // key → [{ id, text, files, kind, reason, retrying }]
   let next = 1;
   const list = (key) => byKey.get(key) || [];
   const find = (key, id) => list(key).find((m) => m.id === id) || null;
   return {
-    add(key, { text, files = [], withImages = true }, { kind, reason }) {
+    add(key, { text, files = [] }, { kind, reason }) {
       const id = next++;
-      byKey.set(key, [...list(key), { id, text, files, withImages, kind, reason, retrying: false }]);
+      byKey.set(key, [...list(key), { id, text, files, kind, reason, retrying: false }]);
       return id;
     },
     shown: (key) => list(key).filter((m) => !m.retrying),

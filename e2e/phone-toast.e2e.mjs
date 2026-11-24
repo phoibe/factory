@@ -104,3 +104,18 @@ test('sur ordinateur, les petits messages s\'affichent comme avant', async () =>
     assert.equal(Math.round(s.bottom), DESK.height - 24);
   });
 });
+
+test('tant que la carte du jeton de lecture s\'affiche, le petit message reste dans la fenêtre, sur téléphone et sur ordinateur', async () => {
+  for (const viewport of [PHONE, DESK]) {
+    await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, viewport }, async ({ page, url }) => {
+      await page.goto(url);
+      await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+      await page.locator('#chat-setup:not([hidden])').waitFor();
+      await page.locator('#chat-file').setInputFiles(pics(5));
+      const t = await shownToast(page);
+      assert.equal(t.text, '4 images au plus par message.');
+      assert.ok(t.top >= 0 && t.bottom <= viewport.height, `${viewport.width} px : petit message hors de la fenêtre : ${JSON.stringify(t)}`);
+      assert.ok(t.onTop, `${viewport.width} px : petit message caché : ${JSON.stringify(t)}`);
+    });
+  }
+});

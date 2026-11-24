@@ -43,7 +43,7 @@ async function assertUnsentShown(page, text) {
   assert.match(await unsent(page).textContent(), new RegExp(text));
   assert.equal((await unsent(page).locator('.unsent-note').textContent()).trim(), NET);
   for (const name of ['Renvoyer', 'Modifier']) {
-    const box = await unsent(page).getByRole('button', { name, exact: true }).boundingBox();
+    const box = await unsent(page).getByRole('button', { name: new RegExp(`^${name} `) }).boundingBox();
     assert.ok(box && box.height >= 44, `${name} : ${JSON.stringify(box)}`);
   }
   assert.equal(await page.locator('#chat-input').inputValue(), '');
@@ -115,8 +115,12 @@ test('plusieurs messages non envoyés restent en bas, dans l\'ordre où je les a
     assert.deepEqual(texts.map((t) => t.trim()), ['Premier', 'Second']);
     const last = await page.evaluate(() => [...document.querySelectorAll('#chat-messages > li')].slice(-2).every((li) => li.classList.contains('unsent')));
     assert.ok(last, 'les messages non envoyés ne sont pas tout en bas');
-    assert.equal(await unsent(page).getByRole('button', { name: 'Renvoyer', exact: true }).count(), 2);
-    assert.equal(await unsent(page).getByRole('button', { name: 'Modifier', exact: true }).count(), 2);
+    // Each button names its message for screen readers.
+    for (const text of ['Premier', 'Second']) {
+      assert.equal(await unsent(page).getByRole('button', { name: `Renvoyer « ${text} »`, exact: true }).count(), 1);
+      assert.equal(await unsent(page).getByRole('button', { name: `Modifier « ${text} »`, exact: true }).count(), 1);
+    }
+    assert.equal(await unsent(page).getByRole('button', { name: 'Renvoyer', exact: true }).count(), 0);
   });
 });
 
@@ -222,8 +226,8 @@ test('si l\'envoi échoue pendant que je suis sur « Suivi », un petit message 
 });
 
 // « Renvoyer » and « Modifier » (task 4).
-const resendButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: 'Renvoyer', exact: true });
-const editButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: 'Modifier', exact: true });
+const resendButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: /^Renvoyer / });
+const editButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: /^Modifier / });
 const imagePuts = (writes) => writes.filter((w) => w.method === 'PUT' && w.path.startsWith('/repos/o/r/contents/attachments/chat/'));
 
 test('« Renvoyer » fait repartir le message tel quel une fois la connexion revenue, et l\'agent répond', async () => {
@@ -367,5 +371,43 @@ test('« Modifier » garde ce que j\'ai commencé à écrire et ajoute le messag
     assert.equal(await page.locator('#chat-input').inputValue(), 'Autre chose\nBonjour');
     assert.equal(await page.locator('.pending-image').count(), 4);
     await page.locator('#toast.show', { hasText: '4 images au plus par message.' }).waitFor();
+  });
+});
+
+test('un message fait seulement d\'images se nomme par ses images pour les lecteurs d\'écran', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await page.locator('#chat-file').setInputFiles(pics(2));
+    await page.locator('#chat-send').click();
+    await unsent(page).first().waitFor();
+    assert.equal(await unsent(page).getByRole('button', { name: 'Renvoyer les 2 images', exact: true }).count(), 1);
+    assert.equal(await unsent(page).getByRole('button', { name: 'Modifier les 2 images', exact: true }).count(), 1);
+  });
+});
+
+test('au clavier, après « Renvoyer », je reste dans la zone de saisie, ou sur « Renvoyer » du même message s\'il échoue encore', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Premier');
+    await unsent(page).first().waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    await send(page, 'Second');
+    await page.waitForFunction(() => document.querySelectorAll('#chat-messages .msg.unsent').length === 2);
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    // Fails again: focus on the same message's « Renvoyer ».
+    await resendButton(page, 1).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('#chat-messages .msg.unsent').length === 2 && !document.getElementById('chat-send').disabled);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Renvoyer « Second »', null, { timeout: 3000 })
+      .catch(async () => assert.fail(`focus : ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120))}`));
+    // Leaves: focus in the composer.
+    await restore(page);
+    await page.keyboard.press('Enter');
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat-input');
   });
 });

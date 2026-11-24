@@ -227,7 +227,7 @@ test('si GitHub refuse le jeton de lecture (expiré), l\'écran du jeton s\'affi
     const unsent = page.locator('#chat-messages .msg.unsent');
     await unsent.waitFor();
     assert.equal((await unsent.locator('.unsent-note').textContent()).trim(), 'Non envoyé. Le jeton de lecture a été refusé.');
-    await unsent.getByRole('button', { name: 'Renvoyer', exact: true }).click();
+    await unsent.getByRole('button', { name: /^Renvoyer / }).click();
     await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
     assert.equal(await page.locator('#chat-messages .msg.unsent').count(), 0);
   });

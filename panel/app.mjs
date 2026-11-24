@@ -253,8 +253,10 @@ async function checkProjects() {
 }
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
-const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
-  || Boolean(chat.live) || chat.files.length > 0 || chat.unsent.size > 0;
+// Messages left unsent count too, but are told apart: the new-version notice says what to do with them (issue #580).
+const hasUnsavedWork = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
+  || Boolean(chat.live) || chat.files.length > 0;
+const hasUnsaved = () => hasUnsavedWork() || chat.unsent.size > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -1798,7 +1800,7 @@ async function checkVersion() {
   if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;
-    return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
+    return toast(`Une nouvelle version du panneau est en ligne : elle se chargera dès que ${hasUnsavedWork() ? 'vous aurez enregistré' : 'vos messages non envoyés auront été renvoyés ou repris'}.`);
   }
   location.reload();
 }
@@ -2830,14 +2832,18 @@ function bubble(m, foot = null) {
 
 // A message that could not be sent (issue #580): it keeps its place at the bottom of its conversation, with the
 // mention in failure red, its reason, « Renvoyer » (greyed while an answer is on its way) and « Modifier ».
+// Each button names its message for screen readers: « Renvoyer « début du texte » », or its images without text.
 function unsentBubble(key, m) {
+  const n = m.files.length;
+  const what = m.text.trim() ? `« ${titleFrom(m.text)} »` : n > 1 ? `les ${n} images` : 'l\'image';
   const li = bubble({ who: 'me', text: m.text, images: m.files.map((f) => f.url), at: null }, [
     el('p', { class: 'unsent-note' }, el('strong', {}, `${UNSENT_TITLE[m.kind]}.`), ` ${m.reason}`),
     el('div', { class: 'unsent-actions' },
-      el('button', { type: 'button', class: 'secondary small-btn', disabled: answering(), onclick: () => resend(key, m.id) }, 'Renvoyer'),
-      el('button', { type: 'button', class: 'secondary small-btn', onclick: () => editUnsent(key, m.id) }, 'Modifier')),
+      el('button', { type: 'button', class: 'secondary small-btn resend', 'aria-label': `Renvoyer ${what}`, disabled: answering(), onclick: () => resend(key, m.id) }, 'Renvoyer'),
+      el('button', { type: 'button', class: 'secondary small-btn', 'aria-label': `Modifier ${what}`, onclick: () => editUnsent(key, m.id) }, 'Modifier')),
   ]);
   li.classList.add('unsent');
+  li.dataset.unsent = String(m.id);
   return li;
 }
 const unsentBubbles = () => { const key = unsentKey(chat.open); return chat.unsent.shown(key).map((m) => unsentBubble(key, m)); };
@@ -2853,10 +2859,18 @@ function keepUnsent(key, message, again, failure) {
 }
 
 // « Renvoyer »: the message leaves again as it was, with its images; never while an answer is on its way.
-function resend(key, id) {
+// The redraw removes the button: the keyboard goes to the composer, or back to the same « Renvoyer » if it fails again.
+async function resend(key, id) {
   if (answering()) return;
   const m = chat.unsent.get(key, id);
-  if (m) sendChat(m.text, m.withImages, m);
+  if (!m) return;
+  const input = $('chat-input');
+  const sent = sendChat(m.text, true, m);
+  if (document.activeElement === document.body) input.focus();
+  await sent;
+  const again = chat.unsent.get(unsentKey(chat.open), id);
+  const button = again && $('chat-messages').querySelector(`.msg.unsent[data-unsent="${id}"] button.resend`);
+  if (button && document.activeElement === input && !input.value) button.focus();
 }
 
 // « Modifier »: the message leaves the conversation for the composer, after what the owner already started there.
@@ -3298,12 +3312,14 @@ function drawPendingImages() {
 }
 
 // On the Agent tab the toast sits 12 px above the composer (attached images included), measured: a text of several
-// lines never hides under it (issue #580). Elsewhere it keeps its place at the bottom.
+// lines never hides under it (issue #580). Elsewhere, and while no composer shows (the read-token card), it keeps its
+// place at the bottom.
 function placeToast() {
   const t = $('toast');
-  if (!threadShown()) { t.style.removeProperty('--toast-bottom'); return; }
   const strip = $('chat-pending');
-  const top = (strip.hidden ? $('chat-form') : strip).getBoundingClientRect().top;
+  const box = strip.hidden ? $('chat-form') : strip;
+  if (!threadShown() || needsReadToken() || !box.getClientRects().length) { t.style.removeProperty('--toast-bottom'); return; }
+  const top = box.getBoundingClientRect().top;
   t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top)}px`);
 }
 
@@ -3359,7 +3375,7 @@ async function sendChat(text, withImages = true, again = null) {
     chat.pending = null;
     chat.later.delete(sentTo); // the turn never happened: no end of conversation on top of this error (#521)
     chat.sending = false; // « Renvoyer » is drawn active
-    keepUnsent(key, { text, files, withImages }, again, { kind: 'unsent', reason: errorText(e) });
+    keepUnsent(key, { text, files }, again, { kind: 'unsent', reason: errorText(e) });
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -3460,7 +3476,7 @@ async function sendToServer(text, files, withImages, again = null) {
     if (e.readToken) readTokenRefused(e.message);
     chat.pending = null;
     chat.live = null; // « Renvoyer » is drawn active
-    keepUnsent(key, { text, files, withImages }, again, {
+    keepUnsent(key, { text, files }, again, {
       kind: failureKind({ reached, readToken: e.readToken }),
       reason: e.readToken ? TOKEN_REFUSED : errorText(e),
     });

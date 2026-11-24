@@ -87,6 +87,14 @@ test('panel screens have no axe violations, in the light and the dark theme', as
             await page.waitForSelector('.msg.unsent', { state: 'visible', timeout: 15000 });
             const unsent = await page.evaluate(() => axe.run());
             for (const v of unsent.violations) found.push(`Agent, message non envoyé (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+            // The same state at phone width: the conversation fills the screen, the buttons under the bubble.
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.waitForSelector('.msg.unsent', { state: 'visible', timeout: 15000 });
+            const phone = await page.evaluate(() => axe.run());
+            for (const v of phone.violations) found.push(`Agent, message non envoyé, téléphone (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+            const box = await page.locator('.msg.unsent button.resend').boundingBox();
+            if (!box || box.height < 44) found.push(`Agent, message non envoyé, téléphone (${scheme}): « Renvoyer » trop petit ou caché : ${JSON.stringify(box)}`);
+            await page.setViewportSize({ width: 1280, height: 720 });
           }
           if (name === 'Paramètres') {
             // The "Features en questions en même temps" setting sits under the auto-pick switch, in its row, set to 2 by default.
