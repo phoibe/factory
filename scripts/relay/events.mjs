@@ -621,14 +621,20 @@ export function eventsPart(ctx) {
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
   // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
   // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
-  // From the tick (`fromTick`), no report job follows: the first retry is left to the tick itself (retryOutages), due
-  // after the same short delay instead of the margin kept for a retry the report job would start.
+  // From the tick (`fromTick`, a lost report made again), no report job follows, and the tick replays the same lost
+  // report at every pass until new checks run: it keeps the retry already planned for this commit (retryOutages starts
+  // it when due) instead of moving it forward each time, which used to delay every retry until the 3 hours had passed.
+  // With none planned yet, the first retry is left to the tick itself, due after the short delay with no margin.
   async function onOutage(pr, nowMs, cause, { fromTick = false } = {}) {
-    const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
+    const known = readOutage(pr.body);
+    const step = outageStep(known, { sha: pr.head.sha, now: nowMs });
     let st = step.state;
     const server = cause === 'server' || (cause === true && st.server);
     if (server) st = { ...st, server: true };
-    if (step.retryInMs && fromTick) {
+    const planned = fromTick && known?.sha === pr.head.sha && !known.blocked && known.next ? known.next : null;
+    if (planned && step.action !== 'block') {
+      st = { ...st, next: planned };
+    } else if (step.retryInMs && fromTick) {
       st = { ...st, next: nowMs + step.retryInMs };
     } else if (step.retryInMs) {
       st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };

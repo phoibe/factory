@@ -1993,29 +1993,46 @@ test('outage: a lost report of checks that failed on an outage is made again as 
   assert.ok(readOutage(pr.body), 'the outage is still followed');
 });
 
-// No report job follows a report made again by the tick: its first retry is the next tick's, about 2 minutes later,
-// not 47 (the margin kept for a retry the report job would have started itself).
-test('outage: a lost report made again by the tick plans its first retry for the next tick', async () => {
-  const { gh, pr, state } = outageWorld({ sha: 'abc', since: T, tries: 0, next: null });
+// The failed report job stays the latest check run until new checks run, so the tick replays the same lost report at
+// every pass. That replay must keep the schedule already planned: moving `next` forward at each tick meant no retry
+// ever started until the 3 hours had passed.
+const lostRuns = async () => [
+  { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
+  { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
+];
+async function ticksOnLostReport(marker, { from, to, every = 5 * 60_000, before } = {}) {
+  const { gh, pr, state } = outageWorld(marker);
   state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
-  gh.checkRuns = async () => [
-    { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
-    { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
-  ];
-  const clock = { t: T + 15 * 60_000 };
-  const at = clock.t;
-  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => clock.t, log: quiet });
-  await relay.handle(tick);
-  const st = readOutage(pr.body);
-  assert.equal(st.tries, 0, 'no retry started yet');
-  assert.equal(st.next, at + 2 * 60_000);
-  const retries = () => gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length;
-  assert.equal(retries(), 0);
-  gh.checkRuns = async () => []; // the next tick finds no lost report any more
-  clock.t = at + 5 * 60_000;
-  await relay.handle(tick);
-  assert.equal(retries(), 1, 'the next tick starts it');
-  assert.equal(readOutage(pr.body).tries, 1);
+  gh.checkRuns = lostRuns;
+  const clock = { t: from };
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => clock.t, log: quiet, sleep: async () => {} });
+  if (before) await before(relay, pr);
+  const started = [];
+  for (; clock.t <= to; clock.t += every) {
+    const n = gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length;
+    await relay.handle(tick);
+    if (gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length > n) started.push(clock.t);
+  }
+  return { started, pr };
+}
+
+test('outage: a lost report replayed at every tick keeps the retry the report job planned', async () => {
+  // What the report job writes on the first outage: one try counted, the next one 2 + 45 minutes later.
+  const { started, pr } = await ticksOnLostReport({ sha: 'abc', since: T, tries: 1, next: T + 47 * 60_000 }, { from: T + 15 * 60_000, to: T + 90 * 60_000 });
+  assert.deepEqual(started, [T + 50 * 60_000], 'the retry starts once, at the first tick past its time');
+  assert.equal(readOutage(pr.body).tries, 2);
+});
+
+test('outage: a lost report made again by the tick with no outage followed yet plans its first retry about 2 minutes out', async () => {
+  const { started, pr } = await ticksOnLostReport(null, {
+    from: T + 5 * 60_000, to: T + 40 * 60_000,
+    before: async (relay, pr) => {
+      await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T, fromTick: true });
+      assert.deepEqual([readOutage(pr.body).tries, readOutage(pr.body).next], [0, T + 2 * 60_000]);
+      assert.equal(relay.outputs.retryInMs, undefined, 'no report job follows to start it');
+    },
+  });
+  assert.deepEqual(started, [T + 5 * 60_000], 'the next tick starts it, and only once');
 });
 
 test('outage: the report job\'s own first retry keeps the margin that stops the tick from starting it twice', async () => {
