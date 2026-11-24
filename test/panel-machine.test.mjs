@@ -121,13 +121,3 @@ test('the runner files are read past the browser cache, a failed read told apart
   assert.ok(calls.every(([, init]) => init.cache === 'no-store'));
 });
 
-// Review #556, finding 6: the check rewrites checkedAt at least hourly; that alone must not rebuild « Paramètres ».
-test('two dev server statuses are the same when only the time of the check differs', async () => {
-  const { sameStatus } = await import('../panel/machine.mjs');
-  const a = { key: 'ok', checkedAt: '2026-11-24T10:00:00Z', projects: { h: { machine: 'dev-server', reason: 'online' } } };
-  assert.equal(sameStatus(a, { ...a, checkedAt: '2026-11-24T11:00:00Z' }), true);
-  assert.equal(sameStatus(a, { ...a, projects: { h: { machine: 'dev-server', reason: 'offline' } } }), false);
-  assert.equal(sameStatus(a, { ...a, key: 'refused' }), false);
-  assert.equal(sameStatus(null, a), false);
-  assert.equal(sameStatus(null, null), true);
-});

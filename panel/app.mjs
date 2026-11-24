@@ -16,7 +16,7 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile, sameStatus } from './machine.mjs?v=3';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=4';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
@@ -1278,7 +1278,8 @@ function checkbox(id, checked, onchange) {
 // The general setting and the dev server check live on a branch of the factory (written by scripts/runners.mjs).
 const RUNNERS_BRANCH = 'factory-runners';
 const MACHINE_CHOICES = [['dev-server', 'Serveur de dev'], ['github', 'Machines GitHub']];
-const machine = { settings: null, sha: null, general: 'dev-server', status: null, hash: null, repo: null };
+// `held`: a status read while the focus was in « Paramètres », shown when it leaves; `shown`: the line on screen.
+const machine = { settings: null, sha: null, general: 'dev-server', status: null, hash: null, repo: null, held: null, shown: null };
 
 // One read of the runner files, past the browser cache (review #556): see machine.mjs.
 const runnersFile = (path) => readRunnersFile(api, path);
@@ -1300,7 +1301,7 @@ async function loadMachine(project) {
   const [[settings, status], hash] = await Promise.all([runnersFiles(), repoKey(String(project.repo.id))]);
   if (current !== project) return;
   const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
-  Object.assign(machine, { settings: settings.json, sha: settings.sha, general, status: status.json, hash, repo: project.repo.full_name });
+  Object.assign(machine, { settings: settings.json, sha: settings.sha, general, status: status.json, hash, repo: project.repo.full_name, held: null });
   renderRules();
 }
 
@@ -1310,6 +1311,14 @@ const machineRadios = (name, choices, value, onpick, disabled = false) => choice
 
 // The « Machine des tâches » line for this project, with the dev server's state for it.
 const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default', created: current.repo.created_at || null });
+
+// A fresh status file: « Paramètres » is rebuilt when the line it shows changes (the time of the check counts, the
+// line depends on it), never when only the file does (review #556).
+function showMachineStatus(status) {
+  machine.held = null;
+  machine.status = status;
+  if (JSON.stringify(currentMachineLine()) !== machine.shown) renderRules();
+}
 
 // The button to the owner's GitHub tokens, with the one sentence that says what to do there (issue #504).
 // Message, then the step, then the button (design pass): the same orange box in the banner and in the settings.
@@ -1337,10 +1346,10 @@ async function refreshRunnerAlert() {
   const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
   // The settings line follows the same fresh status (it was read when the project opened).
   if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
-    const fresh = !sameStatus(status.json, machine.status);
-    machine.status = status.json;
-    // Never under the owner's fingers: a field being typed in keeps its text and the focus (review #556).
-    if (fresh && !$('rules-panel').hidden && !$('rules').contains(document.activeElement)) renderRules();
+    // Never under the owner's fingers: a field being typed in keeps its text and the focus (review #556). The new
+    // status waits until the focus leaves the form (focusout below), then shows at once.
+    if ($('rules').contains(document.activeElement)) machine.held = status.json;
+    else showMachineStatus(status.json);
   }
   // Rebuilt only when the names change: a screen reader does not hear it again, a focused link keeps the focus.
   if (names.join('\n') === [...forgotten].join('\n')) return;
@@ -1479,6 +1488,8 @@ async function saveGeneral(e) {
 
 function renderRules() {
   const c = current.config;
+  // Rebuilt anyway: a dev server status held back while the owner typed shows now.
+  if (machine.held && machine.repo === current.repo.full_name) { machine.status = machine.held; machine.held = null; }
   const update = (next) => { current.config = next; renderRules(); };
   const form = $('rules');
   const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
@@ -1562,6 +1573,7 @@ function renderRules() {
   const name = current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
+  machine.shown = JSON.stringify(line);
   const alert = line.keys ? [runnerAlertBox(line.text, { role: 'status' })]
     : line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
   const summary = advancedSummary({
@@ -3471,6 +3483,11 @@ $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('general-open').addEventListener('click', () => openGeneral($('general-open')).catch((err) => toast(errorText(err))));
 $('general-back').addEventListener('click', () => closeGeneral(true));
 $('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
+// The focus left « Paramètres » (after the browser moved it): a dev server status held back meanwhile shows now.
+$('rules').addEventListener('focusout', () => setTimeout(() => {
+  if (!machine.held || !current || machine.repo !== current.repo.full_name || $('rules').contains(document.activeElement)) return;
+  showMachineStatus(machine.held);
+}));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
 

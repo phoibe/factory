@@ -129,10 +129,52 @@ test('une nouvelle lecture du contrôle garde ce que je tape dans « Adresse du 
     await round();
     assert.equal(await field.inputValue(), 'https://exemple.fr');
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'site-url');
-    // A real change waits until the owner leaves the form.
+    // A real change waits until the owner leaves the form, then shows at once.
     factoryFiles['status.json'] = { ...factoryFiles['status.json'], projects: { [H]: { machine: 'dev-server', reason: 'offline' } } };
     await round();
     assert.equal(await field.inputValue(), 'https://exemple.fr');
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'site-url');
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click();
+    await page.getByText('Serveur de dev : hors ligne, GitHub en secours.').waitFor({ timeout: 2000 });
+  });
+});
+
+// Review #556, round 2, finding 2: the owner opened « Avancé » to read the line (the focus is on its summary), then
+// left the form without typing. The change that came meanwhile must show, not wait for another one.
+const roundOnDemand = () => { const real = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => { if (ms === 15 * 60_000) window.runnerRound = fn; return real(fn, ms, ...rest); }; };
+const roundOf = (page, reads) => async () => {
+  const before = reads.filter((r) => r.endsWith('/contents/status.json')).length;
+  await page.evaluate(() => window.runnerRound());
+  for (let i = 0; i < 100 && reads.filter((r) => r.endsWith('/contents/status.json')).length === before; i++) await page.waitForTimeout(50);
+  await page.waitForTimeout(500);
+};
+test('le serveur de dev passe hors ligne pendant que je lis « Avancé » : la ligne le dit dès que je quitte le formulaire', async () => {
+  const factoryFiles = { 'status.json': { key: 'ok', checkedAt: new Date(Date.now() - 60_000).toISOString(), projects: { [H]: { machine: 'dev-server', reason: 'online' } } } };
+  await withPanel({ factoryFiles }, async ({ page, url, reads }) => {
+    await page.addInitScript(roundOnDemand);
+    await open(page, url);
+    await page.getByText('Serveur de dev : en ligne.').waitFor();
+    factoryFiles['status.json'] = { ...factoryFiles['status.json'], projects: { [H]: { machine: 'dev-server', reason: 'offline' } } };
+    const round = roundOf(page, reads);
+    await round();
+    await round(); // a second round finds nothing new in the file
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Serveur de dev : hors ligne, GitHub en secours.').waitFor({ timeout: 2000 });
+  });
+});
+
+// Only the time of the check changes, but the line depends on it: a recent check that does not list this private
+// project says so, with its orange box.
+test('un contrôle récent qui ne voit pas le projet change la ligne même si seule son heure a changé', async () => {
+  const factoryFiles = { 'status.json': { key: 'ok', checkedAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(), projects: {} } };
+  await withPanel({ factoryFiles }, async ({ page, url, reads }) => {
+    await page.addInitScript(roundOnDemand);
+    await open(page, url);
+    await page.getByText('Serveur de dev : réglage pris en compte au prochain contrôle', { exact: false }).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click(); // the focus is out of the form
+    factoryFiles['status.json'] = { ...factoryFiles['status.json'], checkedAt: new Date().toISOString() };
+    await roundOf(page, reads)();
+    await page.locator('#rules .runner-alert').getByText("Ce projet n'est pas vu par le serveur de dev", { exact: false }).waitFor({ timeout: 2000 });
   });
 });
