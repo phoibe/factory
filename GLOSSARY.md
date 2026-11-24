@@ -101,3 +101,17 @@ _À éviter_ : layout, gabarit, template
 **Design repris** :
 Le document de design qu'un projet copie sur un autre projet du propriétaire, le projet de référence (Pulsar Wheel pour Pulsar Novae et Pulsar Magnetar) : thème et mises en page à l'identique, au cadrage ou sur sa demande. Le projet suit ensuite les mises en page de la référence sans jamais les modifier avec les siennes. La copie ne reste pas liée à l'original : elle n'est recopiée que sur sa demande.
 _À éviter_ : design hérité, design partagé
+
+## Discussion avec l'agent
+
+**Jeton de lecture** :
+Le second jeton GitHub que le propriétaire crée depuis l'onglet « Agent » et confie à la discussion avec l'agent, à la place de son jeton complet. Il ne peut que lire les projets : s'il fuyait, il ne permettrait de rien changer, ni sur un projet (fichiers, demandes, tâches automatiques, réglages, secrets, mise en ligne) ni sur le compte.
+_À éviter_ : clé lecture seule, clé de lecture, token de chat
+
+**Jeton complet** :
+Le jeton GitHub avec lequel le propriétaire se connecte au tableau de bord et qui permet de modifier ses projets ; il ne quitte jamais son navigateur.
+_À éviter_ : jeton principal, token du panneau
+
+**Jeton de l'ancien type** :
+Un jeton GitHub de la génération précédente (« classic »), dont les droits sont trop larges et trop peu vérifiables pour servir de jeton de lecture ; la discussion n'en accepte aucun.
+_À éviter_ : jeton classique, vieux jeton
