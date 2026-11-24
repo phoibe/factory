@@ -1,6 +1,6 @@
 // A card blocked because it waits for the merge of other requests of the same project (issue #298).
 // The agent notes them in its blocking message with an invisible line; the relay resumes the card once they are
-// all merged, and the panel shows « Attend #12 ». Shared by the relay and the panel (copied next to it by pages.yml).
+// all merged, and the panel shows « Attend #12 ». Shared by the relay and the panel (copied next to it by SHARED in scripts/stamp-panel.mjs).
 const AGENT = '<!-- factory-agent -->';
 const MARKER = /<!-- factory-waits-for ([#\d,\s]+?) -->/;
 // On the factory's wake or abandon message: the link is used up, a later block is a normal one.

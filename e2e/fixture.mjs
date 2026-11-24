@@ -44,11 +44,14 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {} }, journey) {
+// `root`: a folder served as the whole site, the panel as published (issue #561, scripts/stamp-panel.mjs); without it
+// the panel is served from its sources.
+export async function withPanel({ root = null, issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
-      const body = await readFile(EXTRA[path] ? join(ROOT, EXTRA[path]) : join(PANEL, path === '/' ? 'index.html' : path));
+      const file = path === '/' ? 'index.html' : path;
+      const body = await readFile(root ? join(root, file) : EXTRA[path] ? join(ROOT, EXTRA[path]) : join(PANEL, file));
       res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'text/html' }).end(body);
     } catch { res.writeHead(404).end(); }
   }).listen(0);
