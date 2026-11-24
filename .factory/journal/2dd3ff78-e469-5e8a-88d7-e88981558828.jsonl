@@ -11,3 +11,13 @@
 {"t":"2026-11-24T15:31:16.435Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/agent-etag.e2e.mjs 2>&1 | tail -25; git status --short","ok":true,"id":"toolu_012ECsApzGMTUXQoFncAh2iE"}
 {"t":"2026-11-24T15:31:18.464Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-24T15:31:20.812Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
+{"t":"2026-11-24T15:31:23.758Z","kind":"test","cmd":"S=… && rm -rf \"$S\" && mkdir -p \"$S\" && cd /home/user/factory && git archive HEAD | tar -x -C \"$S\" && git show 633cd04:panel/app.mjs > \"$S/panel/app.mjs\" && ln -s /home/user/factory/node_modules \"$S/no","ok":false,"id":"toolu_01Q8rjUCxkhSj1LbjV3jCztM"}
+{"t":"2026-11-24T15:34:04.942Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 560 node --test --test-concurrency=4 e2e/agent-*.e2e.mjs e2e/chat-*.e2e.mjs e2e/finish-conversation.e2e.mjs e2e/confirm-request.e2e.mjs e2e/read-token.e2e.mjs e2e/project-switc","ok":true,"id":"toolu_01FnxkRuzdZ4Hz1aww4b8JyZ"}
+{"t":"2026-11-24T15:35:26.235Z","kind":"skill","name":"receiving-code-review","id":"toolu_017Yf2wT1npBZcfffKJrGU9h"}
+{"t":"2026-11-24T15:35:36.456Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Review fixes issue 563","id":"toolu_01C9kADwwUfcsZMTsKT9yBN9"}
+{"t":"2026-11-24T15:35:37.739Z","kind":"skill","name":"test-driven-development","id":"toolu_01AXFrzwVXUHCpbqXYwagicF"}
+{"t":"2026-11-24T15:36:29.434Z","kind":"test","cmd":"(npm run typecheck && npm run lint && npm test && npm run build) > /tmp/claude-0/-home-user-factory/2dd3ff78-e469-5e8a-88d7-e88981558828/scratchpad/unit.log 2>&1; echo EXIT $?; tail -25 /tmp/claude-0/","ok":true,"id":"toolu_01L5a1DDsPF1WJvqJBJ7zjFS"}
+{"t":"2026-11-24T15:37:05.535Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/agent-etag.e2e.mjs e2e/agent-tab.e2e.mjs e2e/project-switch.e2e.mjs 2>&1 | tail -10","ok":true,"id":"toolu_013EP3nkhhmgRNEmP7bYfP2s"}
+{"t":"2026-11-24T15:37:37.609Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T15:37:44.027Z","kind":"skill","name":"impeccable","id":"toolu_01UUGnHu5ipoMHwRVWFLd79q"}
+{"t":"2026-11-24T15:40:44.682Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | tail -10","ok":true,"id":"toolu_019oeEvdkNMBeJrcc1kQn7C4"}

@@ -2507,18 +2507,19 @@ async function openChat() {
 // A JSON file of the `factory-chat` branch, or null. Read with its ETag (issue #563): an unchanged file is a free « 304 »
 // and is parsed again from the text kept, so a change made on screen to the last copy never comes back.
 async function branchJson(path) {
+  const cache = chat.etags; // captured: a project switch mid-fetch must not write into the new project's map
   const url = `${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`;
-  const hit = chat.etags.get(url);
+  const hit = cache.get(url);
   const res = await fetch(url, {
     cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw', ...(hit ? { 'if-none-match': hit.etag } : {}) },
   });
   if (res.status === 304 && hit) return JSON.parse(hit.text);
-  if (res.status === 404) { chat.etags.delete(url); return null; }
+  if (res.status === 404) { cache.delete(url); return null; }
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const text = await res.text();
   const data = JSON.parse(text);
   const etag = res.headers.get('etag');
-  if (etag) chat.etags.set(url, { etag, text }); else chat.etags.delete(url);
+  if (etag) cache.set(url, { etag, text }); else cache.delete(url);
   return data;
 }
 
