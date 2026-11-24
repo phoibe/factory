@@ -9,6 +9,7 @@ const openPage = async (page, url) => {
   await page.goto(url);
   await page.getByRole('button', { name: 'Réglages généraux' }).click();
   await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+  await page.locator('#general:not([aria-busy])').waitFor(); // opened at once, filled when the settings are read
 };
 const labelOf = (id) => familyLabel(MODEL_FAMILIES.find((f) => f.id === id));
 const roles = ['Plans et organisation', 'Écriture du code', 'Revue', 'Tâches simples'];
@@ -106,7 +107,7 @@ test('sur téléphone la page tient sur une colonne', async () => {
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
     await page.getByText('Plus', { exact: true }).click();
     await page.getByRole('button', { name: 'Réglages généraux' }).click();
-    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.getByRole('combobox', { name: 'Revue' }).waitFor(); // the page opens at once, filled when read
     const m = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
       selects: [...document.querySelectorAll('#general-view select')].map((s) => Math.round(s.getBoundingClientRect().right)) }));
     assert.ok(m.scroll <= m.width, `horizontal scroll: ${m.scroll} > ${m.width}`);

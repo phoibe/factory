@@ -51,7 +51,7 @@ test('en ouvrant « Avancé », je retrouve la machine des tâches, le moteur de
     assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 0);
     await page.getByRole('button', { name: 'Changer le réglage de tous les projets' }).click();
     await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
-    assert.equal(await page.getByRole('group', { name: 'Machine des tâches', exact: true }).isVisible(), true);
+    await page.getByRole('group', { name: 'Machine des tâches', exact: true }).waitFor(); // filled once read
   });
 });
 
