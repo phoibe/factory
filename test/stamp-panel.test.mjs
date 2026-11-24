@@ -98,6 +98,18 @@ test('an empty build is refused and nothing is written', () => {
   }
 });
 
+test('a non-empty output folder is refused and nothing is written', () => {
+  const out = mkdtempSync(join(tmpdir(), 'site-'));
+  try {
+    writeFileSync(join(out, 'stale.mjs'), 'old');
+    assert.throws(() => buildSite({ out, build: B }), /not empty/);
+    assert.deepEqual(readdirSync(out), ['stale.mjs']);
+    assert.equal(readFileSync(join(out, 'stale.mjs'), 'utf8'), 'old');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
 test('no hand-kept number in the sources', () => {
   const sources = walk(PANEL)
     .filter((f) => !f.startsWith('vendor/') && !f.startsWith('fonts/') && /\.(mjs|html|css)$/.test(f))
@@ -126,6 +138,8 @@ test('no published file escapes the stamp', () => {
         assert.ok(site.has(target), `${file}: ${m[2]} is not published`);
       }
     }
+    // Double-quoted attributes only, like the stamper's LOCAL_ASSET: a single-quoted or unquoted src/href is left to
+    // the e2e (e2e/build-stamp.e2e.mjs), which sees every file the browser asks for.
     const html = readFileSync(join(out, 'index.html'), 'utf8');
     let mjs = 0;
     let css = 0;
@@ -172,19 +186,26 @@ test('buildSite skips the dotfiles at the top of the panel, as `cp -r panel/*` d
 
 // Files the panel loads at run time that must follow GitHub's or the server's latest, never the build (no-store).
 const UNSTAMPED = new Set(['version.json', 'chat-server.json']);
-// Quoted names that are not files of the site but paths in a GitHub repository (runner settings, chat branch, Vercel).
-const REMOTE = new Set(['settings.json', 'status.json', 'index.json', 'vercel.json']);
+// Call sites whose quoted names are not files of the site but paths in a GitHub repository (runner settings, chat
+// branch, Vercel), matched against the code just before the name: the same name anywhere else is still flagged.
+const REMOTE = /(?:\b(?:runnersFile|readRunnersFile|branchJson)\(\s*|\bwriteChatFile\([^,()]*,\s*|\bpath:\s*)$/;
 // Module specifiers: `import … from '…'`, `export … from '…'`, `import '…'` and `import('…')`.
+// Written on purpose independently of STATIC/DYNAMIC in scripts/stamp-panel.mjs, so they do not share a blind spot.
 const SPECIFIERS = /^\s*(?:import|export)\b[^;]*?\bfrom\s*(['"])[^'"]*\1|^\s*import\s*(['"])[^'"]*\2|\bimport\s*\(\s*(['"])[^'"]*\3\s*\)/gm;
 
-/** Every quoted local file a panel module names at run time that is not wrapped in versioned(…). */
+/**
+ * Every quoted local file a panel module names at run time that is not wrapped in versioned(…). A heuristic over
+ * literal names only (a name built at run time slips through): the e2e (e2e/build-stamp.e2e.mjs) backs it, deny by
+ * default, by failing on any request of the published site its scenario makes without the build.
+ */
 function unversionedLoads(text) {
   const code = text.replace(SPECIFIERS, (m) => m.replace(/['"][^'"]*['"]/g, "''"));
   const found = [];
-  for (const m of code.matchAll(/(['"`])((?:\.{1,2}\/)?[\w./-]+\.(?:json|js|css|mjs))\1/g)) {
+  for (const m of code.matchAll(/(['"`])((?:\.{1,2}\/)?[\w./-]+\.(?:json|js|css|mjs|html|txt))(?:\?[^'"`\s]*)?\1/g)) {
     const name = m[2].replace(/^(?:\.{1,2}\/)+/, '');
-    if (UNSTAMPED.has(name) || REMOTE.has(name)) continue;
-    if (/\bversioned\(\s*$/.test(code.slice(0, m.index))) continue;
+    const before = code.slice(0, m.index);
+    if (UNSTAMPED.has(name) || REMOTE.test(before)) continue;
+    if (/\bversioned\(\s*$/.test(before)) continue;
     found.push(m[0]);
   }
   return found;
@@ -197,11 +218,55 @@ test('the guard over run-time loads finds an unversioned fetch', () => {
   assert.deepEqual(unversionedLoads("import { a } from './lib.mjs';\nawait import('./x.mjs');\nfetch(versioned('a.json', BUILD));\nfetch('chat-server.json');"), []);
 });
 
-test('every file a panel module loads at run time follows the build', () => {
+test('the guard over run-time loads sees a query and html or text files', () => {
+  assert.deepEqual(unversionedLoads("await fetch('extra.json?x=1');"), ["'extra.json?x=1'"]);
+  assert.deepEqual(unversionedLoads("await fetch('help.html');"), ["'help.html'"]);
+  assert.deepEqual(unversionedLoads("await fetch('./notes.txt');"), ["'./notes.txt'"]);
+});
+
+test('the guard over run-time loads exempts a repository path by its call site, not by its name', () => {
+  assert.deepEqual(unversionedLoads("await fetch('settings.json');"), ["'settings.json'"]);
+  assert.deepEqual(unversionedLoads("await fetch('index.json');"), ["'index.json'"]);
+  const remote = "runnersFile('settings.json'); readRunnersFile('status.json'); branchJson('index.json');\n"
+    + "writeChatFile(repo, 'index.json', f); writeChatFile(chat.repo, 'index.json', (index) => x);\n"
+    + "const tree = [{ path: 'vercel.json', mode: '100644' }];";
+  assert.deepEqual(unversionedLoads(remote), []);
+});
+
+/** Every unversioned run-time load in the panel modules of `root`, as `path: load`. */
+function unversionedLoadsIn(root) {
+  const panel = join(root, 'panel');
+  const sources = walk(panel)
+    .filter((f) => !f.startsWith('vendor/') && f.endsWith('.mjs'))
+    .map((f) => join(panel, f))
+    .concat(SHARED.filter((f) => f.endsWith('.mjs')).map((f) => join(root, f)));
   const found = [];
-  for (const f of readdirSync(PANEL).filter((n) => n.endsWith('.mjs'))) {
-    for (const load of unversionedLoads(readFileSync(join(PANEL, f), 'utf8'))) found.push(`${f}: ${load}`);
+  for (const file of sources) {
+    for (const load of unversionedLoads(readFileSync(file, 'utf8'))) found.push(`${relative(root, file)}: ${load}`);
   }
+  return found;
+}
+
+test('the guard over run-time loads reads the sub-folders of the panel and the shared modules', () => {
+  const root = mkdtempSync(join(tmpdir(), 'root-'));
+  try {
+    mkdirSync(join(root, 'panel/sub'), { recursive: true });
+    mkdirSync(join(root, 'panel/vendor'), { recursive: true });
+    writeFileSync(join(root, 'panel/app.mjs'), "fetch(versioned('a.json', BUILD));\n");
+    writeFileSync(join(root, 'panel/sub/x.mjs'), "await fetch('extra.json');\n");
+    writeFileSync(join(root, 'panel/vendor/lib.mjs'), "await fetch('vendored.json');\n");
+    for (const f of SHARED.filter((s) => s.endsWith('.mjs'))) {
+      mkdirSync(join(root, posix.dirname(f)), { recursive: true });
+      writeFileSync(join(root, f), f === 'scripts/lib/models.mjs' ? "await fetch('extra.json');\n" : '\n');
+    }
+    assert.deepEqual(unversionedLoadsIn(root).sort(), ["panel/sub/x.mjs: 'extra.json'", "scripts/lib/models.mjs: 'extra.json'"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('every file a panel module loads at run time follows the build', () => {
+  const found = unversionedLoadsIn(ROOT);
   assert.deepEqual(found, [], `loaded at run time without versioned(…):\n${found.join('\n')}`);
 });
 
