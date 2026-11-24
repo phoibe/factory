@@ -100,6 +100,7 @@ const triggers = { done: new Set(), fresh: new Set() };
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
+  placeToast();
   t.classList.add('show');
   clearTimeout(toast.t);
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
@@ -3227,6 +3228,17 @@ function drawPendingImages() {
   box.replaceChildren(...chat.files.map((f, i) => el('div', { class: 'pending-image' },
     el('img', { src: f.url, alt: `Image ${i + 1} à envoyer` }),
     el('button', { type: 'button', class: 'remove', 'aria-label': `Retirer l'image ${i + 1}`, onclick: () => { chat.files.splice(i, 1); drawPendingImages(); } }, '×'))));
+  if ($('toast').classList.contains('show')) placeToast();
+}
+
+// On the Agent tab the toast sits 12 px above the composer (attached images included), measured: a text of several
+// lines never hides under it (issue #580). Elsewhere it keeps its place at the bottom.
+function placeToast() {
+  const t = $('toast');
+  if (!threadShown()) { t.style.removeProperty('--toast-bottom'); return; }
+  const strip = $('chat-pending');
+  const top = (strip.hidden ? $('chat-form') : strip).getBoundingClientRect().top;
+  t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top)}px`);
 }
 
 async function sendChat(text, withImages = true) {
@@ -3501,6 +3513,7 @@ function autosize() {
   const t = $('chat-input');
   t.style.height = 'auto';
   t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+  if ($('toast').classList.contains('show')) placeToast();
 }
 
 $('chat-form').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('chat-input').value); });
