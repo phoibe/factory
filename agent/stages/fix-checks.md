@@ -3,7 +3,7 @@
 Les contrôles automatiques ont échoué sur la PR.
 
 1. Le payload contient `checksRun`, l'identifiant du run en échec : `gh run view <checksRun> --log-failed`.
-   (Le dernier commentaire `factory-checks-failed` de la PR contient aussi le lien.)
+   (Le dernier commentaire `factory-checks-failed` de la PR contient aussi le lien : `node .factory/scripts/thread.mjs <n>`.)
    **Preview cassée** : si le payload contient `preview` (son adresse) et `previewProblem`, les contrôles étaient verts
    mais la factory a ouvert la preview de la PR comme un visiteur et elle ne marche pas (page vide, erreur dans la
    page, serveur en erreur 500…). Ouvre-la toi-même (skill `webapp-testing` s'il est installé), trouve la cause : souvent
