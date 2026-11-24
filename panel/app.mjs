@@ -3,15 +3,18 @@ import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs?v=2';
 import { setupTabs } from './tabs.mjs';
 import { errorText } from './errors.mjs';
-import { TOKEN_KEY, PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs?v=1';
+import { PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs?v=1';
+import './github.mjs?v=1';
 import './screen-general.mjs?v=1';
 import { recallProjects, loadProjects, checkProjects, refreshDots, renderProjectList } from './screen-projects.mjs?v=1';
 import { enterBoard, renderBoard, startLive, boardInfo } from './screen-board.mjs?v=1';
 import { resetChat, setChatServer } from './screen-chat.mjs?v=1';
 import { drawSub, drawGap, refreshGap, drawRelease, refreshRelease, loadDelivery, refreshStable, refreshRuns } from './screen-header.mjs?v=1';
 import { renderRules, loadMachine, updateTrigger, refreshRunnerAlert } from './screen-rules.mjs?v=1';
+import './screen-login.mjs?v=1';
 
 provide('openProject', openProject);
+provide('start', start);
 
 async function openProject(fullName) {
   const next = app.projects.find((p) => p.repo.full_name === fullName) || app.projects[0];
@@ -127,18 +130,6 @@ async function start() {
   await openProject(store.get(PROJECT_KEY));
   refreshDots(); // after the board: the open project's dot comes from it
 }
-
-$('login-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  app.token = $('token').value.trim();
-  store.set(TOKEN_KEY, app.token);
-  $('login-error').textContent = '';
-  start();
-});
-$('logout').addEventListener('click', () => {
-  resetSession({ forget: true });
-  show('login');
-});
 
 setupTabs(document.querySelector('.tabs'));
 watchNumbers($('app'));

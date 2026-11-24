@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { all, fn, resets } from './panel-source.mjs';
+import { all, files, fn, resets } from './panel-source.mjs';
 
 test('la remise à zéro de la session est écrite une seule fois et vide les caches et le suivi en direct', () => {
   const reset = fn('resetSession');
@@ -38,4 +38,10 @@ test('se déconnecter efface aussi les noms de projets gardés ; un jeton expir�
 
 test('un projet devenu introuvable ne bloque pas le compteur des lancements du jour', () => {
   assert.match(fn('refreshRuns'), /e\.status === 404\) return \{ data: \[\] \}/);
+});
+
+test('la remise à zéro vit dans la partie commune ; chaque écran y déclare la sienne', () => {
+  assert.match(files['common.mjs'], /export function resetSession\(/);
+  const declaring = Object.keys(files).filter((f) => /^onReset\(\(\) => \{$/m.test(files[f])).sort();
+  assert.deepEqual(declaring, ['github.mjs', 'screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-projects.mjs', 'screen-rules.mjs']);
 });
