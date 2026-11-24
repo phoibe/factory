@@ -1815,6 +1815,12 @@ if ('ResizeObserver' in window) new ResizeObserver(() => fitBanner()).observe($(
 // sentence, until that is done (checked every second); then the usual sentence comes back. Never reloads by itself.
 const VERSION_TEXT = $('new-version-text').dataset.text;
 let refusalTimer = null;
+// Clicked again, still refused: the same sentence flashes briefly (style.css), no new text.
+function again(sentence) {
+  sentence.classList.remove('again');
+  void sentence.offsetWidth; // restarts the animation on every click
+  sentence.classList.add('again');
+}
 function sayInBanner(text) {
   $('new-version-text').textContent = text;
   clearInterval(refusalTimer);
@@ -1824,6 +1830,7 @@ function sayInBanner(text) {
 }
 $('new-version-reload').addEventListener('click', () => {
   const why = reloadBlocker(unsavedParts());
+  if (why && $('new-version-text').textContent === why) return again($('new-version-text'));
   if (why) return sayInBanner(why);
   location.reload();
 });

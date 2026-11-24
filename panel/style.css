@@ -88,7 +88,12 @@ body:has(#chat:not([hidden])) #toast { bottom: calc(96px + env(safe-area-inset-b
 .new-version[hidden] > button { display: none; }
 /* Borderless in the strip, the 44 px hit area and the global ink focus ring kept. */
 .new-version .small-btn { flex: none; border-color: transparent; background: transparent; color: var(--text); }
-.new-version .small-btn:hover { border-color: transparent; background: var(--surface); }
+/* Hover only where a pointer hovers: on a phone a tap would leave the button a white box. */
+@media (hover: hover) { .new-version .small-btn:hover { border-color: transparent; background: var(--surface); } }
+/* « Recharger » clicked again while still refused: the same sentence flashes briefly, so the click is seen (app.mjs). */
+.new-version > span.again { animation: new-version-again .15s ease-out; }
+@keyframes new-version-again { from { opacity: .3; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .new-version > span.again { animation: none; } }
 
 ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 
@@ -441,6 +446,8 @@ button.go:disabled { opacity: .6; cursor: default; }
   /* The new-version strip (issue #572) is the bar's last row: the bar scrolls away with the page, the strip stays at
      the top of the screen (--top-h and --new-version-h, measured by fitBanner in app.mjs). */
   body:not(:has(#chat.viewing:not([hidden]))):has(.new-version:not([hidden])) .top { position: sticky; top: calc(var(--new-version-h, 0px) - var(--top-h, 0px)); }
+  /* Keyboard focus never lands under the stuck strip. */
+  html:not(:has(#chat.viewing:not([hidden]))):has(.new-version:not([hidden])) { scroll-padding-top: var(--new-version-h, 0px); }
   .actions .button { flex: 1 1 calc(50% - 8px); }
   .actions #new-feature { flex-basis: 100%; }
 }

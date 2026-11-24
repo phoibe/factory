@@ -455,8 +455,13 @@ test('le bandeau est annoncé dès son apparition : sa zone d\'annonce est déj�
     assert.equal(before.text, '', 'la zone d\'annonce parle avant la nouvelle version');
     assert.equal(await reloadButton(page).count(), 0, '« Recharger » est atteignable avant la nouvelle version');
     // What the browser gives screen readers: a status region, already there.
-    const ax = await (await page.context().newCDPSession(page)).send('Accessibility.getFullAXTree');
-    assert.ok(ax.nodes.some((n) => n.role?.value === 'status' && !n.ignored), 'pas de zone d\'annonce dans l\'arbre d\'accessibilité');
+    // #new-version's own node, not any status region (the toast is one too).
+    const cdp = await page.context().newCDPSession(page);
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#new-version' });
+    const { nodes: [own] } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+    assert.equal(own?.role?.value, 'status', `#new-version n'est pas une zone d'annonce dans l'arbre d'accessibilité (${own?.role?.value})`);
+    assert.equal(own.ignored, false, '#new-version est ignoré par l\'arbre d\'accessibilité');
     const box = await page.locator('#new-version').boundingBox();
     assert.ok(!box || (box.width <= 1 && box.height <= 1), `la zone d'annonce se voit avant la nouvelle version (${JSON.stringify(box)})`);
     await newVersion(page, v);
@@ -486,4 +491,98 @@ test('le bandeau, avec sa phrase ou un refus, ne présente aucune erreur d\'acce
       assert.deepEqual(await run(), [], `${scheme}, « Recharger » au clavier`);
     });
   }
+});
+
+test('sur téléphone, après un appui sur « Recharger », le bouton ne reste pas une case blanche', async () => {
+  await withPanel({ issues: board, device: { viewport: phone, hasTouch: true, isMobile: true } }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Paramètres' }).tap();
+    await page.locator('#stage-plan').tap();
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await reloadButton(page).tap(); // refused: the page stays, the finger has left the button
+    await refused(page, 'Enregistrez d\'abord vos réglages, puis rechargez.');
+    const look = await reloadButton(page).evaluate((b) => ({ hover: b.matches(':hover'), background: getComputedStyle(b).backgroundColor }));
+    assert.equal(look.background, 'rgba(0, 0, 0, 0)', `le bouton garde un fond après l'appui (survol : ${look.hover})`);
+  });
+});
+
+// Starts listening for the sentence's animation; the promise says whether one started within a second.
+const flashes = (page) => page.locator('#new-version-text').evaluate((n) => new Promise((done) => {
+  n.addEventListener('animationstart', () => done(true), { once: true });
+  setTimeout(() => done(false), 1000);
+}));
+
+test('un second clic sur « Recharger », encore refusé, fait brièvement clignoter la phrase, sans nouveau texte', async () => {
+  await withPanel({ issues: board }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.locator('#stage-plan').click();
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    const why = 'Enregistrez d\'abord vos réglages, puis rechargez.';
+    await reloadButton(page).click();
+    await refused(page, why);
+    for (const click of ['deuxième', 'troisième']) {
+      const flashed = flashes(page);
+      await reloadButton(page).click();
+      assert.equal(await flashed, true, `le ${click} clic ne se voit pas`);
+      const nodes = await page.locator('#new-version-text').evaluate((n) => [...n.childNodes].map((c) => c.textContent));
+      assert.deepEqual(nodes, [why], `le ${click} clic a changé le texte`);
+      assert.equal(await page.locator('#toast.show').count(), 0, `le ${click} clic a ouvert un message à part`);
+    }
+    const length = await page.locator('#new-version-text').evaluate((n) => Math.max(0, ...n.getAnimations().map((a) => a.effect.getComputedTiming().duration)));
+    assert.ok(length <= 300, `le clignotement dure ${length} ms`);
+    assert.equal(await samePage(page), true);
+  });
+});
+
+test('mouvement réduit : le second clic refusé ne fait rien bouger', async () => {
+  await withPanel({ issues: board }, async ({ page, url }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.locator('#stage-plan').click();
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await reloadButton(page).click();
+    await refused(page, 'Enregistrez d\'abord vos réglages, puis rechargez.');
+    const flashed = flashes(page);
+    await reloadButton(page).click();
+    assert.equal(await flashed, false, 'la phrase clignote malgré le mouvement réduit');
+  });
+});
+
+test('sur téléphone, un élément atteint au clavier en haut de « Paramètres » défilé n\'est jamais caché sous le bandeau', async () => {
+  await withPanel({ issues: board, viewport: phone }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.locator('#rules').getByRole('button').first().waitFor();
+    // A control of the settings scrolled just under the strip (the browser counts it as on screen), then reached
+    // from the keyboard: Shift+Tab from the next one.
+    const from = page.locator('#rules :is(button, input, select, textarea, a[href], summary):visible').nth(2);
+    await from.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.evaluate(() => document.activeElement.setAttribute('data-target', ''));
+    const target = page.locator('[data-target]');
+    assert.equal(await target.evaluate((n) => n.closest('#rules') !== null), true, 'Maj+Tab sort des réglages : le cas n\'est pas testé');
+    await toBottom(page);
+    await target.evaluate((n) => scrollTo(0, scrollY + n.getBoundingClientRect().top - 5));
+    await page.waitForTimeout(100);
+    const strip = await page.locator('#new-version').boundingBox();
+    const hidden = await target.boundingBox();
+    assert.ok(hidden.y < strip.y + strip.height, `l'élément (${hidden.y}) n'est pas sous le bandeau au départ : le cas n'est pas testé`);
+    await from.focus();
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await target.evaluate((n) => n === document.activeElement), true, 'Maj+Tab n\'atteint pas l\'élément visé');
+    await page.waitForTimeout(100);
+    const box = await target.boundingBox();
+    assert.ok(box.y >= strip.y + strip.height - 1, `l'élément (${box.y}) est sous le bandeau (bas à ${strip.y + strip.height})`);
+  });
 });

@@ -44,7 +44,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {}, device = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -57,7 +57,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
   const reads = [];
   const probes = [];
   try {
-    const context = await browser.newContext();
+    const context = await browser.newContext(device); // e.g. { hasTouch: true, isMobile: true } for a phone
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
     if (token && readToken) await context.addInitScript(() => { if (!sessionStorage.getItem('fixture.read')) { sessionStorage.setItem('fixture.read', '1'); localStorage.setItem('factory.chatToken', 'github_pat_lecture'); } });
     await context.route('https://github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
