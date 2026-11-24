@@ -2370,7 +2370,9 @@ function markServerSeen(id, updated) {
 }
 
 // The open conversation is on screen: the Agent tab is shown and, on a phone, the thread rather than the list.
-const threadShown = () => !$('chat').hidden && (!matchMedia('(max-width: 700px)').matches || $('chat').classList.contains('viewing'));
+// The general page hides the tabs with CSS only: while it is open, the chat is not on screen (review #556).
+const chatAway = () => $('chat').hidden || $('project-view').classList.contains('on-general');
+const threadShown = () => !chatAway() && (!matchMedia('(max-width: 700px)').matches || $('chat').classList.contains('viewing'));
 
 const isUnread = (c) => (chat.server ? serverUnread(c, chat.seen) : unread(c, chat.seen));
 
@@ -2552,7 +2554,7 @@ async function refreshChat() {
 function scheduleChat(delay) {
   clearTimeout(chat.timer);
   if (!current || !chat.repo) return;
-  const away = $('chat').hidden;
+  const away = chatAway();
   if (delay == null && chat.server) delay = 30_000; // only picks up other devices' messages
   if (delay == null) {
     const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking')
