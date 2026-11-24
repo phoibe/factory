@@ -22,7 +22,7 @@ application (un `package.json`, du code source), c'est une **adoption** :
 - **Stack** : garde celle en place. N'en propose une autre que si le propriétaire le demande ou si elle
   empêche vraiment un besoin décidé.
 - **Hébergement** : regarde toi-même si le dépôt est déjà déployé quelque part (déploiements et environnements
-  GitHub, fichiers de configuration d'hébergeur à la racine, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR,
+  GitHub, fichiers de configuration d'hébergeur à la racine, GitHub Pages, commentaires de bots d'hébergeur sur les anciennes PR (lus avec `node .factory/scripts/thread.mjs <numéro de PR>`),
   adresse du site dans le README). S'il l'est, garde cet hébergeur et ne demande rien. Sinon, propose-en un
   avec la stack, comme pour un nouveau projet.
 - La fiche finale décrit l'appli telle qu'elle est plus ce qui vient ensuite ; « Première version » devient
