@@ -23,8 +23,8 @@ import { ROOT, rateLimitHandled, checksEndedAt } from './relay/shared.mjs';
 
 // The engine lives in scripts/relay/: one file per job, composed by createRelay below. Their public names stay exported here.
 export { LOCK_MINUTES, PROJECT_WORKFLOW, PROD_BRANCH, DELIVERY_MARKER, manualMergeText, MAX_BRANCH_UPDATES, branchUpdates, IDLE_MINUTES, RATE_LIMIT_STEP, MAX_RATE_LIMIT_ATTEMPTS, rateLimitHandled, redoOf, isLiveEnv, linkedIssue, vercelPreview, isDocFile } from './relay/shared.mjs';
-import { eventFromPayload } from './relay/events.mjs';
-export { eventFromPayload };
+import { eventFromPayload, strangerMessage } from './relay/events.mjs';
+export { eventFromPayload, strangerMessage };
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const ctx = { gh, repo, config, env, fetchImpl, now, log, sleep };
@@ -79,8 +79,11 @@ async function main() {
   const relay = createRelay({ gh, repo, config, env: process.env });
   if (command === 'decide') {
     const payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+    const ev = eventFromPayload(process.env.GITHUB_EVENT_NAME, payload);
+    // A stranger's comment decides nothing: it never waits for the lock nor delays the owner's events behind it.
+    if (strangerMessage(ev)) console.log("decision: ignore (message de quelqu'un d'autre que le propriétaire)");
     // One decision at a time in the whole repository: see lib/lock.mjs.
-    await withLock(gh.queueLock, () => relay.handle(eventFromPayload(process.env.GITHUB_EVENT_NAME, payload), { ownerLogin }));
+    else await withLock(gh.queueLock, () => relay.handle(ev, { ownerLogin }));
   } else if (command === 'report') {
     // A report may merge and then dequeue: same lock as the decisions. The checks' duration is measured up to the end
     // of the checks job (else now), never after the wait for a runner or for the lock (see report: a cancelled run is a hung test only when it reached the time limit).

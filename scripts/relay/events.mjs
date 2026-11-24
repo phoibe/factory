@@ -48,6 +48,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
       text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      fromApp: p.comment?.user?.login === 'claude[bot]',
     };
   }
   if (eventName === 'pull_request_review') {
@@ -56,6 +57,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
       text: body, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.review?.user?.login === owner,
+      fromApp: p.review?.user?.login === 'claude[bot]',
     };
   }
   if (eventName === 'pull_request') {
@@ -67,6 +69,10 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
 }
 
+// A comment or review written by neither the owner nor the Claude app (the agent writes as one of them): on a public
+// project anyone can write one. It decides nothing (decide.mjs), so it takes neither the queue lock (relay.mjs) nor a
+// relay pass: the tick does the guard work. Its text is not looked at: the agent's marker can be copied.
+export const strangerMessage = (ev) => ['issue_comment', 'pull_request_review'].includes(ev?.event) && !ev.fromOwner && !ev.fromApp;
 
 export function eventsPart(ctx) {
   const { gh, repo, config, now, log, sleep, outputs } = ctx;
@@ -224,6 +230,7 @@ export function eventsPart(ctx) {
   }
 
   async function handle(ev, { ownerLogin } = {}) {
+    if (strangerMessage(ev)) return { action: { type: 'ignore', reason: "message de quelqu'un d'autre que le propriétaire" }, outputs };
     if (!['dispatch', 'preview-check', 'prod-check'].includes(ev.kind)) await repairLabels().catch((e) => log(`labels: ${e.message}`));
     const result = await handleEvent(ev, { ownerLogin });
     // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to

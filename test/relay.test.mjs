@@ -803,7 +803,7 @@ test('any event starts a queued card when a place is free, without waiting for t
   const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }, { number: 8, labels: [L.feature, L.queued] }], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 8 && payloadOf(s.init.body).stage === 'build'));
 });
 
@@ -821,7 +821,7 @@ test('a factory label typed wrong by an agent is put back, so the card can be pi
   const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(state.issues[0].labels.includes(L.feature));
   assert.ok(!state.issues[0].labels.includes('une semaine à la fois:factory:feature'));
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 55));
@@ -2255,7 +2255,7 @@ test('any event brings a project whose agent instructions are behind the stable 
   // yoldmewhen2, 2026-11-06: the sync only ran on a config change or the rare tick, so its agents kept old rules.
   const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
   const synced = (fingerprint) => ({ content: Buffer.from(JSON.stringify({ fingerprint })).toString('base64') });
-  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true };
+  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true };
   for (const [fingerprint, expected] of [['old', true], [syncFingerprint('.'), false]]) {
     const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }], prs: [] });
     gh.getContent = async (path) => (path === '.factory/synced.json' ? synced(fingerprint) : null);
