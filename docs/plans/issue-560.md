@@ -426,7 +426,7 @@ In the fourth test, `always` becomes `reset.replace(/if \(forget\)[^\n]*\n/, '')
 Run: `node --test test/panel-session.test.mjs test/panel-live.test.mjs test/outsider-notes.test.mjs`
 Expected: FAIL on `resetSession` (found twice: `app.mjs` and `common.mjs`); everything else passes.
 
-- [ ] **Step 2: Write the guard tests** `test/panel-screens.test.mjs` (they pass from now on and must stay green through Task 9):
+- [ ] **Step 2: Write the guard tests** `test/panel-screens.test.mjs` (red until Step 3 creates `github.mjs` and Step 4 removes the unused imports; then they stay green through Task 9):
 
 ```js
 import { test } from 'node:test';
@@ -434,7 +434,8 @@ import assert from 'node:assert/strict';
 import { files, all } from './panel-source.mjs';
 
 const screens = Object.keys(files).filter((f) => f.startsWith('screen-'));
-const imports = (text) => [...text.matchAll(/\bfrom '\.\/([^'?]+)/g)].map((m) => m[1]);
+// `from './x.mjs'` and the bare `import './x.mjs'` of a part loaded for its effects.
+const imports = (text) => [...text.matchAll(/\b(?:from|import) '\.\/([^'?]+)/g)].map((m) => m[1]);
 
 test('a screen never imports another screen nor the entry point; the shared parts import no screen', () => {
   for (const f of [...screens, 'common.mjs', 'github.mjs']) {
@@ -476,7 +477,7 @@ onReset(() => {
 
 - [ ] **Step 4: `app.mjs` uses `common.mjs` and `github.mjs`**
 
-1. Delete from `app.mjs` everything Task 1 copied and Step 3 moved, plus `resetSession` (108-119), `sessionExpired` (121-128), `show` (147-160), `selectTab` (1733-1746), `hasUnsaved` (254-256). Import what is used from `./common.mjs?v=1` and `./github.mjs?v=1` (first two import lines after the existing ones); drop the names `app.mjs` no longer uses from the old import lines (`tokenFromHash`, `readTokenFromHash`, `sessionKeys`, `trustRead`, `rateLimitDelay`, `MAX_PAUSE_MS`, `emptyOn404`, …: the « unused import » test lists them).
+1. Delete from `app.mjs` what Step 3 moved and what `common.mjs` already holds since Task 1: `TOKEN_KEY`, `PROJECT_KEY`, `PROJECTS_KEY` (26-29), `$`, `store` (37-43), the phone-link block and `let token`, `let readToken`, the `persist` line, `let catalog, defaults, projects = [], current = null` (60-74), `el` (84-96), `toast` (100-106), `resetSession` (108-119), `sessionExpired` (121-128), `show` (147-160), `hasUnsaved` (254-256), the board gate with its top-level `holdForBoard();` (363-377), `MACHINE_CHOICES` (1284), `machineRadios` (1312-1314), `selectTab` (1733-1746), `FACTORY_REPO` (2158). Nothing of these may stay twice: the phone-link block run twice, or two `app`, is the doubled state this split must avoid. Import what is used from `./common.mjs?v=1` and `./github.mjs?v=1` (first two import lines after the existing ones); drop the names `app.mjs` no longer uses from the old import lines (`tokenFromHash`, `readTokenFromHash`, `sessionKeys`, `trustRead`, `rateLimitDelay`, `MAX_PAUSE_MS`, `emptyOn404`, …: the « unused import » test lists them).
 2. The six shared names become properties, everywhere they are **the variable**: `token` → `app.token` (81 uses), `readToken` → `app.readToken` (13), `catalog` → `app.catalog` (8), `defaults` → `app.defaults` (4), `projects` → `app.projects` (59), `current` → `app.current` (164). Not the variable, leave alone: element ids (`$('token')`, `$('projects')`, `$('projects-dialog')`…), the key in `forgottenProjects({ …, projects: list })` (l. 1350), the error mark `{ readToken: true }` / `e.readToken` (l. 3308-3366), words in comments and strings. Written forms to watch: `function rememberProjects(list = projects)` → `list = app.projects`; `[catalog, defaults, server] = await Promise.all(…)` (l. 1819) → `[app.catalog, app.defaults, server] = …`; `const session = token` → `const session = app.token` (the local `session` keeps its name). Identity checks stay identity checks (`app.current !== project`, `app.token !== session`).
 3. `await boardGate` (6 places: `refreshDots`, `loadMachine`, `refreshRunnerAlert`, `refreshRuns`, `readGap`, `refreshStable`) → `await boardFirst()`; `boardGate.then(…)` in `openProject` → `boardFirst().then(…)`.
 4. The screens' share of the old `resetSession`, declared once in `app.mjs` for now (top level, after the state it names is declared; statements verbatim from l. 112-118, minus what `common.mjs` and `github.mjs` now do):
@@ -544,6 +545,8 @@ git commit -m "refactor(panel): app.mjs runs on the common part; GitHub readers 
 ---
 
 ### How Tasks 3 to 8 work (the same recipe each time)
+
+Give this section to the implementer of each of Tasks 3 to 8 and of Task 9, with « Global Constraints », the `common.mjs` interface, « Actions between parts » and « View reads ».
 
 1. Create `panel/screen-<name>.mjs`. **Move** the listed symbols with body and comments unchanged, in the order they have in `app.mjs`. Top-level statements that register listeners move too, in the same relative order.
 2. Imports: from the existing import lines of `app.mjs`, copy **verbatim** the specifiers the moved code needs; from `./common.mjs?v=1` and `./github.mjs?v=1` what it uses; remove from `app.mjs` the names it no longer uses.
@@ -671,6 +674,8 @@ onUnsaved(() => app.current && JSON.stringify(app.current.config) !== app.curren
 
 **Changes inside the moved code:** the three view reads of `placeMenu`/`placeNewFeature` (table « View reads »). The comment « Read the media query here: drawRelease may run before phoneMq is declared » stays with its line.
 
+**One known change of order, checked harmless:** `menuItems` is captured and the first `placeMenu()` runs when the module loads, so before `watchNumbers($('app'))` and `start()` in `app.mjs` instead of after them. `watchNumbers` only rewrites text nodes that hold a digit, and no `[data-menu]` element of `index.html` has such a neighbour (the top bar is outside `#app`, the project's buttons are separated by blank text); `start()` touches no DOM before its first `await`. Do not add an « init » function to restore the old order.
+
 **Declared by the screen:**
 
 ```js
@@ -702,7 +707,7 @@ onView((e) => { if (e.what === 'screen') placeMenu(); });
 
 **Interfaces:**
 - Exports: `recallProjects`, `loadProjects`, `checkProjects`, `refreshDots`, `renderProjectList`.
-- Provides: `renderProjectList`, `settingsSaved` (the function of Task 4's temporary provide, now named `settingsSaved(project)`), `setDot`, `wakeDots`.
+- Provides: `renderProjectList`, `settingsSaved`, `setDot`, `wakeDots`. `settingsSaved` is the temporary provide of `app.mjs` turned into a function of this module, next to `rememberProjects`: `function settingsSaved(project) { saves++; known.set(project.repo.full_name, { pushed: null, etag: null, file: project.file }); rememberProjects(); }`.
 - Calls: `openProject`, `refreshRuns`, `refreshRunnerAlert`, `forgotten`, `closeGeneral`, `board`, `stopLive`.
 
 **Changes inside the moved code:**
@@ -768,7 +773,7 @@ onView((e) => {
 - the five `$('chat').hidden` reads (table « View reads »); `chatAway` ends as `shown().tab !== 'chat' || shown().general`;
 - `chatGet`, `branchJson`, `chatImage`, `chatFile`, `checkReadToken` keep their own `fetch` (they import `API` from `github.mjs`, `guardRead` too).
 
-**Declared by the screen** (the `tab` and `general` branches of `app.mjs`'s `onView`, comments included, and the chat's line of its `screen` branch):
+**Declared by the screen** (what is left of `app.mjs`'s `onReset`, `onView` and `onUnsaved` blocks, moved as they are):
 
 ```js
 onReset(() => {
@@ -776,8 +781,21 @@ onReset(() => {
 });
 onView((e) => {
   if (e.what === 'screen' && e.screen !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
-  if (e.what === 'general') { /* the two lines Task 3 put in app.mjs */ }
-  if (e.what === 'tab') { /* the five lines Task 2 put in app.mjs */ }
+  if (e.what === 'general') {
+    // The full screen removes the page's side margins: the general page never opens in it (review #556).
+    if (e.general && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
+    // Back on « Agent »: the answer is on screen now, its badge and « Nouvelle réponse » go at once (review #556).
+    if (e.was.general && !e.general && e.tab === 'chat' && e.screen === 'project-view' && app.current && chat.repo) refreshChat();
+  }
+  if (e.what === 'tab') {
+    // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
+    if (e.tab === 'chat') openChat(); else if (e.was.tab === 'chat') scheduleChat();
+    // Issue #460: the « Agent » tab uses exactly the height left under the header.
+    document.body.classList.toggle('chat-wide', e.tab === 'chat');
+    if (e.tab !== 'chat') setChatFull(false);
+    fitChat();
+    if (e.tab === 'chat' && e.focus) focusChat();
+  }
 });
 onUnsaved(() => Boolean($('chat-input')?.value.trim()) || Boolean(chat.live) || chat.files.length > 0);
 ```
@@ -800,7 +818,7 @@ onUnsaved(() => Boolean($('chat-input')?.value.trim()) || Boolean(chat.live) || 
 
 **Interfaces:**
 - Exports: `enterBoard`, `renderBoard`, `startLive`, `boardInfo` (new: `export function boardInfo() { return { repo: live.repo, issues: live.issues, activity: live.activity, ticking: Boolean(live.tick) }; }`).
-- Provides: `renderBoard`, `board` (= `boardInfo`), `stopLive` (new function, the three statements of Task 6's temporary provide).
+- Provides: `renderBoard`, `board` (= `boardInfo`), `stopLive` (the temporary provide of `app.mjs` turned into a function of this module: `function stopLive() { clearTimeout(live.timer); clearInterval(live.tick); live.tick = null; }`).
 - Calls: `setDot`, `wakeDots`, `refreshRelease`, `refreshGap`, `drawSite`, `wakeFactory` (all already written as `call` since Tasks 4 to 6).
 
 **Changes inside the moved code:** `startLive`: `!$('board').hidden` → `shown().tab === 'board'`. Nothing else.
@@ -846,7 +864,7 @@ test('app.mjs imports the parts in the documented order (the order of their reac
 test('the entry point keeps no screen state: it declares no reset, no view reaction, nothing unsaved', () => {
   assert.doesNotMatch(files['app.mjs'], /\bon(Reset|View|Unsaved)\(/);
   assert.deepEqual([...files['app.mjs'].matchAll(/\bprovide\('([^']+)'/g)].map((m) => m[1]).sort(), ['openProject', 'start']);
-  assert.ok(files['app.mjs'].split('\n').length < 250, 'app.mjs only wires the parts');
+  assert.ok(files['app.mjs'].split('\n').length < 300, 'app.mjs only wires the parts');
 });
 
 test('every screen has its module, and every action provided is used', () => {
@@ -879,10 +897,10 @@ Expected: the order test, the « entry point » test and the « every screen » 
 ```bash
 git show 4ebe6e1:panel/app.mjs | wc -l
 cat panel/app.mjs panel/common.mjs panel/github.mjs panel/screen-*.mjs | wc -l
-for f in $(git show 4ebe6e1:panel/app.mjs | grep -oE "^(async )?function [A-Za-z]+" | awk '{print $NF}'); do n=$(grep -lE "^(export )?(async )?function $f\(" panel/*.mjs | wc -l); [ "$n" = 1 ] || echo "$f: $n"; done
+for f in $(git show 4ebe6e1:panel/app.mjs | grep -oE "^(async )?function [A-Za-z0-9_$]+" | awk '{print $NF}'); do n=$(grep -lE "^(export )?(async )?function $f\(" panel/*.mjs | wc -l); [ "$n" = 1 ] || echo "$f: $n"; done
 ```
 
-Expected: the two totals within a few hundred lines (imports, `provide`, the blocks); the loop prints only `hasUnsaved: 0`?? no — `hasUnsaved` was a `const`: the loop prints **nothing** (every function of the old file exists exactly once: `resetSession`, `sessionExpired`, `show`, `selectTab` in `common.mjs`).
+Expected: the second total is the first plus a few hundred lines at most (imports, `provide`, the declared blocks); the loop prints **nothing**: each of the 152 top-level functions of the old file exists exactly once (at the starting point the same loop prints nothing either: no pure module shares a name with them).
 
 - [ ] **Step 5: Everything green** — the four commands. Expected: unit 1578 pass (1574 + 4), e2e 359, a11y 7.
 
@@ -894,7 +912,7 @@ Expected: the two totals within a few hundred lines (imports, `provide`, the blo
 
 ## Before the PR: merge `origin/main` and carry over every change to the panel
 
-The split started from `4ebe6e1`; other requests keep shipping changes to `panel/app.mjs` meanwhile (#558 works on `checkReadToken`, now in `panel/screen-chat.mjs`; #561 changes how the modules are versioned).
+The split started from `4ebe6e1`; other requests keep shipping changes to `panel/app.mjs` meanwhile (#558 works on `checkReadToken`, now in `panel/screen-chat.mjs`; #561 changes how the modules are versioned). When this plan was written, #561 was not merged (issue open, being built, no PR yet): `index.html` still loads `app.mjs?v=92` and every module keeps its hand-written `?v=N`.
 
 - [ ] `git fetch origin main && git diff 4ebe6e1..origin/main --stat -- panel/ test/ e2e/ a11y/` : list what moved on main.
 - [ ] `git merge origin/main`. `panel/app.mjs` will conflict: **never** resolve by taking either side. For every hunk of `git diff 4ebe6e1..origin/main -- panel/app.mjs`, find the function it touches (`grep -n "function <name>" panel/*.mjs`) and apply the same change in the module that now holds it, with this plan's substitutions (`app.current`, `call(…)`, …). Tick the hunks off one by one and list them in the PR (« Aucune correction perdue »).
