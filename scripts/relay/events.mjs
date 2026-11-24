@@ -94,6 +94,7 @@ export function eventsPart(ctx) {
   const closeMerged = (...a) => ctx.closeMerged(...a);
   const deferredMessage = (...a) => ctx.deferredMessage(...a);
   const notifyWaiting = (...a) => ctx.notifyWaiting(...a);
+  const takeOver = (...a) => ctx.takeOver(...a);
 
   // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
   // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
@@ -271,8 +272,11 @@ export function eventsPart(ctx) {
       const issue = await gh.getIssue(ev.number);
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
+    // A request opened by an outsider on a public project (issue #557): the owner's word there starts a copy.
+    let outsider = false;
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
+      outsider = ev.kind === 'issue' && live?.untrusted === true;
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open', merged: live.pull_request?.merged_at || null } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
@@ -300,6 +304,7 @@ export function eventsPart(ctx) {
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
     let said = ev.text;
+    let ownerSaid = Boolean(ev.fromOwner && !ev.fromAgent);
     // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
     // and its checks start again.
     let reopenedPr = null;
@@ -318,7 +323,12 @@ export function eventsPart(ctx) {
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       said = text;
+      ownerSaid = true;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    if (outsider && ownerSaid && ['fire', 'queue'].includes(action.type)) {
+      const taken = await takeOver(n, { message: said, ownerLogin });
+      if (taken) return { action: taken, outputs };
     }
     if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.

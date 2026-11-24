@@ -19,6 +19,7 @@ import { launchesPart } from './relay/launches.mjs';
 import { deliveryPart } from './relay/delivery.mjs';
 import { watchPart } from './relay/watch.mjs';
 import { eventsPart } from './relay/events.mjs';
+import { takeoverPart } from './relay/takeover.mjs';
 import { ROOT, rateLimitHandled, checksEndedAt } from './relay/shared.mjs';
 
 // The engine lives in scripts/relay/: one file per job, composed by createRelay below. Their public names stay exported here.
@@ -28,7 +29,7 @@ export { eventFromPayload };
 
 export function createRelay({ gh, repo, config, env = {}, fetchImpl = fetch, now = () => Date.now(), log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const ctx = { gh, repo, config, env, fetchImpl, now, log, sleep };
-  for (const part of [statePart, launchesPart, deliveryPart, watchPart, eventsPart]) Object.assign(ctx, part(ctx));
+  for (const part of [statePart, launchesPart, deliveryPart, watchPart, eventsPart, takeoverPart]) Object.assign(ctx, part(ctx));
   const { handle, refilling, report, retrySoon, relaunchSoon, retryLaunches, dequeue, refill, release, fabrication, notifyWaiting, prodReport, deployFailed, releaseChecking, liveUrl, previewWait, outputs } = ctx;
   return { handle, report: refilling(report), retrySoon, relaunchSoon, retryLaunches, dequeue, refill, release, fabrication, notifyWaiting, prodReport: refilling(prodReport), deployFailed: refilling(deployFailed), releaseChecking, liveUrl, previewWait, outputs };
 }
