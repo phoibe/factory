@@ -11,6 +11,8 @@ import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, 
 import { resolveModels } from '../lib/models.mjs';
 import { PROJECT_WORKFLOW, prIssue, say, names, linkedIssue } from './shared.mjs';
 
+export const ROUTINE_TIMEOUT_MS = 60_000;
+
 export function launchesPart(ctx) {
   const { gh, repo, config, env, fetchImpl, now, log, sleep, outputs, woken, commentCache } = ctx;
   const liveLabels = (...a) => ctx.liveLabels(...a);
@@ -76,10 +78,14 @@ export function launchesPart(ctx) {
         + `Ouvrez https://github.com/${repo}/settings/secrets/actions (la page des secrets de ce dépôt-ci, pas de factory-template) `
         + 'et créez, dans **Repository secrets**, `FACTORY_ROUTINE_URL` et `FACTORY_ROUTINE_TOKEN` (étape 5 du README). Puis écrivez « réessaie » ici.', 'routine secrets missing');
     }
+    // A routine that does not answer must not hold the queue lock: past ROUTINE_TIMEOUT_MS the call is stopped and
+    // taken for a passing failure, relaunched later. The launch is at-least-once: when the routine had already
+    // accepted the call, the relaunch can start a second session.
     let res;
     try {
       res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
         method: 'POST',
+        signal: AbortSignal.timeout(ROUTINE_TIMEOUT_MS),
         headers: {
           authorization: `Bearer ${env.FACTORY_ROUTINE_TOKEN}`,
           'anthropic-beta': 'experimental-cc-routine-2026-04-01',
