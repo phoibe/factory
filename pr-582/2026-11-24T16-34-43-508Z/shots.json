@@ -1,0 +1,26 @@
+{
+  "files": [
+    "agent--mobile--sombre.png",
+    "agent--mobile.png"
+  ],
+  "unchanged": [
+    "agent--desktop--sombre.png",
+    "agent--desktop.png",
+    "board--desktop--sombre.png",
+    "board--desktop.png",
+    "board--mobile--sombre.png",
+    "board--mobile.png",
+    "general--desktop--sombre.png",
+    "general--desktop.png",
+    "general--mobile--sombre.png",
+    "general--mobile.png",
+    "login--desktop--sombre.png",
+    "login--desktop.png",
+    "login--mobile--sombre.png",
+    "login--mobile.png",
+    "settings--desktop--sombre.png",
+    "settings--desktop.png",
+    "settings--mobile--sombre.png",
+    "settings--mobile.png"
+  ]
+}
