@@ -205,11 +205,12 @@ function spacingRows(img, y0, y1) {
 
 // Marks one run of unmatched rows [y0, y1) of img; [o0, o1) = the other side's run, compared row for row from the
 // top. A row that is the other side's row counted from the bottom of the run (what a change above it pushed), or
-// that is spacing on the side with more rows (see spacingRows), is not marked.
+// that is spacing on the side with more rows (see spacingRows), is not marked. Whether a pixel was marked.
 function markRun(img, y0, y1, other, o0, o1, cells) {
   const { width, height, data } = img;
   const above = y0 > 0 ? y0 - 1 : -1, below = y1 < height ? y1 : -1;
   const spacing = y1 - y0 > o1 - o0 ? spacingRows(img, y0, y1) : null;
+  let any = false;
   for (let y = y0; y < y1; y++) {
     const j = o0 + y - y0, fromBottom = o1 - (y1 - y);
     if (fromBottom >= o0 && fromBottom !== j && sameRow(img, y, other, fromBottom)) continue;
@@ -225,37 +226,33 @@ function markRun(img, y0, y1, other, o0, o1, cells) {
         if (above >= 0 && samePixel(data, o, data, (above * width + x) * 4)) marked = false;
         if (below >= 0 && samePixel(data, o, data, (below * width + x) * 4)) marked = false;
       }
-      if (marked) cells.mark(x, y);
+      if (marked) { cells.mark(x, y); any = true; }
     }
   }
+  return any;
 }
 
-// Differing pixels of each side, given the matched rows.
+// Differing pixels of each side, given the matched rows. A run where only spacing changed (more rows on one side,
+// nothing marked) is marked full width: where a margin grew or shrank. The empty bottom of a short page is not where,
+// nor the rows of one pixel a shift by a fraction of a pixel adds here and there: they are shown only when nothing
+// else changed.
 function markChanges(before, after, pairs, gap) {
-  const cells = [new Cells(gap), new Cells(gap)], runs = [];
+  const cells = [new Cells(gap), new Cells(gap)], spans = [], bands = [bottomBand(before), bottomBand(after)];
   const bounds = [[-1, -1], ...pairs, [before.height, after.height]];
   for (let p = 1; p < bounds.length; p++) {
     const b0 = bounds[p - 1][0] + 1, b1 = bounds[p][0], a0 = bounds[p - 1][1] + 1, a1 = bounds[p][1];
     if (b0 === b1 && a0 === a1) continue;
-    markRun(before, b0, b1, after, a0, a1, cells[0]);
-    markRun(after, a0, a1, before, b0, b1, cells[1]);
-    runs.push([b0, b1, a0, a1]);
-  }
-  if (cells[0].map.size || cells[1].map.size) return cells;
-  // Only spacing changed: say where, full width. The empty bottom of a short page is not where, nor the rows of one
-  // pixel a shift by a fraction of a pixel adds here and there: they are left out when there is another run to show.
-  const spans = [];
-  [before, after].forEach((img, side) => {
-    const band = bottomBand(img);
-    for (const r of runs) {
-      // As many rows on both sides: content that only moved, not spacing.
-      const extra = Math.abs(r[1] - r[0] - (r[3] - r[2]));
-      if (!extra) continue;
-      const [y0, y1] = side === 0 ? [r[0], r[1]] : [r[2], r[3]];
-      if (y0 < y1) spans.push({ side, y0, y1, minor: y0 >= band || extra === 1 });
+    const marked = [markRun(before, b0, b1, after, a0, a1, cells[0]), markRun(after, a0, a1, before, b0, b1, cells[1])];
+    // As many rows on both sides: content that only moved, not spacing.
+    const extra = Math.abs(b1 - b0 - (a1 - a0));
+    if (!extra || marked[0] || marked[1]) continue;
+    for (const [side, y0, y1] of [[0, b0, b1], [1, a0, a1]]) {
+      if (y0 < y1) spans.push({ side, y0, y1, minor: y0 >= bands[side] || extra === 1 });
     }
-  });
-  const shown = spans.some((s) => !s.minor) ? spans.filter((s) => !s.minor) : spans;
+  }
+  const major = spans.filter((s) => !s.minor);
+  const nothingElse = !cells[0].map.size && !cells[1].map.size;
+  const shown = major.length || !nothingElse ? major : spans;
   for (const { side, y0, y1 } of shown) {
     const width = side === 0 ? before.width : after.width;
     for (let y = y0; y < y1; y++) for (let x = 0; x < width; x++) cells[side].mark(x, y);

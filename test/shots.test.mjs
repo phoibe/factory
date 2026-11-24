@@ -421,6 +421,14 @@ test('a plain bar added is framed in a real capture, even when the title changed
   }
 });
 
+test('a taller margin is framed in a real capture, even when the title changed too', async () => {
+  const spacer = '<div id="gap" style="height:30px"></div>';
+  for (const { f, frames, boxes: [title, gap] } of await captureBoth([], [spacer, 'Bonsoir'], ['h1', '#gap'])) {
+    assert.ok(frames.after.some((b) => b.y < title.y + title.height && b.y + b.h > title.y), `${f}: the title is framed`);
+    assert.ok(frames.after.some((b) => b.y < gap.y + gap.height && b.y + b.h > gap.y && b.w >= gap.width), `${f}: the margin is framed, ${JSON.stringify(frames.after)} for ${JSON.stringify(gap)}`);
+  }
+});
+
 test('when the frames code cannot be loaded, the images are published without frames and one line says so', async () => {
   const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');

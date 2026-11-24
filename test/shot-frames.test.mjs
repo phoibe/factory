@@ -316,3 +316,12 @@ test('a card border 1px to 3px is framed in a few frames, not in pieces', () => 
   assert.ok(result.after.length >= 1 && result.after.length <= 4, JSON.stringify(result.after));
   assert.ok(holds(result.after, 20, 60, 180, 63) && holds(result.after, 20, 137, 180, 140), JSON.stringify(result.after));
 });
+
+test('a taller margin is framed even when a title changed too', () => {
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 180, 80, 4); b(20, 100, 180, 140, 2); });
+  const after = img(200, 330, (b) => { b(20, 20, 80, 40, 9); b(20, 60, 180, 80, 4); b(20, 130, 180, 170, 2); });
+  const result = frames(before, after);
+  assert.ok(holds(result.before, 20, 20, 80, 40) && holds(result.after, 20, 20, 80, 40), JSON.stringify(result));
+  // The margin between the middle block and the last one (after rows 80 to 130) is framed full width.
+  assert.ok(result.after.some((f) => f.w === 200 && f.y >= 75 && f.y + f.h <= 135), JSON.stringify(result.after));
+});
