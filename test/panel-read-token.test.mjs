@@ -47,6 +47,19 @@ test('coller mon jeton complet est refusé avec un message clair', () => {
   assert.match(readTokenProblem({ ...ok, readable: false }), /ne peut pas lire ce projet/);
 });
 
+// Review #556: a classic token with delete_repo, workflow or admin:* but no repo scope answers the probes like a
+// read-only one. GitHub lists a classic token's scopes in x-oauth-scopes (same rule as the chat server).
+test('a classic token with a scope other than read:* or user:email is refused', () => {
+  const ok = { status: 200, login: 'o', owner: 'o', readable: true, writable: false };
+  assert.equal(readTokenProblem({ ...ok, scopes: 'delete_repo, workflow' }), WRITABLE_TOKEN);
+  assert.equal(readTokenProblem({ ...ok, scopes: 'read:user, admin:org' }), WRITABLE_TOKEN);
+  assert.equal(readTokenProblem({ ...ok, scopes: 'repo' }), WRITABLE_TOKEN);
+  assert.equal(readTokenProblem({ ...ok, scopes: null }), null); // a fine-grained token sends no header
+  assert.equal(readTokenProblem({ ...ok, scopes: '' }), null);
+  assert.equal(readTokenProblem({ ...ok, scopes: 'read:user, read:org' }), null);
+  assert.equal(readTokenProblem({ ...ok, scopes: 'user:email,read:packages' }), null);
+});
+
 test('a conversation is stored as the server stored it', () => {
   const conv = newConversation('c1', 'Je peux exporter ?\nsuite', '2026-11-13T10:00:00Z');
   assert.deepEqual(conv, { id: 'c1', title: 'Je peux exporter ?', state: 'open', created: '2026-11-13T10:00:00Z', updated: '2026-11-13T10:00:00Z', messages: [] });

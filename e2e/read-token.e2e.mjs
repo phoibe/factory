@@ -43,6 +43,29 @@ test('coller mon jeton complet dans cette case est refusé avec un message clair
   });
 });
 
+// Review #556: a classic token with delete_repo answers the write probes like a read-only one; its scopes give it away.
+test('un jeton classique qui peut supprimer des projets est refusé et rien n\'est enregistré', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, scopes: { lecture: 'delete_repo' } }, async ({ page, url, chatCalls }) => {
+    await page.goto(url);
+    await agent(page);
+    await paste(page, 'lecture');
+    await page.getByText('Ce jeton peut modifier vos projets : créez-en un en lecture seule avec le bouton ci-dessus.').waitFor();
+    await card(page).waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), null);
+    assert.deepEqual(chatCalls, []);
+  });
+});
+
+test('un jeton classique en lecture seule (read:user) est accepté', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, scopes: { lecture: 'read:user, read:org' } }, async ({ page, url }) => {
+    await page.goto(url);
+    await agent(page);
+    await paste(page, 'lecture');
+    await page.locator('#chat-input').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), 'lecture');
+  });
+});
+
 test('avec le jeton de lecture, une conversation fonctionne, est retrouvée après rechargement, et la demande proposée par l\'agent apparaît dans le tableau', async () => {
   const issues = [{ kind: 'feature', title: 'Exporter mes données', body: 'Il veut exporter.' }];
   await withPanel({ chatServer: { answer: 'Non, pas encore.', issues }, readToken: false }, async ({ page, url, chatCalls, writes }) => {

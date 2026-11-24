@@ -143,3 +143,39 @@ test('mon propre choix sur une carte ne compte pas comme une nouvelle réponse d
     assert.equal(seen, 2);
   });
 });
+
+// Review #556, finding 10: the request is made, then its choice cannot be written in the conversation. After a
+// reload the card must still say « Créée » with its link (never a second « Créer cette demande »), and the choice is
+// written at a later refresh.
+test('une demande créée dont le choix n\'a pas pu être enregistré reste « Créée » après un rechargement, puis est enregistrée', async () => {
+  const failing = new Set();
+  await withPanel({ chatServer: { answer: 'Voici.', issues: [proposal] }, failing }, async ({ page, url, writes }) => {
+    const card = await ask(page, url, 'Je peux exporter ?');
+    await card.getByRole('button', { name: 'Créer cette demande' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    const file = writes.find((w) => /\/contents\/chats\/.+\.json$/.test(w.path)).path;
+    failing.add(file); // the network drops on the record
+    await card.getByRole('button', { name: 'Créer cette demande' }).click();
+    await page.getByText('Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.').waitFor();
+    const link = await card.getByRole('link', { name: /Voir la demande/ }).getAttribute('href');
+    const open = async () => {
+      await page.reload();
+      await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+      await page.locator('.conv', { hasText: 'Je peux exporter ?' }).click();
+      const again = page.locator('.proposal', { hasText: proposal.title });
+      await again.getByText('Créée').waitFor();
+      assert.equal(await again.getByRole('link', { name: /Voir la demande/ }).getAttribute('href'), link);
+      assert.equal(await again.getByRole('button', { name: 'Créer cette demande' }).count(), 0);
+    };
+    await open(); // still not recorded
+    failing.delete(file);
+    const tries = writes.filter((w) => w.path === file).length;
+    await open(); // the refresh records it
+    const recorded = () => writes.filter((w) => w.path === file).slice(tries).map((w) => JSON.parse(Buffer.from(w.body.content, 'base64').toString()))
+      .some((c) => c.messages.flatMap((m) => m.proposals || []).some((p) => p.state === 'created' && p.url === link));
+    for (let i = 0; i < 100 && !recorded(); i++) await page.waitForTimeout(100);
+    assert.ok(recorded(), 'the choice is written in the conversation');
+    await page.waitForFunction(() => !Object.keys(localStorage).some((k) => k.startsWith('factory.chat.created.')));
+    assert.equal(created(writes).filter((w) => w.ok).length, 1, 'one request only');
+  });
+});

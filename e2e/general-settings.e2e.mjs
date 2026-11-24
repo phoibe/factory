@@ -176,3 +176,89 @@ test('sur téléphone le focus revient sur « Plus » quand le bouton du haut es
     assert.equal(await page.evaluate(() => document.activeElement?.tagName + ':' + document.activeElement?.parentElement?.id), 'SUMMARY:more');
   });
 });
+
+// Review #556, finding 1: GitHub lets the browser keep the settings 60 s; the second save must send the sha the first
+// one left, and the reopened page must show what was saved. (Playwright's routing bypasses the HTTP cache: the unit
+// test in test/panel-machine.test.mjs pins the no-store read; this one guards the journey.)
+test('deux enregistrements de suite passent et la page rouverte montre le dernier', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    const file = { text: JSON.stringify({ machine: 'dev-server' }), n: 1 };
+    const puts = [];
+    await page.route('https://api.github.com/repos/phoibe/factory/contents/settings.json**', async (route) => {
+      const req = route.request();
+      const headers = { 'cache-control': 'private, max-age=60, s-maxage=60' };
+      if (req.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ content: Buffer.from(file.text).toString('base64'), encoding: 'base64', sha: `v${file.n}` }) });
+      const body = req.postDataJSON();
+      puts.push(body.sha);
+      if (body.sha !== `v${file.n}`) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'sha mismatch' }) });
+      file.text = Buffer.from(body.content, 'base64').toString('utf8');
+      file.n += 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: `v${file.n}` } }) });
+    });
+    await openPage(page, url);
+    await page.getByRole('combobox', { name: 'Revue' }).selectOption('opus');
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText('Réglages généraux enregistrés', { exact: false }).waitFor({ timeout: 5000 });
+    await page.getByRole('combobox', { name: 'Revue' }).selectOption('haiku');
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.waitForFunction(() => document.querySelector('#general')?.textContent.includes('Tout est enregistré'), null, { timeout: 5000 });
+    assert.deepEqual(puts, ['v1', 'v2']);
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.getByRole('combobox', { name: 'Revue' }).inputValue(), 'haiku');
+  });
+});
+
+// Review #556, finding 4: the project list stays on screen beside the general page; a click on it must show the project.
+test('choisir un autre projet dans la liste ferme la page et montre son Suivi', async () => {
+  await withPanel({ repos: ['o/r', 'o/autre'], viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.locator('#projects .project-item', { hasText: 'autre' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#general-view').isVisible(), false);
+    const board = page.getByRole('tab', { name: 'Suivi' });
+    assert.equal(await board.isVisible(), true);
+    assert.equal(await board.getAttribute('aria-selected'), 'true');
+    assert.equal(await page.getByRole('heading', { level: 1, name: 'autre' }).count(), 1);
+  });
+});
+
+// Review #556, finding 5: the read can take seconds on a phone; nothing showed it, and it applied after a logout.
+const slowSettings = { slowReads: [[/\/repos\/phoibe\/factory\/contents\/settings\.json/, 2500]], viewport: { width: 1280, height: 800 } };
+test('le bouton Réglages généraux montre tout de suite qu\'il charge', async () => {
+  await withPanel(slowSettings, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    const button = page.locator('#general-open');
+    await button.click();
+    assert.equal(await button.getAttribute('aria-busy'), 'true');
+    assert.equal(await button.isDisabled(), true);
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await button.getAttribute('aria-busy'), null);
+    assert.equal(await button.isDisabled(), false);
+    assert.equal(await button.textContent(), 'Réglages généraux');
+  });
+});
+
+test('se déconnecter pendant la lecture garde la connexion, et la connexion suivante ouvre le Suivi', async () => {
+  await withPanel(slowSettings, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.locator('#general-open').click();
+    await page.getByRole('button', { name: 'Se déconnecter' }).click();
+    const login = page.getByRole('heading', { name: 'Connectez le panneau à GitHub' });
+    await login.waitFor();
+    await page.waitForTimeout(3000); // the late answer arrives
+    assert.equal(await login.isVisible(), true);
+    await page.locator('#token').fill('test');
+    await page.getByRole('button', { name: 'Se connecter' }).click();
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).isVisible(), false);
+    assert.equal(await page.getByRole('tab', { name: 'Suivi' }).getAttribute('aria-selected'), 'true');
+  });
+});
