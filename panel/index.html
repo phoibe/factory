@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=59">
+  <link rel="stylesheet" href="style.css?v=60">
 </head>
 <body>
   <header class="top">
@@ -17,6 +17,7 @@
       <a class="button ghost" data-menu href="https://github.com/phoibe/factory/releases/download/outils/factory-outils.zip">Outils Mac</a>
       <button id="stable" data-menu class="ghost" type="button" hidden>Déclarer stable</button>
       <button id="phone-open" data-menu class="ghost" type="button">Sur mon téléphone</button>
+      <button id="general-open" data-menu class="ghost" type="button">Réglages généraux</button>
       <button id="logout" data-menu class="ghost" type="button">Se déconnecter</button>
     </nav>
   </header>
@@ -104,6 +105,11 @@
         </section>
       </div>
       <div id="rules-panel" role="tabpanel" aria-labelledby="tab-rules" hidden><form id="rules"></form></div>
+      <section id="general-view" aria-labelledby="general-title" hidden>
+        <button id="general-back" type="button" class="link-button">← Retour au projet</button>
+        <h1 id="general-title" class="general-title">Réglages généraux</h1>
+        <form id="general"></form>
+      </section>
     </section>
   </main>
   <aside id="projects" class="projects" aria-labelledby="projects-title" hidden>

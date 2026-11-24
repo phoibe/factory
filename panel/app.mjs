@@ -18,6 +18,7 @@ import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FIL
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
 import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs?v=2';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
+import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=6';
 
@@ -140,6 +141,8 @@ const PHONE = '(max-width: 600px)';
 
 function show(id) {
   for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
+  if (id !== 'project-view') closeGeneral();
+  $('general-open').hidden = id !== 'project-view'; // the page lives inside the project screen
   $('nav').hidden = id === 'login';
   // The project list shows with a project only (none to choose from on the empty screen).
   $('projects').hidden = id !== 'project-view';
@@ -1345,12 +1348,6 @@ function machineFieldset(update, line) {
       ...machineRadios('machine-project', [['default', `Comme le réglage de tous les projets (${generalName})`], ...MACHINE_CHOICES], c.machine || 'default', (v) => update(setPath(c, 'machine', v)))));
 }
 
-// The general machine, used by every project left on « Comme le réglage de tous les projets ».
-function generalMachineFieldset() {
-  return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches par défaut'),
-    ...machineRadios('machine-general', MACHINE_CHOICES, machine.general, (v) => { machine.general = v; renderRules(); }));
-}
-
 // A part of the settings: this project only, or every project.
 function rulesSection(id, title, children) {
   return el('section', { class: 'rules-section', 'aria-labelledby': id },
@@ -1358,8 +1355,8 @@ function rulesSection(id, title, children) {
     ...children);
 }
 
-// Writes the general setting on the factory's branch (created if it does not exist yet).
-async function writeGeneral() {
+// Writes the general settings (machine and models) on the factory's branch (created if it does not exist yet).
+async function writeGeneral({ machine: choice, models }) {
   if (!(await api(`/repos/${FACTORY_REPO}/branches/${RUNNERS_BRANCH}`).catch(() => null))) {
     const tree = await api(`/repos/${FACTORY_REPO}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
       { path: 'README.md', mode: '100644', type: 'blob', content: 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' },
@@ -1368,15 +1365,69 @@ async function writeGeneral() {
     await api(`/repos/${FACTORY_REPO}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${RUNNERS_BRANCH}`, sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
   }
   const fresh = await runnersFile('settings.json');
-  // Keeps what changed there since the page loaded (runner labels): only the machine is written from here.
-  const body = JSON.stringify({ ...(fresh.json || machine.settings || {}), machine: machine.general }, null, 2) + '\n';
+  // Keeps what changed there since the page loaded (runner labels): only the machine and the models are written from here.
+  const body = JSON.stringify({ ...(fresh.json || machine.settings || {}), machine: choice, models }, null, 2) + '\n';
   const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
     method: 'PUT',
-    body: JSON.stringify({ message: 'chore(factory): machine setting from the panel', content: toBase64(body), branch: RUNNERS_BRANCH, ...(fresh.sha ? { sha: fresh.sha } : {}) }),
+    body: JSON.stringify({ message: 'chore(factory): general settings from the panel', content: toBase64(body), branch: RUNNERS_BRANCH, ...(fresh.sha ? { sha: fresh.sha } : {}) }),
   });
   machine.settings = JSON.parse(body);
   machine.sha = res?.content?.sha || null;
-  machine.savedGeneral = machine.general;
+  machine.general = machine.savedGeneral = choice;
+}
+
+// ---- « Réglages généraux » (issue #544): a page of its own, for every project ----------------------------------------
+// `saved` is what the factory's branch holds, as text, to know when something changed.
+const general = { machine: 'dev-server', models: {}, saved: '' };
+const generalValue = () => JSON.stringify({ machine: general.machine, models: general.models });
+const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 'dev-server', models: Object.fromEntries(MODEL_ROLES.map((r) => [r.id, roleModel(raw, r.id)])) });
+
+async function openGeneral() {
+  const settings = await runnersFile('settings.json');
+  Object.assign(general, generalFrom(settings.json));
+  general.saved = generalValue();
+  $('project-view').classList.add('on-general');
+  $('general-view').hidden = false;
+  renderGeneral();
+  $('general-back').focus();
+  window.scrollTo(0, 0);
+}
+function closeGeneral() {
+  $('project-view').classList.remove('on-general');
+  $('general-view').hidden = true;
+}
+
+function renderGeneral() {
+  const modelRows = MODEL_ROLES.map((r) => el('div', { class: 'row model-row' }, el('div', {},
+    el('label', { for: `model-${r.id}` }, r.name),
+    el('p', { id: `model-${r.id}-help` }, r.help),
+    el('select', { id: `model-${r.id}`, 'aria-describedby': `model-${r.id}-help`, onchange: (e) => { general.models[r.id] = e.target.value; renderGeneral(); } },
+      ...MODEL_FAMILIES.map((f) => el('option', { value: f.id, selected: general.models[r.id] === f.id }, familyLabel(f)))))));
+  const models = el('fieldset', {}, el('legend', {}, 'Modèles'), ...modelRows,
+    el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement tourne sur le modèle réglé dans la routine de chaque projet, sur claude.ai : la factory ne peut pas le changer. Pour le changer, ouvrez la routine du projet sur claude.ai et choisissez son modèle. Ce pilote confie toujours le plan et l’écriture du code aux agents des rôles ci-dessus, même pour une petite retouche.'));
+  const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
+    ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }));
+  const dirty = generalValue() !== general.saved;
+  $('general').replaceChildren(models, tasks, el('div', { class: 'savebar' },
+    el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
+    el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')));
+}
+
+let savingGeneral = false;
+async function saveGeneral(e) {
+  e.preventDefault();
+  if (savingGeneral) return;
+  savingGeneral = true;
+  try {
+    const machineChanged = general.machine !== JSON.parse(general.saved).machine;
+    await writeGeneral({ machine: general.machine, models: general.models });
+    general.saved = generalValue();
+    // The dev server check applies the change now instead of at its next run (15 minutes at most).
+    if (machineChanged) api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
+    renderGeneral();
+    if (current) renderRules();
+    toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
+  } finally { savingGeneral = false; }
 }
 
 function renderRules() {
@@ -1455,7 +1506,7 @@ function renderRules() {
             checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
             el('label', { for: `skill-${s.id}` }, s.id))))));
   });
-  const dirty = JSON.stringify(c) !== current.saved || machine.general !== machine.savedGeneral;
+  const dirty = JSON.stringify(c) !== current.saved;
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
@@ -1475,10 +1526,9 @@ function renderRules() {
   const advanced = el('details', { class: 'advanced', open: wasOpen ?? store.get(ADVANCED_KEY) === 'open',
     ontoggle: (e) => { if (e.target.open) store.set(ADVANCED_KEY, 'open'); else store.del(ADVANCED_KEY); } },
     el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
-    machineFieldset(update, line), engine, checks, extras, ...packs,
-    el('section', { class: 'rules-all', 'aria-labelledby': 'rules-all' },
-      el('h3', { id: 'rules-all', class: 'rules-all-title' }, 'Tous les projets'),
-      generalMachineFieldset()));
+    machineFieldset(update, line),
+    el('p', { class: 'rules-more' }, el('button', { type: 'button', class: 'link-button', onclick: () => openGeneral().catch((err) => toast(errorText(err))) }, 'Changer le réglage de tous les projets')),
+    engine, checks, extras, ...packs);
   form.replaceChildren(
     rulesSection('rules-project', `Ce projet : ${name}`, [production, site, stages, parallel, ...alert, advanced]),
     bar);
@@ -1525,10 +1575,8 @@ async function saveRules(e) {
 }
 async function writeRules() {
   const projectDirty = JSON.stringify(current.config) !== current.saved;
-  const generalDirty = machine.general !== machine.savedGeneral;
-  const machineChanged = generalDirty || current.config.machine !== JSON.parse(current.saved || '{}').machine;
+  const machineChanged = current.config.machine !== JSON.parse(current.saved || '{}').machine;
   const wasMode = effectiveProduction(JSON.parse(current.saved || '{}'), current.delivery);
-  if (generalDirty) await writeGeneral();
   if (projectDirty) await writeProjectRules();
   const released = projectDirty ? await productionModeChanged(wasMode, effectiveProduction(current.config, current.delivery)) : 0;
   // The dev server check applies the change now instead of at its next run (15 minutes at most).
@@ -3311,6 +3359,9 @@ $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard
 // The arrow keys of the tab list click from code (untrusted): the keyboard stays on the tabs (WAI-ARIA tabs pattern).
 $('tab-chat').addEventListener('click', (e) => selectTab('chat', e.isTrusted));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
+$('general-open').addEventListener('click', () => openGeneral().catch((err) => toast(errorText(err))));
+$('general-back').addEventListener('click', closeGeneral);
+$('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
 

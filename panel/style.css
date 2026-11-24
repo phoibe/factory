@@ -643,8 +643,19 @@ details.advanced > summary:focus-visible { outline: 2px solid var(--text); outli
 details.advanced[open] > summary .advanced-summary { display: none; }
 /* Open, its group titles a touch lighter than the bold default. */
 details.advanced fieldset > legend { font-weight: 600; }
-.rules-all { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
-.rules-all-title { margin: 0 0 16px; font-size: 1.125rem; font-weight: 600; }
+/* ---- Réglages généraux (issue #544): a page of its own, in place of the project's header, tabs and panels ---- */
+#project-view.on-general > :not(#general-view) { display: none; }
+.link-button { min-height: 44px; padding: 0; border: none; background: none; color: var(--text); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-button:hover { border: none; }
+.link-button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+.general-title { margin: 8px 0 24px; }
+#general { padding-bottom: 8px; }
+.model-row > div { flex: 1 1 auto; min-width: 0; }
+.model-row label { padding-bottom: 0; }
+.model-row p { margin: 0 0 8px; }
+.model-row select { width: 100%; max-width: 420px; }
+.models-note { margin: 12px 0 0; color: var(--muted); font-size: .8125rem; max-width: 65ch; }
+.rules-more { margin: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { details.advanced > summary::before { transition: none; } }
 
 /* ---- Agent tab, issue #460: a comfortable reading column, images enlarged on click ---- */
