@@ -85,7 +85,15 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   }
   // A 5xx still there after the retries is GitHub's outage, not a refused call.
   const down = (status, e) => (status >= 500 ? markGitHubDown(e) : e);
-  async function request(method, path, body, accept = 'application/vnd.github+json') {
+  // The check of the run's turn on the queue lock (`queueLock.guard`, set by withLock while it holds the lock): once the
+  // turn is lost, no write leaves this client. Every write goes through `request`, so none can be forgotten.
+  let turnCheck = null;
+  const assertTurn = () => { turnCheck?.(); };
+  async function request(method, path, body, accept) {
+    if (method !== 'GET') assertTurn();
+    return call(method, path, body, accept);
+  }
+  async function call(method, path, body, accept = 'application/vnd.github+json') {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
       headers: {
@@ -125,27 +133,30 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   let mine = null; // sha of the lock commit this run created (moved forward by each sign of life)
   let tree = null; // the lock's content, reused by the signs of life
   let seen = null; // sha of the lock commit last seen held by someone else
-  const lockSha = async () => (await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
+  const lockSha = async () => (await call('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
   const dropIf = async (sha) => {
     // The refs API has no compare-and-delete: check, then delete (a narrow window, far better than none).
     if (!sha || (await lockSha()) !== sha) return;
-    try { await request('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+    try { await call('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
   };
   const lockDate = { sha: null, at: 0 };
+  // The lock's own calls are not guarded: a late sign of life may still save the turn, and whether to give the lock
+  // back is decided by withLock (it never does once the turn is lost).
   const queueLock = {
+    guard: (check) => { turnCheck = check || null; },
     async acquire() {
       seen = await lockSha();
       if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
-      tree = (await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
-      try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
+      tree = (await call('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
+      const commit = await call('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
+      try { await call('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
       catch (e) { if (String(e).includes('422')) return false; throw e; }
     },
     async ageMs() {
       if (!seen) return null;
       // A commit never changes: its date is read once per lock commit, not at every poll of a waiting run.
       if (lockDate.sha !== seen) {
-        const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
+        const commit = await call('GET', `/repos/{repo}/git/commits/${seen}`);
         if (!commit) return null;
         Object.assign(lockDate, { sha: seen, at: Date.parse(commit.committer.date) });
       }
@@ -157,9 +168,9 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async refresh() {
       const held = mine;
       if (!held) return false;
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      const commit = await call('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
       let moved = true;
-      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      try { await call('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
       catch (e) {
         if (!/422/.test(String(e))) throw e;
         // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
@@ -195,6 +206,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   return {
     usage: () => structuredClone(use),
     queueLock,
+    assertTurn,
     getState,
     setState,
     request,
