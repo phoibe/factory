@@ -2604,20 +2604,23 @@ async function refreshChat() {
 // Review #556: a request created here whose choice could not be written in its conversation is written at a later
 // refresh. A card decided meanwhile (another device), or gone, only drops the mark: the request exists either way.
 async function recordCreated() {
-  const marks = chat.created, repo = chat.repo, server = chat.server;
+  const marks = chat.created, repo = chat.repo, server = chat.server, later = chat.later;
   const todo = marks.entries().filter(([key]) => !chat.deciding.has(key) && !decidingAnywhere.has(flightKey(repo, key)));
   if (!todo.length || chat.recording) return;
   chat.recording = true;
+  let recorded = false;
   try {
     for (const [key, { url }] of todo) {
       const cut = key.lastIndexOf(':');
       const open = key.slice(0, cut), id = key.slice(cut + 1);
       try {
+        let wrote = !server;
         if (server) {
           const path = `chats/${open}.json`;
           const { data } = await chatFile(repo, path);
           const card = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);
           if (card?.state === 'pending') {
+            wrote = true;
             await writeChatFile(repo, path, (latest) => {
               if (!latest || !decideProposal(latest, id, 'created', url)) throw new Error('not recorded');
               return latest;
@@ -2632,11 +2635,18 @@ async function recordCreated() {
           }
         }
         marks.delete(key);
-      } catch { /* tried again at the next refresh */ }
+        // Recorded now: the conversation is put away once its agent is done, as after a click (finishWhenDone).
+        if (wrote) { later.set(server ? open : Number(open), FINISHED_SAID); recorded = true; }
+      } catch (e) {
+        // Gone, or locked: it will never pass. The request exists either way (review #556).
+        if (e?.status === 404 || e?.status === 410 || (e?.status === 403 && /locked/i.test(e.githubMessage || ''))) marks.delete(key);
+        /* otherwise tried again at the next refresh */
+      }
     }
   } finally {
     chat.recording = false;
   }
+  if (recorded && chat.repo === repo) await finishWhenDone();
 }
 
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
