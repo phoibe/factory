@@ -2416,7 +2416,20 @@ function readTokenRefused(message) {
   store.del(READ_TOKEN_KEY);
   readToken = null;
   drawReadTokenCard();
-  $('read-token-error').textContent = message;
+  showReadTokenError(message);
+}
+
+// Shows a refusal on the read-token card, never breaking a line at the hyphen of « ci-dessus » or « créez-en », nor
+// leaving a « : » alone at the start of a line (issue #558).
+function showReadTokenError(message) {
+  const parts = String(message || '').split(/(\S*-\S+|\S+ [:;!?])/).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const span = document.createElement('span');
+    span.className = 'nowrap';
+    span.textContent = part;
+    return span;
+  });
+  $('read-token-error').replaceChildren(...parts.filter((part) => part !== ''));
 }
 
 // Checks a pasted read token with GitHub: it is a fine-grained one, belongs to the owner, reads the project, and cannot
@@ -2454,7 +2467,7 @@ $('read-token-form').addEventListener('submit', async (e) => {
   if (!value || !current) return;
   const btn = $('read-token-save');
   const field = $('read-token');
-  const fail = (message) => { $('read-token-error').textContent = message; field.setAttribute('aria-invalid', 'true'); field.focus(); };
+  const fail = (message) => { showReadTokenError(message); field.setAttribute('aria-invalid', 'true'); field.focus(); };
   btn.disabled = true;
   btn.textContent = 'Vérification…';
   $('read-token-form').setAttribute('aria-busy', 'true');
