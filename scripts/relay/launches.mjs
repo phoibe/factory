@@ -11,6 +11,8 @@ import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, 
 import { resolveModels } from '../lib/models.mjs';
 import { PROJECT_WORKFLOW, prIssue, say, names, linkedIssue } from './shared.mjs';
 
+// The factory's own repository: its instructions for the agent, and the owner's settings on its factory-runners branch.
+export const FACTORY_REPO = 'phoibe/factory';
 export const ROUTINE_TIMEOUT_MS = 60_000;
 
 export function launchesPart(ctx) {
@@ -32,12 +34,14 @@ export function launchesPart(ctx) {
       attachments = await mirrorAttachments({ gh, fetchImpl, numbers: [issue, pr], owner: repo.split('/')[0], isPr: (n) => n === pr, log });
     } catch (e) { log(`attachments: ${e.message}`); }
     // The models chosen once by the owner for every project (issue #544); a failed read never stops a launch.
+    // No file yet (the owner never saved a choice) is the usual case, not a problem: the defaults, silently. A rate
+    // limit is not rethrown here: factory:running is already on the cards, and a launch with the defaults is better.
     let settings = null;
     try {
-      const file = await gh.request('GET', '/repos/phoibe/factory/contents/settings.json?ref=factory-runners');
-      settings = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+      const file = await gh.request('GET', `/repos/${FACTORY_REPO}/contents/settings.json?ref=factory-runners`);
+      if (file) settings = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
     } catch (e) { log(`models settings not read (${String(e.message || e).slice(0, 80)})`); }
-    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', models: resolveModels(settings), ...(attachments.length ? { attachments } : {}), ...extra };
+    const payload = { repo, issue, pr: pr || null, stage, factory: FACTORY_REPO, models: resolveModels(settings), ...(attachments.length ? { attachments } : {}), ...extra };
     log(`fire ${stage} ${JSON.stringify(payload)}`);
     const fail = async (message, error) => {
       for (const n of targets) await gh.removeLabel(n, L.running);
