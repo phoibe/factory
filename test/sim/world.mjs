@@ -40,6 +40,7 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
   const get = (n) => items.get(Number(n));
   const asIssue = (i) => ({
     number: i.number, title: i.title, body: i.body, state: i.open ? 'open' : 'closed', created_at: i.created_at, updated_at: i.updated_at,
+    user: { login: i.author || OWNER },
     labels: i.labels.map((name) => ({ name })), ...(i.pr ? { pull_request: {} } : {}),
   });
   const asPr = (i) => ({
@@ -86,7 +87,7 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
   }
   function openIssue(actor, { title, body = '', labels = [] }) {
     const n = ++num;
-    const i = { number: n, title, body, labels: [...labels], open: true, comments: [], events: [], created_at: iso(), updated_at: iso() };
+    const i = { number: n, title, body, labels: [...labels], open: true, comments: [], events: [], created_at: iso(), updated_at: iso(), author: sender(actor).login };
     items.set(n, i);
     emit(actor, 'issues', { action: 'opened', issue: asIssue(i) });
     // An issue form with labels also sends « labeled », which the relay must not start twice.

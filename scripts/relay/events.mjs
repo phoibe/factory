@@ -48,6 +48,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
       text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      fromApp: p.comment?.user?.login === 'claude[bot]',
     };
   }
   if (eventName === 'pull_request_review') {
@@ -56,6 +57,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
       text: body, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.review?.user?.login === owner,
+      fromApp: p.review?.user?.login === 'claude[bot]',
     };
   }
   if (eventName === 'pull_request') {
@@ -67,6 +69,10 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
 }
 
+// A comment or review written by neither the owner nor the Claude app (the agent writes as one of them): on a public
+// project anyone can write one. It decides nothing (decide.mjs), so it takes neither the queue lock (relay.mjs) nor a
+// relay pass: the tick does the guard work. Its text is not looked at: the agent's marker can be copied.
+export const strangerMessage = (ev) => ['issue_comment', 'pull_request_review'].includes(ev?.event) && !ev.fromOwner && !ev.fromApp;
 
 export function eventsPart(ctx) {
   const { gh, repo, config, now, log, sleep, outputs } = ctx;
@@ -75,6 +81,7 @@ export function eventsPart(ctx) {
   const postedCaptures = (...a) => ctx.postedCaptures(...a);
   const inFlight = (...a) => ctx.inFlight(...a);
   const lockFresh = (...a) => ctx.lockFresh(...a);
+  const fromFork = (...a) => ctx.fromFork(...a);
   const launch = (...a) => ctx.launch(...a);
   const relaunchOnMessage = (...a) => ctx.relaunchOnMessage(...a);
   const fireOrBlock = (...a) => ctx.fireOrBlock(...a);
@@ -223,6 +230,7 @@ export function eventsPart(ctx) {
   }
 
   async function handle(ev, { ownerLogin } = {}) {
+    if (strangerMessage(ev)) return { action: { type: 'ignore', reason: "message de quelqu'un d'autre que le propriétaire" }, outputs };
     if (!['dispatch', 'preview-check', 'prod-check'].includes(ev.kind)) await repairLabels().catch((e) => log(`labels: ${e.message}`));
     const result = await handleEvent(ev, { ownerLogin });
     // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to
@@ -241,6 +249,8 @@ export function eventsPart(ctx) {
 
   async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
+      // A « Run workflow » with no payload: nothing to give the agent, so no agent job.
+      if (!ev.payload) return { action: { type: 'ignore', reason: 'rien à lancer' }, outputs };
       outputs.agent = 'true';
       outputs.payload = toJobOutput(ev.payload); // hex, see job-output.mjs
       return { action: { type: 'agent' }, outputs };
@@ -467,9 +477,12 @@ export function eventsPart(ctx) {
   // `preview`: the result of the preview check ({ result: passed|failed|skipped, url }) when this report follows it.
   // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213); 'server' when the
   // project's own machine was away (a check that only runs there).
-  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
+  // `fromTick`: made again by the tick (reportLost), so no report job follows to start the first retry after an outage.
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false, fromTick = false }) {
     let pr = await gh.getPr(prNumber);
     if (!pr) return log(`report: PR #${prNumber} no longer exists`);
+    // A PR from a fork is never the factory's: none of the notes in its description is read, nothing is merged.
+    if (fromFork(pr)) return log(`report: PR #${prNumber} comes from a fork, left alone`);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
@@ -494,7 +507,7 @@ export function eventsPart(ctx) {
     }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
-    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
+    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient, { fromTick });
     // Any other result ends the outage: a later one starts a new schedule.
     if (readOutage(pr.body)) {
       pr = { ...pr, body: writeOutage(pr.body, null) };
@@ -608,12 +621,16 @@ export function eventsPart(ctx) {
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
   // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
   // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
-  async function onOutage(pr, nowMs, cause) {
+  // From the tick (`fromTick`), no report job follows: the first retry is left to the tick itself (retryOutages), due
+  // after the same short delay instead of the margin kept for a retry the report job would start.
+  async function onOutage(pr, nowMs, cause, { fromTick = false } = {}) {
     const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
     let st = step.state;
     const server = cause === 'server' || (cause === true && st.server);
     if (server) st = { ...st, server: true };
-    if (step.retryInMs) {
+    if (step.retryInMs && fromTick) {
+      st = { ...st, next: nowMs + step.retryInMs };
+    } else if (step.retryInMs) {
       st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };
       outputs.retryInMs = step.retryInMs;
     }

@@ -3,6 +3,8 @@
 export const ATTACHMENTS_BRANCH = 'factory-attachments';
 const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
+// A download that hangs must not hold the agent's launch (and the relay's queue lock): it is skipped after this long.
+export const DOWNLOAD_TIMEOUT_MS = 60_000;
 const IMAGE_HOST = /^https:\/\/(private-user-images|user-images)\.githubusercontent\.com\//;
 
 const BRANCH_FILES = {
@@ -62,7 +64,7 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
     if (!url) { paths.push(path); continue; } // sent from the panel: already there
     try {
       if (!(await gh.getContent(path, ATTACHMENTS_BRANCH))) {
-        const res = await fetchImpl(url);
+        const res = await fetchImpl(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
         if (!res.ok) throw new Error(`download ${res.status}`);
         const bytes = Buffer.from(await res.arrayBuffer());
         if (bytes.length > MAX_BYTES) throw new Error('too big');

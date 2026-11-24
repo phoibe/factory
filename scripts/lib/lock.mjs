@@ -9,6 +9,11 @@ export const LOCK_BEAT_MS = 60_000;
 export const LOCK_TTL_MS = 4 * 60_000; // four missed signs of life: the holder is gone
 export const LOCK_WAIT_MS = 13 * 60_000; // under the jobs' timeout (15 minutes), and past the TTL so a dead lock is taken over
 
+// A run that waited its whole time for the lock did nothing wrong, only too late: the relay ends it on the step the
+// tick re-runs (relay.mjs, retriedLater), so that its event is replayed instead of lost.
+export const isLockTimeout = (e) => Boolean(e?.lockTimeout);
+const lockTimeout = () => Object.assign(new Error('queue lock: waited too long'), { lockTimeout: true });
+
 const everyMs = (fn, ms) => { const id = setInterval(fn, ms); return () => clearInterval(id); };
 
 export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_WAIT_MS, pollMs = 4000, beatMs = LOCK_BEAT_MS,
@@ -16,7 +21,7 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
   const start = now();
   while (!(await store.acquire())) {
     const age = await store.ageMs();
-    if (now() - start > waitMs) throw new Error('queue lock: waited too long');
+    if (now() - start > waitMs) throw lockTimeout();
     if (age !== null && age > ttlMs) { await store.takeOver(); if (await store.acquire()) break; } // one immediate try, then the usual wait
     await sleep(pollMs + Math.floor(Math.random() * 500));
   }

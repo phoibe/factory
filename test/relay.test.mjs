@@ -231,6 +231,15 @@ test('the dispatched run hands the payload to the agent job', async () => {
   assert.equal(fromJobOutput(outputs.payload), '{"stage":"build"}');
 });
 
+test('a manual run with no payload starts no agent job', async () => {
+  for (const payload of ['', undefined]) {
+    const relay = createRelay({ gh: fakeGh({ issues: [], prs: [] }), repo: 'r', config, env, log: quiet });
+    const { action, outputs } = await relay.handle({ kind: 'dispatch', payload });
+    assert.notEqual(outputs.agent, 'true', String(payload));
+    assert.equal(action.type, 'ignore');
+  }
+});
+
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
   const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
@@ -790,8 +799,8 @@ test('any event unsticks a PR opened in conflict, without waiting for the rare s
 test('a « go » that ends the questions of a picked feature lets the next feature start in the same run', async () => {
   // yoldmewhen2, 2026-11-06: #39 left its questions, 4 places were free, and #40 waited hours for the scheduled tick.
   const gh = fakeGh({ issues: [
-    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], created_at: '2026-01-01T00:00:00Z' },
-    { number: 40, labels: [L.feature], created_at: '2026-01-02T00:00:00Z' },
+    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], user: { login: 'phoibe' }, created_at: '2026-01-01T00:00:00Z' },
+    { number: 40, labels: [L.feature], user: { login: 'phoibe' }, created_at: '2026-01-02T00:00:00Z' },
   ], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 5, autoPick: true, maxQuestions: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -803,7 +812,7 @@ test('any event starts a queued card when a place is free, without waiting for t
   const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }, { number: 8, labels: [L.feature, L.queued] }], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 8 && payloadOf(s.init.body).stage === 'build'));
 });
 
@@ -817,11 +826,11 @@ test('a tick checks the queue once, not twice', async () => {
 
 test('a factory label typed wrong by an agent is put back, so the card can be picked', async () => {
   // yoldmewhen2 #55, 2026-11-06: « une semaine à la fois:factory:feature » hid the feature from the factory.
-  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], created_at: '2026-01-01T00:00:00Z' }], prs: [] };
+  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], user: { login: 'phoibe' }, created_at: '2026-01-01T00:00:00Z' }], prs: [] };
   const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
-  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromAgent: true });
+  await relay.handle({ kind: 'issue', event: 'issue_comment', action: 'created', number: 99, labels: [], text: 'x', fromOwner: false, fromApp: true, fromAgent: true });
   assert.ok(state.issues[0].labels.includes(L.feature));
   assert.ok(!state.issues[0].labels.includes('une semaine à la fois:factory:feature'));
   assert.ok(sent.some((s) => payloadOf(s.init.body).issue === 55));
@@ -851,7 +860,8 @@ async function runPick(issues, cfg = pickConfig) {
   const started = sent.map((s) => payloadOf(s.init.body));
   return { gh, started };
 }
-const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+// Opened by the owner: auto-pick never takes a stranger's issue.
+const fi = (number, ...labels) => ({ number, labels, user: { login: 'phoibe' }, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
 
 test('autoPick off: a free slot and an open issue start nothing', async () => {
   const { started } = await runPick([fi(1, L.feature)], { ...pickConfig, autoPick: false });
@@ -1983,6 +1993,39 @@ test('outage: a lost report of checks that failed on an outage is made again as 
   assert.ok(readOutage(pr.body), 'the outage is still followed');
 });
 
+// No report job follows a report made again by the tick: its first retry is the next tick's, about 2 minutes later,
+// not 47 (the margin kept for a retry the report job would have started itself).
+test('outage: a lost report made again by the tick plans its first retry for the next tick', async () => {
+  const { gh, pr, state } = outageWorld({ sha: 'abc', since: T, tries: 0, next: null });
+  state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
+  gh.checkRuns = async () => [
+    { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
+    { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
+  ];
+  const clock = { t: T + 15 * 60_000 };
+  const at = clock.t;
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => clock.t, log: quiet });
+  await relay.handle(tick);
+  const st = readOutage(pr.body);
+  assert.equal(st.tries, 0, 'no retry started yet');
+  assert.equal(st.next, at + 2 * 60_000);
+  const retries = () => gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length;
+  assert.equal(retries(), 0);
+  gh.checkRuns = async () => []; // the next tick finds no lost report any more
+  clock.t = at + 5 * 60_000;
+  await relay.handle(tick);
+  assert.equal(retries(), 1, 'the next tick starts it');
+  assert.equal(readOutage(pr.body).tries, 1);
+});
+
+test('outage: the report job\'s own first retry keeps the margin that stops the tick from starting it twice', async () => {
+  const { gh, pr } = outageWorld(null);
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  assert.equal(relay.outputs.retryInMs, 2 * 60_000);
+  assert.equal(readOutage(pr.body).next, T + 2 * 60_000 + 45 * 60_000);
+});
+
 test('outage: « réessaie » relaunches the checks even when the factory is full', async () => {
   const { gh, state } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
   state.issues.push({ number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building] });
@@ -2093,7 +2136,7 @@ test('an undo GitHub refuses to open: the redo card starts at once as a normal u
 });
 
 test('a relaunch finds the undo prepared but never opened: it opens it for the existing card, no second card', async () => {
-  const stuck = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
+  const stuck = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
   const issues = [stuck];
   const gh = undoSetup({ issues });
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur', git: () => '' });
@@ -2210,7 +2253,7 @@ test('a stuck card started without its undo says the delivery is still live (no 
 });
 
 test('a relaunch after a refused undo leaves alone the card already started: no undo, no second message', async () => {
-  const started = { number: 20, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
+  const started = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
   const issues = [started];
   const gh = undoSetup({ issues });
   const git = [];
@@ -2254,7 +2297,7 @@ test('any event brings a project whose agent instructions are behind the stable 
   // yoldmewhen2, 2026-11-06: the sync only ran on a config change or the rare tick, so its agents kept old rules.
   const { syncFingerprint } = await import('../scripts/lib/fingerprint.mjs');
   const synced = (fingerprint) => ({ content: Buffer.from(JSON.stringify({ fingerprint })).toString('base64') });
-  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromAgent: true };
+  const ev = { kind: 'issue', event: 'issue_comment', action: 'created', number: 7, labels: [L.feature, L.grilling], text: 'note', fromOwner: false, fromApp: true, fromAgent: true };
   for (const [fingerprint, expected] of [['old', true], [syncFingerprint('.'), false]]) {
     const gh = fakeGh({ issues: [{ number: 7, labels: [L.feature, L.grilling] }], prs: [] });
     gh.getContent = async (path) => (path === '.factory/synced.json' ? synced(fingerprint) : null);
