@@ -8,9 +8,9 @@ const now = new Date('2026-11-09T10:00:00Z');
 
 test('the journal records each sub-agent with its model, effort and task', () => {
   assert.deepEqual(entryFor({ hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { description: 'Relecture finale', model: 'opus', effort: 'high', prompt: 'long' } }, now),
-    { t: now.toISOString(), kind: 'agent', model: 'opus', effort: 'high', label: 'Relecture finale' });
+    { t: now.toISOString(), kind: 'agent', model: 'opus', effort: 'high', role: null, label: 'Relecture finale' });
   // Older Claude Code calls the tool Task; a call without a model inherits the session's.
-  assert.deepEqual(agentEntry({ tool_name: 'Task', tool_input: { description: 'Search' } }), { kind: 'agent', model: null, effort: null, label: 'Search' });
+  assert.deepEqual(agentEntry({ tool_name: 'Task', tool_input: { description: 'Search' } }), { kind: 'agent', model: null, effort: null, role: null, label: 'Search' });
   assert.equal(agentEntry({ tool_name: 'Bash', tool_input: {} }), null);
 });
 
@@ -19,7 +19,7 @@ test('the transcript fallback recovers the sub-agents too', () => {
     { type: 'user', timestamp: '1', message: { content: '{"repo":"o/r","issue":1,"pr":null,"stage":"build"}' } },
     { type: 'assistant', timestamp: '2', message: { content: [{ type: 'tool_use', id: 'x', name: 'Agent', input: { description: 'Tâche 1', model: 'sonnet', effort: 'medium' } }] } },
   ].map((o) => JSON.stringify(o));
-  assert.deepEqual(fromTranscript(lines)[1], { t: '2', kind: 'agent', model: 'sonnet', effort: 'medium', label: 'Tâche 1', id: 'x' });
+  assert.deepEqual(fromTranscript(lines)[1], { t: '2', kind: 'agent', model: 'sonnet', effort: 'medium', role: null, label: 'Tâche 1', id: 'x' });
 });
 
 test('model ids are grouped by family', () => {
@@ -64,7 +64,7 @@ const parallelJournal = (...lines) => [JSON.stringify({ t: '2026-11-15T10:00:00Z
 
 test('the journal marks a sub-agent working in its own copy', () => {
   assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: 'Tâche 2', model: 'sonnet', effort: 'medium', isolation: 'worktree' } }),
-    { kind: 'agent', model: 'sonnet', effort: 'medium', label: 'Tâche 2', copy: true });
+    { kind: 'agent', model: 'sonnet', effort: 'medium', role: null, label: 'Tâche 2', copy: true });
   assert.equal('copy' in agentEntry({ tool_name: 'Agent', tool_input: { description: 'Tâche 2', isolation: 'remote' } }), false);
   const lines = [
     { type: 'user', timestamp: '1', message: { content: '{"repo":"o/r","issue":1,"pr":null,"stage":"build"}' } },
@@ -106,7 +106,7 @@ test('without any task in its own copy, nothing about parallel tasks is shown', 
 // Review of #417: a sub-agent is stamped when it is launched (PreToolUse), not when a foreground one finishes.
 test('the journal stamps a sub-agent at launch, before it runs', async () => {
   assert.deepEqual(entryFor({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { description: 'Tâche 1', model: 'sonnet', isolation: 'worktree' } }, now),
-    { t: now.toISOString(), kind: 'agent', model: 'sonnet', effort: null, label: 'Tâche 1', copy: true });
+    { t: now.toISOString(), kind: 'agent', model: 'sonnet', effort: null, role: null, label: 'Tâche 1', copy: true });
   const { withJournalHook } = await import('../scripts/sync.mjs');
   const pre = withJournalHook({}).hooks.PreToolUse;
   assert.ok(pre.some((g) => /Agent/.test(g.matcher) && /journal\.mjs/.test(g.hooks[0].command)));
@@ -140,4 +140,41 @@ test('a task sent again later counts once, and tasks never launched together say
   assert.equal(parallelLine(runs), '**Tâches en parallèle** : 2 tâches construites chacune dans sa copie, lancées en 2 vagues (Tâche 1 + Tâche 2, puis Tâche 1), au plus 2 lancées ensemble');
   const apart = parseJournal([parallelJournal(...copies(['2026-11-15T10:01:00Z', 'A'], ['2026-11-15T10:05:00Z', 'B']))]);
   assert.equal(parallelLine(apart), '**Tâches en parallèle** : 2 tâches construites chacune dans sa copie, jamais lancées ensemble (A, puis B)');
+});
+
+// Issue #559: the pilot announces each sub-agent's role at launch, and the journal keeps it.
+test('the journal records the role announced at the start of the description', () => {
+  assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:plan:amont] Questions de la demande 12', model: 'fable' } }),
+    { kind: 'agent', model: 'fable', effort: null, role: 'plan', up: true, label: 'Questions de la demande 12' });
+  const code = agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:code] Tâche 2', isolation: 'worktree' } });
+  assert.equal(code.role, 'code');
+  assert.equal('up' in code, false);
+  assert.equal(code.label, 'Tâche 2');
+  assert.equal(code.copy, true);
+  const review = agentEntry({ tool_name: 'Agent', tool_input: { description: '[Role: Review : amont] x' } });
+  assert.equal(review.role, 'review');
+  assert.equal(review.up, true);
+  const chef = agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:chef] x' } });
+  assert.equal(chef.role, null);
+  assert.equal(chef.label, '[role:chef] x');
+  const none = agentEntry({ tool_name: 'Agent', tool_input: { description: 'Relecture' } });
+  assert.equal(none.role, null);
+  assert.equal(none.label, 'Relecture');
+});
+
+test('the transcript fallback recovers the announced role', () => {
+  const lines = [
+    { type: 'user', timestamp: '1', message: { content: '{"repo":"o/r","issue":1,"pr":null,"stage":"build"}' } },
+    { type: 'assistant', timestamp: '2', message: { content: [{ type: 'tool_use', id: 'z', name: 'Agent', input: { description: '[role:review:amont] Relais', model: 'fable' } }] } },
+  ].map((o) => JSON.stringify(o));
+  const a = fromTranscript(lines)[1];
+  assert.equal(a.role, 'review');
+  assert.equal(a.up, true);
+  assert.equal(a.id, 'z');
+  assert.equal(a.label, 'Relais');
+});
+
+test('the role tag does not change the « Sous-agents » line', () => {
+  const tagged = agentsLine(parseJournal([journal([{ model: 'sonnet', label: 'Tâche 2', role: 'code' }])]));
+  assert.equal(tagged, agentsLine(parseJournal([journal([{ model: 'sonnet', label: 'Tâche 2' }])])));
 });
