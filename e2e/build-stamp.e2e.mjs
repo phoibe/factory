@@ -9,6 +9,7 @@ import { withPanel, issue } from './fixture.mjs';
 import { buildSite } from '../scripts/stamp-panel.mjs';
 
 const B = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+const FRESH = ['/', '/version.json', '/chat-server.json'];
 
 const modules = (dir, base = '') => readdirSync(dir).flatMap((name) => {
   const p = join(dir, name);
@@ -33,11 +34,12 @@ test('le tableau de bord tel qu\'il sera publié démarre, et tous ses fichiers 
 
       assert.deepEqual(errors, []);
       assert.equal(await page.locator('meta[name="build"]').getAttribute('content'), B);
+      // Deny by default: every file of the site is asked for with the build, but the page itself, what must always be
+      // read fresh (version.json, chat-server.json) and the fonts and icons.
       for (const u of requested) {
-        if (/\.(mjs|js|css)$/.test(u.pathname) || ['/catalog.json', '/factory.config.json'].includes(u.pathname)) {
-          assert.equal(u.search, `?v=${B}`, `${u.pathname} is asked for without the build`);
-        }
-        if (/\.(woff2|svg|png)$/.test(u.pathname) || u.pathname === '/chat-server.json') assert.equal(u.search, '', `${u.pathname} is stamped`);
+        if (FRESH.includes(u.pathname)) continue;
+        if (/\.(woff2|svg|png)$/.test(u.pathname)) assert.equal(u.search, '', `${u.pathname} is stamped`);
+        else assert.equal(u.search, `?v=${B}`, `${u.pathname} is asked for without the build`);
       }
       const asked = requested.filter((u) => u.pathname.endsWith('.mjs'));
       const published = modules(root).sort();

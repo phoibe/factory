@@ -3,7 +3,7 @@
 // `?v=<commit sha>`, so a reloaded page never mixes two versions. Fonts and icons are left unstamped.
 // Usage: node scripts/stamp-panel.mjs <outDir> <sha>
 import { cpSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Files the panel reads next to itself, copied flat into the site.
@@ -23,16 +23,22 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** @param {string} build */
 export const isBuild = (build) => /^[0-9a-f]{7,40}$/.test(build);
 
-// `from './x.mjs'`, `import './x.mjs'`, `import('./x.mjs')`, with any existing query replaced.
-const SPECIFIER = /(\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.{1,2}\/[^'"?]+)(?:\?[^'"]*)?\2/g;
+// A relative module specifier, with any existing query replaced: `import … from './x.mjs'` and `export … from './x.mjs'`
+// at the start of a statement, a bare `import './x.mjs'`, and a dynamic `import('./x.mjs')`. A `from './x'` inside a
+// string is left alone.
+const STATIC = /^(\s*(?:import|export)\b[^;'"]*?\bfrom\s*|\s*import\s*)(['"])(\.{1,2}\/[^'"?]+)(?:\?[^'"]*)?\2/gm;
+const DYNAMIC = /(\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"?]+)(?:\?[^'"]*)?\2/g;
 
 /** @param {string} text @param {string} build */
 export function stampModule(text, build) {
-  return text.replace(SPECIFIER, (_, lead, q, path) => `${lead}${q}${path}?v=${build}${q}`);
+  /** @param {string} _ @param {string} lead @param {string} q @param {string} path */
+  const stamp = (_, lead, q, path) => `${lead}${q}${path}?v=${build}${q}`;
+  return text.replace(STATIC, stamp).replace(DYNAMIC, stamp);
 }
 
-// A local src/href (no scheme, no fragment) to a script or a stylesheet, with any existing query replaced.
-const LOCAL_ASSET = /\b(src|href)="([^"#?:]+\.(?:mjs|js|css))(?:\?[^"]*)?"/g;
+// A local src/href (no scheme, not protocol-relative, no fragment) to a script or a stylesheet, with any existing
+// query replaced.
+const LOCAL_ASSET = /\b(src|href)="(?!\/\/)([^"#?:]+\.(?:mjs|js|css))(?:\?[^"]*)?"/g;
 
 /** @param {string} html @param {string} build */
 export function stampHtml(html, build) {
@@ -51,7 +57,9 @@ function files(dir) {
 export function buildSite({ root = ROOT, out, build }) {
   if (!isBuild(build)) throw new Error(`Not a commit sha: "${build}"`);
   mkdirSync(out, { recursive: true });
-  cpSync(join(root, 'panel'), out, { recursive: true });
+  const panel = join(root, 'panel');
+  // The top-level dotfiles of the panel are not published, as `cp -r panel/*` did.
+  cpSync(panel, out, { recursive: true, filter: (src) => dirname(src) !== panel || !basename(src).startsWith('.') });
   for (const f of SHARED) cpSync(join(root, f), join(out, basename(f)));
   for (const f of files(out)) {
     if (f.endsWith('.mjs')) writeFileSync(f, stampModule(readFileSync(f, 'utf8'), build));

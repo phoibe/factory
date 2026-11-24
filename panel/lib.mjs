@@ -276,4 +276,4 @@ export const stableView = (cmp) => {
 export const isDeployed = (build) => /^[0-9a-f]{7,}$/.test(build);
 
 // A file the panel loads at run time, stamped with the build like everything published, so it never mixes two versions.
-export const versioned = (url, build) => (isDeployed(build) ? `${url}?v=${build}` : url);
+export const versioned = (url, build) => (isDeployed(build) ? `${url}${url.includes('?') ? '&' : '?'}v=${build}` : url);

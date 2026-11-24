@@ -355,3 +355,7 @@ test('versioned stamps a run-time load on a deployed panel only', () => {
   assert.equal(versioned('catalog.json', '__BUILD__'), 'catalog.json');
   assert.equal(versioned('catalog.json', ''), 'catalog.json');
 });
+
+test('versioned appends to a query the url already has', () => {
+  assert.equal(versioned('catalog.json?lang=fr', 'a1b2c3d'), 'catalog.json?lang=fr&v=a1b2c3d');
+});

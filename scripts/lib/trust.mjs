@@ -2,7 +2,7 @@
 // project anyone can write a comment that carries them (issue #339), so only the notes of trusted authors count:
 // the owner, the people GitHub lists as the repository's collaborators or its organisation's members, and the
 // factory's own bots (the relay posts as github-actions[bot], the agent as the owner or as claude[bot]). Shared by
-// the relay and the panel (copied next to it by pages.yml).
+// the relay and the panel (copied next to it by SHARED in scripts/stamp-panel.mjs).
 const BOTS = ['github-actions[bot]', 'claude[bot]'];
 const ROLES = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 const NOTE = /<!--\s*factory-[\s\S]*?-->/g;
