@@ -430,6 +430,9 @@ button.go:disabled { opacity: .6; cursor: default; }
 @media (max-width: 600px) { .you-card { padding: 16px; margin-bottom: 32px; } }
 @media (max-width: 600px) {
   .top { position: static; }
+  /* The new-version strip (issue #572) is the bar's last row: the bar scrolls away with the page, the strip stays at
+     the top of the screen (--top-h and --new-version-h, measured by fitBanner in app.mjs). */
+  body:not(:has(#chat.viewing:not([hidden]))):has(.new-version:not([hidden])) .top { position: sticky; top: calc(var(--new-version-h, 0px) - var(--top-h, 0px)); }
   .actions .button { flex: 1 1 calc(50% - 8px); }
   .actions #new-feature { flex-basis: 100%; }
 }

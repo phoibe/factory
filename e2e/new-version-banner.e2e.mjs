@@ -287,3 +287,46 @@ test('sur téléphone, dans une conversation de l\'onglet Agent, le bandeau rest
     });
   }
 });
+
+// Phone, scrolled down: the bar is gone, the strip alone sits at the top of the screen.
+async function stripOnTop(page, label) {
+  await page.waitForFunction(() => Math.abs(document.getElementById('new-version').getBoundingClientRect().y) <= 1, null, { timeout: 2000 }).catch(() => {});
+  const strip = await page.locator('#new-version').boundingBox();
+  assert.ok(Math.abs(strip.y) <= 1, `${label} : bandeau à y=${strip.y}`);
+  const brand = await page.locator('.brand').boundingBox();
+  assert.ok(brand.y + brand.height <= 1, `${label} : la barre est encore là (bas à ${brand.y + brand.height})`);
+  assert.equal(await hitReload(page), true, `${label} : « Recharger » ne répond pas`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
+}
+const toBottom = (page) => page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+
+test('sur téléphone, le bandeau reste en haut de l\'écran quand on fait défiler', async () => {
+  await withPanel({ issues: board, viewport: phone }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    const nav = await page.locator('nav').boundingBox();
+    const before = await page.locator('#new-version').boundingBox();
+    assert.ok(before.y >= nav.y + nav.height - 1, `en haut de la page, le bandeau (${before.y}) est sous la barre (${nav.y + nav.height})`);
+    await toBottom(page);
+    await stripOnTop(page, 'Paramètres');
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.getByText('Plus', { exact: true }).click(); // on a phone the button is in « Plus »
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await toBottom(page);
+    await stripOnTop(page, 'Réglages généraux');
+  });
+  // The banner arrives while the owner is already far down the page.
+  await withPanel({ issues: board, viewport: phone }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await toBottom(page);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await stripOnTop(page, 'arrivé en bas de page');
+  });
+});

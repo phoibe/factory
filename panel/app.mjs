@@ -1785,7 +1785,7 @@ function fitChat() {
 }
 addEventListener('resize', fitChat);
 if ('ResizeObserver' in window) {
-  const watch = new ResizeObserver(() => fitChat());
+  const watch = new ResizeObserver(() => { fitChat(); fitBanner(); });
   for (const n of document.querySelectorAll('.top, .project-head, .tabs')) watch.observe(n);
 }
 
@@ -1801,10 +1801,12 @@ async function checkVersion() {
   $('new-version').hidden = false;
   fitBanner();
 }
-// The strip's height, for the phone rules that keep it above an open conversation (style.css).
+// The strip's and the bar's heights, for the phone rules that keep the strip on screen: above an open conversation,
+// and at the top of a scrolled page (style.css).
 function fitBanner() {
   const strip = $('new-version');
   document.documentElement.style.setProperty('--new-version-h', `${strip.hidden ? 0 : strip.getBoundingClientRect().height}px`);
+  document.documentElement.style.setProperty('--top-h', `${document.querySelector('.top').getBoundingClientRect().height}px`);
 }
 addEventListener('resize', fitBanner);
 if ('ResizeObserver' in window) new ResizeObserver(() => fitBanner()).observe($('new-version'));
