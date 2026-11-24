@@ -20,3 +20,8 @@
 {"t":"2026-11-24T15:55:12.805Z","kind":"test","cmd":"sed -i \"s/^3\\. Lis le fil de l'issue (et de la PR si \\`pr\\` est renseigné) avec/3. Lis l'issue et son fil (et ceux de la PR si \\`pr\\` est renseigné) avec/\" agent/AGENT.md && sed -n 23,25p agent/AGENT.","ok":false,"id":"toolu_013c7yie9jWVX5BaHLwtG6nD"}
 {"t":"2026-11-24T15:55:19.396Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… agent never follows an outsider, and asks the owner to say it again', () => {\n  const agent = generatedAgent();\n  assert.ok(agent.includes(OWNER_SENTENCE));\"\"\",\"\"\"// Mark","ok":true,"id":"toolu_0132nfyRbPK9fMyhNxWig7at"}
 {"t":"2026-11-24T15:56:15.109Z","kind":"test","cmd":"git add agent/AGENT.md agent/stages/question.md agent/stages/docs.md agent/stages/build.md agent/stages/fix-checks.md agent/stages/foundation.md agent/stages/framing.md agent/stages/stack.md test/thre","ok":true,"id":"toolu_01XYfiZV8HSdRZGezNpvZw2L"}
+{"t":"2026-11-24T15:57:44.086Z","kind":"skill","name":"requesting-code-review","id":"toolu_01265vnTUipEym5SccUgEfrM"}
+{"t":"2026-11-24T15:57:54.718Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Final review 565","id":"toolu_0175dSLvriN24AAXVnWf7S9t"}
+{"t":"2026-11-24T15:58:50.882Z","kind":"test","cmd":"git rev-parse HEAD && cat package.json | head -40 && (npm test 2>&1 | tail -25); git status --short","ok":true,"id":"toolu_01BTHaMtKG2rthqMDfG98KR9"}
+{"t":"2026-11-24T15:59:56.129Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T15:59:58.831Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
