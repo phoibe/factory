@@ -1294,8 +1294,8 @@ function runnersFiles() {
 }
 
 async function loadMachine(project) {
-  // Never the previous project's state while this one loads (or if it cannot be read).
-  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
+  // Never the previous project's state while this one loads (or if it cannot be read), nor a status held for it.
+  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name, held: null });
   await boardGate; // the board's cards first (review #556)
   if (current !== project) return;
   const [[settings, status], hash] = await Promise.all([runnersFiles(), repoKey(String(project.repo.id))]);
@@ -1498,7 +1498,7 @@ async function saveGeneral(e) {
 function renderRules() {
   const c = current.config;
   // Rebuilt anyway: a dev server status held back while the owner typed shows now.
-  if (machine.held && machine.repo === current.repo.full_name) { machine.status = machine.held; machine.held = null; }
+  if (machine.held && machine.hash && machine.repo === current.repo.full_name) { machine.status = machine.held; machine.held = null; }
   const update = (next) => { current.config = next; renderRules(); };
   const form = $('rules');
   const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
@@ -3505,7 +3505,7 @@ $('general-back').addEventListener('click', () => closeGeneral(true));
 $('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 // The focus left « Paramètres » (after the browser moved it): a dev server status held back meanwhile shows now.
 $('rules').addEventListener('focusout', () => setTimeout(() => {
-  if (!machine.held || !current || machine.repo !== current.repo.full_name || $('rules').contains(document.activeElement)) return;
+  if (!machine.held || !machine.hash || !current || machine.repo !== current.repo.full_name || $('rules').contains(document.activeElement)) return;
   showMachineStatus(machine.held);
 }));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));

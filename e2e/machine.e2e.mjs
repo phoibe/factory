@@ -178,3 +178,30 @@ test('un contrôle récent qui ne voit pas le projet change la ligne même si se
     await page.locator('#rules .runner-alert').getByText("Ce projet n'est pas vu par le serveur de dev", { exact: false }).waitFor({ timeout: 2000 });
   });
 });
+
+// Review #556, round 3, finding 2: a status held back while the focus is in the form belongs to the project it was
+// read for. Another project picked at once (a tap) never shows it before its own key is known: no false orange box.
+test('un contrôle retenu pendant que je tape ne donne pas de fausse alerte quand j\'ouvre un autre projet', async () => {
+  const H2 = await repoKey(2);
+  const factoryFiles = { 'status.json': { key: 'ok', checkedAt: new Date(Date.now() - 60_000).toISOString(), projects: { [H]: { machine: 'dev-server', reason: 'online' }, [H2]: { machine: 'dev-server', reason: 'online' } } } };
+  const slowReads = [];
+  await withPanel({ factoryFiles, repos: ['o/r', 'o/autre'], slowReads, viewport: { width: 1280, height: 800 } }, async ({ page, url, reads }) => {
+    await page.addInitScript(roundOnDemand);
+    await open(page, url);
+    await page.getByText('Serveur de dev : en ligne.').waitFor();
+    await page.getByLabel('Adresse du site').click();
+    await roundOf(page, reads)(); // held: the focus is in the form
+    slowReads.push([/\/repos\/phoibe\/factory\/contents\/status\.json/, 4000]);
+    // Picked in the same task as the press and release of a tap: the focusout timer has not run yet.
+    await page.evaluate(() => [...document.querySelectorAll('#projects .project-item')].find((e) => e.textContent.includes('autre')).click());
+    await page.getByRole('heading', { level: 1, name: 'autre' }).waitFor();
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    const alert = page.locator('#rules .runner-alert');
+    for (let i = 0; i < 30; i++) {
+      assert.equal(await alert.count(), 0, 'no false « pas vu par le serveur de dev » while the project loads');
+      await page.waitForTimeout(100);
+    }
+    await page.getByText('Serveur de dev : en ligne.').waitFor({ timeout: 10_000 });
+    assert.equal(await alert.count(), 0);
+  });
+});
