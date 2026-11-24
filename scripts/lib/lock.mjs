@@ -47,8 +47,9 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
   }
   let lost = null; // why the turn was lost, once it is
   const lose = (why) => { if (lost) return; lost = why; log(`queue lock: turn lost (${why}): this run stops here, nothing more is launched or written`); };
+  const inTime = () => now() - sureAt < ttlMs - marginMs;
   const held = () => {
-    if (!lost && now() - sureAt >= ttlMs - marginMs) lose('no sign of life got through in time');
+    if (!lost && !inTime()) lose('no sign of life got through in time');
     return !lost;
   };
   const assertTurn = () => { if (!held()) throw new LostTurnError(lost); };
@@ -80,8 +81,11 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
   } finally {
     stop(); await beating;
     store.guard?.(null);
-    // Not sure the lock is still ours: leave it to expire rather than drop another run's.
+    // Not sure the lock is still ours: leave it to expire rather than drop another run's. Decided without counting the
+    // turn lost: the work is over, nothing stops here.
     // A failed release must not hide the work's result: the lock expires by itself (TTL).
-    if (held()) { try { await store.release(); } catch (e) { log(`queue lock: release failed, it will expire by itself (${e.message || e})`); } }
+    const sure = !lost && inTime();
+    if (!sure) { if (!lost) log('queue lock: not given back, it will expire by itself'); }
+    else { try { await store.release(); } catch (e) { log(`queue lock: release failed, it will expire by itself (${e.message || e})`); } }
   }
 }

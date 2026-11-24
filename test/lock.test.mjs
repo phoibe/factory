@@ -227,3 +227,14 @@ test('slow but successful signs of life (answered after 61 s) keep a 20-minute r
   assert.deepEqual(logs, []);
   assert.ok(sent >= 19, `a sign of life sent as soon as the previous one is answered late (${sent})`);
 });
+
+test('a run whose work ended well but whose lock is no longer sure at the end does not say it stops: it leaves the lock to expire', async () => {
+  const store = fakeStore();
+  let run = null;
+  store.refresh = async () => { await new Promise((r) => setImmediate(r)); run.t += 3 * 60_000; throw new Error('GitHub too slow'); }; // in flight when the work ends
+  run = turnOf(store, async (r) => { r.beat(); return 'ok'; });
+  assert.equal(await run.done, 'ok');
+  assert.deepEqual(run.logs.filter((m) => LOST.test(m)), []);
+  assert.ok(run.logs.includes('queue lock: not given back, it will expire by itself'), run.logs.join('\n'));
+  assert.ok(!store.log.includes('release'));
+});
