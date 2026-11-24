@@ -11,12 +11,21 @@ const open = async (page, url) => {
   await page.getByText('Avancé', { exact: true }).click(); // issue #342: the machine is under « Avancé »
   await page.getByRole('group', { name: 'Machine des tâches', exact: true }).waitFor();
 };
+// The general machine moved to « Réglages généraux » (issue #544).
+const openGeneral = async (page, url) => {
+  await page.goto(url);
+  await page.getByRole('button', { name: 'Réglages généraux' }).click();
+  await page.getByRole('group', { name: 'Machine des tâches', exact: true }).waitFor();
+};
 const decode = (w) => JSON.parse(Buffer.from(w.body.content, 'base64').toString('utf8'));
 
 test('le panneau montre le réglage général et le réglage de chaque projet', async () => {
   await withPanel({}, async ({ page, url }) => {
     await open(page, url);
-    assert.equal(await page.getByRole('region', { name: 'Tous les projets' }).getByRole('radio', { name: 'Serveur de dev', exact: true }).isChecked(), true);
+    await page.getByRole('button', { name: 'Changer le réglage de tous les projets' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.getByRole('group', { name: 'Machine des tâches', exact: true }).getByRole('radio', { name: 'Serveur de dev', exact: true }).isChecked(), true);
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
     assert.equal(await page.getByRole('radio', { name: /Comme le réglage de tous les projets/ }).isChecked(), true);
     await page.getByRole('radio', { name: 'Machines GitHub' }).first().waitFor();
   });
@@ -65,33 +74,32 @@ test('je choisis les machines GitHub pour ce projet, et le contrôle est relanc�
 
 test('je change le réglage général pour tous les projets', async () => {
   await withPanel({ factoryFiles: { 'settings.json': { machine: 'dev-server', labels: ['self-hosted'] } } }, async ({ page, url, writes }) => {
-    await open(page, url);
+    await openGeneral(page, url);
     await page.locator('#machine-general-github').check();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Paramètres enregistrés.', { exact: false }).waitFor({ timeout: 5000 });
+    await page.getByText('Réglages généraux enregistrés', { exact: false }).waitFor({ timeout: 5000 });
     const put = writes.find((w) => w.method === 'PUT' && w.path === '/repos/phoibe/factory/contents/settings.json');
     assert.equal(put.body.branch, 'factory-runners');
-    assert.deepEqual(decode(put), { machine: 'github', labels: ['self-hosted'] });
+    assert.deepEqual(decode(put), { machine: 'github', labels: ['self-hosted'], models: {} });
     assert.ok(!writes.some((w) => w.path === '/repos/o/r/contents/factory.config.json'), 'the project rules did not change');
   });
 });
 
-test('« Tous les projets » reste une partie à part, avec son titre, à la fin de « Avancé »', async () => {
+test('« Tous les projets » n\'est plus dans « Avancé » : un lien mène à la page des réglages généraux', async () => {
   await withPanel({}, async ({ page, url }) => {
     await open(page, url);
     const project = page.getByRole('region', { name: 'Ce projet : r' });
-    const all = page.getByRole('region', { name: 'Tous les projets' });
     await project.getByRole('group', { name: 'Site en ligne' }).waitFor();
     await project.getByRole('group', { name: 'Étapes' }).waitFor();
     await project.getByRole('group', { name: 'Moteur des agents' }).waitFor();
     await project.getByRole('radio', { name: /Comme le réglage de tous les projets/ }).waitFor();
-    await page.getByRole('heading', { name: 'Tous les projets', level: 3 }).waitFor();
-    assert.equal(await all.getByRole('group', { name: 'Machine des tâches par défaut' }).getByRole('radio').count(), 2);
-    assert.equal(await all.getByRole('radio', { name: /Comme le réglage/ }).count(), 0);
-    assert.equal(await all.getByRole('group', { name: 'Étapes' }).count(), 0);
-    // Issue #342: « Tous les projets » now sits at the end of « Avancé », still its own part with its own title.
-    assert.equal(await page.locator('details.advanced > .rules-all:last-child').getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
-    assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 1);
-    assert.equal(await page.locator('.rules-section .savebar').count(), 0, 'one save button, for both parts');
+    assert.equal(await page.getByRole('heading', { name: 'Tous les projets' }).count(), 0);
+    assert.equal(await page.getByRole('group', { name: 'Machine des tâches par défaut' }).count(), 0);
+    assert.equal(await page.locator('.rules-section .savebar').count(), 0, 'one save button');
+    await page.getByRole('button', { name: 'Changer le réglage de tous les projets' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    const machine = page.getByRole('group', { name: 'Machine des tâches', exact: true });
+    await machine.getByRole('radio').first().waitFor();
+    assert.equal(await machine.getByRole('radio').count(), 2);
   });
 });

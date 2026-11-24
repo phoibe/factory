@@ -7,6 +7,7 @@ import { mirrorAttachments } from '../lib/attachments.mjs';
 import { isRetry, isNetworkFailure } from '../lib/outage.mjs';
 import { readRelaunch, writeRelaunch, relaunchStep, isTransientStatus, RELAUNCH_TOLD, RELAUNCH_BLOCKED, QUESTION_RETRY_MS, QUESTION_BUSY } from '../lib/relaunch.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from '../lib/waits.mjs';
+import { resolveModels } from '../lib/models.mjs';
 import { PROJECT_WORKFLOW, prIssue, say, names, linkedIssue } from './shared.mjs';
 
 export function launchesPart(ctx) {
@@ -27,7 +28,13 @@ export function launchesPart(ctx) {
     try {
       attachments = await mirrorAttachments({ gh, fetchImpl, numbers: [issue, pr], owner: repo.split('/')[0], isPr: (n) => n === pr, log });
     } catch (e) { log(`attachments: ${e.message}`); }
-    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', ...(attachments.length ? { attachments } : {}), ...extra };
+    // The models chosen once by the owner for every project (issue #544); a failed read never stops a launch.
+    let settings = null;
+    try {
+      const file = await gh.request('GET', '/repos/phoibe/factory/contents/settings.json?ref=factory-runners');
+      settings = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+    } catch (e) { log(`models settings not read (${String(e.message || e).slice(0, 80)})`); }
+    const payload = { repo, issue, pr: pr || null, stage, factory: 'phoibe/factory', models: resolveModels(settings), ...(attachments.length ? { attachments } : {}), ...extra };
     log(`fire ${stage} ${JSON.stringify(payload)}`);
     const fail = async (message, error) => {
       for (const n of targets) await gh.removeLabel(n, L.running);

@@ -193,12 +193,12 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 ## Mises en page
 
 ### Projet (en-tête commun aux onglets)
-- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
+- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite : « Outils Mac », « Sur mon téléphone », « Réglages généraux », « Se déconnecter » en dernier), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
 - **Sommaire ou navigation** : les onglets soulignés en encre ; la liste des projets, colonne de 240 px collée au bord droit, sert à changer de projet.
 - **Largeur** : contenu de 1100 px au plus, aligné à gauche de l'espace laissé par la liste des projets.
 - **Libellés et explications** : aucun texte d'explication ; seuls les titres, les libellés des boutons et la ligne d'état.
 - **Volets repliables** : aucun.
-- **Sur téléphone** : la liste des projets disparaît ; le nom du projet en haut, avec sa flèche, l'ouvre en plein écran. Les boutons se réduisent à « Nouvelle fonctionnalité » et « Plus », qui replie les autres actions. Les onglets restent sur une ligne.
+- **Sur téléphone** : la liste des projets disparaît ; le nom du projet en haut, avec sa flèche, l'ouvre en plein écran. Les boutons se réduisent à « Nouvelle fonctionnalité » et « Plus », qui replie les autres actions, dont « Réglages généraux ». Les onglets restent sur une ligne.
 - **Écrans concernés** : Suivi, Agent, Paramètres (leur partie haute).
 
 ### Tableau de suivi (onglet « Suivi »)
@@ -211,13 +211,22 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Écrans concernés** : Suivi.
 
 ### Page de réglages (onglet « Paramètres »)
-- **Disposition générale** : un titre « Ce projet : <nom> », puis une suite de blocs encadrés (cadre surface, filet d'un pixel, coins arrondis) avec leur titre posé sur le cadre : Mise en production, Site en ligne, Étapes, Demandes en parallèle. Dans un bloc, un réglage par ligne, séparé du suivant par un filet. Les réglages techniques sont rangés tout en bas, sous « Avancé » (dont une dernière partie « Tous les projets », séparée par un filet, pour les réglages communs). Une barre « Enregistrer » avec l'état (« Tout est enregistré ») reste collée en bas de l'écran quand on fait défiler.
+- **Disposition générale** : un titre « Ce projet : <nom> », puis une suite de blocs encadrés (cadre surface, filet d'un pixel, coins arrondis) avec leur titre posé sur le cadre : Mise en production, Site en ligne, Étapes, Demandes en parallèle. Dans un bloc, un réglage par ligne, séparé du suivant par un filet. Les réglages techniques sont rangés tout en bas, sous « Avancé » (où le lien « Changer le réglage de tous les projets », vers la page « Réglages généraux », se trouve juste après le choix de machine propre au projet). Une barre « Enregistrer » avec l'état (« Tout est enregistré ») reste collée en bas de l'écran quand on fait défiler.
 - **Sommaire ou navigation** : aucun ; l'ordre des blocs suit l'importance.
 - **Largeur** : la largeur du contenu du projet ; les champs texte prennent toute la largeur du bloc, les champs nombre sont courts.
 - **Libellés et explications** : libellé en gras au-dessus du champ, ou à droite de la case à cocher ou du bouton radio ; un réglage qui dépend d'un autre est décalé en dessous de lui, en gris. Pas d'aide sous les champs.
 - **Volets repliables** : « Avancé », replié par défaut, avec une ligne de résumé grise sous son titre (« Serveur de dev · 7 contrôles sur 7 · … »).
 - **Sur téléphone** : mêmes blocs sur une colonne, pleine largeur.
 - **Écrans concernés** : Paramètres.
+
+### Réglages généraux (page à part)
+- **Disposition générale** : ouverte par le bouton « Réglages généraux » de la barre du haut (ou par le lien « Changer le réglage de tous les projets » des Paramètres), elle remplace l'écran du projet (en-tête, onglets et panneaux disparaissent). En haut, le bouton-lien « ← Retour au projet », puis le titre « Réglages généraux », puis deux blocs encadrés comme ceux de « Paramètres » : « Modèles » (une ligne par rôle : son nom, une phrase d'aide grise, une liste de choix) et « Machine des tâches » (deux boutons radio). La même barre « Enregistrer » avec son état reste collée en bas.
+- **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire.
+- **Largeur** : celle du contenu du projet ; les listes de choix de 420 px au plus.
+- **Libellés et explications** : le nom du rôle en gras, sa phrase d'aide en gris dessous, puis la liste ; sous les quatre rôles, un court paragraphe gris dit que le modèle de l'agent qui pilote se règle sur claude.ai.
+- **Volets repliables** : aucun.
+- **Sur téléphone** : une seule colonne, blocs et listes de choix pleine largeur ; le bouton d'ouverture se range dans « Plus » avec les autres.
+- **Écrans concernés** : Réglages généraux.
 
 ### Discussion (onglet « Agent »)
 - **Disposition générale** : un grand cadre en deux colonnes qui occupe toute la hauteur restante de l'écran : à gauche (290 px, fond un ton à côté) « Nouvelle conversation » puis la liste des conversations ; à droite l'en-tête de la conversation (titre, bouton plein écran), les messages, et la zone de saisie toujours visible en bas (image, champ, envoi).
