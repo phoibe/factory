@@ -12,6 +12,8 @@ import { forwardedAnswer } from '../lib/answer.mjs';
 import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, checksTimeoutMs, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
 
+const CLOSED_TOLD = "Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle.";
+
 // Normalises a GitHub webhook payload into the shape decide() expects.
 export function eventFromPayload(eventName, p, now = Date.now()) {
   const owner = p.repository?.owner?.login;
@@ -327,8 +329,13 @@ export function eventsPart(ctx) {
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
     }
     if (outsider && ownerSaid && ['fire', 'queue'].includes(action.type)) {
-      const taken = await takeOver(n, { message: said, ownerLogin });
+      const taken = await takeOver(n, { message: said, ownerLogin, snapshot: ev.snapshot });
       if (taken) return { action: taken, outputs };
+      // No copy (a closed request, or one gone): an outsider's request never starts anything itself, not even a
+      // question's answer.
+      log('outsider request not taken over: nothing is started');
+      if (ev.closed) await gh.comment(n, say(CLOSED_TOLD));
+      return { action: { type: 'ignore', reason: "demande d'un inconnu fermée" }, outputs };
     }
     if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
@@ -345,7 +352,7 @@ export function eventsPart(ctx) {
     // would otherwise send a closed issue back to grilling.
     if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
       log('closed issue: nothing is started');
-      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      await gh.comment(n, say(CLOSED_TOLD));
       return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start

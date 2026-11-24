@@ -201,3 +201,13 @@ test('the copy body keeps the visible text and nothing hidden', () => {
   assert.doesNotMatch(copyBody({ repo: 'o/r', original: outsider(), message: '<!-- x -->' }), /Votre message/);
   assert.ok(!AGENT_MARKER || !copyBody({ repo: 'o/r', original: outsider(), message: '' }).includes(AGENT_MARKER));
 });
+
+test("the owner's message in a closed outsider question starts nothing on the original", async () => {
+  const gh = fakeGh({ issues: [outsider({ labels: [L.question], open: false })] });
+  const { relay, fired } = make(gh);
+  const { action } = await relay.handle(says(12, 'et alors ?'), OPTS);
+  assert.equal(action.type, 'ignore');
+  assert.deepEqual(fired(), []);
+  assert.deepEqual(of(gh, 'create'), []);
+  assert.ok(of(gh, 'comment', 12).some((c) => /déjà terminée/.test(c[2])));
+});
