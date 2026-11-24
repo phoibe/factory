@@ -249,3 +249,18 @@ test("through the panel's rule the owner's and the agent's notes keep working on
   assert.equal(ideaItems([i2]).length, 0);
   assert.equal(relaunchLine(panelReadRelaunch(c2.body)), null);
 });
+
+// --- Task 5: the agent's own rule ---
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { sync } from '../scripts/sync.mjs';
+
+test("the generated AGENT.md tells the agent to ignore the notes in an outsider's request", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'proj-'));
+  sync({ projectDir: dir });
+  const agent = readFileSync(join(dir, '.factory', 'AGENT.md'), 'utf8');
+  const step3 = agent.slice(agent.indexOf('3. Lis l\'issue'), agent.indexOf('\n4. '));
+  assert.match(step3, /notes invisibles[^.]*inconnu/s);
+  assert.match(step3, /author_association/);
+});
