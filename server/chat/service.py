@@ -27,7 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core import (
-    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, visible_text,
+    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, title_from,
+    visible_text,
 )
 
 ATTACHMENTS = "factory-attachments"
@@ -39,13 +40,43 @@ CLAUDE_TIMEOUT = 180  # seconds for one answer
 GIT_TIMEOUT = 60  # seconds for one update of the project's copy: a stalled GitHub must not hold the project's lock
 CLONE_TIMEOUT = 180  # the first copy of a big project takes longer
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
-# Writes with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
-# can write with a 422 (invalid body), so nothing is ever written. Files, issues, pull requests: same list as the panel.
-WRITE_PROBES = (("PUT", "contents/.factory-write-probe"), ("POST", "issues"), ("POST", "pulls"))
+# Writes with an empty body: GitHub refuses a read-only token (403/404) before reading the body, and answers a token that
+# can write with a 422 (invalid body), so nothing is ever written. A path is under /repos/{repo}/ unless it starts with
+# « / ». Exactly the panel's list (panel/chat.mjs, compared by test/panel-read-token.test.mjs): one entry per line.
+# Never a write that acts with an empty body (POST pages/builds really starts a build). Dependabot and Codespaces
+# secrets are not probed: their encrypted_value is optional, so an empty body could create an empty secret.
+WRITE_PROBES = (
+    ("PUT", "contents/.factory-write-probe"),  # files
+    ("POST", "issues"),  # requests
+    ("POST", "pulls"),  # pull requests
+    ("PUT", "actions/oidc/customization/sub"),  # Actions (use_default missing)
+    ("POST", "keys"),  # Administration: deploy keys
+    ("PUT", "actions/secrets/FACTORY_WRITE_PROBE"),  # Secrets (encrypted_value and key_id missing)
+    ("POST", "actions/variables"),  # Variables
+    ("POST", "environments/github-pages/variables"),  # Environments (a 404 without that environment: not writable)
+    ("POST", "hooks"),  # Webhooks
+    ("POST", "pages/deployments"),  # Pages
+    ("POST", "deployments"),  # Deployments (ref missing)
+    ("POST", "statuses/{sha}"),  # Commit statuses (state missing), on the default branch's last commit
+    ("POST", "/user/keys"),  # the account's SSH keys
+)
+# A commit to probe statuses on when none can be read, mostly a token that cannot see the project (404): any 40-hex id
+# does, GitHub refuses the token or the empty body first.
+NO_SHA = "0" * 40
+FINE_GRAINED = "github_pat_"
+CLASSIC = "Ce type de jeton n'est pas accepté : créez-en un avec le bouton ci-dessus."
 
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def tail_of(stream, keep=4096):
+    """Reads a stream to its end and keeps only its last bytes: a pipe nobody reads stalls the process writing to it."""
+    tail = b""
+    while chunk := await stream.read(65536):
+        tail = (tail + chunk)[-keep:]
+    return tail
 
 
 def new_id():
@@ -54,8 +85,18 @@ def new_id():
 
 def busy(r):
     """GitHub is unavailable or limiting this token."""
-    limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers)
+    limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers
+                                         or "rate limit" in message(r).lower())  # a secondary limit may send no header
     return r.status_code >= 500 or r.status_code == 429 or limited
+
+
+def message(r):
+    """The `message` of GitHub's JSON answer, or ""."""
+    try:
+        body = r.json()
+    except ValueError:
+        return ""
+    return str(body.get("message") or "") if isinstance(body, dict) else ""
 
 
 class GitHub:
@@ -75,9 +116,22 @@ class GitHub:
         r.raise_for_status()
         return r.content if raw else r.json()
 
+    async def head(self):
+        """The default branch's last commit, for the commit-status probe (a read the read token may do)."""
+        r = await self.client.get(f"/repos/{self.repo}/commits/HEAD", headers={"accept": "application/vnd.github.sha"})
+        if busy(r):
+            raise httpx.TransportError("github")
+        sha = r.text.strip() if r.status_code == 200 else ""
+        return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else NO_SHA
+
+    async def probe(self, method, path):
+        if "{sha}" in path:  # needs the commit first; the other probes do not wait for it
+            path = path.replace("{sha}", await self.head())
+        return await self.client.request(method, path if path.startswith("/") else f"/repos/{self.repo}/{path}", json={})
+
     async def can_write(self):
-        """True when the token may change the project's files, issues or pull requests."""
-        answers = await asyncio.gather(*(self.client.request(m, f"/repos/{self.repo}/{p}", json={}) for m, p in WRITE_PROBES))
+        """True when the token may change the project (files, requests, settings, automated tasks...) or the account's keys."""
+        answers = await asyncio.gather(*(self.probe(m, p) for m, p in WRITE_PROBES))
         if any(busy(r) for r in answers):  # a rate limit is a 403 too: never read it as « cannot write »
             raise httpx.TransportError("github")
         return any(r.status_code not in (401, 403, 404, 410) for r in answers)
@@ -101,6 +155,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                        allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type"])
     fetched = {}
     locks = {}
+    readers = {}  # answers reading each project's copy: it is not reset under them
 
     @app.get("/health")
     async def health():
@@ -129,11 +184,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         return out.decode()
 
     async def project_copy(repo, token):
-        """An up-to-date read-only copy of the project's default branch, kept between messages."""
+        """An up-to-date read-only copy of the project's default branch, kept between messages.
+        The caller reads it until it calls done_reading(repo): meanwhile no other message resets or cleans it."""
         path = os.path.join(repos_dir, repo)
         lock = locks.setdefault(repo, asyncio.Lock())
         async with lock:
-            if time.time() - fetched.get(repo, 0) < FETCH_EVERY and os.path.isdir(path):
+            fresh = time.time() - fetched.get(repo, 0) < FETCH_EVERY or readers.get(repo, 0) > 0
+            if fresh and os.path.isdir(path):
+                readers[repo] = readers.get(repo, 0) + 1
                 return path
             auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
             git = [git_bin, "-c", f"http.extraHeader=Authorization: Basic {auth}"]
@@ -152,13 +210,19 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             fetched[repo] = time.time()
             if on_repo_change:
                 on_repo_change()
+            readers[repo] = readers.get(repo, 0) + 1
             return path
+
+    def done_reading(repo):
+        readers[repo] -= 1
 
     @app.post("/chat")
     async def chat(request: Request):
         token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
         if not token:
             return JSONResponse({"error": "Jeton manquant."}, 401)
+        if not token.startswith(FINE_GRAINED):  # a classic token cannot be limited to reading: refused before any call
+            return JSONResponse({"error": CLASSIC, "code": "classic"}, 403)
         try:
             body = json.loads(await request.body())
         except ValueError:
@@ -176,16 +240,16 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return JSONResponse({"error": "Image inconnue."}, 400)
         gh = GitHub(token, repo if "/" in repo else "x/x", github_api, transport)
         try:
-            try:
-                me = await gh.get("/user")
-            except httpx.HTTPStatusError as e:
-                r = e.response
-                if busy(r):
-                    raise httpx.TransportError("github") from e
-                if r.status_code == 401:
-                    await gh.close()
-                    return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
-                me = None
+            r = await gh.client.get("/user")
+            if busy(r):
+                raise httpx.TransportError("github")
+            if r.status_code == 401:
+                await gh.close()
+                return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
+            if r.headers.get("x-oauth-scopes", "").strip():  # only a classic token has scopes (a fine-grained one: empty)
+                await gh.close()
+                return JSONResponse({"error": CLASSIC, "code": "classic"}, 403)
+            me = r.json() if r.status_code == 200 else None
             refused = check_access(owner, (me or {}).get("login"), repo)
             if not refused and await gh.can_write():
                 await gh.close()
@@ -209,6 +273,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return json.dumps(obj, ensure_ascii=False) + "\n"
 
         proc = None
+        errors = None
+        reading = False
         folder = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
@@ -218,9 +284,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if cid:
                 conv, _ = await gh.read_json(f"chats/{cid}.json", None)
             cid = str(cid) if cid else new_id()
-            conv = conv or new_conversation(cid, message, now_iso())
+            conv = conv if isinstance(conv, dict) else new_conversation(cid, message, now_iso())
             conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
+            reading = True
             files = []
             # One folder per message: two messages of one conversation may run at once.
             os.makedirs("/tmp/chat", exist_ok=True)
@@ -247,6 +314,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 "--append-system-prompt", SYSTEM.format(repo=repo),
                 cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=claude_env(), limit=16 * 1024 * 1024)
+            errors = asyncio.create_task(tail_of(proc.stderr))  # read while stdout streams, bounded
             try:
                 proc.stdin.write(build_prompt(conv, message, files, open_requests).encode())
                 await proc.stdin.drain()
@@ -278,11 +346,12 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                         final, failed = e["text"], e["error"]
             await proc.wait()
             if final is None or failed:
-                err = (await proc.stderr.read()).decode(errors="replace")[-300:]
+                err = (await errors).decode(errors="replace")[-300:]
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
             # The panel creates the issues and saves the exchange with the owner's full token: the server never writes.
-            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": conv["title"]}})
+            title = str(conv.get("title") or "") or title_from(message or "Image envoyée")  # a stored file may lack it
+            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": title}})
             yield ev({"type": "done"})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})
@@ -295,6 +364,10 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except ProcessLookupError:
                 pass
             finally:
+                if reading:
+                    done_reading(repo)
+                if errors is not None and not errors.done():
+                    errors.cancel()
                 if folder:
                     shutil.rmtree(folder, ignore_errors=True)
                 await gh.close()

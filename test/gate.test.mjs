@@ -106,5 +106,35 @@ test('a build whose spec has no upstream proof is refused', () => {
     { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true }, { t: '5', kind: 'upstream', doc: 'spec', status: 'unproved', by: [] });
   const res = decide(bash('gh pr create --fill'), env(text));
   assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
-  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /questions et fiche : la fiche publiée ne porte pas la ligne de preuve/);
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /questions et fiche : la fiche publiée n'a pas de preuve valable/);
+});
+
+// Review #556 (D1): the upstream line the agent may not be able to fix is refused once per run, so it never uses up
+// the refusals that keep the other guards on.
+const unprovedBuild = (skills = ['writing-plans', 'test-driven-development', 'requesting-code-review', 'impeccable']) => [
+  { t: '1', kind: 'run', stage: 'build', issue: 42, models: { plan: 'fable', review: 'fable' } }, ...skills.map(skill),
+  { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true }, { t: '5', kind: 'upstream', doc: 'spec', status: 'unproved', by: [] }];
+const upstreamGate = { t: '6', kind: 'gate', event: 'PreToolUse', cause: 'upstream' };
+const TRIED = 'gh pr create --body "Essayé en vrai : la page en ligne."';
+
+test('a refusal caused only by the unproved upstream line records its cause and is given once', () => {
+  const first = decide(bash(TRIED), env(j(...unprovedBuild())));
+  assert.equal(first.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(first.cause, 'upstream');
+  assert.equal(decide(bash(TRIED), env(j(...unprovedBuild(), upstreamGate))), null);
+});
+
+test('after the upstream refusal, the other guards still hold', () => {
+  const after = j(...unprovedBuild(), upstreamGate);
+  const shots = { ...env(after), readFile: () => BAD_SHOTS, cwd: '/w' };
+  assert.equal(decide(bash('gh api repos/o/r/issues/3/comments -F body=@c.md'), shots).out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(decide(bash('gh pr create --fill'), env(after)).out.hookSpecificOutput.permissionDecisionReason, /Essayé en vrai/);
+  const noReview = j(...unprovedBuild(['writing-plans', 'test-driven-development', 'impeccable']), upstreamGate);
+  assert.match(decide(bash(TRIED), env(noReview)).out.hookSpecificOutput.permissionDecisionReason, /revue de code/);
+});
+
+test('with another step missing too, the refusal lists both and has no upstream-only cause', () => {
+  const res = decide(bash(TRIED), env(j(...unprovedBuild(['writing-plans', 'test-driven-development', 'impeccable']))));
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /revue de code[\s\S]*questions et fiche/);
+  assert.equal(res.cause, undefined);
 });

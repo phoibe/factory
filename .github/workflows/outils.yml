@@ -11,6 +11,7 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Zip (keeps the executable bit, so a double-click runs them)

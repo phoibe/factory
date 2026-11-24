@@ -184,3 +184,50 @@ test('avec un lecteur d\'écran, sur « Suivi », j\'entends « Nouvelle répons
     await page.locator('#chat-badge-announce', { hasText: 'Nouvelle réponse de l\'agent.' }).waitFor({ state: 'attached', timeout: 2000 });
   });
 });
+
+// Review #556, finding 2: the general page hides the tabs with CSS only; an answer that arrives meanwhile was marked
+// read although the owner never saw it.
+test('une réponse arrivée pendant les Réglages généraux reste à lire après un rechargement', async () => {
+  const { issues, comments, reply } = setup();
+  await withPanel({ issues, comments }, async ({ page, url, reads }) => {
+    // Once only: a reload must keep what the panel itself marked as read.
+    await page.addInitScript(() => { if (!sessionStorage.getItem('seen.once')) { sessionStorage.setItem('seen.once', '1'); localStorage.setItem('factory.chat.seen.o/r', JSON.stringify({ 7: 1, 8: 0 })); } });
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Combien de demandes' }).click();
+    await page.locator('#chat-messages .msg.me', { hasText: 'Et maintenant ?' }).waitFor();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    reply();
+    // The chat reads the thread again while the owner is on the general page.
+    const before = reads.length;
+    const polled = () => reads.slice(before).some((p) => p === '/repos/o/r/issues/7/comments');
+    for (let i = 0; i < 100 && !polled(); i++) await page.waitForTimeout(100);
+    assert.ok(polled(), 'the thread was read again');
+    await page.waitForTimeout(500);
+    await page.reload();
+    await badge(page).waitFor({ timeout: 10_000 });
+    assert.match(await page.locator('#tab-chat').innerText(), /^Agent\s*1$/);
+  });
+});
+
+// Review #556, round 2, finding 4: back from the general page on « Agent », the answer is on screen; the badge and
+// « Nouvelle réponse » must go at once, not at the next poll (30 s away from « Agent »).
+test('de retour des Réglages généraux sur « Agent », la réponse affichée n\'est plus signalée comme nouvelle', async () => {
+  const { issues, comments, reply } = setup();
+  await withPanel({ issues, comments }, async ({ page, url, reads }) => {
+    await page.addInitScript(seen);
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('.conv', { hasText: 'Combien de demandes' }).click();
+    await page.locator('#chat-messages .msg.me', { hasText: 'Et maintenant ?' }).waitFor();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    reply();
+    await badge(page).waitFor({ state: 'attached', timeout: 10_000 }); // the tabs are hidden behind the page
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    await page.locator('#chat-messages').getByText('Deux demandes.').waitFor({ timeout: 2000 });
+    await badge(page).waitFor({ state: 'hidden', timeout: 2000 });
+    assert.equal(await page.locator('.conv', { hasText: 'Nouvelle réponse' }).count(), 0);
+  });
+});

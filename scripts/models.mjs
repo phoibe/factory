@@ -12,11 +12,12 @@ export const SOURCES = [
 const CATALOG = fileURLToPath(new URL('./lib/models.mjs', import.meta.url));
 
 // Returns the summary lines printed; writes the file only when the catalog changed. Never throws on a network error.
-export async function updateModels({ fetchImpl = fetch, file = CATALOG, log = console.log } = {}) {
+// A source that does not answer within `timeoutMs` is given up for the next one.
+export async function updateModels({ fetchImpl = fetch, file = CATALOG, log = console.log, timeoutMs = 30_000 } = {}) {
   let found = [];
   for (const url of SOURCES) {
     try {
-      const res = await fetchImpl(url);
+      const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) continue;
       found = parseModelIds(await res.text());
       if (found.length) break;

@@ -44,3 +44,9 @@ test('the question agent shows the card right away, without asking first (issue 
   assert.match(stage, /sauf s'il la redemande/);
   assert.match(stage, /déjà proposé une sur ce sujet[^.]*en attente, ignorée ou refusée/);
 });
+
+// Review #556 (D6): the « changes nothing » rule names its one exception, the lock removed at the end (step 5).
+test('the « Tu ne modifies rien » rule carries the exception for removing factory:running', () => {
+  const rule = /\*\*Tu ne modifies rien\*\*[^.]*/.exec(stage)?.[0] || '';
+  assert.match(rule, /sauf[^.]*`factory:running`/);
+});

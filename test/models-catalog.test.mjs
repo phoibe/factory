@@ -65,6 +65,27 @@ test('the CLI writes the file only when something changed, and survives a networ
   assert.ok(logs.some((l) => /added mythos 1.0/.test(l)) && logs.some((l) => /opus 5\.5 -> 6/.test(l)));
 });
 
+// Review #556 (D4): a source that never answers is given up after a time limit (30 s by default), not after the job's.
+test('a source that never answers is given up, and the next one is read', async () => {
+  const { updateModels } = await import('../scripts/models.mjs');
+  const file = join(mkdtempSync(join(tmpdir(), 'models-hang-')), 'models.mjs');
+  writeFileSync(file, source);
+  let calls = 0;
+  const fetchImpl = async (url, opts = {}) => {
+    calls += 1;
+    if (calls === 1) {
+      return new Promise((_, reject) => { opts.signal?.addEventListener('abort', () => reject(opts.signal.reason)); });
+    }
+    return { ok: true, text: async () => 'claude-mythos-1-0' };
+  };
+  let timer;
+  const res = await Promise.race([updateModels({ fetchImpl, file, log: () => {}, timeoutMs: 50 }),
+    new Promise((r) => { timer = setTimeout(() => r('hung'), 2000); })]);
+  clearTimeout(timer);
+  assert.equal(res, true);
+  assert.equal(calls, 2);
+});
+
 test('a new family needs a minor version or a date; a known one accepts a bare major', () => {
   assert.deepEqual(parseModelIds('claude-max-5 claude-code-2'), []);
   assert.equal(byId(parseModelIds('claude-mythos-1-20260101')).mythos, '1');

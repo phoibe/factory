@@ -1,7 +1,7 @@
 // Workflow files read as text: guards found by the general review (issue #338).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { SHARED } from '../scripts/stamp-panel.mjs';
 
 const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8');
@@ -40,4 +40,17 @@ test('the panel is published stamped (issue #561)', () => {
   assert.doesNotMatch(yml, /cp -r panel|sed -i/);
   const paths = yml.match(/^\s*paths:.*$/m)[0];
   for (const f of ['scripts/stamp-panel.mjs', ...SHARED.filter((s) => !s.startsWith('defaults/'))]) assert.ok(paths.includes(`'${f}'`), f);
+});
+
+// Review #556 (D4): a hung job holds a runner for GitHub's 6-hour default. A job that calls a reusable workflow
+// (`uses:` on the job) cannot carry the setting.
+const jobsOf = (yml) => {
+  const body = /^jobs:\n([\s\S]*)/m.exec(yml)?.[1] || '';
+  return body.split(/^(?=  [\w-]+:\s*$)/m).filter((b) => /^  [\w-]+:/.test(b)).map((b) => ({ name: /^  ([\w-]+):/.exec(b)[1], body: b }));
+};
+test('every job that runs steps has a time limit', () => {
+  const dir = new URL('../.github/workflows/', import.meta.url);
+  const missing = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).flatMap((f) => jobsOf(read(f))
+    .filter((j) => !/^    uses:/m.test(j.body) && !/^    timeout-minutes: \S/m.test(j.body)).map((j) => `${f}/${j.name}`));
+  assert.deepEqual(missing, []);
 });

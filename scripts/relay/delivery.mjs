@@ -5,6 +5,7 @@ import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-c
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
 import { isRateLimited, isGitHubDown } from '../lib/ratelimit.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
+import { trustedAuthor } from '../lib/trust.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from '../lib/version-tag.mjs';
@@ -30,7 +31,7 @@ export function deliveryPart(ctx) {
     const sha = pr?.head?.sha;
     const def = (await gh.getRepo?.())?.default_branch || 'main';
     // Only the factory's own branch, in this repo, aimed at the branch the factory merges into.
-    if (!pr || pr.state !== 'open' || pr.draft || ![def, workBranch(config.production, def)].includes(pr.base?.ref) || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
+    if (!pr || pr.state !== 'open' || pr.draft || ![def, workBranch(config.production, def)].includes(pr.base?.ref) || fromFork(pr)) {
       log(`docs PR #${prNumber}: not a plain docs PR of this repo, left alone`); return;
     }
     const list = (await gh.listPrFiles(prNumber)) || [];
@@ -46,6 +47,8 @@ export function deliveryPart(ctx) {
 
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
+    // Never a PR from a fork: its code was not written by the factory nor its owner.
+    if (fromFork(pr)) return log(`PR #${prNumber} comes from a fork: not merged by the factory`);
     const issue = prIssue(pr);
     // Where the change lands. External production (chosen in the settings, or by default when the stack sheet says
     // « Manuelle »: a merge deploys nothing, as on Pulsar Wheel): main, and the factory stops there. On approval
@@ -606,9 +609,12 @@ export function deliveryPart(ctx) {
   }
 
   // The open card that redoes the delivery of PR `prNumber`, if any (its marker, or the sentence of older cards).
+  // Only a card the factory or the owner wrote: anyone can open an issue whose description looks like one, and its
+  // label (factory:bug, put by the bug form) proves nothing.
   async function findRedo(prNumber) {
     const open = (await gh.listOpenIssues?.().catch(() => null)) || [];
-    return open.find((i) => !i.pull_request && redoOf(i.body)?.pr === prNumber) || null;
+    const owner = String(repo || '').split('/')[0];
+    return open.find((i) => !i.pull_request && redoOf(i.body)?.pr === prNumber && trustedAuthor(i, owner)) || null;
   }
 
   // Right after a push to main GitHub has not computed mergeability yet ("unknown"): ask again for a while.

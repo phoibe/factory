@@ -2,11 +2,11 @@
 
 But : comprendre la feature demandée dans l'issue jusqu'à une compréhension partagée, avant toute spec.
 
-**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
-(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui qu'il n'écrit rien sur GitHub (commentaire,
-label, issue, PR) et ne pousse rien : là où ce fichier dit « publie », « mets le label » ou « ouvre une issue », il
-écrit le texte dans un fichier et te le rend. Toi, tu publies son texte, terminé par la ligne de
-`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
+**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`,
+lancé avec la description `[role:plan:amont]` (« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui
+qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où ce fichier dit « publie »,
+« mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Toi, tu publies son texte,
+terminé par la ligne de `node .factory/scripts/upstream.mjs <n> <fichier>`, et tu poses les labels.
 
 **Avant tout : taille de la demande.** Dès ta première lecture (s'il n'y a pas encore d'estimation de ta part sur
 l'issue, ou si le propriétaire a donné une taille depuis), classe la demande en petite, moyenne ou grande (voir « Taille
@@ -21,7 +21,7 @@ l'affiche dès maintenant.
    tranche est déjà dans la description, décidée avec le propriétaire : pas de questions, publie-la telle quelle
    comme spec (`.factory/stages/spec.md`, sans redécouper), et elle démarre seule sauf si elle est sensible. Un
    sous-agent du rôle `plan` la relit quand même et te la rend dans un fichier, et la spec publiée se termine aussi
-   par la ligne de `node .factory/scripts/upstream.mjs <n>`.
+   par la ligne de `node .factory/scripts/upstream.mjs <n> <fichier>`.
 0 bis. **Sujet purement technique ?** Si la demande ne change rien à ce que l'utilisateur voit ou fait (tests, robustesse,
    nettoyage du code, performances invisibles, outillage) et dit déjà ce qu'il faut faire, ne pose aucune question :
    passe directement à `.factory/stages/spec.md` dans ce même run. Une telle spec n'est pas sensible, sauf si elle

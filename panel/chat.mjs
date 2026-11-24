@@ -290,13 +290,40 @@ export function defaultConversation(list, server) {
 export const READ_TOKEN_KEY = 'factory.chatToken';
 export const READ_TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=factory+discussion+lecture&description=Lecture+seule+pour+la+discussion+avec+l%27agent&expires_in=365&contents=read';
 export const WRITABLE_TOKEN = 'Ce jeton peut modifier vos projets : créez-en un en lecture seule avec le bouton ci-dessus.';
-// Writes with an empty body: GitHub refuses a read-only token (403) before reading the body; a token that may write
-// gets a 422 (invalid body). Nothing is ever written. Same probes as the server's (files, requests, pull requests).
-export const WRITE_PROBES = [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']];
+// Only a fine-grained token can be limited to reading: any other type (classic `ghp_`, OAuth...) is refused (issue #558).
+export const CLASSIC_TOKEN = 'Ce type de jeton n\'est pas accepté : créez-en un avec le bouton ci-dessus.';
+export const fineGrained = (value) => String(value).startsWith('github_pat_');
+// Only a classic token has scopes: GitHub sends an empty X-OAuth-Scopes to a fine-grained one.
+export const hasScopes = (headers) => Boolean(headers?.get('x-oauth-scopes')?.trim());
+// Writes with an empty body: GitHub refuses a read-only token (403/404) before reading the body; a token that may write
+// gets a 422 (invalid body). Nothing is ever written. Exactly the server's list (server/chat/service.py, compared by a
+// test). A path is under /repos/{repo}/ unless it starts with « / ». Never a write that acts with an empty body
+// (POST pages/builds really starts a build). Dependabot and Codespaces secrets are not probed: their encrypted_value is
+// optional, so an empty body could create an empty secret.
+export const WRITE_PROBES = [
+  ['PUT', 'contents/.factory-write-probe'], // files
+  ['POST', 'issues'], // requests
+  ['POST', 'pulls'], // pull requests
+  ['PUT', 'actions/oidc/customization/sub'], // Actions (use_default missing)
+  ['POST', 'keys'], // Administration: deploy keys
+  ['PUT', 'actions/secrets/FACTORY_WRITE_PROBE'], // Secrets (encrypted_value and key_id missing)
+  ['POST', 'actions/variables'], // Variables
+  ['POST', 'environments/github-pages/variables'], // Environments (a 404 without that environment: not writable)
+  ['POST', 'hooks'], // Webhooks
+  ['POST', 'pages/deployments'], // Pages
+  ['POST', 'deployments'], // Deployments (ref missing)
+  ['POST', 'statuses/{sha}'], // Commit statuses (state missing), on the default branch's last commit
+  ['POST', '/user/keys'], // the account's SSH keys
+];
+// A commit to probe statuses on when none can be read, mostly a token that cannot see the project (404): any 40-hex id
+// does, GitHub refuses the token or the empty body first.
+export const NO_SHA = '0'.repeat(40);
+export const probeUrl = (repo, path, sha) => (path.startsWith('/') ? path : `/repos/${repo}/${path.replace('{sha}', sha)}`);
 export const probeSaysWritable = (status) => ![401, 403, 404, 410].includes(status);
 // GitHub is unavailable or limiting us: its rate limit is a 403 too, which must never read as « cannot write ».
-export const githubBusy = (status, headers) => status >= 500 || status === 429
-  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after')));
+// `message`: GitHub's own message, the only sign of a secondary rate limit sent without any header (issue #558).
+export const githubBusy = (status, headers, message = '') => status >= 500 || status === 429
+  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after') || /rate limit/i.test(String(message))));
 
 // The requests proposed in one answer, as the panel will create them with the full token: never more than the
 // server's limit, never anything but a bug or a feature with a title (the chat server is not trusted with writes).
@@ -331,6 +358,33 @@ function decisionsFrom(comments) {
   return out;
 }
 
+// A request created on GitHub whose choice is not recorded in the conversation yet (the record failed): kept on this
+// device, card key (`conversation:card`) → its link, so a reload shows it « Créée » and never creates it twice.
+// A record that can never pass (gone, locked) is kept, not dropped: still « Créée », no longer pending (review #556).
+// `store`: { get, set, del } over localStorage (review #556).
+export function createdMarks(store, repo) {
+  const key = `factory.chat.created.${repo}`;
+  const read = () => {
+    try {
+      const saved = JSON.parse(store.get(key) || '[]');
+      return new Map((Array.isArray(saved) ? saved : [])
+        .filter((e) => Array.isArray(e) && typeof e[0] === 'string' && (e.length === 2 || (e.length === 3 && e[2] === 'kept')))
+        .map(([k, url, kept]) => [k, { url, kept: !!kept }]));
+    } catch { return new Map(); }
+  };
+  const save = (marks) => (marks.size
+    ? store.set(key, JSON.stringify([...marks].map(([k, { url, kept }]) => (kept ? [k, url, 'kept'] : [k, url]))))
+    : store.del(key));
+  const shown = ([k, { url }]) => [k, { state: 'created', url: safeGithubUrl(url) || null }];
+  return {
+    entries: () => [...read()].map(shown),
+    pending: () => [...read()].filter(([, m]) => !m.kept).map(shown),
+    set: (k, url) => { const marks = read(); marks.set(k, { url, kept: false }); save(marks); },
+    keep: (k) => { const marks = read(); const m = marks.get(k); if (m && !m.kept) { m.kept = true; save(marks); } },
+    delete: (k) => { const marks = read(); if (marks.delete(k)) save(marks); },
+  };
+}
+
 // Server mode: the card's state lives in the stored conversation. False when it was already decided or is unknown.
 export function decideProposal(conv, id, state, url) {
   const p = (conv?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);
@@ -346,8 +400,10 @@ export const finishesConversation = (cards = []) => cards.length > 0
   && cards.every((c) => c.state === 'created' || c.state === 'ignored') && cards.some((c) => c.state === 'created');
 
 // Why a pasted read token is refused, or null when it is fine.
-export function readTokenProblem({ same, status, login, owner, readable, writable }) {
-  if (same || writable) return WRITABLE_TOKEN;
+export function readTokenProblem({ same, classic, status, login, owner, readable, writable }) {
+  if (same) return WRITABLE_TOKEN;
+  if (classic) return CLASSIC_TOKEN;
+  if (writable) return WRITABLE_TOKEN;
   if (status === 401) return 'GitHub ne reconnaît pas ce jeton : vérifiez que vous l\'avez collé en entier.';
   if (String(login || '').toLowerCase() !== String(owner || '').toLowerCase()) return 'Ce jeton appartient à un autre compte GitHub que celui du panneau.';
   if (!readable) return 'Ce jeton ne peut pas lire ce projet : sur GitHub, choisissez « All repositories » avant de le créer.';

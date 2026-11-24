@@ -3,6 +3,8 @@
 export const ATTACHMENTS_BRANCH = 'factory-attachments';
 const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
+// A download that hangs must not hold the agent's launch (and the relay's queue lock): it is skipped after this long.
+export const DOWNLOAD_TIMEOUT_MS = 60_000;
 const IMAGE_HOST = /^https:\/\/(private-user-images|user-images)\.githubusercontent\.com\//;
 
 const BRANCH_FILES = {
@@ -34,6 +36,10 @@ export function attachmentPath(number, url) {
   return `attachments/${number}/${name}`;
 }
 
+// The copy the relay made of an outsider's request (issue #557): its description carries the owner's message, with
+// the `factory-image` notes of his panel images (no other hidden note is left in it).
+const isCopy = (it) => it.user === 'github-actions[bot]' && /^<!-- factory-copy-of #\d+ -->/.test(String(it.body || ''));
+
 // Copies the owner's images from these issues and PRs; returns every copied path (new or already there).
 export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner, isPr = () => false, log = () => {} }) {
   const items = [];
@@ -47,8 +53,9 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
     }
   }
   const wanted = [];
-  for (const it of items.filter((i) => i.user === owner)) {
+  for (const it of items.filter((i) => i.user === owner || isCopy(i))) {
     for (const path of panelImages(it.body)) if (!wanted.some((w) => w.path === path)) wanted.push({ path, url: null });
+    if (it.user !== owner) continue; // a copy holds an outsider's images too: only the owner's panel images are taken
     for (const url of imageSources(it.html)) {
       const path = attachmentPath(it.n, url);
       if (!wanted.some((w) => w.path === path)) wanted.push({ path, url });
@@ -62,7 +69,7 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
     if (!url) { paths.push(path); continue; } // sent from the panel: already there
     try {
       if (!(await gh.getContent(path, ATTACHMENTS_BRANCH))) {
-        const res = await fetchImpl(url);
+        const res = await fetchImpl(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
         if (!res.ok) throw new Error(`download ${res.status}`);
         const bytes = Buffer.from(await res.arrayBuffer());
         if (bytes.length > MAX_BYTES) throw new Error('too big');

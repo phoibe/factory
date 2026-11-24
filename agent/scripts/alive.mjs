@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { trusted } from './specs.mjs';
 
 export const SESSION_MARKER = '<!-- factory-session -->';
 export const BEAT_MINUTES = 10;
@@ -69,10 +70,12 @@ function detached(run, iso) {
 // The GitHub part: the « Dernier lancement » comment of the issue and of the PR gets the new time. `gh` is the
 // agent's own GitHub access (REST only, see AGENT.md).
 export function beat({ repo, issue, pr, iso }, gh = (args) => execFileSync('gh', args, { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] })) {
+  const owner = String(repo || '').split('/')[0];
   for (const n of [issue, pr].filter(Boolean)) {
     try {
       const comments = JSON.parse(gh(['api', `repos/${repo}/issues/${n}/comments?per_page=100`]) || '[]');
-      const mine = comments.find((c) => String(c.body || '').includes(SESSION_MARKER));
+      // Only the factory's own comment, as the relay reads it: on a public project anyone can post the marker.
+      const mine = comments.find((c) => String(c.body || '').includes(SESSION_MARKER) && trusted(c, owner));
       if (mine) gh(['api', '-X', 'PATCH', `repos/${repo}/issues/comments/${mine.id}`, '-f', `body=${markAlive(mine.body, iso)}`]);
     } catch { /* silent: the factory keeps its time limit */ }
   }
