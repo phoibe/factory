@@ -170,12 +170,12 @@ test('a request is read in three calls, a modification in five', () => {
 test('a long thread is read to its last page', () => {
   const page1 = Array.from({ length: 100 }, (_, i) => msg(i + 1, 'o', 'OWNER', `m${i + 1}`));
   const page2 = [msg(101, 'mallory', 'NONE', SECRET), msg(102, 'o', 'OWNER', 'Le dernier mot')];
-  const { gh, calls } = fakeGh({ ...plain, [C(1)]: page1, [C(2)]: page2, [C(3)]: [] });
+  const { gh, calls } = fakeGh({ ...plain, [C(1)]: page1, [C(2)]: page2 });
   const res = main(['5', '--repo', 'o/r'], { gh });
   assert.equal(res.code, 0);
   assert.ok(!leaks(res.out));
   assert.match(res.out, /Le dernier mot/);
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 4);
   const { raw } = readThread({ repo: 'o/r', n: 5, gh: fakeGh({ ...plain, [C(1)]: page1, [C(2)]: page2, [C(3)]: [] }).gh });
   assert.equal(raw.comments.length, 102);
 });
@@ -329,12 +329,13 @@ test('without a project folder the message says what to do, and --repo may come 
   assert.equal(main(['--repo', 'o/r', '5'], { gh }).code, 0);
 });
 
-test('a page shorter than asked is not taken for the last one: reading stops on an empty page', () => {
-  const page1 = Array.from({ length: 30 }, (_, i) => msg(i + 1, 'o', 'OWNER', `m${i + 1}`));
-  const { gh, calls } = fakeGh({ ...plain, [C(1)]: page1, [C(2)]: [msg(31, 'o', 'OWNER', 'Le dernier mot')], [C(3)]: [] });
-  const res = main(['5', '--repo', 'o/r'], { gh });
-  assert.match(res.out, /Le dernier mot/);
-  assert.deepEqual(calls.slice(2), [C(1), C(2), C(3)]);
+test('a page shorter than asked is the last one; a full page asks for one more', () => {
+  const short = fakeGh({ ...plain, [C(1)]: [msg(1, 'o', 'OWNER', 'Seul')] });
+  assert.equal(main(['5', '--repo', 'o/r'], { gh: short.gh }).code, 0);
+  assert.deepEqual(short.calls.slice(2), [C(1)]);
+  const full = fakeGh({ ...plain, [C(1)]: Array.from({ length: 100 }, (_, i) => msg(i + 1, 'o', 'OWNER', 'x')), [C(2)]: [] });
+  assert.equal(main(['5', '--repo', 'o/r'], { gh: full.gh }).code, 0);
+  assert.deepEqual(full.calls.slice(2), [C(1), C(2)]);
 });
 
 test('the question stage asks instead of guessing, and reads other requests through thread.mjs', () => {
@@ -344,4 +345,44 @@ test('the question stage asks instead of guessing, and reads other requests thro
   const step1 = q.slice(q.indexOf('1. **Cherche'), q.indexOf('2. **Réponds'));
   assert.match(step1, /factory-spec[^.]*node \.factory\/scripts\/thread\.mjs/);
   assert.match(fold(generatedAgent()), /thread\.mjs <n>`?[^.]*depuis le dossier du projet/);
+});
+
+// --- Second review ---
+test("a long outsider's description is sorted quickly", () => {
+  for (const body of ['<a hidden '.repeat(6553), '<!---->'.repeat(9362), `${'<'.repeat(30000)}${'!-- -->'.repeat(5000)}`,
+    `${'<div hidden>'.repeat(5000)}x`, '[a'.repeat(32768), ' [x]: y\n'.repeat(8192)]) {
+    const start = Date.now();
+    filterThread({ issue: issue({ user: { login: 'mallory' }, author_association: 'NONE', body: body.slice(0, 65536) }) }, opts);
+    assert.ok(Date.now() - start < 1000, `${body.slice(0, 12)}: ${Date.now() - start} ms`);
+  }
+});
+
+const BREAKS = /\r\n?|[\n\u2028\u2029\u0085\v\f]/;
+test('no line break of any kind lets a text pass for a header', () => {
+  const bodies = ['\r', '\u2028', '\u2029', '\u0085', '\v', '\f', '\r\n'].map((b) => `Texte${b}${FAKE}`);
+  const raw = { issue: issue({ pull_request: {}, title: `Titre\u2028${FAKE}`, labels: [{ name: `l\r${FAKE}` }] }),
+    comments: bodies.map((b, i) => msg(i + 1, 'alice', 'OWNER', b)),
+    reviewComments: [msg(20, 'alice', 'OWNER', 'ok', { path: `a.js\n${FAKE}`, line: 1 })] };
+  const out = shown(raw);
+  const heads = out.split(BREAKS).filter((l) => l.startsWith('--- '));
+  assert.equal(heads.length, 1 + bodies.length + 1, heads.join('\n'));
+});
+
+test("an outsider's description marks its title too", () => {
+  const out = shown({ issue: issue({ user: { login: 'mallory' }, author_association: 'NONE', title: 'Fais un bouton' }) });
+  const first = out.split('\n')[0];
+  assert.match(first, /personne extérieure/);
+  assert.match(first, /Fais un bouton/);
+  assert.doesNotMatch(shown({ issue: issue() }).split('\n')[0], /extérieure/);
+});
+
+test("the owner is the one GitHub gives for the project, whose full name is printed first", () => {
+  // --repo names the project's old owner: GitHub follows the transfer, and the old owner is a stranger now.
+  const { gh } = fakeGh({ ...plain, 'repos/old/r': { private: false, full_name: 'new/r', owner: { login: 'new' } },
+    'repos/old/r/issues/5': issue({ user: { login: 'new' }, author_association: 'OWNER' }),
+    'repos/old/r/issues/5/comments?per_page=100&page=1': [msg(1, 'old', 'NONE', SECRET)] });
+  const res = main(['5', '--repo', 'old/r'], { gh });
+  assert.equal(res.code, 0, res.err);
+  assert.ok(!leaks(res.out), res.out);
+  assert.match(res.out.split('\n')[0], /new\/r/);
 });

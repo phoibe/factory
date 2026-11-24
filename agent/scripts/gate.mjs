@@ -22,7 +22,8 @@ const HEREDOC = /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g;
 const commandOf = (input) => String(input?.command || '').replace(HEREDOC, '').replace(/\\\r?\n/g, ' ');
 
 // A gh api / curl call that sends fields (gh api then POSTs unless told otherwise), and one that says GET.
-const SENDS_FIELDS = /\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b/;
+// `-Fbody=@c.md` (no space) too; curl's `-fsSL` is not a field.
+const SENDS_FIELDS = /\s-[fF](?:\s|[\w[\]]+=)|\s-d[\s@]|\s--(field|raw-field|input|data[\w-]*)\b/;
 const EXPLICIT_GET = /(-X\s*|--method[\s=]+|--request[\s=]+)GET\b/i;
 // Each gh api / curl call on its own, so a read chained to a write (or the other way round) does not hide it.
 const apiCalls = (cmd) => cmd.split('\n').flatMap((l) => l.split(/(?=\b(?:gh\s+api|curl)\b)/));
@@ -60,12 +61,20 @@ export function opensPr(tool, input = {}) {
 export const THREAD_REFUSAL = "Verrou de la factory : les messages d'une demande ou d'une PR (remarques de relecture comprises) ne se lisent que par "
   + '`node .factory/scripts/thread.mjs <numéro> [--repo owner/name]`, qui laisse de côté les messages des personnes extérieures au projet. '
   + 'Si ce script échoue, ne lis pas le fil autrement : arrête-toi.';
-// The address ends there (a trailing slash allowed): not `…/comments/123`, `…/comments.patch` nor `…/replies`.
-const SEGMENT = String.raw`(?:\$\([^)]*\)|[^/\s'"?])+`; // one path segment, a $(…) in it included
-const THREAD_ADDRESS = new RegExp(String.raw`\/(issues|pulls)\/(?:comments|${SEGMENT}\/(?:comments|timeline|reviews(?:\/${SEGMENT}\/comments)?))\/?(?![\w/%.-])`, 'i');
+// The address ends there (a trailing slash allowed): not `…/comments/123`, `…/comments/$ID`, `…/comments/"$ID"`,
+// `…/comments/<id>`, `…/comments.patch` nor `…/replies`.
+// One path segment, a $(…) in it included. The alternatives never match the same text (a `$` starts a $(…) or stands
+// alone), so a failed match does not try every way of splitting many $(…): no exponential time.
+const SEGMENT = String.raw`(?:\$\([^)]*\)|\$(?!\()|[^/\s'"?$])+`;
+const THREAD_ADDRESS = new RegExp(String.raw`\/(issues|pulls)\/(?:comments|${SEGMENT}\/(?:comments|timeline|reviews(?:\/${SEGMENT}\/comments)?))(?:\/(?!["']?[\w%.$<{(-])|(?![\w/%.-]))`, 'i');
 const WRITES = new RegExp(`(${SENDS_FIELDS.source}|(-X\\s*|--method[\\s=]+|--request[\\s=]+)(POST|PATCH|PUT|DELETE)\\b)`, 'i');
 // curl -f is --fail, not a field.
 const withoutCurlFail = (c) => (/^curl\b/.test(c) ? c.replace(/\s-f(?=\s)/g, ' ') : c);
+// A curl call that names its host, and not GitHub (a local server, another site): not a thread read. A host given by a
+// variable may be GitHub's, so it is judged like GitHub.
+const curlElsewhere = (c) => /^curl\b/.test(c) && /\bhttps?:\/\/[^/\s'"]/i.test(c) && !/github\.com/i.test(c);
+// Each `gh issue …` / `gh pr …` call on its own arguments.
+const ghCalls = (cmd) => cmd.split('\n').flatMap((l) => l.split(/(?=\bgh\s+(?:issue|pr)\b)/)).map(ownArgs);
 const MCP_THREAD_TOOLS = /(get_issue_comments|get_pull_request_comments|get_pull_request_reviews|get_pull_request_review_comments)$/;
 export function readsThread(tool, input = {}) {
   const name = tool || '';
@@ -74,10 +83,13 @@ export function readsThread(tool, input = {}) {
   if (/pull_request_read$/.test(name)) return ['get_comments', 'get_review_comments', 'get_reviews'].includes(input?.method);
   if (name !== 'Bash') return false;
   const cmd = commandOf(input);
-  if (/\bgh\s+(issue|pr)\s+(view|list)\b[^\n]*?(\s--comments\b|\s-c\b|--json[\s=]+['"]?[\w,]*\b(comments|reviews|latestReviews)\b)/.test(cmd)) return true;
-  if (/\bgh\s+api\s+graphql\b/.test(cmd) && /\b(comments|reviews|reviewThreads|timelineItems)\b/.test(cmd) && !/\bmutation\b/.test(cmd)) return true;
-  return apiCalls(cmd).map((c) => withoutCurlFail(ownArgs(c)))
-    .some((c) => /^(gh\s+api|curl)\b/.test(c) && THREAD_ADDRESS.test(c) && (!WRITES.test(c) || EXPLICIT_GET.test(c)));
+  const viewsThread = /^gh\s+(issue|pr)\s+(view|list)\b.*?(\s--comments\b|\s-c\b|--json[\s=]+['"]?[\w,]*\b(comments|reviews|latestReviews)\b)/s;
+  if (ghCalls(cmd).some((c) => viewsThread.test(c))) return true;
+  const calls = apiCalls(cmd).map((c) => withoutCurlFail(ownArgs(c)));
+  if (calls.some((c) => /^gh\s+api\s+graphql\b/.test(c) && /\b(comments|reviews|reviewThreads|timelineItems)\b/.test(c) && !/\bmutation\b/.test(c))) return true;
+  // Quotes inside the address (`repos/"$REPO"/issues/'5'/comments`) are the shell's: the address is read without them.
+  return calls.some((c) => /^(gh\s+api|curl)\b/.test(c) && !curlElsewhere(c) && THREAD_ADDRESS.test(c.replace(/["']/g, ''))
+    && (!WRITES.test(c) || EXPLICIT_GET.test(c)));
 }
 
 // Does this tool call open a PR, or hand it to the next step?
@@ -139,11 +151,14 @@ const entries = (text) => String(text || '').split('\n').map((l) => { try { retu
 const isUpstream = (line) => line.startsWith(UNPROVED_HOW);
 const UPSTREAM = 'upstream';
 
-// The hook's answer for one input, or null to let it through. `env` gives the files (a list, or a function that
-// reads them only when needed: the thread refusal must not depend on git), the journal and config.
-export function decide(input, { files: givenFiles, read, stages, sessionText, readFile, cwd }) {
+// The hook's answer for one input, or null to let it through. `env` gives the files and the stages (each a value, or a
+// function that reads it only when needed: the thread refusal must depend neither on git nor on the config), the
+// journal and config.
+export function decide(input, { files: givenFiles, read, stages: givenStages, sessionText, readFile, cwd }) {
   let fileList;
+  let stageMap;
   const files = () => (fileList ??= typeof givenFiles === 'function' ? givenFiles() : givenFiles);
+  const stages = () => (stageMap ??= typeof givenStages === 'function' ? givenStages() : givenStages);
   const ev = input.hook_event_name;
   const runEntry = entries(sessionText).filter((e) => e.kind === 'run').at(-1);
   if (!runEntry) return null; // not a factory run
@@ -155,7 +170,7 @@ export function decide(input, { files: givenFiles, read, stages, sessionText, re
   if (denials >= MAX_DENIALS) return null;
   const opts = { stage: runEntry.stage, current: sessionText };
   const upstreamGiven = entries(sessionText).some((e) => e.kind === 'gate' && e.cause === UPSTREAM);
-  const missing = () => problems(files(), read, stages, opts).filter((l) => !(upstreamGiven && isUpstream(l)));
+  const missing = () => problems(files(), read, stages(), opts).filter((l) => !(upstreamGiven && isUpstream(l)));
   const cause = (list, other) => (!other && list.length && list.every(isUpstream) ? { cause: UPSTREAM } : {});
   if (ev === 'PreToolUse') {
     const shots = shotsRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd });
@@ -192,7 +207,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (existsSync(sessionPath)) {
       const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
       const cfg = join(root, '.factory/config.resolved.json');
-      const stages = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')).stages || {} : {};
+      const stages = () => (existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')).stages || {} : {});
       const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
       const readFile = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
       const res = decide(input, { files: () => branchFiles(git), read, stages, sessionText: read(`.factory/journal/${session}.jsonl`), readFile, cwd: input.cwd || root });
