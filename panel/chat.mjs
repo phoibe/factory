@@ -315,13 +315,15 @@ export const WRITE_PROBES = [
   ['POST', 'statuses/{sha}'], // Commit statuses (state missing), on the default branch's last commit
   ['POST', '/user/keys'], // the account's SSH keys
 ];
-// A commit to probe statuses on when the project has none to read (empty): any 40-hex id does, the body is refused first.
+// A commit to probe statuses on when none can be read, mostly a token that cannot see the project (404): any 40-hex id
+// does, GitHub refuses the token or the empty body first.
 export const NO_SHA = '0'.repeat(40);
 export const probeUrl = (repo, path, sha) => (path.startsWith('/') ? path : `/repos/${repo}/${path.replace('{sha}', sha)}`);
 export const probeSaysWritable = (status) => ![401, 403, 404, 410].includes(status);
 // GitHub is unavailable or limiting us: its rate limit is a 403 too, which must never read as « cannot write ».
-export const githubBusy = (status, headers) => status >= 500 || status === 429
-  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after')));
+// `message`: GitHub's own message, the only sign of a secondary rate limit sent without any header (issue #558).
+export const githubBusy = (status, headers, message = '') => status >= 500 || status === 429
+  || (status === 403 && (headers?.get('x-ratelimit-remaining') === '0' || headers?.has('retry-after') || /rate limit/i.test(String(message))));
 
 // The requests proposed in one answer, as the panel will create them with the full token: never more than the
 // server's limit, never anything but a bug or a feature with a title (the chat server is not trusted with writes).

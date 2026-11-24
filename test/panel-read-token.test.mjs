@@ -141,6 +141,8 @@ test('la fiche produit dit que le serveur de discussion ne reçoit qu\'un jeton 
   assert.match(product, /lancer des tâches automatiques/);
   assert.match(product, /ajouter une clé SSH au compte/);
   assert.match(product, /tout jeton qui n'est pas du nouveau type/);
+  assert.match(product, /poser une fausse coche verte sur une modification/);
+  assert.doesNotMatch(product, /l'état des versions/);
 });
 
 test('a conversation id from the chat server is used only when it is a plain id (never a path for the full token)', async () => {
@@ -161,6 +163,11 @@ test('a rate-limited GitHub answer (403 with no request left, or retry-after) is
   assert.equal(githubBusy(502, h({})), true);
   assert.equal(githubBusy(403, h({ 'x-ratelimit-remaining': '12' })), false);
   assert.equal(writable(410), false); // issues turned off on the project: nobody can open one
+  // A secondary rate limit may come with no header: only its message says it (issue #558).
+  assert.equal(githubBusy(403, h({}), 'You have exceeded a secondary rate limit. Please wait.'), true);
+  assert.equal(githubBusy(403, h({}), 'API Rate Limit exceeded for user'), true);
+  assert.equal(githubBusy(403, h({}), 'Resource not accessible by personal access token'), false);
+  assert.equal(githubBusy(422, h({}), 'rate limit'), false);
 });
 
 test('the panel creates at most 3 well-formed requests from one answer, whatever the chat server sends', async () => {

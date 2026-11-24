@@ -105,6 +105,31 @@ test('un jeton créé avec le bouton est accepté', async () => {
   });
 });
 
+test('un jeton créé avec le bouton est accepté même quand il ne peut pas lire la dernière modification du projet', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, tokenCheck: { head: 404 } }, async ({ page, url, probes }) => {
+    await page.goto(url);
+    await agent(page);
+    await paste(page, 'github_pat_lecture');
+    await page.locator('#chat-input').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), 'github_pat_lecture');
+    assert.ok(probes.some((p) => p.method === 'POST' && p.path === `/repos/o/r/statuses/${'0'.repeat(40)}`));
+  });
+});
+
+for (const [why, tokenCheck] of [['sa lecture de la dernière modification', { head: 'limited' }], ['une limite secondaire sur une vérification', { secondaryLimit: true }]]) {
+  test(`si GitHub freine le jeton (${why}), le message dit que GitHub ne répond pas et le jeton n'est pas gardé`, async () => {
+    await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, tokenCheck }, async ({ page, url, chatCalls }) => {
+      await page.goto(url);
+      await agent(page);
+      await paste(page, 'github_pat_lecture');
+      await page.locator('#read-token-error', { hasText: 'GitHub ne répond pas, réessayez dans un instant.' }).waitFor();
+      await card(page).waitFor();
+      assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), null);
+      assert.deepEqual(chatCalls, []);
+    });
+  });
+}
+
 test('avec le jeton de lecture, une conversation fonctionne, est retrouvée après rechargement, et la demande proposée par l\'agent apparaît dans le tableau', async () => {
   const issues = [{ kind: 'feature', title: 'Exporter mes données', body: 'Il veut exporter.' }];
   await withPanel({ chatServer: { answer: 'Non, pas encore.', issues }, readToken: false }, async ({ page, url, chatCalls, writes }) => {

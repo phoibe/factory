@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan in one go. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** built on `claude/issue-558-read-token-probes`: commit `2b544ad`, plus a follow-up still in the working tree (an empty `X-OAuth-Scopes` is not an old-type token, see Review Focus). Ticked boxes describe that work as it is.
+**Status:** built on `claude/issue-558-read-token-probes`: commit `2b544ad`, the follow-up `0d884b8` (an empty `X-OAuth-Scopes` is not an old-type token, see Review Focus), the design pass `7accb14`, then the review-round-1 fixes (task 5: secondary rate limit, `NO_SHA` pinned by tests, product wording). Every box is ticked: all of it is built and green.
 
 **Goal:** The chat's read token is accepted only when it is a fine-grained one (`github_pat_`) that can neither write files/issues/PRs nor launch Actions, change settings, secrets, variables, webhooks, Pages, deployments, commit statuses, or add an SSH key to the account.
 
@@ -27,7 +27,8 @@
 - A token of the old type stored before this change (or carried by the phone link): refused by the server at the next message, card shown again, typed message kept (task 3, second journey).
 - GitHub throttling one of the 13 probes reads as « GitHub ne répond pas », never as « read-only » (task 2: existing `test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token` stays green).
 - A project without a published site: the `github-pages` and `pages/deployments` probes answer 404 = not writable, the token passes, as the spec announces (existing `probeSaysWritable(404) === false`).
-- An empty project (no `commits/HEAD`) probes statuses on `NO_SHA`: **no test pins this fallback** nor a throttled `commits/HEAD` read, to judge by reading. What GitHub really answers (422 expected) to each right was never tried: the owner's check with real tokens is the proof.
+- A `commits/HEAD` read that fails (mostly a token that cannot see the project: 404; an empty project: 409) probes statuses on `NO_SHA`; a throttled one reads as « GitHub ne répond pas ». Both are pinned by tests since task 5. What GitHub really answers (422 expected) to each right was never tried: the owner's check with real tokens is the proof.
+- A secondary rate limit can be a plain 403 with no header, only its message: since task 5, a 403 whose JSON `message` contains « rate limit » (any case) is busy, never « cannot write », on both sides.
 
 ---
 
@@ -59,10 +60,19 @@
 - [x] Failing journeys: « un jeton de l'ancien type est refusé avec un message clair » (`ghp_ancien`: old-type copy, zero request to `api.github.com` with it; then `github_pat_scopes`: same copy; nothing stored, no chat call); « un jeton de l'ancien type déjà enregistré est refusé par le serveur… » (`refuse: 403, code: 'classic'`: card back, copy in `#read-token-error`, `factory.chatToken` removed, `#chat-input` keeps the message); « un jeton qui peut lancer des tâches automatiques est refusé » (`github_pat_actions`: « peut modifier » copy); « un jeton créé avec le bouton est accepté » (stored; the 13 probes all tried, statuses on the fixture's commit). `node --test e2e/read-token.e2e.mjs` → red.
 - [x] `checkReadToken(value)`: after the « same as the full token » check, `!fineGrained(value)` → `readTokenProblem({ classic: true })` before any fetch; once `/user` is OK, `hasScopes(user.headers)` → the same; read `commits/HEAD` (busy → throw `'github'`; not 40-hex → `NO_SHA`) without delaying the other probes; send `WRITE_PROBES` through `probeUrl`. `call` accepts extra `init.headers`. `sendToServer`: `body.code === 'classic'` → `saidError(CLASSIC_TOKEN)` with `{ readToken: true }`, next to `writable`. Bump both cache-busting versions.
 - [x] `node --test e2e/read-token.e2e.mjs` → green; `npm run test:e2e` → the other chat journeys pass with the renamed tokens.
-- [ ] Follow-up: the fixture answers `github_pat_lecture` with an empty exposed `x-oauth-scopes`, as the real GitHub (done, with `hasScopes` in `checkReadToken`); `panel/chat.mjs` changed again, so bump `chat.mjs?v=` and `app.mjs?v=` once more; `node --test e2e/read-token.e2e.mjs` → green.
+- [x] Follow-up (`0d884b8`): the fixture answers `github_pat_lecture` with an empty exposed `x-oauth-scopes`, as the real GitHub, with `hasScopes` in `checkReadToken`; `node --test e2e/read-token.e2e.mjs` → green. The second cache-busting bump (`chat.mjs?v=27`, `app.mjs?v=88`) came with task 5.
 
 ### Task 4: product sheet
 
 - **Files:** Modify `PRODUCT.md` (the « Le jeton GitHub du panneau… » line); Test `test/panel-read-token.test.mjs`.
 - [x] Extend « la fiche produit dit… »: also matches `/lancer des tâches automatiques/`, `/ajouter une clé SSH au compte/`, `/tout jeton qui n'est pas du nouveau type/` → red; rewrite the sentence (write, launch automated tasks, change settings, secrets, variables, webhooks, deployments, Pages, commit statuses, add an SSH key to the account, any token not « fine-grained ») → green.
-- [ ] Final check on the committed tree: `npm test`, `npm run test:e2e`, `npm run test:a11y`, `npm run lint`, `cd server/chat && python -m unittest -v` → all green.
+- [x] Extend it again (task 5): `/poser une fausse coche verte sur une modification/`, and no more « l'état des versions » → red; reword → green.
+- [x] Final check on the committed tree: `npm test`, `npm run test:e2e`, `npm run test:a11y`, `npm run lint`, `npm run typecheck`, `npm run build`, `cd server/chat && python -m unittest -v` → all green.
+
+### Task 5: review round 1
+
+- **Files:** Modify `panel/chat.mjs`, `panel/app.mjs`, `panel/index.html`, `server/chat/service.py`, `PRODUCT.md`, `e2e/fixture.mjs`; Test `test/panel-read-token.test.mjs`, `server/chat/test_service.py`, `e2e/read-token.e2e.mjs`.
+- [x] Secondary rate limit: failing tests first (`githubBusy(403, headers, 'You have exceeded a secondary rate limit…') === true`, false for « Resource not accessible… »; `test_a_secondary_rate_limit_on_a_probe_is_github_down_not_a_read_only_token`; journey « si GitHub freine le jeton (une limite secondaire sur une vérification)… »). Then `githubBusy(status, headers, message)` and the server's `busy()` treat a 403 whose `message` matches /rate limit/i as busy; `checkReadToken` reads a 403's body (`r.clone().json()`) for every answer it checks.
+- [x] `NO_SHA` pinned: `test_without_a_commit_to_read_the_statuses_probe_uses_a_fixed_one` (HEAD 404 and 409 → `statuses/000…0`, answer done), `test_a_rate_limited_commit_read_is_github_down` (503); fixture option `tokenCheck: { head: 404 | 'limited', secondaryLimit }` and journeys « un jeton créé avec le bouton est accepté même quand il ne peut pas lire la dernière modification du projet » and « si GitHub freine le jeton (sa lecture de la dernière modification)… ». These pin existing behaviour (green at once).
+- [x] `NO_SHA` comments (chat.mjs, app.mjs, service.py): the realistic trigger is a token that cannot see the project (404).
+- [x] `PRODUCT.md`: « poser une fausse coche verte sur une modification » instead of « l'état des versions ».

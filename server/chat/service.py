@@ -59,7 +59,8 @@ WRITE_PROBES = (
     ("POST", "statuses/{sha}"),  # Commit statuses (state missing), on the default branch's last commit
     ("POST", "/user/keys"),  # the account's SSH keys
 )
-# A commit to probe statuses on when the project has none to read (empty): any 40-hex id does, the body is refused first.
+# A commit to probe statuses on when none can be read, mostly a token that cannot see the project (404): any 40-hex id
+# does, GitHub refuses the token or the empty body first.
 NO_SHA = "0" * 40
 FINE_GRAINED = "github_pat_"
 CLASSIC = "Ce type de jeton n'est pas accepté : créez-en un avec le bouton ci-dessus."
@@ -75,8 +76,18 @@ def new_id():
 
 def busy(r):
     """GitHub is unavailable or limiting this token."""
-    limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers)
+    limited = r.status_code == 403 and (r.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in r.headers
+                                         or "rate limit" in message(r).lower())  # a secondary limit may send no header
     return r.status_code >= 500 or r.status_code == 429 or limited
+
+
+def message(r):
+    """The `message` of GitHub's JSON answer, or ""."""
+    try:
+        body = r.json()
+    except ValueError:
+        return ""
+    return str(body.get("message") or "") if isinstance(body, dict) else ""
 
 
 class GitHub:

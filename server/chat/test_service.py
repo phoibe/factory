@@ -55,6 +55,9 @@ class FakeGitHub:
         self.probes = []  # (method, path) of every write probe (an empty body)
         self.writable = set()  # paths a « good » token may write to (a probe there gets a 422)
         self.head = "c0ffee" * 6 + "c0ff"  # the default branch's last commit
+        self.head_status = 200  # status of the commits/HEAD read (404: the token cannot see the project)
+        self.head_headers = {}
+        self.probe_secondary = False  # GitHub's secondary rate limit: a plain 403 whose message says so
 
 
     def __call__(self, request):
@@ -68,6 +71,8 @@ class FakeGitHub:
             return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"},
                                   headers=self.user_headers)
         if method == "GET" and path.endswith("/commits/HEAD") and request.headers.get("accept") == "application/vnd.github.sha":
+            if self.head_status != 200:
+                return httpx.Response(self.head_status, json={"message": "Not Found"}, headers=self.head_headers)
             return httpx.Response(200, text=self.head)
         if method != "GET" and json.loads(request.content or b"null") == {}:
             # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
@@ -76,6 +81,8 @@ class FakeGitHub:
             writer = "writer" in auth or ("issues" in auth and path.endswith("/issues")) or path in self.writable
             if writer and self.probe_limited:  # GitHub's rate limit is a 403 too
                 return httpx.Response(403, json={}, headers={"x-ratelimit-remaining": "0"})
+            if self.probe_secondary and path.endswith("/hooks"):  # no header says it: only the message
+                return httpx.Response(403, json={"message": "You have exceeded a secondary rate limit. Please wait a few minutes."})
             return httpx.Response(422 if writer else 403, json={})
         if method != "GET":
             self.writes.append((method, path))
@@ -227,6 +234,26 @@ class ServiceTest(unittest.TestCase):
     def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
         self.gh.probe_limited = True
         r, _ = self.post("github_pat_goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 503)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
+    def test_a_secondary_rate_limit_on_a_probe_is_github_down_not_a_read_only_token(self):
+        self.gh.probe_secondary = True
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(r.json()["error"], "GitHub ne répond pas, réessayez dans un instant.")
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
+    def test_without_a_commit_to_read_the_statuses_probe_uses_a_fixed_one(self):
+        for status in (404, 409):  # a token that cannot see the project; an empty project
+            self.gh.head_status, self.gh.probes = status, []
+            r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(events[-1]["type"], "done", (status, events))
+            self.assertIn(("POST", "/repos/phoibe/habitudes/statuses/" + "0" * 40), self.gh.probes, status)
+
+    def test_a_rate_limited_commit_read_is_github_down(self):
+        self.gh.head_status, self.gh.head_headers = 403, {"x-ratelimit-remaining": "0"}
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 503)
         self.assertFalse(os.path.exists(self.claude + ".prompt"))
 
