@@ -189,7 +189,6 @@ const analyst = (run) => {
   const red = (run.tests || []).filter((x) => !x.ok).at(-1);
   return roleAgents(run).find(({ a }) => !red || String(a.t) < String(red.t)) || null;
 };
-export const bugAnalysed = (run) => Boolean(analyst(run));
 const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
 // The journal is a committed file: a hand-edited `by` must not break the comment.
 const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
@@ -233,7 +232,7 @@ export function upstreamCheck(runs) {
       lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
     } else if (entry.status === 'unproved') missing.push({
       alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
-      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
+      how: `questions et fiche : la fiche publiée n'a pas de preuve valable : la ligne de preuve manque, ou le texte ne correspond plus à ce que le sous-agent de réflexion a écrit. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
     else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);

@@ -8,8 +8,11 @@ Un bug signalé dans l'issue. Pas de grilling.
 1. **Analyse** par un sous-agent du rôle `plan`, lancé avec la description `[role:plan:amont]` (« Phase amont » dans
    AGENT.md), après le rattrapage éventuel et avant tout autre travail : il lit l'issue, cherche dans le code (skill
    `systematic-debugging`) et te rend soit la question à poser quand le comportement attendu n'est pas clair, soit la
-   cause probable, les fichiers concernés et le test qui reproduira le bug. S'il rend une question : pose-la (**une**
-   question simple) sur l'issue, mets `factory:blocked` et termine.
+   cause probable, les fichiers concernés et le test qui reproduira le bug. Dès qu'il te l'a rendue, lance
+   `node .factory/scripts/journal-check.mjs` depuis le dossier du projet : il note tout de suite dans le journal la
+   preuve de cette analyse (si la correction reprend sur une autre machine, le relevé du sous-agent n'y sera plus) ;
+   les étapes qu'il dit manquantes à ce moment se font dans la suite, rien de plus à faire ici.
+   S'il rend une question : pose-la (**une** question simple) sur l'issue, mets `factory:blocked` et termine.
 2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Un sous-agent du rôle `code` (description `[role:code]`)
    part de cette analyse : skill `systematic-debugging`, reproduis le bug par un test qui échoue,
    trouve la cause racine, corrige, le test passe. Si le bug se voit dans un navigateur et que le projet a

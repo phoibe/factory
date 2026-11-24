@@ -96,5 +96,7 @@ test('every sub-agent announces its role; the proof comes from its own record', 
   }
   const bug = read('stages/bugfix.md');
   assert.ok(bug.includes('[role:plan:amont]') && bug.indexOf('[role:plan:amont]') < bug.indexOf('[role:code]'), 'bugfix: analysis announced before the fix');
+  const step1 = bug.slice(bug.indexOf('1. **Analyse**'), bug.indexOf('2. Branche'));
+  assert.ok(step1.includes('node .factory/scripts/journal-check.mjs'), 'bugfix: the analysis proof is recorded as soon as it is handed back');
   assert.ok(!read('stages/question.md').includes('[role:'), 'the chat stays with the pilot');
 });

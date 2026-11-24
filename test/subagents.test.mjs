@@ -157,6 +157,11 @@ test('the journal records the role announced at the start of the description', (
   const chef = agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:chef] x' } });
   assert.equal(chef.role, null);
   assert.equal(chef.label, '[role:chef] x');
+  const later = agentEntry({ tool_name: 'Agent', tool_input: { description: 'Relire la fiche [role:plan:amont]', model: 'fable' } });
+  assert.equal(later.role, null, 'a tag not at the start announces nothing');
+  assert.equal('up' in later, false);
+  assert.equal(later.label, 'Relire la fiche [role:plan:amont]');
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: '  [role:code] x' } }).role, 'code', 'leading spaces are fine');
   const none = agentEntry({ tool_name: 'Agent', tool_input: { description: 'Relecture' } });
   assert.equal(none.role, null);
   assert.equal(none.label, 'Relecture');
