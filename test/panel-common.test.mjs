@@ -118,11 +118,13 @@ test('something is unsaved as soon as one screen says so', async () => {
   const { m } = await load();
   assert.equal(m.hasUnsaved(), false);
   let dirty = false;
-  m.onUnsaved(() => null);
-  m.onUnsaved(() => dirty);
+  m.onUnsaved('settings', () => null);
+  m.onUnsaved('answering', () => dirty);
   assert.equal(m.hasUnsaved(), false);
+  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: false });
   dirty = true;
   assert.equal(m.hasUnsaved(), true);
+  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: true }); // the kind is kept (#572)
 });
 
 test('call() runs the action a part provided and gives its result back; unknown or provided twice throws', async () => {

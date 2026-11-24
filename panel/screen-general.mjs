@@ -135,7 +135,7 @@ onView((e) => {
   if (e.screen !== 'project-view') closeGeneral();
   $('general-open').hidden = e.screen !== 'project-view'; // the page lives inside the project screen
 });
-onUnsaved(() => generalDirty());
+onUnsaved('settings', () => generalDirty());
 
 $('general-open').addEventListener('click', () => openGeneral($('general-open')).catch((err) => toast(errorText(err))));
 $('general-back').addEventListener('click', () => closeGeneral(true));

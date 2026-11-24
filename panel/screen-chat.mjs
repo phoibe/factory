@@ -1249,4 +1249,5 @@ onView((e) => {
     if (e.tab === 'chat' && e.focus) focusChat();
   }
 });
-onUnsaved(() => Boolean($('chat-input')?.value.trim()) || Boolean(chat.live) || chat.files.length > 0);
+onUnsaved('message', () => Boolean($('chat-input')?.value.trim()) || chat.files.length > 0);
+onUnsaved('answering', () => Boolean(chat.live));

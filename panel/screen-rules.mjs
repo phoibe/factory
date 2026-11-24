@@ -369,7 +369,7 @@ onReset(() => {
   triggers.done.clear(); triggers.fresh.clear();
   forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
 });
-onUnsaved(() => app.current && JSON.stringify(app.current.config) !== app.current.saved);
+onUnsaved('settings', () => app.current && JSON.stringify(app.current.config) !== app.current.saved);
 
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
 // The focus left « Paramètres » (after the browser moved it): a dev server status held back meanwhile shows now.

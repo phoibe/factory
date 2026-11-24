@@ -1,10 +1,10 @@
-import { fromBase64, issuesUrl, issuesLinkText, chatServerUrl, isDeployed, versioned } from './lib.mjs';
+import { fromBase64, issuesUrl, issuesLinkText, chatServerUrl, isDeployed, versioned, reloadBlocker } from './lib.mjs';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { errorText } from './errors.mjs';
 // Import order is the order of screen reactions, resets and document listeners (pinned by test/panel-screens.test.mjs).
-import { PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs';
+import { PROJECT_KEY, $, store, app, el, toast, resetSession, unsavedParts, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs';
 import './github.mjs';
 import './screen-general.mjs';
 import { recallProjects, loadProjects, checkProjects, refreshDots, renderProjectList } from './screen-projects.mjs';
@@ -63,21 +63,53 @@ async function openProject(fullName) {
 }
 
 // A new panel version is deployed (version.json, written by scripts/stamp-panel.mjs) while this tab still runs the old one:
-// reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
+// the banner under the top bar says so, and the owner reloads when he wants (issue #572: never by itself). Checked every
+// minute and when the tab comes back. One banner only, whatever the number of versions online meanwhile.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
-let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
   if (!isDeployed(BUILD)) return; // local copy, not a deployed one
+  if (!$('new-version').hidden) return; // already shown
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
-  // Nothing in flight is lost either: an answer still arriving, images waiting to be sent.
-  if (hasUnsaved()) {
-    if (toldBuild === live.build) return; // already told for this version
-    toldBuild = live.build;
-    return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
-  }
-  location.reload();
+  $('new-version').hidden = false;
+  sayInBanner(VERSION_TEXT); // the status region was there, empty: the sentence put in it is announced
+  fitBanner();
 }
+// The strip's and the bar's heights, for the phone rules that keep the strip on screen: above an open conversation,
+// and at the top of a scrolled page (style.css).
+function fitBanner() {
+  const strip = $('new-version');
+  document.documentElement.style.setProperty('--new-version-h', `${strip.hidden ? 0 : strip.getBoundingClientRect().height}px`);
+  document.documentElement.style.setProperty('--top-h', `${document.querySelector('.top').getBoundingClientRect().height}px`);
+}
+addEventListener('resize', fitBanner);
+if ('ResizeObserver' in window) {
+  const watch = new ResizeObserver(() => fitBanner());
+  for (const n of document.querySelectorAll('.top, .project-head, .tabs, #new-version')) watch.observe(n);
+}
+// « Recharger »: never loses what is typed or still arriving. The strip says what to do first, in place of its usual
+// sentence, until that is done (checked every second); then the usual sentence comes back. Never reloads by itself.
+const VERSION_TEXT = $('new-version-text').dataset.text;
+let refusalTimer = null;
+// Clicked again, still refused: the same sentence flashes briefly (style.css), no new text.
+function again(sentence) {
+  sentence.classList.remove('again');
+  void sentence.offsetWidth; // restarts the animation on every click
+  sentence.classList.add('again');
+}
+function sayInBanner(text) {
+  $('new-version-text').textContent = text;
+  clearInterval(refusalTimer);
+  refusalTimer = null;
+  if (text === VERSION_TEXT) return;
+  refusalTimer = setInterval(() => { if (reloadBlocker(unsavedParts()) !== text) sayInBanner(VERSION_TEXT); }, 1000);
+}
+$('new-version-reload').addEventListener('click', () => {
+  const why = reloadBlocker(unsavedParts());
+  if (why && $('new-version-text').textContent === why) return again($('new-version-text'));
+  if (why) return sayInBanner(why);
+  location.reload();
+});
 let watching = false, retryTimer = null;
 function watchVersion() {
   if (watching) return; // start() runs again after each failed attempt and each login: one watcher is enough

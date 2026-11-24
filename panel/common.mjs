@@ -82,10 +82,16 @@ export function sessionExpired() {
 }
 
 // ---- Something unsaved --------------------------------------------------------------------------------------------------
-// Each screen holding something a reload would lose says so here.
+// Each screen holding something a reload would lose says so here, with its kind (issue #572: the new-version banner says
+// what to do first): 'settings' (unsaved settings), 'message' (a message typed or images waiting) or 'answering'.
 const holders = [];
-export function onUnsaved(fn) { holders.push(fn); }
-export const hasUnsaved = () => holders.some((fn) => Boolean(fn()));
+export function onUnsaved(kind, fn) { holders.push({ kind, fn }); }
+export const unsavedParts = () => {
+  const parts = { settings: false, message: false, answering: false };
+  for (const { kind, fn } of holders) if (fn()) parts[kind] = true;
+  return parts;
+};
+export const hasUnsaved = () => holders.some(({ fn }) => Boolean(fn()));
 
 // ---- What is shown ------------------------------------------------------------------------------------------------------
 // The screen, the tab and the general page on screen. Every change tells every watcher, every time, even when nothing

@@ -657,7 +657,7 @@ function drawBoard() {
   const heldSet = new Set(held.pending.map((c) => c.number));
   const yours = yoursList(cards).filter((c) => !heldSet.has(c.number));
   const n = yours.length;
-  document.title = tabTitle(n);
+  if (document.title !== tabTitle(n)) document.title = tabTitle(n); // rewritten only when the count changes (#572)
   const doneShown = doneView(live.done);
   const headline = cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours'; // shown only when nothing waits
   const sub = cards.length
