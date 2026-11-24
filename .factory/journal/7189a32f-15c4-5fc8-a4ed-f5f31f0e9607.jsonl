@@ -21,3 +21,7 @@
 {"t":"2026-11-24T17:22:45.561Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\ns=… { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';\",\"import { markdownTable, brokenShotRows, NO_CHANGE_MARKER, FRAMES_SENTENCE } fr","ok":true,"id":"toolu_01QTfzDV7UeSqGrHFkWJwPQA"}
 {"t":"2026-11-24T17:23:23.208Z","kind":"test","cmd":"cat >> test/shots-stable.test.mjs <<'EOF'\n\ntest('the screenshots stage tells the agent about the red frames', async () => {\n  const { readFileSync } = await import('node:fs');\n  const s = readFileSync","ok":false,"id":"toolu_01F8oQXNryCzX91kE3Vg2zBH"}
 {"t":"2026-11-24T17:24:13.667Z","kind":"test","cmd":"node --test test/shots-stable.test.mjs 2>&1 | grep -E \"^# (pass|fail)\"; npm run typecheck >/tmp/claude-0/tc.txt 2>&1; echo tc=… npm run lint >/tmp/claude-0/l.txt 2>&1; echo lint=… npm run build >/tmp/","ok":true,"id":"toolu_01U4gMDwF7pmPddxEv65TvKG"}
+{"t":"2026-11-24T17:25:15.587Z","kind":"skill","name":"requesting-code-review","id":"toolu_01Q67FGJNfG9fDTQM9Wp9xdw"}
+{"t":"2026-11-24T17:25:22.500Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Final review 578","id":"toolu_01AWtzogakDQJYeDfbb5RCCZ"}
+{"t":"2026-11-24T17:27:28.775Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T17:27:31.130Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
