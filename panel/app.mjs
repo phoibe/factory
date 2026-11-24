@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, reloadBlocker, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=29';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=28';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
@@ -252,8 +252,12 @@ async function checkProjects() {
 }
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
-const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
-  || Boolean(chat.live) || chat.files.length > 0;
+const unsavedParts = () => ({
+  settings: Boolean(current && JSON.stringify(current.config) !== current.saved) || generalDirty(),
+  message: Boolean($('chat-input')?.value.trim()) || chat.files.length > 0,
+  answering: Boolean(chat.live),
+});
+const hasUnsaved = () => reloadBlocker(unsavedParts()) !== null;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -1119,7 +1123,7 @@ function drawBoard() {
   const heldSet = new Set(held.pending.map((c) => c.number));
   const yours = yoursList(cards).filter((c) => !heldSet.has(c.number));
   const n = yours.length;
-  document.title = tabTitle(n);
+  if (document.title !== tabTitle(n)) document.title = tabTitle(n); // rewritten only when the count changes (#572)
   const doneShown = doneView(live.done);
   const headline = cards.length ? 'Rien ne vous attend' : 'Aucune fonctionnalité en cours'; // shown only when nothing waits
   const sub = cards.length
@@ -1785,22 +1789,23 @@ if ('ResizeObserver' in window) {
   for (const n of document.querySelectorAll('.top, .project-head, .tabs')) watch.observe(n);
 }
 
-// A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
-// reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
+// A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one: the
+// banner under the top bar says so, and the owner reloads when he wants (issue #572: never by itself). Checked every
+// minute and when the tab comes back. One banner only, whatever the number of versions online meanwhile.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
-let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
   if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
+  if (!$('new-version').hidden) return; // already shown
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
-  // Nothing in flight is lost either: an answer still arriving, images waiting to be sent.
-  if (hasUnsaved()) {
-    if (toldBuild === live.build) return; // already told for this version
-    toldBuild = live.build;
-    return toast('Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.');
-  }
-  location.reload();
+  $('new-version').hidden = false;
 }
+// « Recharger »: never loses what is typed or still arriving, says what to do first instead.
+$('new-version-reload').addEventListener('click', () => {
+  const why = reloadBlocker(unsavedParts());
+  if (why) return toast(why);
+  location.reload();
+});
 let watching = false, retryTimer = null;
 function watchVersion() {
   if (watching) return; // start() runs again after each failed attempt and each login: one watcher is enough

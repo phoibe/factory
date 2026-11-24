@@ -77,6 +77,10 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
 /* On the Agent tab the message box sits at the bottom: the toast goes above it, never over what I type (issue #516). */
 body:has(#chat:not([hidden])) #toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
 @media (max-width: 600px) { .top { flex-wrap: wrap; } nav { width: 100%; } }
+/* The new-version banner (issue #572): a neutral strip under the top bar, inside it so it stays on every screen. */
+.top:has(.new-version:not([hidden])) { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+.new-version { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 12px -16px 0; padding: 4px 16px; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-size: .8125rem; }
+.new-version .small-btn { flex: none; }
 
 ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 
