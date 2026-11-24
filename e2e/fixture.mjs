@@ -37,7 +37,8 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `deploy`: the live site's publications (issue #369): { deployments, statuses: { id: [...] }, compare: { commits }, pulls },
 // and `liveRef`, the commit the site's version tag names (issue #372).
 // `pushed`: full name → the date of the last push GitHub gives in the repository list (`repos` is read at each request:
-// a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received.
+// a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received, and
+// `chatBranch`, the `factory-chat` branch ({ index, chats }) a journey may change as another device would.
 // `stable`: GitHub's compare of the factory's own `stable...main` (« Déclarer stable », issue #551):
 // { ahead_by, commits: [{ commit: { message } }] }. Without it GitHub answers an empty list, as before (no button).
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
@@ -225,7 +226,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
-    await journey({ page, writes, reads, probes, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
+    await journey({ page, writes, reads, probes, chatCalls, chatBranch, context, browser, url: `http://localhost:${server.address().port}/` });
   } finally {
     await browser.close();
     server.close();

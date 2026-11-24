@@ -52,6 +52,14 @@ _À éviter_ : complexité, story points
 Une tâche du plan d'une grande demande qui ne dépend d'aucune autre tâche encore à faire et ne touche pas les mêmes fichiers ni les mêmes tests qu'elles ; elle peut être construite en même temps que d'autres, au plus trois à la fois. Les autres sont des **tâches séquentielles**, construites après la tâche dont elles dépendent.
 _À éviter_ : tâche indépendante, tâche concurrente
 
+**Review générale** :
+La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections.
+_À éviter_ : audit, revue complète
+
+**Relecture partie par partie** :
+Pendant une review générale, la relecture de tout le code d'une grande partie de l'appli ; il y en a une par grande partie, faites en même temps, avant la synthèse qui réunit leurs constats.
+_À éviter_ : sous-revue, relecture finale (celle d'avant chaque PR)
+
 **Documents du projet** :
 Le glossaire et le registre des décisions d'un projet. L'agent les tient à jour pendant les questions ; un projet qui n'en a pas encore les reçoit une fois, reconstitués à partir de sa fiche produit, de son design, de ses features livrées et des échanges passés, au prochain passage de l'agent. Ils arrivent toujours dans une petite mise à jour de documents que la factory valide seule.
 _À éviter_ : documentation, docs
@@ -92,6 +100,10 @@ _À éviter_ : menu déroulant, sélecteur
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
 
+**Bandeau de nouvelle version** :
+La ligne discrète affichée sous la barre du haut quand une version plus récente du tableau de bord est en ligne, avec le bouton « Recharger » ; elle reste jusqu'à ce que le propriétaire recharge la page, qui ne se recharge jamais d'elle-même.
+_À éviter_ : alerte de mise à jour, notification de version, message de mise à jour
+
 ## Réglages généraux
 
 **Réglages généraux** :
@@ -99,11 +111,11 @@ La page à part du tableau de bord, ouverte par le bouton du même nom dans la b
 _À éviter_ : paramètres globaux, configuration générale
 
 **Rôle de modèle** :
-L'un des quatre types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, et les tâches simples de lecture et d'écriture.
+L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures partie par partie d'une review générale, et les tâches simples de lecture et d'écriture.
 _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 
 **Famille de modèles** :
-Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle ; c'est toujours sa version la plus récente qui sert.
+Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle, et qu'il appelle aussi « moteur » ; c'est toujours sa version la plus récente qui sert.
 _À éviter_ : version, modèle précis
 
 ## Design

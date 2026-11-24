@@ -86,6 +86,7 @@ export function launchesPart(ctx) {
     // taken for a passing failure, relaunched later. The launch is at-least-once: when the routine had already
     // accepted the call, the relaunch can start a second session.
     let res;
+    gh.assertTurn?.(); // the routine call is the one launch that is not a GitHub write: asked explicitly
     try {
       res = await fetchImpl(env.FACTORY_ROUTINE_URL, {
         method: 'POST',
