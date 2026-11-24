@@ -333,19 +333,27 @@ function decisionsFrom(comments) {
 
 // A request created on GitHub whose choice is not recorded in the conversation yet (the record failed): kept on this
 // device, card key (`conversation:card`) → its link, so a reload shows it « Créée » and never creates it twice.
+// A record that can never pass (gone, locked) is kept, not dropped: still « Créée », no longer pending (review #556).
 // `store`: { get, set, del } over localStorage (review #556).
 export function createdMarks(store, repo) {
   const key = `factory.chat.created.${repo}`;
   const read = () => {
     try {
       const saved = JSON.parse(store.get(key) || '[]');
-      return new Map((Array.isArray(saved) ? saved : []).filter((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string'));
+      return new Map((Array.isArray(saved) ? saved : [])
+        .filter((e) => Array.isArray(e) && typeof e[0] === 'string' && (e.length === 2 || (e.length === 3 && e[2] === 'kept')))
+        .map(([k, url, kept]) => [k, { url, kept: !!kept }]));
     } catch { return new Map(); }
   };
-  const save = (marks) => (marks.size ? store.set(key, JSON.stringify([...marks])) : store.del(key));
+  const save = (marks) => (marks.size
+    ? store.set(key, JSON.stringify([...marks].map(([k, { url, kept }]) => (kept ? [k, url, 'kept'] : [k, url]))))
+    : store.del(key));
+  const shown = ([k, { url }]) => [k, { state: 'created', url: safeGithubUrl(url) || null }];
   return {
-    entries: () => [...read()].map(([k, url]) => [k, { state: 'created', url: safeGithubUrl(url) || null }]),
-    set: (k, url) => { const marks = read(); marks.set(k, url); save(marks); },
+    entries: () => [...read()].map(shown),
+    pending: () => [...read()].filter(([, m]) => !m.kept).map(shown),
+    set: (k, url) => { const marks = read(); marks.set(k, { url, kept: false }); save(marks); },
+    keep: (k) => { const marks = read(); const m = marks.get(k); if (m && !m.kept) { m.kept = true; save(marks); } },
     delete: (k) => { const marks = read(); if (marks.delete(k)) save(marks); },
   };
 }

@@ -136,6 +136,34 @@ test('finishesConversation: every card decided and at least one request created 
   assert.equal(finishesConversation(), false);
 });
 
+// Review #556, round 3, finding 1: a record that can never pass (gone, locked) stops being tried, but the card must
+// stay « Créée » on this device: dropping the mark would offer « Créer cette demande » again after a reload.
+test('a created mark given up on stays « Créée » but is no longer pending', async () => {
+  const { createdMarks } = await import('../panel/chat.mjs');
+  const saved = new Map();
+  const store = { get: (k) => saved.get(k) ?? null, set: (k, v) => saved.set(k, v), del: (k) => saved.delete(k) };
+  const marks = createdMarks(store, 'o/r');
+  marks.set('7:p1', 'https://github.com/o/r/issues/42');
+  marks.set('7:p2', 'https://github.com/o/r/issues/43');
+  assert.deepEqual(marks.pending().map(([k]) => k), ['7:p1', '7:p2']);
+  marks.keep('7:p1');
+  const again = createdMarks(store, 'o/r'); // after a reload
+  assert.deepEqual(again.pending(), [['7:p2', { state: 'created', url: 'https://github.com/o/r/issues/43' }]]);
+  assert.deepEqual(again.entries(), [
+    ['7:p1', { state: 'created', url: 'https://github.com/o/r/issues/42' }],
+    ['7:p2', { state: 'created', url: 'https://github.com/o/r/issues/43' }],
+  ], 'still shown « Créée » with its link');
+  again.keep('7:p1');
+  again.keep('7:absent');
+  assert.equal(again.entries().length, 2, 'keeping twice, or an unknown card, changes nothing');
+  again.delete('7:p2');
+  assert.deepEqual(again.pending(), []);
+  assert.deepEqual(again.entries().map(([k]) => k), ['7:p1']);
+  // A third value other than « kept » is a broken entry.
+  store.set('factory.chat.created.o/r', JSON.stringify([['7:p3', 'https://github.com/o/r/issues/44', 'x']]));
+  assert.deepEqual(createdMarks(store, 'o/r').entries(), []);
+});
+
 // Review #556, finding 10: a request created on GitHub whose choice could not be recorded in the conversation must
 // stay « Créée », with its link, on this device: otherwise a reload shows the card pending and a second click makes a
 // second request.

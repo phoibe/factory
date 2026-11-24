@@ -245,31 +245,43 @@ test('revenir sur le projet pendant que la demande se crée ne permet pas d\'en 
 // Review #556, round 2, finding 5: in issue mode, a record that can never pass (the conversation is gone) is not
 // tried again for ever; one that passes late puts the conversation away, as a record on the click does.
 const oneProject = () => ({ ...issueMode(), repos: ['o/r'], issueDelay: 0 });
-const failPosts = (page, status, on = () => true) => {
+const failPosts = (page, status, on = () => true, message = status === 404 ? 'Not Found' : 'Server Error') => {
   const posts = [];
   return page.route('https://api.github.com/repos/o/r/issues/7/comments', (route) => {
     const req = route.request();
     if (req.method() !== 'POST') return route.fallback();
     posts.push(1);
     if (!on()) return route.fallback();
-    return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ message: status === 404 ? 'Not Found' : 'Server Error' }) });
+    return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ message }) });
   }).then(() => posts);
 };
 
-test('un choix qui ne pourra jamais être enregistré (conversation disparue) n\'est plus réessayé', async () => {
-  await withPanel(oneProject(), async ({ page, url }) => {
-    const posts = await failPosts(page, 404);
-    await page.goto(url);
-    const card = await openCard(page);
-    await card.getByRole('button', { name: 'Créer cette demande' }).click();
-    await page.getByText('Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.').waitFor();
-    await page.reload(); // the refresh tries once more, and GitHub says it is gone
-    await page.waitForFunction(() => !localStorage.getItem('factory.chat.created.o/r'), null, { timeout: 10_000 });
-    const tries = posts.length;
-    await page.reload();
-    await page.waitForTimeout(2000);
-    assert.equal(posts.length, tries, 'not tried again');
-  });
+// Round 3, finding 1: given up on, the mark is kept, so the card stays « Créée » and a second request cannot be made.
+const neverPasses = (status, message) => async ({ page, url, writes }) => {
+  const posts = await failPosts(page, status, () => true, message);
+  await page.goto(url);
+  const card = await openCard(page);
+  await card.getByRole('button', { name: 'Créer cette demande' }).click();
+  await page.getByText('Demande créée, mais ce choix n\'a pas pu être enregistré dans la conversation.').waitFor();
+  await page.reload(); // the refresh tries once more, and GitHub says it will never pass
+  await page.waitForFunction(() => /"kept"/.test(localStorage.getItem('factory.chat.created.o/r') || ''), null, { timeout: 10_000 });
+  const tries = posts.length;
+  await page.reload();
+  const again = await openCard(page);
+  await again.getByText('Créée').waitFor();
+  await page.waitForTimeout(2000);
+  assert.equal(posts.length, tries, 'not tried again');
+  assert.equal(await again.getByRole('button', { name: 'Créer cette demande' }).count(), 0, 'no second request offered');
+  assert.equal(await again.getByRole('button', { name: 'Ignorer' }).count(), 0);
+  assert.equal(bugs(writes), 1, 'one request only');
+};
+
+test('un choix qui ne pourra jamais être enregistré (conversation disparue) n\'est plus réessayé, et la carte reste « Créée »', async () => {
+  await withPanel(oneProject(), neverPasses(404, 'Not Found'));
+});
+
+test('un choix refusé car la conversation est verrouillée n\'est plus réessayé, et la carte reste « Créée »', async () => {
+  await withPanel(oneProject(), neverPasses(403, 'Unable to create comment because issue is locked.'));
 });
 
 test('un choix enregistré plus tard range la conversation dans « Terminées »', async () => {
