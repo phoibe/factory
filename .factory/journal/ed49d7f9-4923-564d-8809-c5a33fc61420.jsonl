@@ -1,3 +1,9 @@
 {"t":"2026-11-24T13:48:47.786Z","kind":"run","stage":"build","issue":557,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
 {"t":"2026-11-24T13:49:22.591Z","kind":"agent","model":"fable","effort":"high","label":"Write plan for issue 557","id":"toolu_01Acce6pBccLuo2Tp9zRUyTp"}
 {"t":"2026-11-24T13:49:23.911Z","kind":"skill","name":"writing-plans","id":"toolu_01FmMEkxkSjqkjRwEW3XHvk6"}
+{"t":"2026-11-24T14:02:46.622Z","kind":"agent","model":"opus","effort":"medium","label":"Execute plan for issue 557","id":"toolu_015cx9dQLTb5ZYseUtcfi6za"}
+{"t":"2026-11-24T14:02:48.098Z","kind":"skill","name":"executing-plans","id":"toolu_01UcVex9ZNj7kmLvv8WuAzYc"}
+{"t":"2026-11-24T14:02:48.305Z","kind":"skill","name":"test-driven-development","id":"toolu_01Ao9ntBLUxRS1ZfXTgWx2ja"}
+{"t":"2026-11-24T14:03:30.472Z","kind":"test","cmd":"f=… && sed -i 's/^export const NOTES/const NOTES/; s/^export const itemWith/const itemWith/; s/^const asPr = (item) => ({ ...item, pull_request: { url: .x. } });/&\\nconst same = (i) => i;/; s/for (con","ok":false,"id":"toolu_017VFps71H8Dh5dr8jhr9eTn"}
+{"t":"2026-11-24T14:03:32.329Z","kind":"test","cmd":"node --test test/outsider-notes.test.mjs 2>&1 | grep -m3 -i \"error\\|does not provide\"","ok":true,"id":"toolu_01CvgHhpCc2YSGCbubvJMx5T"}
+{"t":"2026-11-24T14:03:40.835Z","kind":"test","cmd":"cat >> scripts/lib/trust.mjs <<'EOF'\n\n// An issue or a PR as GitHub sends it: an integer number, a title and an author key (null for a deleted account).\nconst isIssueLike = (v) => Number.isInteger(v.n","ok":true,"id":"toolu_016N4JxqWvCm22YmsMyTnaxp"}
