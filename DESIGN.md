@@ -4,6 +4,7 @@ description: Un atelier monochrome, précis et aéré, où une seule couleur viv
 colors:
   paper: "#fbfbfa"
   surface: "#ffffff"
+  surface-2: "#f4f4f2"
   ink: "#0e0f11"
   muted: "#5f6368"
   line: "#e6e6e3"
@@ -11,6 +12,7 @@ colors:
   signal-blue-soft: "#eaf0ff"
   ok-green: "#1a7f4b"
   danger-red: "#c62828"
+  danger-bg: "#fdecea"
   scrim: "rgb(0 0 0 / .45)"
   warn-soft: "#fff4e5"
   warn-line: "#f3c58f"
@@ -18,6 +20,7 @@ colors:
   ok-line: "#a9d8bc"
   paper-dark: "#101113"
   surface-dark: "#18191c"
+  surface-2-dark: "#1d1e22"
   ink-dark: "#f2f2ef"
   muted-dark: "#9aa0a6"
   line-dark: "#2a2c30"
@@ -25,6 +28,7 @@ colors:
   signal-blue-soft-dark: "#16213f"
   ok-green-dark: "#6fcf97"
   danger-red-dark: "#ff8a80"
+  danger-bg-dark: "#3a1f1c"
   warn-soft-dark: "#33240f"
   warn-line-dark: "#6b4a1f"
   ok-soft-dark: "#12291c"
@@ -113,13 +117,14 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 ### Neutral
 - **Papier** (`#fbfbfa`, nuit `#101113`) : fond de page.
 - **Surface** (`#ffffff`, nuit `#18191c`) : cartes.
+- **Surface 2** (`#f4f4f2`, nuit `#1d1e22`) : un ton à côté du papier : cartes en file d'attente ou en attente de prise en compte, colonne des conversations, liste des projets (le jour), blocs de commande.
 - **Encre** (`#0e0f11`, nuit `#f2f2ef`) : texte.
 - **Gris discret** (`#5f6368`, nuit `#9aa0a6`) : texte secondaire.
 - **Filet** (`#e6e6e3`, nuit `#2a2c30`) : bordures d'un pixel.
 
 ### Status
 - **Voile** (`rgb(0 0 0 / .45)`) : derrière une fenêtre (code QR) et sur les vignettes d'images, pour détacher ce qui est devant.
-- **Vert** (`#1a7f4b`, nuit `#6fcf97`) : terminé. **Rouge** (`#c62828`, nuit `#ff8a80`) : échec. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
+- **Vert** (`#1a7f4b`, nuit `#6fcf97`) : terminé. **Rouge** (`#c62828`, nuit `#ff8a80`) : échec ; son fond doux (`#fdecea`, nuit `#3a1f1c`) teinte une carte bloquée et un message d'erreur de chargement. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
 
 **The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. Dans la section « À vous de jouer », c'est un bouton bleu par carte (« go » pour une spec, « Ok » pour des captures ou une recette), les autres boutons de la carte restent discrets. S'il n'y a rien à répondre, il n'y a pas de bleu. Seule exception : le point d'état bleu de la liste des projets, qui signale lui aussi une réponse attendue.
 
@@ -133,7 +138,7 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 - **Body** (400, 1rem, interligne 1.5) : texte, une courte phrase par ligne, 65 caractères maximum.
 - **Label** (mono 500, 0.8125rem) : numéros, états, métadonnées.
 
-**The Mono Numbers Rule.** Tout numéro (#33, 2 tâches, 3 min) est en police à chasse fixe.
+**The Mono Numbers Rule.** Tout numéro (#33, 2 tâches, 3 min) est en police à chasse fixe : le chiffre seul, à la taille du texte qui l'entoure ; l'unité (« min », « h ») reste dans la police du texte.
 
 ## 4. Layout
 
@@ -149,10 +154,10 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ## 7. Components
 
-- **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px encre avec 2 px de marge (le bleu reste réservé à ce qui attend une réponse) ; liens et cartes ont le même anneau.
+- **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px encre avec 2 px de marge (le bleu reste réservé à ce qui attend une réponse) ; liens, cartes, volets repliables et zones qui défilent ont le même anneau.
 - **Bouton discret** : surface, filet, texte encre ; pour toutes les autres actions.
 - **Carte** : surface, filet d'un pixel, coins 14 px, marge intérieure 24 px.
-- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », qui part dès le toucher), toujours en premier, seul sur sa ligne, suivi des boutons discrets « Voir… » côte à côte ; tous ces boutons ont la petite taille des boutons des cartes « Prise en compte en cours… » (32 px visibles, 44 px sous le doigt). Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
+- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », qui part dès le toucher), toujours en premier, sur la même ligne que les boutons discrets (un mot chacun, « Voir… ») ; tous ces boutons ont la petite taille des boutons des cartes « Prise en compte en cours… » (32 px visibles, 44 px sous le doigt). Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Le titre de la carte s'ouvre au toucher (44 px sous le doigt), pas le fond de la carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
 - **Étiquette de taille** : en haut d'une carte, la taille de la demande (« petite demande », « demande moyenne », « grande demande ») dans une puce neutre (fond filet, texte encre gras, coins 6 px ; fond surface et filet bleu doux sur une carte « À vous »), jamais en bleu.
 - **Ligne de tâche** : numéro en mono, titre, état en gris ; une seule ligne, détail au clic.
 - **Liste des projets** : colonne de 240 px collée au bord droit (au-delà de 900 px de large), fond un ton à côté du papier (surface 2 le jour, papier la nuit) et filet à gauche, titre « Projets » sans nombre ; un projet par ligne (44 px), par ordre alphabétique, nom coupé par « … ». Le projet ouvert : fond plus clair que la colonne (surface le jour, surface 2 la nuit), filet appuyé, coins 10 px, nom en gras (jamais de bleu). Sur téléphone, le nom du projet en haut ouvre la même liste en plein écran.
@@ -193,12 +198,12 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 ## Mises en page
 
 ### Projet (en-tête commun aux onglets)
-- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite : « Outils Mac », « Déclarer stable » (visible seulement quand de vraies modifications attendent d'être déclarées stables, leur nombre entre parenthèses en mono), « Sur mon téléphone », « Réglages généraux », « Se déconnecter » en dernier), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
+- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite : « Outils Mac », « Déclarer stable » (visible seulement quand de vraies modifications attendent d'être déclarées stables, leur nombre entre parenthèses en mono), « Sur mon téléphone », « Réglages généraux », « Se déconnecter » en dernier), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets en petit (13 px) séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
 - **Sommaire ou navigation** : les onglets soulignés en encre ; la liste des projets, colonne de 240 px collée au bord droit, sert à changer de projet.
 - **Largeur** : contenu de 1100 px au plus, aligné à gauche de l'espace laissé par la liste des projets.
 - **Libellés et explications** : aucun texte d'explication ; seuls les titres, les libellés des boutons et la ligne d'état.
 - **Volets repliables** : aucun.
-- **Sur téléphone** : la liste des projets disparaît ; le nom du projet en haut, avec sa flèche, l'ouvre en plein écran. Les boutons se réduisent à « Nouvelle fonctionnalité » et « Plus », qui replie les autres actions, dont « Réglages généraux ». Les onglets restent sur une ligne.
+- **Sur téléphone** : la liste des projets disparaît ; le nom du projet en haut, avec sa flèche, l'ouvre en plein écran. Les boutons se réduisent à « Nouvelle fonctionnalité » (ou « Mise en production ») et « Plus », qui replie les autres actions, dont « Réglages généraux » ; cette ligne prend toute la largeur. Les onglets restent sur une ligne.
 - **Écrans concernés** : Suivi, Agent, Paramètres (leur partie haute).
 
 ### Tableau de suivi (onglet « Suivi »)
@@ -207,21 +212,22 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Largeur** : la largeur du contenu du projet (1100 px au plus).
 - **Libellés et explications** : le titre de section et son nombre ; une section vide dit une seule phrase dans un cadre en pointillés (« Rien de livré pour l'instant. »).
 - **Volets repliables** : les cartes « Mise en production » repliables (liste des modifications) ; le reste est ouvert.
-- **Sur téléphone** : une carte par ligne, la carte « À vous » en tête ; les boutons d'une carte prennent toute la largeur.
+- **Boutons des cartes** : petits (32 px visibles, 44 px sous le doigt) sur toutes les cartes : « go » / « Ok » et « Voir… » des cartes « À vous », boutons des cartes en attente, « Garder » / « Jeter » des idées.
+- **Sur téléphone** : une carte par ligne, la carte « À vous » en tête ; les boutons d'une carte gardent leur petite taille, côte à côte.
 - **Écrans concernés** : Suivi.
 
 ### Page de réglages (onglet « Paramètres »)
-- **Disposition générale** : un titre « Ce projet : <nom> », puis une suite de blocs encadrés (cadre surface, filet d'un pixel, coins arrondis) avec leur titre posé sur le cadre : Mise en production, Site en ligne, Étapes, Demandes en parallèle. Dans un bloc, un réglage par ligne, séparé du suivant par un filet. Les réglages techniques sont rangés tout en bas, sous « Avancé » (où le lien « Changer le réglage de tous les projets », vers la page « Réglages généraux », se trouve juste après le choix de machine propre au projet). Une barre « Enregistrer » avec l'état (« Tout est enregistré ») reste collée en bas de l'écran quand on fait défiler.
+- **Disposition générale** : un titre « Ce projet : <nom> », puis une suite de blocs encadrés (cadre surface, filet d'un pixel, coins arrondis) avec leur titre posé sur le cadre : Mise en production, Site en ligne, Étapes, Demandes en parallèle. Dans un bloc, un réglage par ligne, séparé du suivant par un filet. Les réglages techniques sont rangés tout en bas, sous « Avancé » (où le lien « Changer le réglage de tous les projets », vers la page « Réglages généraux », se trouve juste après le choix de machine propre au projet). Le dernier bloc d'« Avancé », « Savoir-faire », a une ligne par ensemble : sa case, son nom, le nombre de savoir-faire choisis (« 3 sur 15 ») et le volet « Choisir les savoir-faire ». Une barre « Enregistrer » avec l'état (« Tout est enregistré ») reste collée en bas de l'écran quand on fait défiler.
 - **Sommaire ou navigation** : aucun ; l'ordre des blocs suit l'importance.
 - **Largeur** : la largeur du contenu du projet ; les champs texte prennent toute la largeur du bloc, les champs nombre sont courts.
-- **Libellés et explications** : libellé en gras au-dessus du champ, ou à droite de la case à cocher ou du bouton radio ; un réglage qui dépend d'un autre est décalé en dessous de lui, en gris. Pas d'aide sous les champs.
-- **Volets repliables** : « Avancé », replié par défaut, avec une ligne de résumé grise sous son titre (« Serveur de dev · 7 contrôles sur 7 · … »).
+- **Libellés et explications** : libellé en gras au-dessus du champ, ou à droite de la case à cocher ou du bouton radio (toute la ligne coche la case) ; un réglage qui dépend d'un autre est décalé en dessous de lui, en gris. Pas d'aide sous les champs.
+- **Volets repliables** : « Avancé », replié par défaut, avec une ligne de résumé grise sous son titre (« Serveur de dev · 7 contrôles sur 7 · … ») ; dans « Savoir-faire », « Choisir les savoir-faire » de chaque ensemble, ouvert d'office quand il en compte 3 au plus.
 - **Sur téléphone** : mêmes blocs sur une colonne, pleine largeur.
 - **Écrans concernés** : Paramètres.
 
 ### Réglages généraux (page à part)
 - **Disposition générale** : ouverte par le bouton « Réglages généraux » de la barre du haut (ou par le lien « Changer le réglage de tous les projets » des Paramètres), elle remplace l'écran du projet (en-tête, onglets et panneaux disparaissent). En haut, le bouton-lien « ← Retour au projet », puis le titre « Réglages généraux », puis deux blocs encadrés comme ceux de « Paramètres » : « Modèles » (une ligne par rôle : son nom, une phrase d'aide grise, une liste de choix) et « Machine des tâches » (deux boutons radio). La même barre « Enregistrer » avec son état reste collée en bas.
-- **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire.
+- **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire. Tant que la page est ouverte, le bouton « Réglages généraux » de la barre du haut paraît enfoncé (fond surface, filet encre).
 - **Largeur** : celle du contenu du projet ; les listes de choix de 420 px au plus.
 - **Libellés et explications** : le nom du rôle en gras, sa phrase d'aide en gris dessous, puis la liste ; sous les quatre rôles, un court paragraphe gris dit que le modèle de l'agent qui pilote se règle sur claude.ai.
 - **Volets repliables** : aucun.
@@ -249,7 +255,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 ### Fenêtre (par-dessus le projet)
 - **Disposition générale** : une fenêtre centrée sur le voile : titre en haut, contenu, puis les boutons en bas à droite (l'action principale en dernier).
 - **Sommaire ou navigation** : aucun ; Échap ou « Fermer » la referme.
-- **Largeur** : selon le contenu : 380 px (code QR), 640 px (stack technique, mise en production), toujours la largeur de l'écran moins 32 px au plus.
+- **Largeur** : selon le contenu : 380 px (code QR), 640 px (stack technique, mise en production, pas encore en ligne), toujours la largeur de l'écran moins 32 px au plus.
 - **Libellés et explications** : titre court ; le texte de la fiche lue en 65 caractères par ligne au plus.
 - **Volets repliables** : aucun.
 - **Sur téléphone** : presque plein écran, marges de 16 px, le contenu défile et les boutons restent en bas.

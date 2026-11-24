@@ -10,7 +10,7 @@ import { trustNotes } from './trust.mjs';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
-import { watchNumbers } from './numbers.mjs';
+import { watchNumbers } from './numbers.mjs?v=2';
 import { setupTabs } from './tabs.mjs';
 import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
@@ -1525,23 +1525,24 @@ function renderRules() {
             toast('Entre 5 et 180 minutes.');
           } }))));
   const extras = extraChecksFieldset(c, update);
-  const packs = catalog.packs.map((p) => {
-    const pc = c.skills[p.id];
-    const on = p.skills.filter((s) => pc.skills[s.id]).length;
-    return el('fieldset', {}, el('legend', {}, `Savoir-faire : ${p.name}`),
-      el('div', { class: 'row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
-        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Activé'), el('p', {}, `${on} sur ${p.skills.length}`))),
-      el('details', { open: p.skills.length <= 3 }, el('summary', {}, 'Choisir les skills'),
-        el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
-          p.skills.map((s) => el('div', { class: 'row' },
-            checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
-            el('label', { for: `skill-${s.id}` }, s.id))))));
-  });
+  // One « Savoir-faire » block, one row per pack: its switch, its name, how many of its skills are on, and the fold to pick them.
+  const packs = el('fieldset', {}, el('legend', {}, 'Savoir-faire'),
+    catalog.packs.map((p) => {
+      const pc = c.skills[p.id];
+      const on = p.skills.filter((s) => pc.skills[s.id]).length;
+      return el('div', { class: 'row pack-row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
+        el('div', { class: 'pack-main' }, el('label', { for: `pack-${p.id}` }, p.name), el('p', {}, `${on} sur ${p.skills.length}`),
+          el('details', { open: p.skills.length <= 3, 'data-pack': p.id }, el('summary', {}, 'Choisir les savoir-faire'),
+            el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
+              p.skills.map((s) => el('div', { class: 'row' },
+                checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
+                el('label', { for: `skill-${s.id}` }, s.id)))))));
+    }));
   const dirty = JSON.stringify(c) !== current.saved;
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
-  const open = new Set([...form.querySelectorAll('fieldset > details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
+  const open = new Set([...form.querySelectorAll('details[data-pack][open]')].map((d) => d.dataset.pack));
   const name = current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
@@ -1559,11 +1560,11 @@ function renderRules() {
     el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
     machineFieldset(update, line),
     el('p', { class: 'rules-more' }, el('button', { type: 'button', class: 'link-button', onclick: (e) => openGeneral(e.currentTarget).catch((err) => toast(errorText(err))) }, 'Changer le réglage de tous les projets')),
-    engine, checks, extras, ...packs);
+    engine, checks, extras, packs);
   form.replaceChildren(
     rulesSection('rules-project', `Ce projet : ${name}`, [production, site, stages, parallel, ...alert, advanced]),
     bar);
-  for (const d of form.querySelectorAll('fieldset > details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
+  for (const d of form.querySelectorAll('details[data-pack]')) if (open.has(d.dataset.pack)) d.open = true;
 }
 
 let savingRules = false;

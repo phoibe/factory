@@ -38,6 +38,8 @@ button:hover, .button:hover { border-color: var(--muted); }
 button.ghost, .button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-weight: 500; }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 form#login-form button { margin-top: 12px; }
+#login-error { margin: 8px 0 0; }
+#login-error:empty { min-height: 0; margin: 0; }
 .error { color: var(--danger); min-height: 1.5em; }
 .project-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -48,10 +50,16 @@ fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding:
 legend { font-weight: 700; padding: 0 6px; }
 .row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .row:first-of-type { border-top: none; }
-.row input[type=checkbox], .row input[type=radio] { margin-top: 14px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.row input[type=checkbox], .row input[type=radio] { margin: 14px 3px 0 4px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; position: relative; z-index: 1; }
 .row label { margin: 0; padding: 10px 0; font-weight: 600; }
+/* The whole row answers the finger: the label reaches back under its box (4 + 18 + 3 px of box, 10 px of gap), no dead gap. */
+.row > :is(input[type=checkbox], input[type=radio]) + label { flex: 1 1 auto; min-width: 0; }
+.row > :is(input[type=checkbox], input[type=radio]) + label, .row > :is(input[type=checkbox], input[type=radio]) + div > label:first-child { position: relative; }
+.row > :is(input[type=checkbox], input[type=radio]) + label::before, .row > :is(input[type=checkbox], input[type=radio]) + div > label:first-child::before { content: ""; position: absolute; top: 0; bottom: 0; left: -35px; width: 35px; }
 .row p { margin: -6px 0 0; color: var(--muted); font-size: .8125rem; }
 .pack-skills { margin: 8px 0 0 28px; }
+.pack-main { flex: 1 1 auto; min-width: 0; }
+.pack-main .pack-skills { margin-left: 0; }
 .sub-setting { margin-top: 12px; }
 .extra-fields { flex: 1; min-width: 0; }
 .extra-fields label { padding: 0; margin: 8px 0 4px; }
@@ -190,6 +198,7 @@ dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
 .stack-head { padding: 24px 24px 12px; border-bottom: 1px solid var(--line); }
 .stack-head h2 { margin: 0 0 2px; }
 .stack-body { padding: 8px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
+.stack-body:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .stack-body h3 { font-size: 1.125rem; font-weight: 700; margin: 24px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .stack-body h3:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
 .stack-intro { color: var(--muted); }
@@ -207,7 +216,7 @@ dialog#stack::backdrop { background: rgb(0 0 0 / .45); }
 .site-line .sep { color: var(--muted); }
 .site-line .quiet-link { margin: 0; }
 @media (max-width: 600px) { .site-line .sep { display: none; } }
-#site { font-weight: 600; text-underline-offset: 3px; }
+#site { font-size: .8125rem; font-weight: 600; text-underline-offset: 3px; }
 #site.add { font-weight: 500; color: var(--muted); }
 .quiet-link { font-size: .8125rem; color: var(--muted); text-underline-offset: 3px; display: inline-block; padding: 12px 0; margin: -12px 0; min-height: 44px; box-sizing: border-box; }
 #site-url { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; min-height: 44px; }
@@ -252,7 +261,7 @@ html { touch-action: manipulation; }
 .chat-thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .chat-head h2 { flex: 1 1 200px; margin: 0; font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
-#chat-back { display: none; min-width: 44px; padding: 4px 10px; font-size: 1.1rem; line-height: 1; }
+#chat-back { display: none; min-width: 44px; padding: 4px 10px; font-size: 1.125rem; line-height: 1; }
 .chat-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .chat-tools[hidden] { display: none; }
 .small-btn { padding: 5px 10px; font-size: .8125rem; min-height: 44px; }
@@ -285,7 +294,7 @@ html { touch-action: manipulation; }
 .callout.todo { background: var(--you-bg); border-color: var(--you-line); }
 /* Copy buttons: on each command block, and under each answer. */
 .copy { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: .8125rem; font-weight: 500; position: relative; }
-.copy::after { content: ""; position: absolute; inset: -6px -4px; } /* 44 px under the finger */
+.copy::after { content: ""; position: absolute; inset: -7px -4px; } /* 44 px under the finger: 32 px - 2 px of border + 2 x 7 px */
 .copy:hover { color: var(--text); border-color: var(--line); background: var(--surface); }
 .copy.copied, .copy-code.copied { color: var(--ok); background: var(--surface); }
 .copy-answer { margin-left: -8px; }
@@ -357,7 +366,7 @@ html { touch-action: manipulation; }
 /* A request the agent proposes (issue #492): nothing is created until the owner clicks. */
 .proposal { width: 100%; max-width: 100%; display: grid; gap: 4px; margin-top: 8px; padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
 .proposal p { margin: 0; }
-.proposal-kind { font-family: var(--mono); font-size: .8125rem; font-weight: 500; color: var(--muted); }
+.proposal-kind { font-size: .8125rem; font-weight: 500; color: var(--muted); }
 .proposal-title { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .proposal details summary { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; min-height: 44px; box-sizing: border-box; list-style: none; cursor: pointer; color: var(--text); font-size: .8125rem; font-weight: 500; }
 .proposal details summary::-webkit-details-marker { display: none; }
@@ -417,7 +426,7 @@ button.go:disabled { opacity: .6; cursor: default; }
 .site-line { margin: 0; }
 button.go:focus-visible { outline-color: var(--text); }
 /* ---- Mono Numbers Rule: every figure is set in Geist Mono (see numbers.mjs for the text figures) ---- */
-.num { font-size: max(.92em, .8125rem); letter-spacing: -.01em; }
+.num { letter-spacing: -.01em; } /* the size of the text around it: on the 28 / 18 / 16 / 13 ramp */
 .count, .badge { font-weight: 500; }
 /* Keyboard focus is always visible, also on the tabs and the conversations. */
 .tabs button:focus-visible, .conv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -429,6 +438,9 @@ a.button { text-decoration: none; }
 .brand, .ticket .main { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
+summary:not(.button):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+/* The page that is open: « Réglages généraux » looks pressed while its page shows. */
+#general-open[aria-pressed="true"] { background: var(--surface); border-color: var(--text); color: var(--text); font-weight: 600; }
 a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
 #chat-send { background: var(--text); border-color: var(--text); color: var(--bg); }
@@ -459,7 +471,7 @@ button.go:focus-visible { outline-color: var(--text); }
   /* Issue #343: « Mise en production » takes the top line, « Nouvelle fonctionnalité » the first line of « Plus ». */
   .actions #release { flex: 3 1 0; white-space: nowrap; } /* first on the line: the same weight as « Plus » next to it */
   /* Its own line under the project name, whatever the count: the first card's « go » never moves. */
-  .actions:has(> #release:not([hidden])) { flex: 1 1 100%; }
+  .actions { flex: 1 1 100%; } /* whichever button comes first, the row spans the screen */
   .more-menu #new-feature { flex: none; }
   #project-sub, #prod-gap-sep { display: none; } /* phone: the project's name and the live site's state above the buttons (DESIGN.md) */
 }
@@ -511,7 +523,9 @@ details summary { color: var(--text); }
 .lane-ideas h2 { color: var(--muted); }
 .ticket.idea { box-shadow: none; }
 .ticket.idea .card-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
-.ticket.idea .card-actions button { padding: 6px 16px; }
+.ticket.idea .card-actions button { position: relative; min-height: 32px; padding: 5px 12px; border-radius: 10px; font-size: .8125rem; font-weight: 500; line-height: 1.25; }
+/* Small like the « go » / « Ok » of the cards (32 px seen), 44 px under the finger: 32 px - 2 px of border + 2 x 7 px. */
+.ticket.idea .card-actions button::after { content: ""; position: absolute; inset: -7px -4px; }
 /* GitHub refused the sort: the card came back, this line says why until the next click on it. */
 .ticket.idea .idea-error { margin: 0; font-size: .8125rem; color: var(--danger); }
 ::placeholder { color: var(--muted); opacity: 1; }
@@ -554,6 +568,9 @@ details summary { color: var(--text); }
 .ticket.yours .cta .arrow { display: none; }
 /* Only the title and the buttons answer: a tap on the card's background does nothing (it used to be a list row, not a link). */
 .ticket.yours .main::after { content: none; }
+/* The title link itself stays 44 px tall under the finger, with the same look: 21.6 px of line + 2 x 11.5 px. */
+.ticket.yours .main { position: relative; display: inline-block; }
+.ticket.yours .main::before { content: ""; position: absolute; inset: -11.5px 0; }
 .ticket.yours:hover { transform: none; border-color: var(--you-line); }
 .ticket.yours.blocked:hover { border-color: var(--danger); }
 /* The ↗ stays in the label's text run (one flex item), so the label wraps like a sentence. */
@@ -577,7 +594,7 @@ details summary { color: var(--text); }
 
 /* ---- « Mise en production » (issue #294) ---- */
 .button[aria-disabled=true] { opacity: .55; cursor: not-allowed; }
-dialog#release-dialog, dialog#gap-dialog { max-width: 420px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
+dialog#release-dialog, dialog#gap-dialog { max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 24px; box-shadow: var(--shadow); }
 dialog#release-dialog::backdrop, dialog#gap-dialog::backdrop { background: rgb(0 0 0 / .45); }
 #release-title { margin: 0 0 8px; font-size: 1.125rem; text-wrap: balance; }
 #release-confirm.ink { background: var(--text); border-color: var(--text); color: var(--bg); }
@@ -688,4 +705,4 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .runner-alert-text { margin: 0 0 4px; font-weight: 600; }
 .runner-alert-help { margin: 0 0 12px; }
 .pdot-warn { width: 10px; height: 10px; background: var(--warn-line); box-shadow: 0 0 0 1px var(--text); }
-.pwarn { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--warn-line); border-radius: 50%; background: var(--warn-soft); color: var(--text); font-size: 12px; font-weight: 700; line-height: 1; }
+.pwarn { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--warn-line); border-radius: 50%; background: var(--warn-soft); color: var(--text); font-size: .8125rem; font-weight: 700; line-height: 1; }
