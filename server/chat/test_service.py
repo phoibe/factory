@@ -373,14 +373,16 @@ class ServiceTest(unittest.TestCase):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "LENT"})
         self.assertEqual(events[-1]["type"], "error", events)
 
+    # 42 MB of stderr against a 2 x 16 MB pipe buffer: without the fix the stream stalls for good, so a limit far
+    # above the second this takes still proves it, and leaves room on a slow, busy runner.
     def test_a_lot_of_stderr_does_not_stall_the_answer(self):
-        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 3
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 10
         self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "BAVARD"})
         self.assertEqual(events[-1]["type"], "done", events[-2:])
 
     def test_a_lot_of_stderr_before_a_crash_gives_the_real_error(self):
-        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 3
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 10
         self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "BAVARD PANNE"})
         self.assertEqual(events[-1]["type"], "error", events[-2:])
