@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=25';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=27';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=3';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
@@ -2420,24 +2420,50 @@ function readTokenRefused(message) {
   store.del(READ_TOKEN_KEY);
   readToken = null;
   drawReadTokenCard();
-  $('read-token-error').textContent = message;
+  showReadTokenError(message);
 }
 
-// Checks a pasted read token with GitHub: it belongs to the owner, reads the project, and cannot write.
+// Shows a refusal on the read-token card, never breaking a line at the hyphen of « ci-dessus » or « créez-en », nor
+// leaving a « : » alone at the start of a line (issue #558).
+function showReadTokenError(message) {
+  const parts = String(message || '').split(/(\S*-\S+|\S+ [:;!?])/).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const span = document.createElement('span');
+    span.className = 'nowrap';
+    span.textContent = part;
+    return span;
+  });
+  $('read-token-error').replaceChildren(...parts.filter((part) => part !== ''));
+}
+
+// Checks a pasted read token with GitHub: it is a fine-grained one, belongs to the owner, reads the project, and cannot
+// write (issue #558: nor launch automated tasks, change settings, or add an SSH key to the account).
 async function checkReadToken(value) {
   if (value === token) return readTokenProblem({ same: true });
-  const call = (path, init = {}) => fetch(API + path, { ...init, cache: 'no-store', headers: { authorization: `Bearer ${value}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) } });
-  const down = (r) => githubBusy(r.status, r.headers);
+  if (!fineGrained(value)) return readTokenProblem({ classic: true }); // before sending it anywhere
+  const call = (path, init = {}) => fetch(API + path, { ...init, cache: 'no-store', headers: { authorization: `Bearer ${value}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers } });
+  // A 403's message is read too: a secondary rate limit may say so only there.
+  const down = async (r) => githubBusy(r.status, r.headers, r.status === 403 ? (await r.clone().json().catch(() => ({})))?.message : '');
   const user = await call('/user');
-  if (down(user)) throw new Error('github');
+  if (await down(user)) throw new Error('github');
   const owner = current.repo.owner?.login || current.repo.full_name.split('/')[0];
   if (user.status === 401) return readTokenProblem({ status: 401, owner });
   if (!user.ok) throw new Error('github');
+  if (hasScopes(user.headers)) return readTokenProblem({ classic: true }); // only a classic token has scopes
   const { login } = await user.json();
   const repo = current.repo.full_name;
+  // The commit-status probe needs a commit: the project's last one, read with this token (a read it may do). The other
+  // probes do not wait for it. Without one to read (mostly a token that cannot see the project, 404), any 40-hex id
+  // does: GitHub refuses the token or the empty body first.
+  const head = call(`/repos/${repo}/commits/HEAD`, { headers: { accept: 'application/vnd.github.sha' } });
+  const sha = head.then(async (r) => {
+    if (await down(r)) throw new Error('github');
+    const text = r.ok ? (await r.text()).trim() : '';
+    return /^[0-9a-f]{40}$/.test(text) ? text : NO_SHA;
+  });
   const [file, ...probes] = await Promise.all([call(`/repos/${repo}/contents/factory.config.json`),
-    ...WRITE_PROBES.map(([method, path]) => call(`/repos/${repo}/${path}`, { method, body: '{}' }))]);
-  if ([file, ...probes].some(down)) throw new Error('github');
+    ...WRITE_PROBES.map(async ([method, path]) => call(probeUrl(repo, path, path.includes('{sha}') ? await sha : ''), { method, body: '{}' }))]);
+  if ((await Promise.all([file, ...probes].map(down))).some(Boolean)) throw new Error('github');
   return readTokenProblem({ status: user.status, login, owner, readable: file.ok, writable: probes.some((p) => probeSaysWritable(p.status)) });
 }
 
@@ -2447,7 +2473,7 @@ $('read-token-form').addEventListener('submit', async (e) => {
   if (!value || !current) return;
   const btn = $('read-token-save');
   const field = $('read-token');
-  const fail = (message) => { $('read-token-error').textContent = message; field.setAttribute('aria-invalid', 'true'); field.focus(); };
+  const fail = (message) => { showReadTokenError(message); field.setAttribute('aria-invalid', 'true'); field.focus(); };
   btn.disabled = true;
   btn.textContent = 'Vérification…';
   $('read-token-form').setAttribute('aria-busy', 'true');
@@ -3184,6 +3210,7 @@ async function sendToServer(text, files, withImages) {
       const body = await res.json().catch(() => ({}));
       if (res.status === 401) throw Object.assign(saidError('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
       if (body.code === 'writable') throw Object.assign(saidError(WRITABLE_TOKEN), { readToken: true });
+      if (body.code === 'classic') throw Object.assign(saidError(CLASSIC_TOKEN), { readToken: true });
       throw saidError(body.error || `Le serveur de l'agent a répondu ${res.status}.`);
     }
     const reader = res.body.getReader();

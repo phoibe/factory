@@ -93,7 +93,7 @@ test('a spec approval waits in the queue when every place is taken', async () =>
 });
 
 test('autoPick starts a bug before an older feature and says it picked the card by itself', async () => {
-  const issue = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+  const issue = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z`, user: { login: 'phoibe' } });
   const gh = fakeGh({ issues: [issue(1, L.feature), issue(2, L.bug)], prs: [] });
   const { relay, sent } = make(gh, [], { cfg: { ...config, maxParallel: 1, autoPick: true, maxQuestions: 1 } });
   await relay.dequeue();

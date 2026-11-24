@@ -192,6 +192,14 @@ test('rehearsal: an issue left open after its merge is closed by the guard and f
   healthy(w);
 });
 
+test('rehearsal: a stranger\'s request on a public project is never picked by itself (issue #564)', async () => {
+  const w = createWorld({ config: { ...base, autoPick: true } });
+  const n = await w.stranger.openIssue({ title: 'Ça plante', labels: [L.bug] });
+  await w.wait(10);
+  assert.deepEqual(w.stages(), [], 'it waits for the owner');
+  assert.ok(!w.labels(n).includes(L.autoPicked) && !w.labels(n).includes(L.building), w.labels(n).join(', '));
+});
+
 test('rehearsal: an idea the owner keeps starts at once when a place is free, without waiting for another event (issue #406)', async () => {
   const w = createWorld({ config: { ...base, autoPick: true } });
   const n = await w.agentIdea({ title: 'Bouton cassé', labels: [L.bug] });

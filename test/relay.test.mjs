@@ -790,8 +790,8 @@ test('any event unsticks a PR opened in conflict, without waiting for the rare s
 test('a « go » that ends the questions of a picked feature lets the next feature start in the same run', async () => {
   // yoldmewhen2, 2026-11-06: #39 left its questions, 4 places were free, and #40 waited hours for the scheduled tick.
   const gh = fakeGh({ issues: [
-    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], created_at: '2026-01-01T00:00:00Z' },
-    { number: 40, labels: [L.feature], created_at: '2026-01-02T00:00:00Z' },
+    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], created_at: '2026-01-01T00:00:00Z', user: { login: 'phoibe' } },
+    { number: 40, labels: [L.feature], created_at: '2026-01-02T00:00:00Z', user: { login: 'phoibe' } },
   ], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 5, autoPick: true, maxQuestions: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -817,7 +817,7 @@ test('a tick checks the queue once, not twice', async () => {
 
 test('a factory label typed wrong by an agent is put back, so the card can be picked', async () => {
   // yoldmewhen2 #55, 2026-11-06: « une semaine à la fois:factory:feature » hid the feature from the factory.
-  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], created_at: '2026-01-01T00:00:00Z' }], prs: [] };
+  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], created_at: '2026-01-01T00:00:00Z', user: { login: 'phoibe' } }], prs: [] };
   const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -851,7 +851,35 @@ async function runPick(issues, cfg = pickConfig) {
   const started = sent.map((s) => payloadOf(s.init.body));
   return { gh, started };
 }
-const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z`, user: { login: 'phoibe' } });
+// The same issue, opened by someone else (`author_association` is what GitHub says of their rights on the repository).
+const by = (issue, login, author_association) => ({ ...issue, user: { login }, author_association });
+
+test('autoPick never takes a stranger\'s request (issue #564)', async () => {
+  // On a public project anyone can open an issue through the form, which labels it: it waits for the owner.
+  const issues = [by(fi(1, L.bug), 'stranger', 'NONE'), by(fi(2, L.feature), 'passerby', 'CONTRIBUTOR'), by(fi(3, L.bug, L.kept), 'stranger', 'NONE')];
+  const { gh, started } = await runPick(issues, { ...pickConfig, maxParallel: 5, maxQuestions: 3 });
+  assert.deepEqual(started, []);
+  assert.deepEqual(gh.calls, []);
+});
+
+test('autoPick takes the owner\'s, a collaborator\'s and the factory\'s own requests', async () => {
+  const issues = [by(fi(1, L.bug), 'Phoibe', 'OWNER'), by(fi(2, L.bug), 'alice', 'COLLABORATOR'), by(fi(3, L.bug), 'github-actions[bot]', 'CONTRIBUTOR'),
+    by(fi(4, L.bug), 'claude[bot]', 'NONE'), by(fi(5, L.bug), 'stranger', 'NONE')];
+  const { started } = await runPick(issues, { ...pickConfig, maxParallel: 5 });
+  assert.deepEqual(started.map((p) => p.issue), [1, 2, 3, 4]);
+});
+
+test('a stranger\'s issue opened through the form starts nothing, even in the run of its own opening event (issue #564)', async () => {
+  const issue = { number: 7, title: 'Ça plante', body: '', labels: [L.bug], created_at: '2026-01-07T00:00:00Z', user: { login: 'stranger' }, author_association: 'NONE' };
+  const gh = fakeGh({ issues: [issue], prs: [] });
+  const sent = [];
+  const relay = createRelay({ gh, repo: 'phoibe/app', config: pickConfig, env, fetchImpl: fetchOk(sent), log: quiet });
+  await relay.handle(eventFromPayload('issues', { action: 'opened', repository: { owner: { login: 'phoibe' } }, sender: { login: 'stranger' },
+    issue: { ...issue, state: 'open', labels: [{ name: L.bug }] } }));
+  assert.equal(sent.length, 0);
+  assert.ok(!issue.labels.includes(L.autoPicked) && !issue.labels.includes(L.building));
+});
 
 test('autoPick off: a free slot and an open issue start nothing', async () => {
   const { started } = await runPick([fi(1, L.feature)], { ...pickConfig, autoPick: false });
