@@ -47,7 +47,7 @@ test('the general review sends its part-by-part reviews to the audit role, and n
   const step = read('stages/audit.md').replace(/\s+/g, ' ').match(/3\. \*\*Revue de code générale\*\*.*?(?= 3 bis\.)/)[0];
   assert.match(step, /sous-agents neufs du rôle `audit` \(`model` et `effort` de `models\.audit`, description `\[role:audit\] …`\)/);
   assert.match(step, /un seul pour une petite appli relue d'un bloc, lui aussi sur le rôle `audit`/);
-  assert.match(step, /échoue deux fois repart sur le rôle `review`/);
+  assert.match(step, /échoue \(pas de réponse, ou rapport inutilisable deux fois\) repart sur le rôle `review`/);
   assert.match(step, /sous-agent du rôle `review` fait la synthèse/);
   assert.match(step, /corriger chaque point par des sous-agents du rôle `code`/);
   assert.match(step, /revue neuve des corrections par un sous-agent du rôle `review`, au plus \{\{maxLoops\}\} tours/);

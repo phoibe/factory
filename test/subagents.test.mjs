@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { agentEntry, entryFor } from '../agent/scripts/journal.mjs';
 import { fromTranscript } from '../agent/scripts/transcript.mjs';
 import { agentsLine, modelFamily, parseJournal, summarize } from '../scripts/lib/fabrication.mjs';
+import { MODEL_ROLES } from '../scripts/lib/models.mjs';
 
 const now = new Date('2026-11-09T10:00:00Z');
 
@@ -143,16 +144,6 @@ test('a task sent again later counts once, and tasks never launched together say
 });
 
 // Issue #559: the pilot announces each sub-agent's role at launch, and the journal keeps it.
-// Issue #570: the part-by-part reviewers of a general review announce their own role.
-test('the journal records the general-review role, and the « Sous-agents » line still counts per engine', () => {
-  assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:audit] Relecture : le panneau', model: 'opus', effort: 'high' } }),
-    { kind: 'agent', model: 'opus', effort: 'high', role: 'audit', label: 'Relecture : le panneau' });
-  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: ' [ Role : Audit ] x' } }).role, 'audit');
-  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:auditor] x' } }).role, null);
-  const agents = [{ model: 'opus', label: 'Partie 1', role: 'audit' }, { model: 'opus', label: 'Partie 2', role: 'audit' }, { model: 'fable', label: 'Synthèse', role: 'review' }];
-  assert.equal(agentsLine(parseJournal([journal(agents)])), agentsLine(parseJournal([journal(agents.map(({ role, ...a }) => a))])));
-});
-
 test('the journal records the role announced at the start of the description', () => {
   assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:plan:amont] Questions de la demande 12', model: 'fable' } }),
     { kind: 'agent', model: 'fable', effort: null, role: 'plan', up: true, label: 'Questions de la demande 12' });
@@ -175,6 +166,21 @@ test('the journal records the role announced at the start of the description', (
   const none = agentEntry({ tool_name: 'Agent', tool_input: { description: 'Relecture' } });
   assert.equal(none.role, null);
   assert.equal(none.label, 'Relecture');
+});
+
+// Issue #570: the part-by-part reviewers of a general review announce their own role.
+test('the journal records the general-review role, and the « Sous-agents » line still counts per engine', () => {
+  assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:audit] Relecture : le panneau', model: 'opus', effort: 'high' } }),
+    { kind: 'agent', model: 'opus', effort: 'high', role: 'audit', label: 'Relecture : le panneau' });
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: ' [ Role : Audit ] x' } }).role, 'audit');
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:auditor] x' } }).role, null);
+  const agents = [{ model: 'opus', label: 'Partie 1', role: 'audit' }, { model: 'opus', label: 'Partie 2', role: 'audit' }, { model: 'fable', label: 'Synthèse', role: 'review' }];
+  assert.equal(agentsLine(parseJournal([journal(agents)])), agentsLine(parseJournal([journal(agents.map(({ role, ...a }) => a))])));
+});
+
+// The journal script is copied alone into each project, so its role list is written by hand: it must name every role.
+test('the journal recognizes every role of the models page', () => {
+  for (const { id } of MODEL_ROLES) assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: `[role:${id}] x` } }).role, id);
 });
 
 test('the transcript fallback recovers the announced role', () => {

@@ -33,7 +33,7 @@ test('the general-review role: Opus and high effort by default, its own saved en
   assert.equal(roleModel({ models: { audit: 'fable' } }, 'audit', MODEL_FAMILIES.filter((f) => f.id !== 'fable')), 'opus');
 });
 
-test('nothing saved yet: the defaults, Fable / Opus / Fable / Sonnet', () => {
+test('nothing saved yet: the defaults, Fable / Opus / Fable / Opus / Sonnet', () => {
   for (const raw of [null, undefined, {}, { models: 'x' }, { machine: 'github' }, 'garbage']) assert.deepEqual(resolveModels(raw), defaults);
 });
 
