@@ -59,3 +59,5 @@
 {"t":"2026-11-24T17:26:45.607Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:a11y > .superpowers/sdd/issue-572/a11y.log 2>&1; echo a11y $?; grep -E \"^# (tests|pass|fail|skipped)\" .superpowers/sdd/issue-572/a11y.log; CHROMIUM_PATH=… time","ok":true,"id":"toolu_0151tYYc8nrPcCq62ZUAtQt2"}
 {"t":"2026-11-24T17:28:36.907Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Relecture tour 2 #572","id":"toolu_01VKE3jePiCLEJgwJagbuc4W"}
 {"t":"2026-11-24T17:28:43.411Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Recritique bandeau","id":"toolu_01THC9xtQGd4cnyqzBKuQT7p"}
+{"t":"2026-11-24T17:30:05.755Z","kind":"test","cmd":"(npm test 2>&1 | tail -15) ; ls /opt/pw-browsers/ 2>&1; cat package.json | grep -n \"\\\"test\\|e2e\\|a11y\\|lint\\|typecheck\" ","ok":true,"id":"toolu_01Qh7Tk6rD9a28R1EP2y9UeB"}
+{"t":"2026-11-24T17:30:59.793Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/new-version-banner.e2e.mjs 2>&1 | grep -E \"^(not ok|ok|# )\" | head -50","ok":true,"id":"toolu_01PNU8ohjnZHvusEfhiEUbBc"}

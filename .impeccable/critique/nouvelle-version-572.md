@@ -2,7 +2,7 @@
 
 Method: dual-agent (A: design review · B: detector + browser evidence)
 
-Score: 32/40 (one P1: re-critique after fixes).
+Score: 32/40 → 37/40 after fixes (re-critique below).
 
 ---
 # Assessment A: Design Review, the « nouvelle version » banner (#572)
@@ -173,3 +173,78 @@ The overlay was therefore injected through evaluate with the CSP removed, not wi
 ## False positives / notes
 - `broken-image`: probably a runtime-filled `<img>`, not a bug.
 - `pulsing-dot`: this is the chat "typing" indicator. It is tied to a real live state, so it is arguably justified. It predates this branch.
+
+---
+# Re-critique after fixes
+
+# Re-critique: new-version banner (#572), 2026-11-24
+
+Method: impeccable « critique », Assessment A only (design review), single evaluation.
+Branch `claude/issue-572-stable-page` at fce6d95. Read-only: no tracked file was changed.
+
+Evidence:
+- the screenshots in `/tmp/claude-0/-home-user-factory/8615ba7e-2d97-522a-9547-bb33f27ea1d5/scratchpad/fix/` (desktop 1280 and phone 390, light and dark: Suivi, refusal, phone scrolled, phone conversation with and without a refusal);
+- new renders in `/tmp/claude-0/-home-user-factory/8615ba7e-2d97-522a-9547-bb33f27ea1d5/scratchpad/recrit/`, made by `r.mjs` and `t.mjs`: 320 px at the top and scrolled, a refusal at 320 px, the desktop Agent tab in full screen, a phone conversation with a long answer and the return to the list, and a conversation at 650 px.
+
+Diff reviewed: `panel/style.css` (strip rules and the phone rules at about lines 354-363 and 441-443), `panel/app.mjs` (`fitBanner`, `sayInBanner`, the « Recharger » handler), `panel/index.html`, and DESIGN.md « Bandeau de nouvelle version ».
+
+## Measurements
+
+| Case | Strip | Notes |
+|---|---|---|
+| Desktop 1280, Suivi and Agent in full screen | y 68, 57 px high | one row; borderless button |
+| Phone 390, conversation open | y 0, 57 px high; conversation header at y 57 | `elementFromPoint` on « Recharger » hits the button |
+| 650 px (chat full screen, bar still sticky) | button at y 7, reachable | the `max-width: 700px` block also covers 601-700 px |
+| 320 px, top of page | y 68, 57 px high, bar 126 px | text on 2 lines, button on the same row |
+| 320 px, scrolled 600 px | y -1 (bar at -69) | the strip stays on screen; only its 1 px top line is hidden |
+| Back to the list from the conversation | y 68 | back in the bar |
+| Overflow at 320, 390, 1280 | none | `scrollWidth == innerWidth` |
+
+## Status of the earlier issues
+
+| Issue | Status | Evidence |
+|---|---|---|
+| **P1** The phone conversation hides the banner | **Fixed** | The strip is fixed at the top (z-index 6) and the conversation starts under it (`--new-version-h`). See `fix/phone-*-agent.png`, `recrit/p390-convo.png`, and 650 px. The safe-area inset now goes to the strip, not to the conversation header. |
+| **P2** On phone the banner scrolls away | **Fixed** | The bar is sticky with a negative `top` (the strip height minus the bar height), so only the strip stays. See `fix/phone-*-defile.png` and `recrit/p320-scroll.png`. DESIGN.md now describes the actual behaviour on each device. |
+| **P2** The refusal is far away, in a 4 s toast | **Fixed** | The strip's sentence is replaced by the refusal, right next to the button. It stays until the cause is gone (checked every second), then the usual sentence comes back. There is no toast. See `fix/desktop-*-refus.png` and `fix/phone-*-agent-refus.png`. The region is now announced when it appears: it was empty and visually hidden, then filled. |
+| **P3** Strip proportions | **Fixed** | 6 px padding, a borderless button with a 44 px hit area, and one row on phone where the text wraps (57 px instead of 77). |
+
+## Nielsen heuristics
+
+| # | Heuristic | Before | Now | Key point |
+|---|---|---|---|---|
+| 1 | Visibility of system status | 3 | **4** | Visible on every screen and device, including the phone conversation and scrolled pages |
+| 2 | Match with the real world | 4 | **4** | Unchanged: the owner's words, formal « vous » |
+| 3 | User control and freedom | 3 | **3** | Still no way to dismiss it, by spec choice. The owner chooses when to reload. |
+| 4 | Consistency and standards | 3 | **4** | « Always on screen » now holds on both devices. A borderless button inside the strip is a new local variant (minor). |
+| 5 | Error prevention | 4 | **4** | Unchanged: no reload that would lose something |
+| 6 | Recognition rather than recall | 3 | **4** | The refusal stays on screen until the cause is gone |
+| 7 | Flexibility and efficiency | 3 | **3** | Unchanged; nothing more is needed |
+| 8 | Aesthetic and minimalist design | 3 | **4** | One quiet 57 px row on every width. No blue, and the « go » card keeps its monopoly on colour. |
+| 9 | Error recognition and recovery | 3 | **4** | The cause and the fix are shown where the eye already is, and the strip recovers by itself |
+| 10 | Help and documentation | 3 | **3** | No explanatory text (compliant with « Textes à l'écran »). The refusals are short « what to do first » lines. |
+| **Total** | | **32/40** | **37/40** | **Excellent** |
+
+« Textes à l'écran »: compliant. Nothing explanatory was added. The three refusals are instructions (« Enregistrez d'abord vos réglages, puis rechargez. », « Envoyez ou effacez d'abord votre message, puis rechargez. »), not help text.
+
+## New issues (introduced by the fixes)
+
+No P0, P1 or P2.
+
+### [P3] The white hover box stays after a tap on phone
+- **What**: `.new-version .small-btn:hover { background: var(--surface) }` is not limited to devices that can hover. On a touch screen, `:hover` stays after a tap. The borderless « Recharger » then turns into a white box (`recrit/p320-refus-tap.png`, computed `rgb(255,255,255)`), and it stays like that until the owner taps somewhere else. The strip therefore has two different looks for the same state.
+- **Fix**: wrap the rule in `@media (hover: hover) { … }`.
+
+### [P3] A second click on a refused « Recharger » shows nothing new
+- **What**: when the same cause blocks the reload again, `sayInBanner` writes back the same text. The text node is replaced (1 mutation), so a screen reader may repeat it, but on screen nothing moves. This is mild, because the instruction is already displayed right there. Still, « I tapped and nothing happened » is the feeling this feature set out to remove.
+- **Fix**: when the refusal is already shown, give a brief cue on the sentence, for example a single 150 ms opacity dip on `#new-version-text` (with none under `prefers-reduced-motion`). No new text.
+
+### Minor observations (no action needed)
+- At 320 px, once scrolled, the strip sits at y = -1 because the bar's 1 px top line is counted in the offset. This is invisible in practice. Including the line in the `top` calculation would make it exact.
+- The strip still pushes the content down when it appears (57 px). In an open phone conversation, the header and the messages move down by the same amount. This is an inherent trade-off for a non-overlay notice, and the CLS stays under 0.1.
+- On phone, the full-screen project list is a modal `<dialog>` in the top layer, so it covers the strip. This is acceptable because it is a short, modal step.
+- Not caused by the banner: at 320 px, the save button in the Paramètres save bar breaks as « Enregist / rer » (`recrit/p320-refus-tap.png`). It is worth a separate look.
+
+## Verdict
+
+All four earlier issues are fixed, in the code and in DESIGN.md, which now match. Two new P3 polish items remain, each a one-line change. The score goes from 32/40 to **37/40**. The banner can ship.
