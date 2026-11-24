@@ -1,0 +1,25 @@
+{"t":"2026-11-24T11:25:33.068Z","kind":"run","stage":"bugfix","issue":551,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-24T11:25:41.838Z","kind":"skill","name":"systematic-debugging","id":"toolu_014J1i7Fgeo49CRkhqEt7iFz"}
+{"t":"2026-11-24T11:25:56.463Z","kind":"agent","model":"opus","effort":"medium","label":"Fix stable button count","id":"toolu_014scYazebxkjNDEgyFWkCuA"}
+{"t":"2026-11-24T11:25:57.472Z","kind":"skill","name":"test-driven-development","id":"toolu_01VNMobuA8cpcjvsF2WZFFtH"}
+{"t":"2026-11-24T11:26:08.848Z","kind":"test","cmd":"cd /home/user/factory; grep -n \"mjs?v=\" panel/index.html; sed -i \"3s/issuesLinkText } from '..\\/panel\\/lib.mjs';/issuesLinkText, stableView } from '..\\/panel\\/lib.mjs';/\" test/panel-lib.test.mjs; sed ","ok":false,"id":"toolu_01KBvu7xse3VQfuMYtQUnoC3"}
+{"t":"2026-11-24T11:26:52.542Z","kind":"test","cmd":"cd /home/user/factory; cat >> panel/lib.mjs <<'EOF'\n\n// « Déclarer stable »: what main holds that stable does not, without the factory's own automatic commits\n// (`chore(factory)…`), which are no chan","ok":true,"id":"toolu_01HUnMYUcqVTndAKawKRK3x6"}
+{"t":"2026-11-24T11:27:09.307Z","kind":"skill","name":"requesting-code-review","id":"toolu_014k7g2wpuL7x4io6y7ARBy3"}
+{"t":"2026-11-24T11:27:18.736Z","kind":"agent","model":"fable","effort":"high","label":"Review stable button fix","id":"toolu_011zgTzcYtG78x2qQciYKRec"}
+{"t":"2026-11-24T11:28:26.707Z","kind":"test","cmd":"npm test 2>&1 | tail -25","ok":true,"id":"toolu_01WViADpcHrZbQuSV2Bhq7j4"}
+{"t":"2026-11-24T11:29:28.986Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T11:29:33.071Z","kind":"skill","name":"impeccable","id":"toolu_01CUQh8mMhkyHV3L7eEKpd2Y"}
+{"t":"2026-11-24T11:29:48.281Z","kind":"agent","model":"opus","effort":"medium","label":"Design critique stable button","id":"toolu_01NvXrZQdW9ezhByfQ2BFJxo"}
+{"t":"2026-11-24T11:29:49.938Z","kind":"skill","name":"impeccable","id":"toolu_012qQ887KXGJ3BoJCqowkhP6"}
+{"t":"2026-11-24T11:32:05.410Z","kind":"test","cmd":"cd /home/user/factory; sed -i \"s/eta\\.mjs?v=4'/eta.mjs?v=5'/; s/live\\.mjs?v=13'/live.mjs?v=14'/; s/projects\\.mjs?v=6'/projects.mjs?v=7'/\" panel/app.mjs; sed -i \"s/live\\.mjs?v=13'/live.mjs?v=14'/\" pane","ok":false,"id":"toolu_01CcHV6eiPZ1MVXVE8XWzo1G"}
+{"t":"2026-11-24T11:32:49.269Z","kind":"test","cmd":"cd /home/user/factory; python3 - <<'EOF'\np=…; s=…\nold=…\"  return { changes, count: changes.length, hidden: changes.length === 0 };\"\"\"\nnew=…\"  // GitHub lists at most 250 commits while ahead_by is the ","ok":true,"id":"toolu_01DiN7z6NR32TrUJg3noSS5c"}
+{"t":"2026-11-24T11:34:06.451Z","kind":"test","cmd":"cd /home/user/factory; python3 - <<'EOF'\np=…; s=…\nold=…\"  assert.equal(stableView(cmp).hidden, false);\n  assert.equal(stableView(cmp).count, 0);\"\"\"\nnew=…\"  assert.equal(stableView(cmp).hidden, false);","ok":false,"id":"toolu_011Tr7UKHcFRBgDp7WE1cHAU"}
+{"t":"2026-11-24T11:34:52.552Z","kind":"test","cmd":"cd /home/user/factory; npm test 2>&1 | grep -E \"^not ok|^# (pass|fail)\"; git diff --stat","ok":true,"id":"toolu_01CgWtfv6ZpPU4ytVPfWGPBo"}
+{"t":"2026-11-24T11:35:38.119Z","kind":"agent","model":"opus","effort":"medium","label":"E2E journey stable button","id":"toolu_01WM5WPkP9DwRy1p27iYivXu"}
+{"t":"2026-11-24T11:35:48.504Z","kind":"agent","model":"sonnet","effort":"low","label":"Before/after screenshots","id":"toolu_01A4fE8RwmRzf17JEbgdjJbk"}
+{"t":"2026-11-24T11:36:18.364Z","kind":"test","cmd":"cat > e2e/stable-button.e2e.mjs <<'EOF'\n// Journeys of issue #551: « Déclarer stable » counts only the real changes waiting on the factory's main. The factory's\n// automatic `chore(factory)…` commits ","ok":true,"id":"toolu_01A9EkBmm5pxWtSui39keJA6"}
+{"t":"2026-11-24T11:36:23.746Z","kind":"test","cmd":"S=… && rm -rf $S && mkdir -p $S && cd /home/user/factory && cp -r panel e2e a11y scripts packs defaults package.json $S/ && ln -s /home/user/factory/node_modules $S/node_modules && git show 4168fde:pa","ok":false,"id":"toolu_019WXVYYrmAbCizR6BcviUEQ"}
+{"t":"2026-11-24T11:37:24.181Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/stable-button.e2e.mjs e2e/board-first.e2e.mjs e2e/production-gap.e2e.mjs e2e/release.e2e.mjs 2>&1 | grep -E \"^# (tests|pass|fail)|^not ok\"; npm test 2>&1 | ","ok":true,"id":"toolu_01XNGCUXHVVB9vEVFLVbDdFV"}
+{"t":"2026-11-24T11:41:49.273Z","kind":"test","cmd":"npm test 2>&1 | tail -4 && CHROMIUM_PATH=… timeout 300 npm run test:e2e 2>&1 | tail -6","ok":true,"id":"toolu_018HszufTasHFZgdDaxHVDmi"}
+{"t":"2026-11-24T11:42:31.507Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)\"; rm -rf /tmp/claude-0/-home-user-factory/f8ab8f2e-bcdb-5fd8-9146-fb586a76c864/scratchpad/old; git add e2e .factory/journal && git commit -qm \"test(e2e): « Décl","ok":true,"id":"toolu_015J78wGiw2pftdy2Pe7pHaT"}
+{"t":"2026-11-24T11:43:15.697Z","kind":"test","cmd":"git diff --stat a3bde35 9c44129 | tail -3; npm test 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01Jr6g3BUbcan2XLpqeGyBR6"}

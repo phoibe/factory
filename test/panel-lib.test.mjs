@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText, stableView } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -315,4 +315,37 @@ test('sessionKeys lists every stored key of the session, so a logout leaves no p
     'factory.chat.seen.o/secret', 'factory.advanced', 'other.app'];
   assert.deepEqual(sessionKeys(stored).sort(), ['factory.chat.seen.o/secret', 'factory.chatToken', 'factory.pending.o/secret',
     'factory.project', 'factory.projects', 'factory.token']);
+});
+
+const commit = (message) => ({ commit: { message } });
+
+test('stableView hides the button when main is ahead only by factory chores', () => {
+  const cmp = { ahead_by: 1, commits: [commit('chore(factory): sync skills and agent instructions')] };
+  assert.deepEqual(stableView(cmp), { changes: [], count: 0, hidden: true });
+});
+
+test('stableView counts only real changes', () => {
+  const cmp = { ahead_by: 2, commits: [commit('fix(panel): real change\n\nbody'), commit('chore(factory): sync skills')] };
+  assert.deepEqual(stableView(cmp), { changes: ['fix(panel): real change'], count: 1, hidden: false });
+});
+
+test('stableView tolerates a missing comparison', () => {
+  assert.deepEqual(stableView(null), { changes: [], count: 0, hidden: true });
+  assert.deepEqual(stableView({ ahead_by: 0 }), { changes: [], count: 0, hidden: true });
+});
+
+test('stableView keeps the button when the compare list is truncated', () => {
+  const cmp = { ahead_by: 300, commits: [commit('chore(factory): sync skills')] };
+  assert.equal(stableView(cmp).hidden, false);
+  assert.equal(stableView(cmp).count, null); // a cut list has no reliable number: the label shows none
+});
+
+test('stableView only skips subjects that start with chore(factory)', () => {
+  const cmp = { ahead_by: 2, commits: [commit('fix: undo chore(factory) noise'), commit('chore: bump deps')] };
+  assert.deepEqual(stableView(cmp).changes, ['fix: undo chore(factory) noise', 'chore: bump deps']);
+});
+
+test('stableView ignores empty messages and null entries', () => {
+  const cmp = { ahead_by: 4, commits: [null, {}, commit(''), commit('feat: real')] };
+  assert.deepEqual(stableView(cmp), { changes: ['feat: real'], count: 1, hidden: false });
 });
