@@ -46,11 +46,10 @@ suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque 
 (`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
 tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, lance `node
 .factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
-session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore (pour une construction, il relit aussi la demande pour relever quel
-modèle a fait les questions et la fiche) : fais-le,
-puis committe `.factory/journal/`. Un verrou
-refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape manque :
-si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
+session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore (pour une
+construction, il relit aussi la demande pour relever quel modèle a fait les questions et la fiche) : fais-le, puis
+committe `.factory/journal/`. Un verrou refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape
+manque : si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
 **Modèles par rôle.** Le propriétaire choisit, dans les « Réglages généraux » du panneau, une famille de modèle
 pour chacun de 4 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du
@@ -77,13 +76,15 @@ hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
   recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le glossaire
   et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
   commentaires, chemins des captures) et le fichier d'étape à suivre ; il charge lui-même les skills que l'étape nomme.
-  Dis-lui qu'il ne publie rien et ne pose aucun label : là où le fichier d'étape dit « publie » ou « mets le label »,
-  il écrit le texte dans un fichier et te le rend. Il te rend, dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser et,
-  s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses les labels, tu ouvres la
-  petite PR de documents et tu fermes une demande inutile. Une petite demande claire, qui saute les questions, a aussi
-  sa spec écrite par lui. Des variantes à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du
-  rôle `code` les construit. S'il échoue (pas de réponse, ou texte inutilisable deux fois),
-  relance-le sur le rôle `review`, sans déranger le propriétaire. Seul le chat (`stage` `question`) reste chez toi.
+  Dis-lui qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où le fichier d'étape
+  dit « publie », « mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Il te rend,
+  dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser, le texte des
+  issues à ouvrir et, s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses
+  les labels, tu ouvres toi-même les issues des tranches, tu ouvres la petite PR de documents et tu fermes une
+  demande inutile. Une petite demande claire, qui saute les questions, a aussi sa spec écrite par lui. Des variantes
+  à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du rôle `code` les construit. S'il
+  échoue (pas de réponse, ou texte inutilisable deux fois), relance-le sur le rôle `review`, sans déranger le
+  propriétaire. Seul le chat (`stage` `question`) reste chez toi.
 - **Preuve de la phase amont.** Avant de publier un round de questions, une spec ou une fiche projet, lance
   `node .factory/scripts/upstream.mjs <numéro de l'issue>` depuis le dossier du projet : il lit le journal de ton run et
   affiche une ligne invisible `<!-- factory-upstream … -->` qui dit quel modèle a fait la réflexion. Colle-la telle

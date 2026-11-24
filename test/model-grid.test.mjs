@@ -56,7 +56,8 @@ test('the upstream phase is delegated to the plan role, with its proof line', ()
 test('the plan sub-agent hands its text back, and the proof line has a way out', () => {
   const flat = (s) => s.replace(/\s+/g, ' ');
   const g = flat(grid);
-  assert.match(g, /ne publie rien et ne pose aucun label/);
+  assert.match(g, /n'écrit rien sur GitHub \(commentaire, label, issue, PR\) et ne pousse rien/);
+  assert.match(g, /tu ouvres toi-même les issues des tranches/);
   assert.match(g, /`model` = `models\.plan\.model`/);
   assert.match(g, /après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne/);
   assert.match(g, /Aucun round de questions, aucune spec ni fiche projet ne se publie sans cette ligne/);
@@ -65,4 +66,15 @@ test('the plan sub-agent hands its text back, and the proof line has a way out',
   assert.match(read('stages/framing.md'), /tu poses les labels\.\n\nCette étape a lieu/);
   assert.match(flat(read('stages/bugfix.md')), /après le rattrapage éventuel et avant tout autre travail/);
   assert.match(flat(read('stages/grilling.md')), /factory-split[^]*sous-agent du rôle `plan` la relit[^]*upstream\.mjs <n>/);
+});
+
+// Second review of #550: who opens the slice issues, where the journal never goes, and lines that fit.
+test('the pilot opens the slice issues, the journal stays off the documents branch, lines are wrapped', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  assert.match(flat(read('stages/spec.md')), /4 bis\.[^]*Le sous-agent écrit le texte de chaque tranche dans son fichier et c'est toi qui ouvres ces issues/);
+  assert.match(flat(read('stages/docs.md')), /Le journal \(`\.factory\/journal\/`\) ne va jamais sur la branche `claude\/docs-<n>`/);
+  const wrapped = { 'AGENT.md': ['il relit aussi la demande', 'Il te rend, dans un fichier', "n'écrit rien sur GitHub"], 'stages/spec.md': ['ligne de preuve (`upstream.mjs`)', 'Ouvre une issue par autre tranche'] };
+  for (const [f, words] of Object.entries(wrapped)) {
+    for (const w of words) assert.ok(read(f).split('\n').filter((l) => l.includes(w)).every((l) => l.length <= 120), `${f}: ${w}`);
+  }
 });

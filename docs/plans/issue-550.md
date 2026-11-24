@@ -13,9 +13,9 @@
 ## Global Constraints
 
 - No new setting: roles come from the payload's `models` (`plan`, `review`), defaults `fable` / `fable`.
-- The pilot still publishes, labels, opens the documents PR, closes. The chat (`stage: question`) is untouched.
+- The pilot still publishes, labels, opens the slice issues and the documents PR, closes; the `plan` sub-agent writes nothing on GitHub (comment, label, issue, PR) and pushes nothing. The chat (`stage: question`) is untouched.
 - Failure of the `plan` sub-agent → retry on role `review`, owner not disturbed. A `review`-role model counts as proof.
-- In-flight requests are never blocked: nothing is expected from a run journaled by the older scripts (its `run` entry has no `models`), nor from a spec published before `.factory/scripts/upstream.mjs` reached the project (+ 3 h, longer than any run).
+- In-flight requests are never blocked: nothing is expected from a run journaled by the older scripts (its `run` entry has no `models`), nor from a spec published before the upstream instruction reached the project's `.factory/AGENT.md` (its latest delivery: after a factory rollback and a new delivery, the new one; unknown → every spec counts as « old ») (+ 3 h, longer than any run).
 - Never edit `.factory/` nor `.claude/skills/`. Owner-facing text French, vouvoiement, no jargon; agent-facing text French « tu »; code and comments English. Tests first (red), `npm test` green at the end.
 - The marker is printed by the tool only; the instructions forbid writing it by hand (same trust as the journal files).
 
@@ -34,18 +34,18 @@
 **Files:** Modify `agent/scripts/journal.mjs`, `agent/scripts/fabrication.mjs`, `agent/scripts/journal-check.mjs`; Create `test/upstream.test.mjs`; Modify `test/journal.test.mjs`, `test/gate.test.mjs`.
 
 **Interfaces — Produces:**
-- `journal.mjs`: `ROLE_DEFAULTS = { plan: 'fable', review: 'fable' }`; `runFromPrompt` adds `models: { plan, review }` (the payload's `models.<role>.model`, else the default) to every run.
+- `journal.mjs`: `ROLE_DEFAULTS = { plan: 'fable', review: 'fable' }`; `runFromPrompt` adds `models: { plan, review }` (the payload's `models.<role>.model`, or `models.<role>` when it is a string, else the default) to every run.
 - `fabrication.mjs` `parseJournal`: each run also carries `issue`, `models` (null for an older journal) and `upstream` (its last `kind:'upstream'` entry, else null).
 - `roleOf(model, models)` → `'plan' | 'review' | null`: same family (`modelFamily`, case-insensitive) as `models.plan`, else as `models.review`; null without model or models.
-- `upstreamAgent(run)` → `{ model: <family, lower case>, role } | null`: the run's first agent with a role.
+- `upstreamAgent(run)` → `{ model: <family, lower case>, role } | null`: the run's **latest** agent with a role (after an escalation to `review`, the model that succeeded).
 - `bugAnalysed(run)` → boolean: an agent with a role launched before the run's **last** red test (`String(a.t) < String(red.t)`); no red test → any agent with a role. (Launched after a green fix it is the reviewer; redoing analysis → red test → fix satisfies the lock.)
 - `upstreamCheck(runs)` → `{ lines: string[], missing: [{ alert, how }] }`:
-  - bugfix runs **with `models`**: one is `bugAnalysed` → line `**Analyse du bug** : faite par Fable (rôle « Plans et organisation »)`; none → `alert` « Correction du bug : rien ne montre que le bug a été analysé par le modèle « Plans et organisation » avant sa correction. », `how` « analyse du bug : fais analyser le bug par un sous-agent du rôle \`plan\` (« Phase amont » dans AGENT.md), puis reproduis-le par un test rouge et corrige à partir de son analyse ».
+  - bugfix runs **with `models`**: one is `bugAnalysed` → line `**Analyse du bug** : faite par Fable (rôle « Plans et organisation »)`; none → `alert` « Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction. », `how` « analyse du bug : fais analyser le bug par un sous-agent du rôle \`plan\` (« Phase amont » dans AGENT.md), lancé avec \`model\` = \`models.plan.model\`, puis reproduis-le par un test rouge et corrige à partir de son analyse ».
   - build / foundation runs **with `models` and `issue`**, their latest `upstream` entry `{ doc: 'spec'|'brief', status, by: [{ model, role }] }`; label = `Questions et fiche` (`spec`) or `Questions et fiche projet` (`brief`):
-    - no entry → `alert` « <label> : la preuve n'a pas été relevée. », `how` « questions et fiche : lance \`node .factory/scripts/journal-check.mjs\` depuis le dossier du projet (il relit la demande) » ;
+    - no entry (not read back yet) → line `**<label>** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites)`, no alert (`alert: null`), `how` « questions et fiche : lance \`node .factory/scripts/journal-check.mjs\` depuis le dossier du projet (il relit la demande) » ;
     - `proved` → line `**<label>** : faites par Fable (rôle « Plans et organisation »)` (each `by`, joined by `, `; `review` → « Revue ») ;
-    - `unproved` → `alert` « <label> : rien ne montre qu'elles ont été faites par le modèle « Plans et organisation ». », `how` « questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs <issue>\`, puis relance \`node .factory/scripts/journal-check.mjs\` » ;
-    - `old` → line `**<label>** : publiées avant la mise en place de cette preuve (non mesuré)` ; `unread` → `**<label>** : non mesuré (la demande n'a pas pu être relue)` ; `none` → nothing.
+    - `unproved` → `alert` « <label> : l'outil n'a pas pu vérifier quel modèle les a faites (la dernière version publiée ne porte pas la preuve). », `how` « questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs <issue>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) » ;
+    - `old` → line `**<label>** : publiées avant la mise en place de cette preuve (non mesuré)` ; `unread` → `**<label>** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites : la demande n'a pas pu être relue)` ; `none` → nothing.
 - `summarize`: `lines` added after the « Sous-agents » line, each `alert` pushed to the alerts (the returned `missing` skills list is unchanged).
 - `journal-check.mjs` `problems`: appends each `how`, except for a `skills-fix` run and non-gated stages (existing early return).
 
@@ -66,10 +66,12 @@
 - `upstreamMarker(run)` → `'<!-- factory-upstream stage=spec model=fable role=plan -->'`, or null without `upstreamAgent(run)`.
 - `readUpstream(body)` → `{ stage, model, role } | null` (role `plan` or `review` only).
 - `UPSTREAM_GRACE_MS = 3 * 3600_000`; `upstreamProof(comments, { doc = 'spec', since = null, owner = null })` → `{ kind: 'upstream', doc, status, by }`: the doc comment is the latest **trusted** comment with the line `<!-- factory-spec -->` (`brief`: `<!-- factory-brief -->`); none → `none`; it carries a readable marker → `proved`; else `since` known and `created_at` later than `since` + grace → `unproved`; else `old`. `by` = distinct `{ model, role }` of the markers of every trusted comment, oldest first.
-- `latestRun(files, readFile, { issue = null })` → `{ file, run, text } | null`: the journal whose last `run` entry is the most recent (and is on `issue` when given); `runOptions` is rewritten on top of it, same result.
+- `latestRun(files, readFile, { issue = null, notBefore = null, keep = null })` → `{ file, run, text } | null`: the journal whose last `run` entry is the most recent (and is on `issue` when given; with `notBefore`, a run that started earlier is skipped unless its journal is `keep`, the current session's); `runOptions` is rewritten on top of it, same result.
 - `upstreamEntry(run, comments, { since, owner })` → the entry for a `build` (`spec`) or `foundation` (`brief`) run that has an `issue`, else null; `comments === null` → `status: 'unread'`, `by: []`.
-- Command line `node .factory/scripts/upstream.mjs <n>`, from the project's folder: rebuilds the journal from the transcript when needed (as `journal-check` does), takes `latestRun` over `.factory/journal/*.jsonl` for issue `<n>`, prints the marker of its last run and exits 0; otherwise prints « Phase amont : aucun sous-agent du rôle \`plan\` n'a été lancé dans ce run pour la demande #<n>. Lance-le (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant. » and exits 1.
-- `journal-check` command line, before `report`: for the latest run, `upstreamEntry` with the comments from `defaultGh('repos/<repo>/issues/<n>/comments')` (null when it throws), `owner` = the repo's owner, `since` = last line of `git log --diff-filter=A --format=%cI -- .factory/scripts/upstream.mjs` (null when empty); appended to that run's journal file with `t`, unless equal to the run's current `upstream` entry.
+- Command line `node .factory/scripts/upstream.mjs <n>`, from the project's folder: rebuilds the journal from the transcript when needed (as `journal-check` does), takes `latestRun` over `.factory/journal/*.jsonl` for issue `<n>`, only a run of the last 12 hours (or this session's), prints the marker of its last run and exits 0; otherwise prints « Phase amont : aucun sous-agent du rôle \`plan\` n'a été vu dans ce run pour la demande #<n>. », the probable cause (no \`model\`, or another one than \`models.plan.model\`), « Lance-le avec \`model\` = \`models.plan.model\` (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant. » and the way out: at \`build\` or \`foundation\` « Si elle refuse encore, ne republie rien : la version déjà publiée reste celle du propriétaire, le bilan le signalera. », else « Si elle refuse encore après un sous-agent \`plan\` puis un sous-agent \`review\`, chacun lancé avec son \`model\`, publie sans la ligne : le contrôle à la construction le signalera. »; exits 1.
+- `upstreamSince(git)` (`journal-check.mjs`) → the date (`%cI`) of the latest commit that brought `upstream.mjs` into `.factory/AGENT.md` (it has it, its parent does not; `git log -S'upstream.mjs' -- .factory/AGENT.md`), null when unknown or when `AGENT.md` does not have it now.
+- `upstreamUpdate(files, readFile, { repo, comments, since })` (`journal-check.mjs`, command line before `report`): targets the branch's latest `build` / `foundation` run (the last run of its journal, so a later `fix-checks` or `update-branch` run does not hide it), `upstreamEntry` with the comments from `defaultGh('repos/<repo>/issues/<n>/comments')` (null when it throws), `owner` = the repo's owner, `since` = `upstreamSince`; appended to that run's journal file with `t`, unless equal to the newest `upstream` entry of the branch's build / foundation runs of that issue, and never `unread` over a measured one (`proved`, `unproved`, `old`).
+- `importTranscript` (`transcript.mjs`): a journal written from the transcript is rebuilt as the session goes on, keeping the entries other scripts added (each after the transcript entries older than it), never twice the same `id`.
 
 - [ ] Tests first, red:
   - `upstreamMarker`: spec run, models fable/fable, agent `fable` → the exact line above; models opus/fable, agent `claude-opus-5-5` → `model=opus role=plan`; only a `sonnet` agent, or no agent → null. `readUpstream(marker)` round-trips; `role=code`, or a body without marker → null.
@@ -95,26 +97,35 @@
   recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le glossaire
   et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
   commentaires, chemins des captures) et le fichier d'étape à suivre ; il charge lui-même les skills que l'étape nomme.
-  Il te rend, dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser et,
-  s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses les labels, tu ouvres la
-  petite PR de documents et tu fermes une demande inutile. Une petite demande claire, qui saute les questions, a aussi
-  sa spec écrite par lui. Des variantes à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du
-  rôle `code` les construit. S'il échoue (pas de réponse, ou texte inutilisable deux fois), relance-le sur le rôle
-  `review`, sans déranger le propriétaire. Seul le chat (`stage` `question`) reste chez toi.
+  Dis-lui qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où le fichier d'étape
+  dit « publie », « mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Il te rend,
+  dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser, le texte des
+  issues à ouvrir et, s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses
+  les labels, tu ouvres toi-même les issues des tranches, tu ouvres la petite PR de documents et tu fermes une
+  demande inutile. Une petite demande claire, qui saute les questions, a aussi sa spec écrite par lui. Des variantes
+  à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du rôle `code` les construit. S'il
+  échoue (pas de réponse, ou texte inutilisable deux fois), relance-le sur le rôle `review`, sans déranger le
+  propriétaire. Seul le chat (`stage` `question`) reste chez toi.
 - **Preuve de la phase amont.** Avant de publier un round de questions, une spec ou une fiche projet, lance
   `node .factory/scripts/upstream.mjs <numéro de l'issue>` depuis le dossier du projet : il lit le journal de ton run et
   affiche une ligne invisible `<!-- factory-upstream … -->` qui dit quel modèle a fait la réflexion. Colle-la telle
-  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. S'il répond qu'aucun sous-agent
-  du rôle `plan` n'a été lancé, lance-le d'abord : rien ne se publie sans cette ligne. À la construction,
-  `journal-check.mjs` relit la demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug,
-  la preuve est dans le journal du run : le sous-agent d'analyse est lancé avant le premier test rouge.
+  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. Aucun round de questions,
+  aucune spec ni fiche projet ne se publie sans cette ligne (une estimation, une alerte ou la question d'un bug n'en
+  ont pas besoin). S'il répond qu'aucun sous-agent du rôle `plan` n'a été vu, lance-le d'abord, avec le paramètre
+  `model` = `models.plan.model` du payload (sans `model`, l'outil ne le reconnaît pas), puis relance la commande.
+  S'il refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie
+  sans la ligne : le contrôle à la construction le signalera. À la construction, `journal-check.mjs` relit la
+  demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug, la preuve est dans le
+  journal du run : le sous-agent d'analyse est lancé avant le dernier test rouge.
 ```
 
   - « Journal de fabrication » : after « te dit ce qu'il ne montre pas encore », add « (pour une construction, il relit aussi la demande pour relever quel modèle a fait les questions et la fiche) ».
 - [ ] Stages:
-  - `grilling.md`, `spec.md`, `framing.md`, right under « But » : « **Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre. Toi, tu publies son texte, terminé par la ligne de `node .factory/scripts/upstream.mjs <n>`, et tu poses les labels. »
+  - `grilling.md`, `spec.md`, `framing.md`, right under « But » : « **Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui de ne rien publier ni poser aucun label (…). Toi, tu publies son texte, terminé par la ligne de `node .factory/scripts/upstream.mjs <n>`, et tu poses les labels. »
   - `spec.md` step 3 and `framing.md` « La fiche projet » : the comment « se termine, juste avant la signature, par la ligne de preuve (`upstream.mjs`) ».
   - `bugfix.md` : step 1 becomes « **Analyse** par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), avant tout autre travail : il lit l'issue, cherche dans le code (skill `systematic-debugging`) et te rend soit la question à poser quand le comportement attendu n'est pas clair, soit la cause probable, les fichiers concernés et le test qui reproduira le bug. S'il rend une question : pose-la (**une** question simple) sur l'issue, mets `factory:blocked` et termine. » ; step 2, after the branch : « Un sous-agent du rôle `code` part de cette analyse : skill `systematic-debugging`, reproduis le bug… » (rest unchanged).
+  - `spec.md` step 4 bis : the sub-agent writes the text of each slice in its file and the pilot opens those issues.
+  - `docs.md` : the journal (`.factory/journal/`) never goes on the `claude/docs-<n>` branch.
   - `docs.md`, after the first paragraph : « Pendant la phase amont, c'est le sous-agent du rôle `plan` qui charge ces skills et écrit ces documents (« Phase amont » dans AGENT.md) : place-toi d'abord sur la branche de documents, demande-lui de les écrire, puis fais toi-même le commit et la petite PR. »
 - [ ] `npm test` (also `test/vouvoiement.test.mjs`, `test/sync.test.mjs`, `test/question-stage.test.mjs`).
 
