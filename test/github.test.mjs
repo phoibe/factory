@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { github } from '../scripts/lib/github.mjs';
+import { withLock, LostTurnError, isLostTurn } from '../scripts/lib/lock.mjs';
 
 const answer = (status, body = {}) => ({ ok: status < 400, status, json: async () => body, text: async () => 'x', headers: new Map() });
 const client = (answers, sink = []) => github({
@@ -472,3 +473,88 @@ test('a refused call (4xx) is not taken for an outage: replaying it would fail t
   assert.equal(isGitHubDown(e), false);
   assert.equal(isGitHubDown(new Error('boom')), false);
 });
+
+// GitHub reduced to the lock's ref: commits are numbered, every request is noted as « METHOD /path ».
+function lockHub() {
+  const hub = { ref: null, n: 0, seen: [] };
+  hub.fetchImpl = async (url, init) => {
+    const key = `${init.method} ${url.replace('https://api.github.com/repos/o/r', '')}`;
+    hub.seen.push(key);
+    const body = init.body ? JSON.parse(init.body) : {};
+    if (key === 'GET /git/ref/factory/lock') return hub.ref ? answer(200, { object: { sha: hub.ref } }) : answer(404);
+    if (key === 'POST /git/commits') return answer(201, { sha: `c${++hub.n}` });
+    if (/^(POST|PATCH) \/git\/refs/.test(key)) { hub.ref = body.sha; return answer(200); }
+    if (key === 'DELETE /git/refs/factory/lock') { hub.ref = null; return answer(204); }
+    return answer(201, { sha: 'x' });
+  };
+  hub.gh = github({ token: 't', repo: 'o/r', sleep: async () => {}, fetchImpl: hub.fetchImpl });
+  return hub;
+}
+
+test('a normal run, even 20 minutes long, goes to its end with no extra GitHub read', async () => {
+  const hub = lockHub();
+  const { gh } = hub;
+  let t = 0, beat = null;
+  const logs = [];
+  const result = await withLock(gh.queueLock, async () => {
+    for (let i = 0; i < 20; i++) { t += 60_000; await beat(); await gh.comment(1, `minute ${i + 1}`); }
+    return 'done';
+  }, { now: () => t, every: (fn) => { beat = fn; return () => {}; }, log: (m) => logs.push(m) });
+  assert.equal(result, 'done');
+  assert.deepEqual(hub.seen.filter((k) => k.startsWith('GET')), ['GET /git/ref/factory/lock', 'GET /git/ref/factory/lock']); // taking the lock, giving it back
+  assert.equal(hub.seen.filter((k) => k === 'PATCH /git/refs/factory/lock').length, 20);
+  assert.equal(hub.seen.filter((k) => k === 'POST /issues/1/comments').length, 20);
+  assert.equal(hub.seen.at(-1), 'DELETE /git/refs/factory/lock');
+  assert.deepEqual(logs, []);
+});
+
+test('once its turn is lost, a run sends no write at all; its reads and the lock\'s own calls still go', async () => {
+  const hub = lockHub();
+  const { gh } = hub;
+  await gh.queueLock.acquire();
+  gh.queueLock.guard(() => { throw new LostTurnError('taken over by another run'); });
+  hub.seen.length = 0;
+  const writes = [
+    () => gh.addLabels(1, ['a']), () => gh.removeLabel(1, 'a'), () => gh.comment(1, 'x'), () => gh.updateComment(1, 'x'),
+    () => gh.react(1, 'eyes'), () => gh.dispatch('factory.yml', 'main', {}), () => gh.merge(1), () => gh.closeIssue(1),
+    () => gh.updateIssue(1, {}), () => gh.createIssue('t', 'b'), () => gh.setState('sync', { a: 1 }), () => gh.setState('sync', null),
+    () => gh.setLiveRef('abc'), () => gh.rerunFailed(1), () => gh.request('POST', '/repos/{repo}/x', {}),
+  ];
+  for (const write of writes) await assert.rejects(write(), isLostTurn, String(write));
+  assert.throws(() => gh.assertTurn(), isLostTurn);
+  assert.deepEqual(hub.seen, []);
+  await gh.getIssue(1);
+  assert.equal(await gh.queueLock.refresh(), true);
+  assert.deepEqual(hub.seen, ['GET /issues/1', 'POST /git/commits', 'PATCH /git/refs/factory/lock']);
+  gh.queueLock.guard(null);
+  await gh.comment(1, 'x');
+  gh.assertTurn();
+});
+
+test('a run that lost its turn by its own clock sends nothing more to GitHub, not even to give the lock back', async () => {
+  const hub = lockHub();
+  const { gh } = hub;
+  let t = 0;
+  await assert.rejects(withLock(gh.queueLock, async () => {
+    t = 3 * 60_000; hub.seen.length = 0;
+    await gh.getIssue(1);
+    await gh.addLabels(1, ['factory:running']);
+  }, { now: () => t, every: () => () => {}, log: () => {} }), isLostTurn);
+  assert.deepEqual(hub.seen, ['GET /issues/1']);
+  assert.equal(hub.ref, 'c1');
+});
+
+// Issue #562 review: the turn is checked before every (re)send of a write, not only before the first one.
+for (const [what, first] of [['a 5xx', () => answer(502)], ['a rate limit', () => ({ ...answer(429), headers: new Map([['retry-after', '30']]) })]]) {
+  test(`a write answered ${what}, whose turn is lost during the wait, is not sent again`, async () => {
+    let t = 0;
+    const sent = [];
+    const gh = github({
+      token: 't', repo: 'o/r', now: () => t, sleep: async (ms) => { t += ms + 3 * 60_000; },
+      fetchImpl: async (url, init) => { sent.push(init.method); return sent.length === 1 ? first() : answer(200, {}); },
+    });
+    gh.queueLock.guard(() => { if (t >= 3 * 60_000) throw new LostTurnError('no sign of life got through in time'); });
+    await assert.rejects(gh.merge(1), isLostTurn);
+    assert.deepEqual(sent, ['PUT']);
+  });
+}
