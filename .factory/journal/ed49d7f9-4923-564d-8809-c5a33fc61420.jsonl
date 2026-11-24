@@ -22,3 +22,5 @@
 {"t":"2026-11-24T14:13:18.123Z","kind":"skill","name":"requesting-code-review","id":"toolu_01N1rBr2pqF9hKh3ux4ayMZc"}
 {"t":"2026-11-24T14:13:32.836Z","kind":"agent","model":"fable","effort":"high","label":"Final review for 557","id":"toolu_01EG8ogeHtULibu7cHk5GBw4"}
 {"t":"2026-11-24T14:13:54.077Z","kind":"test","cmd":"cd /tmp/review-6416352 && (npm test > /tmp/claude-0/-home-user-factory/ed49d7f9-4923-564d-8809-c5a33fc61420/scratchpad/review-test.log 2>&1; echo exit=… >> /tmp/claude-0/-home-user-factory/ed49d7f9-49","ok":true,"id":"toolu_01XiTNc1KS9MfdjDqW3F41kC"}
+{"t":"2026-11-24T14:15:47.238Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T14:15:50.115Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
