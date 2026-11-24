@@ -34,6 +34,9 @@ export function trustNotes(comments, owner) {
 }
 
 // An issue or a PR as GitHub sends it: an integer number, a title and an author key (null for a deleted account).
+// An object without the `user` key is left as is, as if trusted: GitHub's REST answers for an issue or a PR always carry
+// it (null for a deleted account, which is cleaned), and older test fixtures with a number and a title but no author
+// stand for the owner's own cards.
 const isIssueLike = (v) => Number.isInteger(v.number) && typeof v.title === 'string' && 'user' in v;
 
 // Issue #557: on a public project, an issue or PR opened by an outsider has its factory notes taken out of its

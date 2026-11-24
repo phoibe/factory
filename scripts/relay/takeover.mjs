@@ -16,14 +16,25 @@ export const TAKEN = (copy) => `Merci pour votre proposition. Elle est reprise d
 export const ALREADY = (copy) => `Cette demande est déjà reprise dans la demande #${copy} : c'est là que la suite se passe.`;
 export const COPY_FAILED = "Je n'ai pas pu créer la copie de cette demande : GitHub n'a pas répondu. Elle reste ouverte ; réécrivez ici pour réessayer.";
 
-const KINDS = [L.feature, L.bug, L.project, L.question];
+// The labels the copy starts with, as the original would: every kind of request decide() starts, and its urgency.
+const KINDS = [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack, L.urgent];
+
+// GitHub refuses a description over 65,536 characters (a 422 no retry mends): each text is cut well below, visibly.
+const MAX_ORIGINAL = 40_000;
+const MAX_MESSAGE = 15_000;
+function cut(text, max) {
+  if (text.length <= max) return text;
+  let kept = text.slice(0, max);
+  if (/[\uD800-\uDBFF]$/.test(kept)) kept = kept.slice(0, -1); // never half a character
+  return `${kept.trimEnd()} …`;
+}
 
 // The copy's description: its marker, where it comes from (the login without @: nobody is notified), the visible text
 // of the original, then the owner's message when he wrote one.
 export function copyBody({ repo, original, message }) {
   const n = original.number;
-  const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`, '', visibleText(original.body)];
-  const said = visibleText(message);
+  const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`, '', cut(visibleText(original.body), MAX_ORIGINAL)];
+  const said = cut(visibleText(message), MAX_MESSAGE);
   if (said) lines.push('', '---', '', '**Votre message :**', '', said);
   return lines.join('\n');
 }
@@ -33,16 +44,18 @@ export function takeoverPart(ctx) {
   const handleEvent = (...a) => ctx.handleEvent(...a);
   const liveLabels = (...a) => ctx.liveLabels(...a);
 
-  // The copy of request #n: the one named in the factory's word on it (told), else an open issue of the factory's
-  // whose description starts from it (a run stopped before the word was posted).
+  // The copy of request #n: the one named in the factory's word on it (told), else an issue of the factory's whose
+  // description starts from it (a run stopped before the word was posted): an open one, or one closed meanwhile
+  // (looked for among the cards it opened, which all carry L.kept).
   async function findCopy(n) {
     for (const c of await gh.listComments(n)) {
       const body = String(c?.body || '');
       const m = body.includes(AGENT_MARKER) && COPIED_RE.exec(body);
       if (m) return { number: Number(m[1]), told: true };
     }
-    const open = await gh.listOpenIssues();
-    const copy = (open || []).find((i) => !i.pull_request && !i.untrusted && String(i.body || '').includes(copyMarker(n)));
+    const isCopy = (i) => !i?.pull_request && !i?.untrusted && String(i?.body || '').includes(copyMarker(n));
+    let copy = ((await gh.listOpenIssues()) || []).find(isCopy);
+    copy ||= ((await gh.listIssues({ state: 'all', labels: L.kept, sort: 'created', direction: 'desc' })) || []).find(isCopy);
     return copy ? { number: copy.number, told: false } : null;
   }
 
@@ -50,7 +63,7 @@ export function takeoverPart(ctx) {
   // saw; read live only when the event carries none (a deferred message replayed later).
   async function takeOver(n, { message, ownerLogin, snapshot } = {}) {
     const live = await gh.getIssue(n);
-    if (!live) return null;
+    if (!live || live.untrusted !== true) return null; // only an outsider's request is ever copied
     const original = snapshot ? { ...live, title: snapshot.title, body: snapshot.body } : live;
     const isOpen = original.state !== 'closed';
     const kinds = names(original.labels).filter((l) => KINDS.includes(l));
@@ -68,7 +81,9 @@ export function takeoverPart(ctx) {
     }
     const copy = found.number;
     await gh.comment(n, say(found.told ? ALREADY(copy) : `${TAKEN(copy)}\n${copiedMarker(copy)}`));
-    if (isOpen) await gh.closeIssue(n, 'completed');
+    // Closed as a duplicate of its copy: not as « completed », which reads as delivered (waits.mjs), nor as
+    // « not_planned », which says the request was dropped while it goes on in the copy.
+    if (isOpen) await gh.closeIssue(n, 'duplicate');
     // The copy never started: it starts (or queues) like a request of the owner.
     const made = await gh.getIssue(copy);
     const labels = names(made?.labels);

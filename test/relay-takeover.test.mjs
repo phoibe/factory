@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { createRelay } from '../scripts/relay.mjs';
 import { L, AGENT_MARKER } from '../scripts/lib/labels.mjs';
 import { RateLimited } from '../scripts/lib/ratelimit.mjs';
-import { copyMarker, copiedMarker, TAKEN, ALREADY, COPY_FAILED, copyBody } from '../scripts/relay/takeover.mjs';
+import { copyMarker, copiedMarker, TAKEN, ALREADY, COPY_FAILED, copyBody, takeoverPart } from '../scripts/relay/takeover.mjs';
+import { github } from '../scripts/lib/github.mjs';
 
 const config = { runner: 'claude-cloud', maxParallel: 2, stages: { grilling: true, acceptance: true }, review: { maxLoops: 3 } };
 const env = { FACTORY_ROUTINE_URL: 'https://api.anthropic.com/v1/claude_code/routines/trig_x/fire', FACTORY_ROUTINE_TOKEN: 'tok' };
@@ -30,14 +31,14 @@ function fakeGh(state, { createFails } = {}) {
     getPr: async (n) => state.prs.find((p) => p.number === n),
     listPulls: async () => state.prs.filter((p) => p.state !== 'closed'),
     listClosedPulls: async () => [],
-    listIssues: async ({ labels }) => state.issues.filter((i) => i.open !== false && i.labels.includes(labels)).map(asGitHub),
+    listIssues: async ({ labels, state: st }) => state.issues.filter((i) => (st === 'all' || i.open !== false) && i.labels.includes(labels)).map(asGitHub),
     listOpenIssues: async () => state.issues.filter((i) => i.open !== false).map(asGitHub),
     listComments: async (n) => state.comments[n] || [],
     listEvents: async () => [],
     comment: async (n, body) => { calls.push(['comment', n, body]); (state.comments[n] ||= []).push({ body, user: { login: 'github-actions[bot]' } }); const i = find(n); if (i) i.comments = (i.comments || 0) + 1; },
     addLabels: async (n, ls) => { calls.push(['add', n, ...ls]); const i = find(n); if (i) i.labels = [...new Set([...(i.labels || []), ...ls])]; },
     removeLabel: async (n, l) => { calls.push(['remove', n, l]); const i = find(n); if (i) i.labels = (i.labels || []).filter((x) => x !== l); },
-    closeIssue: async (n) => { calls.push(['close', n]); const i = find(n); if (i) i.open = false; },
+    closeIssue: async (n, reason) => { calls.push(['close', n, reason]); const i = find(n); if (i) i.open = false; },
     createIssue: async (title, body, labels = []) => {
       calls.push(['create', title, body, labels]);
       if (createFails) throw createFails;
@@ -234,4 +235,50 @@ test('the webhook payload carries the request as the owner saw it', async () => 
   assert.doesNotMatch(ev.snapshot.body, /factory-/);
   const labeled = eventFromPayload('issues', { action: 'labeled', label: { name: L.feature }, repository, issue, sender: { login: 'phoibe' } });
   assert.equal(labeled.snapshot.title, 'Mode sombre');
+});
+
+test('the copy starts like the original would: every kind of request and its urgency are carried', async () => {
+  for (const kind of [L.audit, L.uiPolish, L.stack]) {
+    const state = { issues: [outsider({ labels: [kind, L.urgent] })] };
+    const gh = fakeGh(state);
+    const { action } = await make(gh).relay.handle(says(12, 'go'), OPTS);
+    assert.equal(action.type, 'takeover', kind);
+    assert.deepEqual(of(gh, 'create')[0][3], [kind, L.urgent, L.kept]);
+  }
+});
+
+test('a very long request is cut in the copy, which GitHub then accepts', () => {
+  const body = copyBody({ repo: 'o/r', original: outsider({ body: 'a'.repeat(200_000) }), message: 'b'.repeat(200_000) });
+  assert.ok(body.length < 60_000, String(body.length));
+  assert.ok(body.includes('…'));
+  assert.ok(body.includes('https://github.com/o/r/issues/12'));
+  assert.ok(body.includes('**Votre message :**'));
+  assert.equal(copyBody({ repo: 'o/r', original: outsider({ body: 'court' }), message: '' }).includes('…'), false);
+});
+
+test('a copy closed before the run went on is found, not made twice', async () => {
+  const copy = { number: 50, title: 'Mode sombre', labels: [L.feature, L.kept], open: false, user: { login: 'github-actions[bot]' }, comments: 0, body: `${copyMarker(12)}\nReprise…` };
+  const gh = fakeGh({ issues: [outsider(), copy] });
+  const { action } = await make(gh).relay.handle(says(12, 'go'), OPTS);
+  assert.equal(action.copy, 50);
+  assert.deepEqual(of(gh, 'create'), []);
+});
+
+test("the original is closed as a duplicate: neither delivered nor dropped", async () => {
+  const gh = fakeGh({ issues: [outsider()] });
+  await make(gh).relay.handle(says(12, 'go'), OPTS);
+  assert.deepEqual(of(gh, 'close', 12), [['close', 12, 'duplicate']]);
+});
+
+test('takeOver leaves alone a request that is not an outsider\'s', async () => {
+  const gh = fakeGh({ issues: [outsider({ untrusted: undefined })] });
+  const part = takeoverPart({ gh, repo: 'o/r', handleEvent: async () => assert.fail('started'), liveLabels: async () => [] });
+  assert.equal(await part.takeOver(12, { message: 'go' }), null);
+  assert.deepEqual(gh.calls, []);
+});
+
+test('a visibility GitHub does not give counts as public', async () => {
+  const item = { number: 3, title: 't', body: 'x <!-- factory-agent -->', user: { login: 'alice' }, author_association: 'NONE' };
+  const gh = github({ token: 't', repo: 'o/r', isPublic: null, sleep: async () => {}, fetchImpl: async () => ({ ok: true, status: 200, json: async () => structuredClone(item), text: async () => '', headers: new Map() }) });
+  assert.equal((await gh.getIssue(3)).untrusted, true);
 });

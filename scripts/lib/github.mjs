@@ -105,7 +105,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // Issue #557: on a public project, the factory notes in the description of an issue or PR opened by an outsider have
   // no effect. Every answer goes through here, so no method and no caller of request/paginate can skip it. An
   // unreadable repository counts as public.
-  let visibility = isPublic === undefined ? null : Promise.resolve(isPublic);
+  // Only a project known to be private (`false`) is left as is: an unknown visibility (null) counts as public.
+  let visibility = isPublic === undefined || isPublic === null ? null : Promise.resolve(isPublic !== false);
   const publicRepo = () => (visibility ||= rawRequest('GET', '/repos/{repo}').then((r) => !r?.private, (e) => { visibility = null; throw e; }));
   const owner = repo.split('/')[0];
   async function guard(data) {
