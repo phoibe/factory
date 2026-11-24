@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reloadBlocker } from '../panel/lib.mjs';
 
-const none = { settings: false, message: false, answering: false };
+const none = { settings: false, message: false, answering: false, unsent: false };
 
 test('nothing in progress: the page may reload', () => {
   assert.equal(reloadBlocker(none), null);
@@ -19,6 +19,15 @@ test('a message being written ask to send or clear it first', () => {
 
 test('an answer still arriving asks to wait for its end', () => {
   assert.equal(reloadBlocker({ ...none, answering: true }), 'Attendez la fin de la réponse de l\'agent, puis rechargez.');
+});
+
+test('messages left unsent ask to resend or edit them first (issue #580)', () => {
+  assert.equal(reloadBlocker({ ...none, unsent: true }), 'Renvoyez ou modifiez d\'abord vos messages non envoyés, puis rechargez.');
+});
+
+test('unsent messages come last: an answer on its way must end before « Renvoyer » works', () => {
+  assert.match(reloadBlocker({ ...none, answering: true, unsent: true }), /^Attendez/);
+  assert.match(reloadBlocker({ ...none, message: true, unsent: true }), /^Envoyez/);
 });
 
 test('settings come first, then the message, then the answer', () => {

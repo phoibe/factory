@@ -225,6 +225,30 @@ test('un message en cours dans l\'onglet Agent : Recharger ne recharge pas et di
   });
 });
 
+// Issue #580: a message that could not be sent lives in memory only; a reload would lose it.
+test('un message non envoyé attend dans l\'onglet Agent : Recharger ne recharge pas et dit de le renvoyer ou de le modifier', async () => {
+  await withPanel({ issues: board, offline: new Set(['/repos/o/r/issues', '/repos/o/r/issues/1/comments']) }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('#chat-input').fill('Un message qui ne part pas');
+    await page.locator('#chat-send').click();
+    await page.locator('#chat-messages .msg.unsent').waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await reloadButton(page).click();
+    await refused(page, 'Renvoyez ou modifiez d\'abord vos messages non envoyés, puis rechargez.');
+    assert.equal(await page.locator('#chat-messages .msg.unsent').count(), 1, 'le message non envoyé a disparu');
+    // « Modifier » puts it back in the composer: from then on it is a message being written.
+    await page.locator('#chat-messages .msg.unsent button.edit').click();
+    await sentenceBack(page);
+    await reloadButton(page).click();
+    await refused(page, 'Envoyez ou effacez d\'abord votre message, puis rechargez.');
+    assert.equal(await page.locator('#chat-input').inputValue(), 'Un message qui ne part pas');
+  });
+});
+
 test('une réponse de l\'agent en train d\'arriver : Recharger ne recharge pas et dit d\'attendre la fin', async () => {
   await withPanel({ issues: board, chatServer: { delay: 6000, answer: 'Bien reçu.' } }, async ({ page, url }) => {
     const v = await versions(page, url);

@@ -121,10 +121,25 @@ test('something is unsaved as soon as one screen says so', async () => {
   m.onUnsaved('settings', () => null);
   m.onUnsaved('answering', () => dirty);
   assert.equal(m.hasUnsaved(), false);
-  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: false });
+  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: false, unsent: false });
   dirty = true;
   assert.equal(m.hasUnsaved(), true);
-  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: true }); // the kind is kept (#572)
+  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: true, unsent: false }); // the kind is kept (#572)
+  m.onUnsaved('unsent', () => true);
+  assert.deepEqual(m.unsavedParts(), { settings: false, message: false, answering: true, unsent: true }); // issue #580
+});
+
+test('a toast is placed by the screens that asked, before it shows (issue #580)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { m, $ } = await load();
+  const shown = new Set();
+  $('toast').classList = { add: (c) => shown.add(c), remove: (c) => shown.delete(c) };
+  const seen = [];
+  m.onToast(() => seen.push(shown.has('show')));
+  m.toast('Message non envoyé.');
+  assert.equal($('toast').textContent, 'Message non envoyé.');
+  assert.deepEqual(seen, [false]); // placed while still hidden: it never shows at the wrong place first
+  assert.equal(shown.has('show'), true);
 });
 
 test('call() runs the action a part provided and gives its result back; unknown or provided twice throws', async () => {

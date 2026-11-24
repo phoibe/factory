@@ -43,9 +43,13 @@ export function el(tag, attrs = {}, ...children) {
   return n;
 }
 
+// A screen may move the toast out of the way of what it shows (the Agent tab's composer, issue #580).
+const toastPlacers = [];
+export function onToast(fn) { toastPlacers.push(fn); }
 export function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
+  for (const place of toastPlacers) place();
   t.classList.add('show');
   clearTimeout(toast.t);
   toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
@@ -83,11 +87,12 @@ export function sessionExpired() {
 
 // ---- Something unsaved --------------------------------------------------------------------------------------------------
 // Each screen holding something a reload would lose says so here, with its kind (issue #572: the new-version banner says
-// what to do first): 'settings' (unsaved settings), 'message' (a message typed or images waiting) or 'answering'.
+// what to do first): 'settings' (unsaved settings), 'message' (a message typed or images waiting), 'answering' or
+// 'unsent' (messages that could not be sent, kept in memory only, issue #580).
 const holders = [];
 export function onUnsaved(kind, fn) { holders.push({ kind, fn }); }
 export const unsavedParts = () => {
-  const parts = { settings: false, message: false, answering: false };
+  const parts = { settings: false, message: false, answering: false, unsent: false };
   for (const { kind, fn } of holders) if (fn()) parts[kind] = true;
   return parts;
 };

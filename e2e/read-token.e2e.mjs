@@ -71,7 +71,7 @@ test('un jeton de l\'ancien type déjà enregistré est refusé par le serveur a
     await card(page).waitFor();
     await page.locator('#read-token-error', { hasText: 'Ce type de jeton n\'est pas accepté : créez-en un avec le bouton ci-dessus.' }).waitFor();
     assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), null);
-    assert.equal(await page.locator('#chat-input').inputValue(), 'Encore là ?');
+    assert.equal(await page.locator('#chat-input').inputValue(), ''); // the message waits in the conversation (#580)
   });
 });
 
@@ -208,16 +208,28 @@ test('après « Se déconnecter », l\'onglet « Agent » redemande les deux jet
   });
 });
 
-test('si GitHub refuse le jeton de lecture (expiré), l\'onglet « Agent » le redemande et mon message reste dans la zone de saisie', async () => {
-  await withPanel({ chatServer: { answer: 'Bonjour.', refuse: 401 } }, async ({ page, url }) => {
+test('si GitHub refuse le jeton de lecture (expiré), l\'écran du jeton s\'affiche, puis je retrouve mon message « Non envoyé » avec « Renvoyer »', async () => {
+  const chatServer = { answer: 'Bonjour.', refuse: 401 };
+  await withPanel({ chatServer, viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
     await page.goto(url);
     await agent(page);
+    await page.locator('#chat-new').click();
     await send(page, 'Encore là ?');
     await card(page).waitFor();
     await page.locator('#read-token-error', { hasText: 'GitHub a refusé votre jeton de lecture' }).waitFor();
+    assert.equal(await card(page).isVisible(), true);
+    assert.equal(await page.locator('.chat-thread').isVisible(), false); // the token screen, not the conversation (#580)
     assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), null);
     assert.equal(await page.evaluate(() => localStorage.getItem('factory.token')), 'test');
-    assert.equal(await page.locator('#chat-input').inputValue(), 'Encore là ?');
+    assert.equal(await page.locator('#chat-input').inputValue(), '');
+    chatServer.refuse = 0;
+    await paste(page, 'github_pat_lecture');
+    const unsent = page.locator('#chat-messages .msg.unsent');
+    await unsent.waitFor();
+    assert.equal((await unsent.locator('.unsent-note').textContent()).trim(), 'Non envoyé. Le jeton de lecture avait été refusé : renvoyez le message.');
+    await unsent.getByRole('button', { name: /^Renvoyer / }).click();
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    assert.equal(await page.locator('#chat-messages .msg.unsent').count(), 0);
   });
 });
 
