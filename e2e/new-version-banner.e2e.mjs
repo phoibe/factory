@@ -308,7 +308,10 @@ async function stripOnTop(page, label) {
   assert.equal(await hitReload(page), true, `${label} : « Recharger » ne répond pas`);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
 }
-const toBottom = (page) => page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+async function toBottom(page) {
+  await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+  assert.ok(await page.evaluate(() => scrollY > 200), 'la page est trop courte pour défiler : le cas n\'est pas testé');
+}
 
 test('sur téléphone, le bandeau reste en haut de l\'écran quand on fait défiler', async () => {
   await withPanel({ issues: board, viewport: phone }, async ({ page, url }) => {
@@ -326,6 +329,7 @@ test('sur téléphone, le bandeau reste en haut de l\'écran quand on fait défi
     await page.getByText('Plus', { exact: true }).click(); // on a phone the button is in « Plus »
     await page.getByRole('button', { name: 'Réglages généraux' }).click();
     await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.locator('#general:not([aria-busy])').waitFor();
     await toBottom(page);
     await stripOnTop(page, 'Réglages généraux');
   });
