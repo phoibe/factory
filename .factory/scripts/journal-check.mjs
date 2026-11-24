@@ -2,10 +2,13 @@
 // Run by the agent before it opens or updates a PR: lists the steps its journal does not show yet, so it can
 // do them now instead of the owner seeing an alert. Usage: node .factory/scripts/journal-check.mjs
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged } from './fabrication.mjs';
+import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
+import { latestRun, upstreamEntry } from './upstream.mjs';
+import { defaultGh, repoFromRemote } from './specs.mjs';
+import { importTranscript } from './transcript.mjs';
 
 const HOW = {
   'writing-plans': 'charge le skill `writing-plans` (outil Skill) et écris le plan',
@@ -57,19 +60,14 @@ export function problems(files, readFile, stages, { stage = null, current = null
   if (run && GATED.includes(stage) && expectations(stage, stages, ui, { small }).some((e) => e.tdd && !missing.some((m) => m.skill === e.skill)) && !redThenGreen(run)) {
     out.push('preuve TDD : lance un test qui échoue avec la commande de test du projet, puis fais-le passer');
   }
+  if (stage !== 'skills-fix') out.push(...upstreamCheck(runs).missing.map((m) => m.how));
   return out;
 }
 
 // The run being checked from the command line: the journal whose latest « run » entry is the most recent. Its stage
 // is the one the lock applies, so both always agree on what is missing.
 export function runOptions(files, readFile) {
-  let best = null;
-  for (const f of files.filter((x) => JOURNAL.test(x))) {
-    const text = readFile(f);
-    const run = String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((e) => e?.kind === 'run').at(-1);
-    if (run && (!best || Date.parse(run.t) > Date.parse(best.run.t))) best = { run, text };
-  }
+  const best = latestRun(files, readFile);
   return best ? { stage: best.run.stage, current: best.text } : {};
 }
 
@@ -82,6 +80,56 @@ export function specReminder(files, { stage = null, current = null } = {}, readF
   const own = run?.issue ? new RegExp(`^docs/specs/${run.issue}(-[^/]*)?\\.md$`) : /^docs\/specs\/\d+[^/]*\.md$/;
   if (files.some((f) => own.test(f) && readFile(f) !== null)) return null; // a deleted spec does not count
   return `spec rangée : lance \`node .factory/scripts/specs.mjs save ${run?.issue ?? '<n>'}\` pour ranger la spec validée dans le projet`;
+}
+
+// Issue #550: for a build or a foundation, what the request's comments show about who did its questions and sheet,
+// as the entry to append to the journal of the branch's latest build or foundation run ({ file, entry }), or null when
+// there is nothing new to write. A later run that resumes the work (fix-checks, update-branch…) does not hide it.
+// `comments(repo, issue)` reads the request (it may throw: « unread »); without `repo` the request cannot be read
+// either. Only a run journaled with its models counts, as in upstreamCheck. « unread » never replaces a measured
+// entry, and an entry equal to the newest one of those runs is not written again.
+const MEASURED = ['proved', 'unproved', 'old'];
+const DOC_STAGES = ['build', 'foundation'];
+export function upstreamUpdate(files, readFile, { repo = null, comments, since = null } = {}) {
+  let best = null;
+  const texts = [];
+  for (const file of files.filter((f) => JOURNAL.test(f))) {
+    const text = readFile(file);
+    if (!text) continue;
+    texts.push(text);
+    // Appended at the end of its journal, the entry belongs to the journal's last run: only that one can take it.
+    const run = parseJournal([text]).at(-1);
+    if (!run || !run.models || !DOC_STAGES.includes(run.stage) || run.issue == null) continue;
+    if (!best || String(run.t) > String(best.run.t)) best = { file, run };
+  }
+  if (!best) return null;
+  let list = null;
+  if (repo) { try { list = comments(repo, best.run.issue); } catch { /* GitHub unreachable: « unread » */ } }
+  const entry = upstreamEntry(best.run, list, { since, owner: repo ? repo.split('/')[0] : null });
+  const current = parseJournal(texts)
+    .filter((r) => r.models && DOC_STAGES.includes(r.stage) && Number(r.issue) === Number(best.run.issue) && r.upstream)
+    .map((r) => r.upstream).sort((a, b) => String(a.t).localeCompare(String(b.t))).at(-1);
+  if (!entry || (entry.status === 'unread' && MEASURED.includes(current?.status))) return null;
+  const same = current && JSON.stringify([entry.doc, entry.status, entry.by]) === JSON.stringify([current.doc, current.status, current.by]);
+  return same ? null : { file: best.file, entry };
+}
+
+// Issue #550: since when the proof is asked for: the date of the latest commit that brought the upstream instruction
+// into .factory/AGENT.md (after a rollback of the factory and a new delivery, the new delivery). Null when unknown or
+// when the instruction is not there now: every spec then counts as « old ». In a shallow clone the parent of a commit
+// may be cut off: that commit then counts as the delivery, a later date, which only lets more specs count as « old ».
+const INSTRUCTION = 'upstream.mjs';
+export function upstreamSince(git) {
+  const has = (rev) => { try { return git(['show', `${rev}:.factory/AGENT.md`]).includes(INSTRUCTION); } catch { return false; } };
+  try {
+    if (!has('HEAD')) return null;
+    const log = git(['log', '--format=%H %cI', `-S${INSTRUCTION}`, '--', '.factory/AGENT.md']).trim().split('\n').filter(Boolean);
+    for (const line of log) {
+      const [sha, date] = line.split(' ');
+      if (has(sha) && !has(`${sha}^`)) return date || null;
+    }
+  } catch { /* no history */ }
+  return null;
 }
 
 export function report(files, readFile, stages, opts) {
@@ -103,15 +151,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
     // Hooks are not loaded when the routine serves several projects: rebuild the journal from the transcript.
     const remote = (() => { try { return git(['remote', 'get-url', 'origin']).trim(); } catch { return ''; } })();
-    const { repoFromRemote } = await import('./specs.mjs');
     const repo = (() => { try { return repoFromRemote(remote); } catch { return null; } })();
     if (repo) {
-      const { importTranscript } = await import('./transcript.mjs');
       const file = importTranscript(root, repo);
       if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
     }
-    const files = branchFiles(git);
-    if (!files.some((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
+    let files = branchFiles(git);
+    // A root commit has no parent: git's « invalid object name » there is expected, not for the owner's log.
+    const since = upstreamSince((args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
+    if (up) {
+      appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');
+      console.log('Journal : preuve relevée : committe `.factory/journal/`.');
+      files = branchFiles(git);
+    }
+    if (!files.some((f) => JOURNAL.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
     else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {
     console.log(`Journal : contrôle impossible (${e.message}).`);

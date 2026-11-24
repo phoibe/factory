@@ -36,8 +36,13 @@ export function parseJournal(files) {
     for (const line of String(text).split('\n')) {
       let e;
       try { e = JSON.parse(line); } catch { continue; }
-      if (e.kind === 'run' || !run) { run = { stage: e.kind === 'run' ? e.stage : null, t: e.t, skills: [], tests: [], agents: [] }; runs.push(run); }
+      if (e.kind === 'run' || !run) {
+        const isRun = e.kind === 'run';
+        run = { stage: isRun ? e.stage : null, t: e.t, issue: isRun ? e.issue ?? null : null, models: isRun && e.models ? e.models : null, upstream: null, skills: [], tests: [], agents: [] };
+        runs.push(run);
+      }
       if (e.kind === 'skill') run.skills.push(e.name);
+      if (e.kind === 'upstream') run.upstream = e;
       if (e.kind === 'test') run.tests.push(e);
       if (e.kind === 'agent') run.agents.push(e);
     }
@@ -87,6 +92,8 @@ export function missingSkills(runs, { stages = {}, ui = false, small = false } =
 }
 
 // Sub-agents: which model each one ran on (the table « Modèles par rôle » of AGENT.md; any family of the catalog is valid).
+// The display names of MODEL_FAMILIES (scripts/lib/models.mjs), smallest first. Copied, not imported: the sync ships
+// this script alone into each project's .factory/scripts/, without scripts/lib. test/upstream.test.mjs keeps both equal.
 const FAMILIES = ['Haiku', 'Sonnet', 'Opus', 'Fable'];
 export function modelFamily(model) {
   if (!model) return null;
@@ -168,6 +175,67 @@ export function routeLine(runs, { small = false } = {}) {
   return "**Parcours** : sans plan écrit, construite d'une traite avec une seule relecture finale";
 }
 
+// Issue #550: the upstream thinking (questions, spec, project sheet, analysis of a bug) is done by a sub-agent of
+// role `plan` (or `review` when it failed). A run journaled by older scripts has no `models`: nothing is expected of it.
+const ROLE_NAMES = { plan: 'Plans et organisation', review: 'Revue' };
+const family = (m) => String(modelFamily(m) || '').toLowerCase();
+export function roleOf(model, models) {
+  if (!model || !models) return null;
+  return ['plan', 'review'].find((role) => models[role] && family(model) === family(models[role])) || null;
+}
+const roleAgents = (run) => (run.agents || []).map((a) => ({ a, role: roleOf(a.model, run.models) })).filter((x) => x.role);
+// The latest one: after a failed `plan` sub-agent, the `review` one that took over did the thinking.
+export function upstreamAgent(run) {
+  const last = roleAgents(run).at(-1);
+  return last ? { model: family(last.a.model), role: last.role } : null;
+}
+// The analysis comes before the fix: an agent with a role launched after the last red test is the final reviewer.
+const analyst = (run) => {
+  const red = (run.tests || []).filter((x) => !x.ok).at(-1);
+  return roleAgents(run).find(({ a }) => !red || String(a.t) < String(red.t)) || null;
+};
+export const bugAnalysed = (run) => Boolean(analyst(run));
+const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
+// The journal is a committed file: a hand-edited `by` must not break the comment.
+const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
+const UNCHECKED = "l'outil n'a pas pu vérifier quel modèle les a faites";
+
+export function upstreamCheck(runs) {
+  const lines = [];
+  const missing = [];
+  const bugs = runs.filter((r) => r.stage === 'bugfix' && r.models);
+  if (bugs.length) {
+    const found = bugs.map(analyst).find(Boolean);
+    if (found) lines.push(`**Analyse du bug** : faite par ${madeBy({ model: found.a.model, role: found.role })}`);
+    else missing.push({
+      alert: "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.",
+      how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
+    });
+  }
+  const docs = runs.filter((r) => ['build', 'foundation'].includes(r.stage) && r.models && r.issue != null);
+  if (docs.length) {
+    const withEntry = docs.filter((r) => r.upstream).sort((a, b) => String(a.upstream.t).localeCompare(String(b.upstream.t))).at(-1);
+    const run = withEntry || docs.at(-1);
+    const entry = withEntry?.upstream || null;
+    const brief = entry ? entry.doc === 'brief' : run.stage === 'foundation';
+    const label = brief ? 'Questions et fiche projet' : 'Questions et fiche';
+    // Not read back yet: a step for the agent (journal-check), never an alert for the owner.
+    if (!entry) {
+      lines.push(`**${label}** : non mesuré (${UNCHECKED})`);
+      missing.push({ alert: null, how: 'questions et fiche : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il relit la demande)' });
+    } else if (entry.status === 'proved') {
+      const by = makers(entry.by);
+      lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
+    } else if (entry.status === 'unproved') missing.push({
+      alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
+      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
+    });
+    else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
+    else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);
+  }
+  return { lines, missing };
+}
+
 const STAGE_NAMES = {
   build: 'Construction', bugfix: 'Correction du bug', foundation: 'Fondations', 'fix-checks': 'Correction des contrôles',
   'visual-fix': 'Retouche visuelle', 'acceptance-fix': 'Correction après recette', 'update-branch': 'Mise à jour de la branche',
@@ -192,6 +260,8 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
   }
   const missing = missingSkills(runs, { stages, ui, small });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
+  const upstream = upstreamCheck(runs);
+  for (const m of upstream.missing) if (m.alert) alerts.push(m.alert);
   // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
   const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit', 'ui-polish'].includes(r.stage))
     ? null : "_Pas de journal de construction dans cette PR : les skills utilisés n'ont pas pu être vérifiés._";
@@ -213,6 +283,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
     '',
     agentsLine(runs),
     '',
+    ...upstream.lines.flatMap((l) => [l, '']),
     alerts.length ? `### ⚠️ Alertes\n\n${alerts.map((a) => `- ${a}`).join('\n')}` : '**Alertes** : aucune ✅',
     ...(note ? ['', note] : []),
   ].join('\n');
