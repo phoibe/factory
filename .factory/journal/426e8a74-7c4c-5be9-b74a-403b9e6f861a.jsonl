@@ -21,3 +21,6 @@
 {"t":"2026-11-24T15:28:06.938Z","kind":"test","cmd":"python3 - <<'EOF'\nimport re\ndef edit(p, old, new):\n    s=… assert s.count(old)==1, (p, old); open(p,'w').write(s.replace(old,new))\nedit('scripts/relay.mjs', \"import { withLock } from './lib/lock.mjs';","ok":true,"id":"toolu_01TYeHzJuhQphaxu3ma2KQnR"}
 {"t":"2026-11-24T15:28:36.263Z","kind":"test","cmd":"sed -i \"s/  await at(24 \\* H).catch(() => {});/  await at(24 * H);/\" test/relay.test.mjs && node --test test/relay.test.mjs 2>&1 | grep -E \"^# (pass|fail)|^not ok\"","ok":true,"id":"toolu_01TPftC8GNwoWEWAT9X9tzXU"}
 {"t":"2026-11-24T15:29:21.042Z","kind":"test","cmd":"npm test > /tmp/claude-0/full.log 2>&1; echo test=… grep -E \"^# (tests|pass|fail|skipped|todo|cancelled)\" /tmp/claude-0/full.log; npm run lint 2>&1 | tail -4; echo lint=… npm run typecheck 2>&1 | tail","ok":true,"id":"toolu_01Ap8EfCSx5ZFWExeJKDZMHW"}
+{"t":"2026-11-24T15:30:24.893Z","kind":"skill","name":"requesting-code-review","id":"toolu_012CVNFUN4stYU4cC35Zs8NB"}
+{"t":"2026-11-24T15:30:38.992Z","kind":"agent","model":"fable","effort":"high","label":"Final review of issue 562","id":"toolu_0143AjJLJbD2i59LqXeDDb8h"}
+{"t":"2026-11-24T15:32:42.697Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
