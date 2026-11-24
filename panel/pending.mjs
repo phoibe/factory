@@ -2,7 +2,7 @@
 // State: { [number]: { column, clickedAt, backAt } }. A click on a plate's link notes it; coming back to the
 // panel puts the noted plates on hold (« Prise en compte en cours… ') until GitHub shows the plate in another
 // column, or for at most PENDING_MS.
-import { humanMinutes } from './eta.mjs?v=6';
+import { humanMinutes } from './eta.mjs';
 
 export const PENDING_MS = 120_000;
 const STALE_MS = 86_400_000; // a click never followed by a return

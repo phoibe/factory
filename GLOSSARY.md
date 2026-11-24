@@ -52,6 +52,14 @@ _À éviter_ : complexité, story points
 Une tâche du plan d'une grande demande qui ne dépend d'aucune autre tâche encore à faire et ne touche pas les mêmes fichiers ni les mêmes tests qu'elles ; elle peut être construite en même temps que d'autres, au plus trois à la fois. Les autres sont des **tâches séquentielles**, construites après la tâche dont elles dépendent.
 _À éviter_ : tâche indépendante, tâche concurrente
 
+**Review générale** :
+La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections.
+_À éviter_ : audit, revue complète
+
+**Relecture partie par partie** :
+Pendant une review générale, la relecture de tout le code d'une grande partie de l'appli ; il y en a une par grande partie, faites en même temps, avant la synthèse qui réunit leurs constats.
+_À éviter_ : sous-revue, relecture finale (celle d'avant chaque PR)
+
 **Documents du projet** :
 Le glossaire et le registre des décisions d'un projet. L'agent les tient à jour pendant les questions ; un projet qui n'en a pas encore les reçoit une fois, reconstitués à partir de sa fiche produit, de son design, de ses features livrées et des échanges passés, au prochain passage de l'agent. Ils arrivent toujours dans une petite mise à jour de documents que la factory valide seule.
 _À éviter_ : documentation, docs
@@ -59,6 +67,20 @@ _À éviter_ : documentation, docs
 **Refus noté** :
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
+
+## Captures avant/après
+
+**Image avant/après** :
+L'image que la factory publie dans une modification pour chaque écran qui a changé, à chaque taille et dans chaque thème : la capture d'avant à gauche, celle d'après à droite. C'est elle que le propriétaire regarde pour valider les captures ; les deux captures dont elle est faite restent telles quelles.
+_À éviter_ : comparatif, montage, côte à côte
+
+**Cadre rouge** :
+Le contour rouge posé sur une image avant/après autour d'un endroit qui a changé : côté « après » autour de ce qui est apparu ou a été modifié, côté « avant » autour de ce qui a disparu ou a été modifié. Il dit où regarder sans rien masquer.
+_À éviter_ : surlignage, encadré, zone de différence
+
+**Contenu décalé** :
+Ce qui a seulement changé de place sur un écran, poussé vers le bas ou remonté par un changement situé plus haut, sans avoir changé lui-même. Il ne reçoit pas de cadre rouge.
+_À éviter_ : contenu déplacé, glissement
 
 ## Projets publics
 
@@ -103,11 +125,11 @@ La page à part du tableau de bord, ouverte par le bouton du même nom dans la b
 _À éviter_ : paramètres globaux, configuration générale
 
 **Rôle de modèle** :
-L'un des quatre types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, et les tâches simples de lecture et d'écriture.
+L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures partie par partie d'une review générale, et les tâches simples de lecture et d'écriture.
 _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 
 **Famille de modèles** :
-Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle ; c'est toujours sa version la plus récente qui sert.
+Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle, et qu'il appelle aussi « moteur » ; c'est toujours sa version la plus récente qui sert.
 _À éviter_ : version, modèle précis
 
 ## Design
@@ -141,3 +163,7 @@ _À éviter_ : jeton principal, token du panneau
 **Jeton de l'ancien type** :
 Un jeton GitHub de la génération précédente (« classic »), dont les droits sont trop larges et trop peu vérifiables pour servir de jeton de lecture ; la discussion n'en accepte aucun.
 _À éviter_ : jeton classique, vieux jeton
+
+**Message non envoyé** :
+Un message du propriétaire qui n'est pas arrivé jusqu'à l'agent, ou auquel l'agent n'a pas pu répondre : il reste dans la conversation avec la raison de l'échec, et le propriétaire peut le renvoyer tel quel ou le reprendre pour le modifier. Une réponse arrivée mais qui n'a pas pu être enregistrée n'en est pas un : elle ne se renvoie pas, l'agent travaillerait deux fois.
+_À éviter_ : message raté, message en erreur, envoi échoué

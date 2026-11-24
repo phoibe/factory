@@ -116,7 +116,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 7 bis. **Essai en conditions réelles** (issue #385 : les deuxièmes demandes juste après une livraison venaient de
    tests qui ne tournaient que sur des exemples inventés). Après les tests et avant d'ouvrir la PR, rejoue le parcours
    de la demande sur les vraies données du projet, **en lecture seule** : le vrai dépôt GitHub (ses vraies issues, PR,
-   labels, commentaires, via `gh api` en lecture), le vrai site en ligne (ouvre-le, lis la page), le vrai message
+   labels via `gh api` en lecture, leurs messages via `node .factory/scripts/thread.mjs <numéro>`), le vrai site en ligne (ouvre-le, lis la page), le vrai message
    déjà publié, le vrai fichier de configuration. Fais tourner ton code sur ces données réelles (par exemple ta
    fonction appliquée à la vraie réponse de l'API, la page de la branche contre le vrai site) et compare avec ce
    que la spec attend. Si ton code écrit quelque part, donne-lui seulement les vraies réponses déjà lues : ne le

@@ -280,3 +280,9 @@ export const stableView = (cmp) => {
   const truncated = (cmp?.ahead_by || 0) > (cmp?.commits?.length || 0);
   return { changes, count: truncated ? null : changes.length, hidden: changes.length === 0 && !truncated };
 };
+
+// A deployed panel carries its commit sha in meta[name=build]; a local copy keeps the `__BUILD__` placeholder.
+export const isDeployed = (build) => /^[0-9a-f]{7,}$/.test(build);
+
+// A file the panel loads at run time, stamped with the build like everything published, so it never mixes two versions.
+export const versioned = (url, build) => (isDeployed(build) ? `${url}${url.includes('?') ? '&' : '?'}v=${build}` : url);

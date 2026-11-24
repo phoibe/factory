@@ -1,4 +1,4 @@
-import { fromBase64 } from './lib.mjs?v=29';
+import { fromBase64 } from './lib.mjs';
 
 // ---- The factory's runner files (settings.json, status.json on its factory-runners branch) ---------------------------
 // `api(url, init)` is the panel's GitHub call. Never from the browser's cache: GitHub lets it keep `contents` 60 s and
