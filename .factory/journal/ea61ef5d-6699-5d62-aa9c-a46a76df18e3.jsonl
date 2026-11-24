@@ -1,0 +1,7 @@
+{"t":"2026-11-24T15:40:04.404Z","kind":"run","stage":"build","issue":560,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
+{"t":"2026-11-24T15:40:20.619Z","kind":"skill","name":"subagent-driven-development","id":"toolu_01M3zuRyVUiBVgkoy4E9W6JS"}
+{"t":"2026-11-24T15:40:35.065Z","kind":"agent","model":"fable","effort":"high","role":"plan","label":"Plan issue 560","id":"toolu_013xnPJidkmRTHfNqsQ3Rmo6"}
+{"t":"2026-11-24T15:40:36.678Z","kind":"skill","name":"writing-plans","id":"toolu_01SFbzxak4hSKh9cLrATDkdT"}
+{"t":"2026-11-24T15:43:12.219Z","kind":"test","cmd":"time (npm test 2>&1 | tail -8)","ok":true,"id":"toolu_014RTxTb9nuwN9QWey7wEMvg"}
+{"t":"2026-11-24T15:46:56.499Z","kind":"test","cmd":"time (CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | tail -8)","ok":true,"id":"toolu_01E7yQvkNdrPbW8QJPJsx1uz"}
+{"t":"2026-11-24T15:47:11.345Z","kind":"test","cmd":"time (CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | tail -4)","ok":true,"id":"toolu_01HpigtBBUpS52HdFJMLujRM"}
