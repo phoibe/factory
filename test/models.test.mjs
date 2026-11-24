@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MODEL_FAMILIES, MODEL_ROLES, resolveModels, familyLabel, roleModel, parseModelIds } from '../scripts/lib/models.mjs';
 
-const defaults = { plan: { model: 'fable', effort: 'high' }, code: { model: 'opus', effort: 'medium' }, review: { model: 'fable', effort: 'high' }, simple: { model: 'sonnet', effort: 'low' } };
+const defaults = { plan: { model: 'fable', effort: 'high' }, code: { model: 'opus', effort: 'medium' }, review: { model: 'fable', effort: 'high' }, audit: { model: 'opus', effort: 'high' }, simple: { model: 'sonnet', effort: 'low' } };
 
 test('the catalog lists every family with its current version, labelled <Name> (<version> aujourd’hui)', () => {
   assert.ok(MODEL_FAMILIES.length >= 4);
@@ -16,12 +16,24 @@ test('model ids that are not model families are ignored', () => {
   assert.deepEqual(parseModelIds(text), [{ id: 'opus', version: '5.5' }]);
 });
 
-test('four roles in order: plans, code, review, simple tasks', () => {
-  assert.deepEqual(MODEL_ROLES.map((r) => r.id), ['plan', 'code', 'review', 'simple']);
-  assert.deepEqual(MODEL_ROLES.map((r) => r.name), ['Plans et organisation', 'Écriture du code', 'Revue', 'Tâches simples']);
+test('five roles in order: plans, code, review, general-review reviews, simple tasks', () => {
+  assert.deepEqual(MODEL_ROLES.map((r) => r.id), ['plan', 'code', 'review', 'audit', 'simple']);
+  assert.deepEqual(MODEL_ROLES.map((r) => r.name), ['Plans et organisation', 'Écriture du code', 'Revue', 'Relectures d’une review générale', 'Tâches simples']);
 });
 
-test('nothing saved yet: the defaults, Fable / Opus / Fable / Sonnet', () => {
+test('the general-review role: Opus and high effort by default, its own saved engine, Opus when it is gone (issue #570)', () => {
+  const role = MODEL_ROLES.find((r) => r.id === 'audit');
+  assert.equal(role.help, 'Relit le code de chaque partie de l’appli pendant une review générale. La synthèse reste faite par « Revue ».');
+  assert.deepEqual(resolveModels({ models: { code: 'sonnet' } }).audit, { model: 'opus', effort: 'high' }, 'does not follow the code role');
+  assert.deepEqual(resolveModels({ models: { review: 'haiku' } }).audit, { model: 'opus', effort: 'high' }, 'does not follow the review role');
+  const r = resolveModels({ models: { audit: 'fable' } });
+  assert.deepEqual(r.audit, { model: 'fable', effort: 'high' });
+  assert.deepEqual({ ...r, audit: defaults.audit }, defaults, 'the other roles keep their default');
+  assert.equal(resolveModels({ models: { audit: 'gpt' } }).audit.model, 'opus');
+  assert.equal(roleModel({ models: { audit: 'fable' } }, 'audit', MODEL_FAMILIES.filter((f) => f.id !== 'fable')), 'opus');
+});
+
+test('nothing saved yet: the defaults, Fable / Opus / Fable / Opus / Sonnet', () => {
   for (const raw of [null, undefined, {}, { models: 'x' }, { machine: 'github' }, 'garbage']) assert.deepEqual(resolveModels(raw), defaults);
 });
 

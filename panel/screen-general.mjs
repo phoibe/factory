@@ -2,6 +2,7 @@ import { toBase64 } from './lib.mjs';
 import { errorText } from './errors.mjs';
 import { readRunnersFile } from './machine.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
+import { frenchSpaces } from './stack.mjs';
 import { FACTORY_REPO, MACHINE_CHOICES, $, app, el, toast, machineRadios, onReset, onUnsaved, onView, shown, setGeneralOpen, provide, call } from './common.mjs';
 import { api } from './github.mjs';
 
@@ -95,11 +96,11 @@ function renderGeneral() {
   $('general').removeAttribute('aria-busy');
   const modelRows = MODEL_ROLES.map((r) => el('div', { class: 'row model-row' }, el('div', {},
     el('label', { for: `model-${r.id}` }, r.name),
-    el('p', { id: `model-${r.id}-help` }, r.help),
+    el('p', { id: `model-${r.id}-help` }, frenchSpaces(r.help)), // « Revue » never splits from its guillemets on a phone
     el('select', { id: `model-${r.id}`, disabled: general.unreadable, 'aria-describedby': `model-${r.id}-help`, onchange: (e) => { general.models[r.id] = e.target.value; renderGeneral(); } },
       ...MODEL_FAMILIES.map((f) => el('option', { value: f.id, selected: general.models[r.id] === f.id }, familyLabel(f)))))));
   const models = el('fieldset', {}, el('legend', {}, 'Modèles'), ...modelRows,
-    el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude.ai : la factory ne peut pas le changer, choisissez-le dans la routine. Il confie toujours le plan et l’écriture du code aux rôles ci-dessus, même pour une petite retouche.'));
+    el('p', { class: 'models-note' }, frenchSpaces('L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude.ai : la factory ne peut pas le changer, choisissez-le dans la routine. Il confie toujours le plan et l’écriture du code aux rôles ci-dessus, même pour une petite retouche.')));
   const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }, general.unreadable));
   const dirty = generalDirty();

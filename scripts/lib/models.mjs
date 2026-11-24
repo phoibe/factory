@@ -13,11 +13,13 @@ export const MODEL_FAMILIES = [
 ];
 // catalog:end
 
-// The four roles, in the order of the page. `effort` is fixed (not a setting); escalation goes simple → code → review.
+// The five roles, in the order of the page. `effort` is fixed (not a setting); escalation goes simple → code → review;
+// audit → review.
 export const MODEL_ROLES = [
   { id: 'plan', name: 'Plans et organisation', help: 'Prépare les questions et la fiche de chaque demande, écrit les plans et organise le développement.', effort: 'high', default: 'fable' },
   { id: 'code', name: 'Écriture du code', help: 'Écrit le code, fait les petites relectures de chaque tâche et la critique du design.', effort: 'medium', default: 'opus' },
   { id: 'review', name: 'Revue', help: 'Relecture finale du code avant chaque PR, revue de sécurité, synthèse d’une review générale.', effort: 'high', default: 'fable' },
+  { id: 'audit', name: 'Relectures d’une review générale', help: 'Relit le code de chaque partie de l’appli pendant une review générale. La synthèse reste faite par « Revue ».', effort: 'high', default: 'opus' },
   { id: 'simple', name: 'Tâches simples', help: 'Recherches, lectures et petites écritures mécaniques, captures.', effort: 'low', default: 'sonnet' },
 ];
 
@@ -30,7 +32,7 @@ export function roleModel(raw, roleId, families = MODEL_FAMILIES) {
   return families.some((f) => f.id === saved) ? saved : role.default;
 }
 
-// { plan: { model, effort }, code, review, simple }: what each run receives in its payload (`models`).
+// { plan: { model, effort }, code, review, audit, simple }: what each run receives in its payload (`models`).
 export function resolveModels(raw, families = MODEL_FAMILIES) {
   return Object.fromEntries(MODEL_ROLES.map((r) => [r.id, { model: roleModel(raw, r.id, families), effort: r.effort }]));
 }

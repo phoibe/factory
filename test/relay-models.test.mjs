@@ -35,6 +35,15 @@ for (const runner of ['github-actions', 'claude-cloud']) {
     const { models } = t.payload();
     assert.equal(models.code.model, 'sonnet');
     assert.deepEqual(models.plan, { model: 'fable', effort: 'high' });
+    assert.deepEqual(models.audit, { model: 'opus', effort: 'high' });
+  });
+
+  test(`${runner}: the payload carries the engine saved for the general-review reviews`, async () => {
+    const t = setup(runner, b64({ models: { audit: 'fable' } }));
+    await t.fire();
+    const { models } = t.payload();
+    assert.deepEqual(models.audit, { model: 'fable', effort: 'high' });
+    assert.deepEqual(Object.keys(models), ['plan', 'code', 'review', 'audit', 'simple']);
   });
 
   for (const [name, settings] of [['a failing read', () => { throw new Error('boom'); }], ['a missing file', null], ['bad JSON', b64('{nope')]]) {
