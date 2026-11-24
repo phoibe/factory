@@ -1,7 +1,7 @@
 // The panel's GitHub readers (issue #560). Separate from common.mjs: trust.mjs and ratelimit.mjs only sit next to the
 // panel once deployed, so Node could not load a common part importing them.
-import { app, onReset, sessionExpired } from './common.mjs?v=1';
-import { trustRead } from './trust.mjs?v=1';
+import { app, onReset, sessionExpired } from './common.mjs';
+import { trustRead } from './trust.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { httpError, emptyOn404 } from './errors.mjs';
 

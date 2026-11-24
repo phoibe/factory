@@ -1,8 +1,8 @@
 // What every screen of the panel shares (issue #560): who is signed in, which project is open, what is shown, the
 // reset each screen declares, the « something unsaved » registry, the actions a part offers the others, the board gate.
 // Imports only pure modules, so Node can load it for its tests.
-import { tokenFromHash, readTokenFromHash, sessionKeys } from './lib.mjs?v=28';
-import { READ_TOKEN_KEY } from './chat.mjs?v=28';
+import { tokenFromHash, readTokenFromHash, sessionKeys } from './lib.mjs';
+import { READ_TOKEN_KEY } from './chat.mjs';
 
 export const TOKEN_KEY = 'factory.token';
 export const PROJECT_KEY = 'factory.project';

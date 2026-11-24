@@ -1,17 +1,17 @@
-import { fromBase64, issuesUrl, issuesLinkText, chatServerUrl } from './lib.mjs?v=28';
+import { fromBase64, issuesUrl, issuesLinkText, chatServerUrl, isDeployed, versioned } from './lib.mjs';
 import { resolveConfig, parseRawConfig } from './config-core.mjs';
-import { watchNumbers } from './numbers.mjs?v=2';
+import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { errorText } from './errors.mjs';
-import { PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs?v=1';
-import './github.mjs?v=1';
-import './screen-general.mjs?v=1';
-import { recallProjects, loadProjects, checkProjects, refreshDots, renderProjectList } from './screen-projects.mjs?v=1';
-import { enterBoard, renderBoard, startLive, boardInfo } from './screen-board.mjs?v=1';
-import { resetChat, setChatServer } from './screen-chat.mjs?v=1';
-import { drawSub, drawGap, refreshGap, drawRelease, refreshRelease, loadDelivery, refreshStable, refreshRuns } from './screen-header.mjs?v=1';
-import { renderRules, loadMachine, updateTrigger, refreshRunnerAlert } from './screen-rules.mjs?v=1';
-import './screen-login.mjs?v=1';
+import { PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs';
+import './github.mjs';
+import './screen-general.mjs';
+import { recallProjects, loadProjects, checkProjects, refreshDots, renderProjectList } from './screen-projects.mjs';
+import { enterBoard, renderBoard, startLive, boardInfo } from './screen-board.mjs';
+import { resetChat, setChatServer } from './screen-chat.mjs';
+import { drawSub, drawGap, refreshGap, drawRelease, refreshRelease, loadDelivery, refreshStable, refreshRuns } from './screen-header.mjs';
+import { renderRules, loadMachine, updateTrigger, refreshRunnerAlert } from './screen-rules.mjs';
+import './screen-login.mjs';
 
 provide('openProject', openProject);
 provide('start', start);
@@ -61,12 +61,12 @@ async function openProject(fullName) {
   if (!boardInfo().ticking) startLive();
 }
 
-// A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
+// A new panel version is deployed (version.json, written by scripts/stamp-panel.mjs) while this tab still runs the old one:
 // reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
 let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
-  if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
+  if (!isDeployed(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   // Nothing in flight is lost either: an answer still arriving, images waiting to be sent.
@@ -92,7 +92,7 @@ async function start() {
   try {
     if (!app.catalog) {
       let server;
-      [app.catalog, app.defaults, server] = await Promise.all([fetchJson('catalog.json'), fetchJson('factory.config.json'),
+      [app.catalog, app.defaults, server] = await Promise.all([fetchJson(versioned('catalog.json', BUILD)), fetchJson(versioned('factory.config.json', BUILD)),
         fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
       setChatServer(chatServerUrl(server?.url));
     }

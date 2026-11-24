@@ -1,9 +1,9 @@
-import { toBase64, fromBase64 } from './lib.mjs?v=28';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=28';
-import { trustNotes } from './trust.mjs?v=1';
+import { toBase64, fromBase64 } from './lib.mjs';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs';
+import { trustNotes } from './trust.mjs';
 import { httpError, errorText, saidError } from './errors.mjs';
-import { $, store, app, el, toast, onReset, sessionExpired, onUnsaved, onView, shown, selectTab, call } from './common.mjs?v=1';
-import { API, guardRead, api } from './github.mjs?v=1';
+import { $, store, app, el, toast, onReset, sessionExpired, onUnsaved, onView, shown, selectTab, call } from './common.mjs';
+import { API, guardRead, api } from './github.mjs';
 
 // Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
 // while it is missing, the message box otherwise. Never on a phone: the keyboard would hide half the screen.
@@ -47,7 +47,8 @@ if ('ResizeObserver' in window) {
 // ---- Agent (chat) -------------------------------------------------------------------------------
 // A chat with the agent. Two ways to reach it:
 // - the chat server (server/chat on Modal, address in chat-server.json): the answer streams back within
-//   seconds; conversations are JSON files on the project's `factory-chat` branch;
+//   seconds; conversations are JSON files on the project's `factory-chat` branch, read again every 30 s with
+//   ETags (issue #563: an unchanged one is a free « 304 »);
 // - otherwise, each conversation is a `factory:question` issue that wakes the agent's routine (a minute or
 //   more). While an answer is awaited it is checked every 4 s, otherwise every 15 s, with ETags.
 // Either way the owner only ever sees the chat.
@@ -240,14 +241,23 @@ async function openChat() {
   await refreshChat();
 }
 
-// A JSON file of the `factory-chat` branch, or null.
+// A JSON file of the `factory-chat` branch, or null. Read with its ETag (issue #563): an unchanged file is a free « 304 »
+// and is parsed again from the text kept, so a change made on screen to the last copy never comes back.
 async function branchJson(path) {
-  const res = await fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`, {
-    cache: 'no-store', headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' },
+  const cache = chat.etags; // captured: a project switch mid-fetch must not write into the new project's map
+  const url = `${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`;
+  const hit = cache.get(url);
+  const res = await fetch(url, {
+    cache: 'no-store', headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw', ...(hit ? { 'if-none-match': hit.etag } : {}) },
   });
-  if (res.status === 404) return null;
+  if (res.status === 304 && hit) return JSON.parse(hit.text);
+  if (res.status === 404) { cache.delete(url); return null; }
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  return res.json();
+  const text = await res.text();
+  const data = JSON.parse(text);
+  const etag = res.headers.get('etag');
+  if (etag) cache.set(url, { etag, text }); else cache.delete(url);
+  return data;
 }
 
 async function refreshServerChat() {

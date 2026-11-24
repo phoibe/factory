@@ -1,12 +1,12 @@
-import { fromBase64, phoneLink, releaseButton, siteLink, stableView } from './lib.mjs?v=28';
-import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
+import { fromBase64, phoneLink, releaseButton, siteLink, stableView, versioned } from './lib.mjs';
+import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs';
 import { effectiveProduction } from './config-core.mjs';
 import { errorText } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { FACTORY_REPO, $, app, el, toast, onReset, onView, shown, selectTab, boardFirst, provide, call } from './common.mjs?v=1';
-import { api, cachedGet, mapLimit } from './github.mjs?v=1';
+import { FACTORY_REPO, $, app, el, toast, onReset, onView, shown, selectTab, boardFirst, provide, call } from './common.mjs';
+import { api, cachedGet, mapLimit } from './github.mjs';
 
 provide('refreshRuns', refreshRuns);
 provide('refreshRelease', refreshRelease);
@@ -378,7 +378,9 @@ function loadScript(src) {
 
 async function openPhone() {
   const link = phoneLink(location.href, app.token, app.readToken);
-  if (!window.qrcode) await loadScript('vendor/qrcode.js');
+  // The build is read where app.mjs reads it (its version watcher): the meta tag stamped at publish.
+  const build = document.querySelector('meta[name="build"]')?.content || '';
+  if (!window.qrcode) await loadScript(versioned('vendor/qrcode.js', build));
   const qr = window.qrcode(0, 'M');
   qr.addData(link);
   qr.make();

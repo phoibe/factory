@@ -1,4 +1,4 @@
-import { TOKEN_KEY, $, store, app, resetSession, show, call } from './common.mjs?v=1';
+import { TOKEN_KEY, $, store, app, resetSession, show, call } from './common.mjs';
 
 $('login-form').addEventListener('submit', (e) => {
   e.preventDefault();

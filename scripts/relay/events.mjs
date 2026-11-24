@@ -743,7 +743,8 @@ export function eventsPart(ctx) {
     const before = ctx.dequeues;
     const result = await step(...args);
     // Never throws, rate limit included, on purpose: the step itself is done, and re-running it would be worse.
-    // The place is then filled by the next event or tick, as before #384.
+    // The place is then filled by the next event or tick, as before #384. A lost turn is the exception: the queue
+    // lock (withLock) still ends the run with it once the step returns, and the run is replayed later (#562).
     if (ctx.dequeues === before) await dequeue().catch((e) => log(`queue check: ${e.message}`));
     return result;
   };

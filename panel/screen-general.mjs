@@ -1,15 +1,16 @@
-import { toBase64 } from './lib.mjs?v=28';
+import { toBase64 } from './lib.mjs';
 import { errorText } from './errors.mjs';
-import { readRunnersFile } from './machine.mjs?v=4';
+import { readRunnersFile } from './machine.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
-import { FACTORY_REPO, MACHINE_CHOICES, $, app, el, toast, machineRadios, onReset, onUnsaved, onView, shown, setGeneralOpen, provide, call } from './common.mjs?v=1';
-import { api } from './github.mjs?v=1';
+import { FACTORY_REPO, MACHINE_CHOICES, $, app, el, toast, machineRadios, onReset, onUnsaved, onView, shown, setGeneralOpen, provide, call } from './common.mjs';
+import { api } from './github.mjs';
 
 provide('openGeneral', openGeneral);
 provide('closeGeneral', closeGeneral);
 
 // The general setting and the dev server check live on a branch of the factory (written by scripts/runners.mjs).
 const RUNNERS_BRANCH = 'factory-runners';
+const runnersFile = (path) => readRunnersFile(api, path);
 
 // Writes the general settings (machine and models) on the factory's branch (created if it does not exist yet).
 async function writeGeneral({ machine: choice, models }) {
@@ -20,7 +21,7 @@ async function writeGeneral({ machine: choice, models }) {
     const commit = await api(`/repos/${FACTORY_REPO}/git/commits`, { method: 'POST', body: JSON.stringify({ message: 'chore(factory): dev server branch', tree: tree.sha, parents: [] }) });
     await api(`/repos/${FACTORY_REPO}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${RUNNERS_BRANCH}`, sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
   }
-  const fresh = await readRunnersFile(api, 'settings.json');
+  const fresh = await runnersFile('settings.json');
   // Keeps what changed there since the page loaded (runner labels): only the machine and the models are written from here.
   const body = JSON.stringify({ ...(fresh.json || call('machineSettings') || {}), machine: choice, models }, null, 2) + '\n';
   const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
@@ -64,7 +65,7 @@ async function openGeneral(from = $('general-open')) {
   if (!mine) return; // nothing to read, or a read already on its way fills the page
   general.read = mine;
   let settings;
-  try { settings = await readRunnersFile(api, 'settings.json'); } finally { if (general.read === mine) general.read = null; }
+  try { settings = await runnersFile('settings.json'); } finally { if (general.read === mine) general.read = null; }
   // Logged out, or another screen or project meanwhile: the late answer is dropped, and a page still shown for that
   // session or project is closed (review #556).
   if (app.token !== session || app.current !== project || shown().screen !== 'project-view') {

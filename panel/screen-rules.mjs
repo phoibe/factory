@@ -1,11 +1,11 @@
-import { toggleSkill, setPath, toBase64, fromBase64, mergeConfig } from './lib.mjs?v=28';
+import { toggleSkill, setPath, toBase64, fromBase64, mergeConfig } from './lib.mjs';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { errorText, saidError } from './errors.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=4';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { FACTORY_REPO, MACHINE_CHOICES, $, store, app, el, toast, machineRadios, onReset, onUnsaved, selectTab, boardFirst, provide, call } from './common.mjs?v=1';
-import { api } from './github.mjs?v=1';
+import { FACTORY_REPO, MACHINE_CHOICES, $, store, app, el, toast, machineRadios, onReset, onUnsaved, selectTab, boardFirst, provide, call } from './common.mjs';
+import { api } from './github.mjs';
 
 provide('renderRules', renderRules);
 provide('machineSettings', () => machine.settings);

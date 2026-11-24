@@ -1,11 +1,11 @@
-import { projectCandidates } from './lib.mjs?v=28';
-import { isIdle } from './live.mjs?v=15';
-import { waitedFor } from './waits.mjs?v=2';
-import { trustNotes } from './trust.mjs?v=1';
+import { projectCandidates } from './lib.mjs';
+import { isIdle } from './live.mjs';
+import { waitedFor } from './waits.mjs';
+import { trustNotes } from './trust.mjs';
 import { errorText } from './errors.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=8';
-import { PROJECT_KEY, PROJECTS_KEY, $, store, app, el, toast, onReset, sessionExpired, hasUnsaved, onView, show, boardFirst, provide, call } from './common.mjs?v=1';
-import { API, api, cachedGet, mapLimit } from './github.mjs?v=1';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs';
+import { PROJECT_KEY, PROJECTS_KEY, $, store, app, el, toast, onReset, sessionExpired, hasUnsaved, onView, show, boardFirst, provide, call } from './common.mjs';
+import { API, api, cachedGet, mapLimit } from './github.mjs';
 
 provide('renderProjectList', renderProjectList);
 provide('settingsSaved', settingsSaved);

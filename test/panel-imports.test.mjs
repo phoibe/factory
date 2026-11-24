@@ -1,5 +1,5 @@
-// The panel's modules carry a hand-kept `?v=N` so a deploy is not served from the browser's cache. Two specifiers for
-// one module load it twice (two copies of its state) and leave one of them stale: every import must use the same one.
+// Two specifiers for one panel module load it twice (two copies of its state): every import must use the same one.
+// The sources carry no `?v=` any more (issue #561): scripts/stamp-panel.mjs adds the build to every address at publish.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';

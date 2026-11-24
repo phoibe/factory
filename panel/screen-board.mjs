@@ -1,15 +1,15 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, previewFrom, focusComment, openIssueCount, issuesLinkText, sessionFrom, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseOutcome, releaseList, siteLink } from './lib.mjs?v=28';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, previewFrom, focusComment, openIssueCount, issuesLinkText, sessionFrom, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseOutcome, releaseList, siteLink } from './lib.mjs';
 import { answerForPr } from './answer.mjs';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
-import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=4';
-import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=15';
-import { waitedFor } from './waits.mjs?v=2';
-import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
-import { trustNotes } from './trust.mjs?v=1';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs';
+import { waitedFor } from './waits.mjs';
+import { readRelaunch, relaunchLine } from './relaunch.mjs';
+import { trustNotes } from './trust.mjs';
 import { errorText } from './errors.mjs';
-import { projectDot, blockedNumbers } from './projects.mjs?v=8';
-import { $, store, app, el, toast, onReset, shown, selectTab, openBoardGate, provide, call } from './common.mjs?v=1';
-import { etags, api, cachedGet, mapLimit } from './github.mjs?v=1';
+import { projectDot, blockedNumbers } from './projects.mjs';
+import { $, store, app, el, toast, onReset, shown, selectTab, openBoardGate, provide, call } from './common.mjs';
+import { etags, api, cachedGet, mapLimit } from './github.mjs';
 
 provide('renderBoard', renderBoard);
 provide('board', boardInfo);

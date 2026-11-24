@@ -33,7 +33,7 @@ pas de spec : tu l'établis en lisant le projet.
      - `- **Automatique** — <qui publie et quand>` quand un merge sur la branche principale met le projet en ligne
        **tout seul** : hébergeur relié au dépôt qui publie la branche principale, ou workflow déclenché par le push
        sur la branche principale qui déploie. Cite ce qui le prouve (fichier de configuration de l'hébergeur,
-       workflow de `.github/workflows/`, hébergeur qui commente les PR).
+       workflow de `.github/workflows/`, hébergeur qui commente les PR : `node .factory/scripts/thread.mjs <numéro de PR>`).
      - `- **Manuelle** — <le geste, en une phrase>` quand un merge ne déploie rien : commande à lancer à la main
        (`git push prod main`, script de publication), workflow lancé seulement à la main ou sur un tag, procédure
        écrite (`DEPLOY.md`, `docs/`), ou aucun déploiement trouvé. Donne la commande exacte entre accents graves si
