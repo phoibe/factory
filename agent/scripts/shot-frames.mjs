@@ -89,7 +89,7 @@ export function changeFrames(before, after, sizes = frameSizes(after.width)) {
   const grow = sizes.pad + sizes.red + sizes.white;
   const [b, a] = zones.map((zs, side) => {
     const img = side === 0 ? before : after;
-    return zs.map((z) => toBox(z, grow, img)).sort((p, q) => p.y - q.y || p.x - q.x);
+    return mergeOverlaps(zs.map((z) => toBox(z, grow, img))).sort((p, q) => p.y - q.y || p.x - q.x);
   });
   return { before: b, after: a, whole: false, sizes };
 }
@@ -307,6 +307,24 @@ function widen(z, min, img) {
   const [x0, x1] = span(z.x0, z.x1, min, img.width);
   const [y0, y1] = span(z.y0, z.y1, min, img.height);
   return { x0, y0, x1, y1 };
+}
+
+// Boxes pushed inward by the edge of the image may overlap: overlapping boxes become one.
+function mergeOverlaps(boxes) {
+  const bs = boxes.slice();
+  const overlap = (p, q) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i < bs.length && !merged; i++) for (let j = i + 1; j < bs.length && !merged; j++) {
+      const p = bs[i], q = bs[j];
+      if (!overlap(p, q)) continue;
+      const x = Math.min(p.x, q.x), y = Math.min(p.y, q.y);
+      bs[i] = { x, y, w: Math.max(p.x + p.w, q.x + q.w) - x, h: Math.max(p.y + p.h, q.y + q.h) - y };
+      bs.splice(j, 1);
+      merged = true;
+    }
+  }
+  return bs;
 }
 
 function toBox(z, grow, img) {

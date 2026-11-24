@@ -225,3 +225,13 @@ test('a row of a card one pixel taller and its bottom drawn 1/255 differently ar
   const nudged = nudge(after, 20, 120, 180, 121);
   assert.deepEqual(frames(before, nudged), { before: [], after: [{ x: 0, y: 55, w: 200, h: 30 }], whole: false });
 });
+
+test('frames never overlap, even next to the edge of the image', () => {
+  const after = img(1280, 200, (b) => { b(0, 80, 40, 120, null); b(80, 80, 120, 120, null); });
+  const { before, after: boxes } = changeFrames(img(1280, 200), after);
+  assert.equal(boxes.length, before.length);
+  for (const [i, p] of boxes.entries()) for (const q of boxes.slice(i + 1)) {
+    assert.ok(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y, `${JSON.stringify(p)} overlaps ${JSON.stringify(q)}`);
+  }
+  assert.ok(boxes.some((f) => f.x <= 0 && f.x + f.w >= 120), JSON.stringify(boxes));
+});
