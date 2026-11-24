@@ -16,7 +16,7 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs?v=2';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=3';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
@@ -1278,23 +1278,8 @@ const RUNNERS_BRANCH = 'factory-runners';
 const MACHINE_CHOICES = [['dev-server', 'Serveur de dev'], ['github', 'Machines GitHub']];
 const machine = { settings: null, sha: null, general: 'dev-server', savedGeneral: 'dev-server', status: null, hash: null, repo: null };
 
-async function runnersFile(path) {
-  const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`).catch(() => null);
-  if (!f?.content) return { json: null, sha: null };
-  try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha }; } catch { return { json: null, sha: f.sha }; }
-}
-
-// Like runnersFile, but a failed read is told apart from a file never created: `unreadable` is true when the answer is
-// anything but the file or a 404, or when the file is not valid JSON (the general page must not overwrite it then).
-async function readRunnersFile(path) {
-  try {
-    const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`);
-    if (!f?.content) return { json: null, sha: null, unreadable: false };
-    try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha, unreadable: false }; } catch { return { json: null, sha: f.sha, unreadable: true }; }
-  } catch (e) {
-    return { json: null, sha: null, unreadable: e?.status !== 404 };
-  }
-}
+// One read of the runner files, past the browser cache (review #556): see machine.mjs.
+const runnersFile = (path) => readRunnersFile(api, path);
 
 async function loadMachine(project) {
   // Never the previous project's state while this one loads (or if it cannot be read).
@@ -1402,7 +1387,7 @@ async function openGeneral(from = $('general-open')) {
   if (!open) general.from = from;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
   if (!generalDirty() || general.unreadable) {
-    const settings = await readRunnersFile('settings.json');
+    const settings = await runnersFile('settings.json');
     Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
     general.saved = generalValue();
   }

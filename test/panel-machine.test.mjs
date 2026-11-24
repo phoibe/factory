@@ -100,3 +100,23 @@ test('an unknown machine value follows the general setting, like the dev server 
   assert.deepEqual(forgottenProjects({ status: checked({}), general: 'github', projects: [p('typo', { project: 'Github' })], now: NOW }), []);
   assert.match(machineLine({ ...base, project: 'Github', general: 'github', status: checked({}), created: '2026-11-01T00:00:00Z', now: NOW }).text, /comme demandé/);
 });
+
+// Review #556, finding 1: GitHub lets the browser keep `contents` answers 60 s, and the PUT does not invalidate the
+// GET (`?ref=` differs): a cached read gives an old sha, so a second save fails and a reopened page shows old values.
+test('the runner files are read past the browser cache, a failed read told apart from a missing file', async () => {
+  const { readRunnersFile } = await import('../panel/machine.mjs');
+  const calls = [];
+  const answer = (value) => async (url, init) => { calls.push([url, init]); if (value instanceof Error) throw value; return value; };
+  const b64 = (s) => Buffer.from(s).toString('base64');
+  const file = await readRunnersFile(answer({ content: b64('{"machine":"github"}'), sha: 's1' }), 'settings.json');
+  assert.deepEqual(file, { json: { machine: 'github' }, sha: 's1', unreadable: false });
+  assert.deepEqual(calls[0], ['/repos/phoibe/factory/contents/settings.json?ref=factory-runners', { cache: 'no-store' }]);
+  const missing = Object.assign(new Error('nope'), { status: 404 });
+  assert.deepEqual(await readRunnersFile(answer(missing), 'status.json'), { json: null, sha: null, unreadable: false });
+  const down = Object.assign(new Error('down'), { status: 502 });
+  assert.deepEqual(await readRunnersFile(answer(down), 'status.json'), { json: null, sha: null, unreadable: true });
+  assert.deepEqual(await readRunnersFile(answer({ content: b64('{oops'), sha: 's2' }), 'settings.json'), { json: null, sha: 's2', unreadable: true });
+  assert.deepEqual(await readRunnersFile(answer(null), 'settings.json'), { json: null, sha: null, unreadable: false });
+  assert.equal(calls.length, 5);
+  assert.ok(calls.every(([, init]) => init.cache === 'no-store'));
+});
