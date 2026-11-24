@@ -60,6 +60,20 @@ _À éviter_ : documentation, docs
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
 
+## Projets publics
+
+**Inconnu** :
+Sur un projet public, toute personne qui n'est ni le propriétaire, ni quelqu'un à qui il a donné le droit d'écrire dans le projet, ni un robot de la factory. Il peut ouvrir une demande, proposer une modification ou écrire un message, mais rien de ce qu'il écrit ne dirige la factory.
+_À éviter_ : tiers, contributeur extérieur, étranger
+
+**Note de la factory** :
+Une indication invisible à l'écran que la factory laisse dans une demande, une modification ou un message pour se souvenir d'où elle en est (une étape passée, une relance prévue, une estimation). Elle ne compte que dans un texte écrit par le propriétaire, par quelqu'un à qui il a donné le droit d'écrire dans le projet, ou par la factory ; celle d'un inconnu est ignorée.
+_À éviter_ : marqueur, balise, note technique
+
+**Copie d'une demande** :
+La demande que la factory ouvre pour le propriétaire à partir de celle d'un inconnu qu'il veut reprendre : le texte de l'inconnu tel qu'il était à ce moment-là, le message du propriétaire et un lien vers l'originale, qui est alors fermée. C'est dans la copie que la factory travaille, jamais dans l'originale.
+_À éviter_ : duplicata, clone, demande recréée
+
 ## Tableau de bord
 
 **Liste des projets** :
