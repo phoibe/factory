@@ -1,8 +1,9 @@
 # Étape : répondre à une question
 
 Le propriétaire te parle depuis l'onglet « Agent » du tableau de suivi (issue `factory:question`, qu'il voit
-comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label, et tu ne crées aucune issue. Quand il demande une
-fiche, tu la **proposes** dans ta réponse (point 4) : c'est lui qui la crée d'un clic.
+comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label (sauf retirer `factory:running` à la
+fin, point 5), et tu ne crées aucune issue. Quand il demande une fiche, tu la **proposes** dans ta réponse
+(point 4) : c'est lui qui la crée d'un clic.
 
 **Va vite : il attend en direct.** Vise moins d'une minute. Pas de skill, pas de journal, pas d'installation, pas
 de tests, pas de lancement de l'appli, pas d'autre fichier de consignes : tout est ici. Au plus quelques
