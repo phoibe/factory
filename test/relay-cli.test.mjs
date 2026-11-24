@@ -58,3 +58,16 @@ test('each relay run ends by printing its GitHub reads, free answers and reserve
   assert.match(r.stdout, /GitHub usage: \d+ counted reads, \d+ free \(304\), \d+ writes, reserve/);
   assert.match(r.stdout, /\n {2}\d+ GET \/repos\/\{repo\}\//);
 });
+
+// A decide, release or report run that waited too long for the queue lock ends on the step the tick re-runs (it
+// writes the `ratelimited` output), instead of failing for good with its event lost.
+test('a run that waited too long for the queue lock is re-run by the tick, only for the commands that can be', async () => {
+  const { retriedLater } = await import('../scripts/relay.mjs');
+  const { withLock } = await import('../scripts/lib/lock.mjs');
+  let t = 0;
+  const store = { acquire: async () => false, ageMs: async () => 10, release: async () => {} };
+  const e = await withLock(store, async () => {}, { waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }).catch((x) => x);
+  for (const command of ['decide', 'release', 'report']) assert.equal(retriedLater(command, e), true, command);
+  assert.equal(retriedLater('prod-report', e), false);
+  assert.equal(retriedLater('decide', new Error('a bug')), false);
+});

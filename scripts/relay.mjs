@@ -12,7 +12,7 @@ import { resolveConfig, parseRawConfig } from './lib/config.mjs';
 import { github } from './lib/github.mjs';
 import { formatUsage } from './lib/github-usage.mjs';
 import { isRateLimited, isGitHubDown } from './lib/ratelimit.mjs';
-import { withLock } from './lib/lock.mjs';
+import { withLock, isLockTimeout } from './lib/lock.mjs';
 import { toJobOutput, fromJobOutput } from './lib/job-output.mjs';
 import { statePart } from './relay/state.mjs';
 import { launchesPart } from './relay/launches.mjs';
@@ -47,8 +47,9 @@ function readCheck() {
 // A run stopped by GitHub (its rate limit, or an outage longer than the client's retries: issue #490) is not lost: when
 // its workflow step is followed by RATE_LIMIT_STEP, it ends there and the next tick re-runs it (retryRateLimited), which
 // replays the very same event. Rarely, part of the work was already done and one message shows twice: better than an
-// owner's « go » never seen. Any other error is the code's and fails the run.
-export const retriedLater = (command, e) => (isRateLimited(e) || isGitHubDown(e)) && rateLimitHandled(command);
+// owner's « go » never seen. A run that waited too long for the queue lock is replayed the same way. Any other error
+// is the code's and fails the run.
+export const retriedLater = (command, e) => (isRateLimited(e) || isGitHubDown(e) || isLockTimeout(e)) && rateLimitHandled(command);
 
 export function writeOutputs(outputs) {
   const file = process.env.GITHUB_OUTPUT;
