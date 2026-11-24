@@ -2584,7 +2584,7 @@ async function refreshChat() {
 // refresh. A card decided meanwhile (another device), or gone, only drops the mark: the request exists either way.
 async function recordCreated() {
   const marks = chat.created, repo = chat.repo, server = chat.server;
-  const todo = marks.entries().filter(([key]) => !chat.deciding.has(key));
+  const todo = marks.entries().filter(([key]) => !chat.deciding.has(key) && !decidingAnywhere.has(flightKey(repo, key)));
   if (!todo.length || chat.recording) return;
   chat.recording = true;
   try {
@@ -2772,11 +2772,15 @@ setInterval(() => {
 // ---- Requests the agent proposes (issue #492) ----------------------------------------------------
 // Nothing is created until the owner clicks « Créer cette demande » on the card under the answer.
 const cardKey = (p) => `${chat.open}:${p.id}`;
+// A card being decided, by project: it outlives a project switch (resetChat), so coming back during the creation
+// never offers a second one, and recordCreated never writes a choice decide is still writing (review #556).
+const decidingAnywhere = new Set();
+const flightKey = (repo, key) => `${repo}\n${key}`;
 
 function proposalCard(p) {
   const key = cardKey(p);
   const s = { ...p, ...chat.decided.get(key) };
-  const busy = chat.deciding.has(key);
+  const busy = chat.deciding.has(key) || decidingAnywhere.has(flightKey(chat.repo, key));
   const kind = s.kind === 'bug' ? 'Bug' : 'Fonctionnalité';
   const outcome = s.state === 'created'
     ? el('p', { class: 'proposal-done created' }, el('span', { class: 'proposal-check', 'aria-hidden': 'true' }, '✓'), el('strong', {}, 'Créée'),
@@ -2797,13 +2801,17 @@ function proposalCard(p) {
 // the stored conversation is read again first (another device may have decided already).
 async function decide(p, state) {
   const key = cardKey(p);
-  if (chat.deciding.has(key) || chat.decided.has(key)) return;
+  if (chat.deciding.has(key) || chat.decided.has(key) || decidingAnywhere.has(flightKey(chat.repo, key))) return;
+  // Made from another tab of this browser and not recorded yet.
+  if (chat.created.entries().some(([k]) => k === key)) return;
   const repo = chat.repo, open = chat.open, server = chat.server;
   // Only leaving the project ends what this click may show (resetChat makes new maps); sending a message does not.
-  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later;
+  // The marks too: a request made here is remembered for this project, whatever is on screen when it is made.
+  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later, marks = chat.created;
   const gone = () => chat.decided !== decided;
   const here = () => !gone() && chat.open === open;
   deciding.add(key);
+  decidingAnywhere.add(flightKey(repo, key));
   refused.delete(key);
   drawChat();
   let url, finish = false, earlier = false;
@@ -2827,7 +2835,6 @@ async function decide(p, state) {
     if (state === 'created') url = (await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(p)) })).html_url;
     decided.set(key, { state, ...(url ? { url } : {}) });
     // Until the choice is in the conversation, this device remembers the request and its link (review #556).
-    const marks = chat.created;
     if (url && !unsaved) marks.set(key, url);
     try {
       if (unsaved) decideProposal(unsaved, p.id, state, url);
@@ -2841,7 +2848,7 @@ async function decide(p, state) {
       } else {
         await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(p.id, state, url) }) });
         // The choice is one more comment on the conversation: already seen, never a « new answer ».
-        if (!gone() && chat.seen[open] != null) {
+        if (chat.repo === repo && chat.seen[open] != null) {
           chat.seen[open] += 1;
           store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
         }
@@ -2868,7 +2875,10 @@ async function decide(p, state) {
     refused.set(key, state); // said on the card itself, next to the button to try again
   } finally {
     deciding.delete(key);
-    if (!gone()) drawChat();
+    decidingAnywhere.delete(flightKey(repo, key));
+    // Back on this project during the click: the screen's maps are new ones, they learn the request here.
+    if (gone() && url && chat.repo === repo) chat.decided.set(key, { state: 'created', url });
+    if (!gone() || chat.repo === repo) drawChat();
     if (url) renderBoard().catch(() => {});
   }
   if (finish) await closeConversation({ stay: true, said: state === 'created' || earlier ? FINISHED_SAID : undefined });
