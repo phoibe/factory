@@ -85,3 +85,14 @@ test('si la fiche ne se charge pas, je peux réessayer, sans message technique',
     await page.waitForSelector('#stack-body h3');
   });
 });
+
+// Review #556, round 2, finding 6: the scrollable sheet takes the keyboard focus; a screen reader must hear what it is.
+test('la fiche qui défile au clavier est une région nommée « Stack technique »', async () => {
+  await withPanel(withSheet, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Stack technique' }).click();
+    await page.waitForSelector('#stack[open] #stack-body h3');
+    await page.getByRole('region', { name: 'Stack technique' }).waitFor({ timeout: 1000 });
+    assert.equal(await page.locator('#stack-body').getAttribute('role'), 'region');
+  });
+});

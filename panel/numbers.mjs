@@ -1,5 +1,6 @@
-// « Mono Numbers Rule » of DESIGN.md: every number (#33, 2 tâches, 3 min, 14:32) is set in Geist Mono.
-const NUMBER = /#?\d+(?:[:.,]\d+)*(?:\s?(?:min|h|s|j)(?![\p{L}\d]))?/gu;
+// « Mono Numbers Rule » of DESIGN.md: every number (#33, 2 tâches, 3 min, 14:32) is set in Geist Mono. Only the figure:
+// a unit (« min », « h ») stays in the text's font, so the mono space never opens a wide gap (« 1 h », not « 1  h »).
+const NUMBER = /#?\d+(?:[:.,]\d+)*/gu;
 
 // Splits a text into plain and number parts.
 export function splitNumbers(text) {

@@ -224,6 +224,8 @@ export function watchPart(ctx) {
     // One card that fails every time must not stop the rest of the guard: logged, tried again at the next tick.
     const each = async (n, fn) => { try { await fn(); } catch (e) { if (isRateLimited(e)) throw e; log(`guard: lost check of #${n}: ${e.message}`); } };
     for (const p of (await gh.listPulls?.().catch(() => null)) || []) await each(p.number, async () => {
+      // A fork PR's description is written by its author: its notes are never the factory's.
+      if (fromFork(p)) return;
       const st = readWatch(p.body);
       if (st?.kind !== 'preview') return;
       const step = watchStep(st, now());
@@ -336,7 +338,7 @@ export function watchPart(ctx) {
       // Never past the 3 hours: a replayed report must not block the card by itself, the usual path takes it then.
       const followed = readOutage(pr.body);
       const transient = checks.conclusion === 'failure' && followed?.sha === pr.head.sha && now() - followed.since < OUTAGE_GIVE_UP_MS;
-      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient });
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient, fromTick: true });
     }
   }
 

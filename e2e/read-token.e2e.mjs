@@ -87,6 +87,22 @@ test('un jeton qui peut lancer des tâches automatiques est refusé', async () =
   });
 });
 
+// Review #556: a classic token with delete_repo answers the write probes like a read-only one; its scopes give it away.
+// Issue #558: any scope at all, read-only ones too, makes it a token of the old type.
+for (const scope of ['delete_repo', 'read:user, read:org']) {
+  test(`un jeton classique (${scope}) est refusé comme jeton de l'ancien type et rien n'est enregistré`, async () => {
+    await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false, scopes: { github_pat_lecture: scope } }, async ({ page, url, chatCalls }) => {
+      await page.goto(url);
+      await agent(page);
+      await paste(page, 'github_pat_lecture');
+      await page.getByText('Ce type de jeton n\'est pas accepté : créez-en un avec le bouton ci-dessus.').waitFor();
+      await card(page).waitFor();
+      assert.equal(await page.evaluate(() => localStorage.getItem('factory.chatToken')), null);
+      assert.deepEqual(chatCalls, []);
+    });
+  });
+}
+
 test('un jeton créé avec le bouton est accepté', async () => {
   await withPanel({ chatServer: { answer: 'Bonjour.' }, readToken: false }, async ({ page, url, probes }) => {
     await page.goto(url);

@@ -10,6 +10,9 @@
 # stack, au cadrage, et la fiche projet dit alors quoi cliquer.
 # Compatible avec le bash de macOS (3.2).
 set -euo pipefail
+# The adoption's temporary copy is removed however the script ends (an error, a « die »).
+WORK_DIR=
+trap '[ -n "$WORK_DIR" ] && rm -rf "$WORK_DIR"; :' EXIT
 
 TEMPLATE="${FACTORY_TEMPLATE:-phoibe/factory-template}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/factory"
@@ -78,8 +81,15 @@ install_into_existing() {
   say "1. Installation de la factory dans $REPO"
   gh repo view "$REPO" >/dev/null 2>&1 || die "Je ne trouve pas le dépôt $REPO. Vérifiez son nom (ou utilisez « nouveau » pour en créer un)."
   local branch work f dest
-  branch=$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)
+  branch=$(gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name // empty')
+  # A repository with no commit has no branch: git would only say « Remote branch not found », in English.
+  if [ -z "$branch" ]; then
+    die "Le dépôt $REPO est vide (aucun fichier) : il n'y a rien à faire entrer dans la factory.
+   Ajoutez-y d'abord un premier fichier (par exemple un README sur https://github.com/$REPO), puis relancez l'outil.
+   Ou créez plutôt un nouveau projet : factory.sh nouveau <autre-nom>"
+  fi
   work=$(mktemp -d)
+  WORK_DIR=$work
   gh repo clone "https://github.com/$REPO.git" "$work/repo" -- --quiet --depth 1 --branch "$branch"
   for f in $TEMPLATE_FILES; do
     dest="$work/repo/$f"; mkdir -p "$(dirname "$dest")"

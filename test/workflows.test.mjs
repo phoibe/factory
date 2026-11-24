@@ -1,7 +1,7 @@
 // Workflow files read as text: guards found by the general review (issue #338).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8');
 
@@ -31,4 +31,17 @@ test('the panel is published even when the chat server cannot be deployed', () =
 
 test('the test workflow only reads the repository', () => {
   assert.match(read('test.yml'), /^permissions:\n  contents: read/m);
+});
+
+// Review #556 (D4): a hung job holds a runner for GitHub's 6-hour default. A job that calls a reusable workflow
+// (`uses:` on the job) cannot carry the setting.
+const jobsOf = (yml) => {
+  const body = /^jobs:\n([\s\S]*)/m.exec(yml)?.[1] || '';
+  return body.split(/^(?=  [\w-]+:\s*$)/m).filter((b) => /^  [\w-]+:/.test(b)).map((b) => ({ name: /^  ([\w-]+):/.exec(b)[1], body: b }));
+};
+test('every job that runs steps has a time limit', () => {
+  const dir = new URL('../.github/workflows/', import.meta.url);
+  const missing = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).flatMap((f) => jobsOf(read(f))
+    .filter((j) => !/^    uses:/m.test(j.body) && !/^    timeout-minutes: \S/m.test(j.body)).map((j) => `${f}/${j.name}`));
+  assert.deepEqual(missing, []);
 });

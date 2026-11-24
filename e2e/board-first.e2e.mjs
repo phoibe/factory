@@ -30,3 +30,26 @@ test('à l\'ouverture du panneau, les cartes du projet ouvert arrivent avant tou
     assert.ok(sent.some((p) => /^\/repos\/o\/r\/pulls\?state=closed/.test(p)), '« Terminé » was read after the cards');
   });
 });
+
+// Review #556, finding 7: the dev server's two files were read up to three times at start, before the board's cards.
+test('les fichiers du serveur de dev sont lus après les cartes, une fois chacun', async () => {
+  await withPanel({
+    repos: ['o/r', 'o/alpha'], issues: [issue(1, 'Carte r', ['factory:feature', 'factory:queued'])],
+    factoryFiles: { 'status.json': { key: 'ok', checkedAt: new Date().toISOString(), projects: {} }, 'settings.json': { machine: 'dev-server' } },
+    slowReads: [[/\/repos\/o\/r\/issues\?state=open/, 1500]],
+  }, async ({ page, url }) => {
+    const sent = [];
+    let before = null;
+    page.on('request', (r) => { if (r.url().startsWith('https://api.github.com/')) sent.push(r.url().replace('https://api.github.com', '')); });
+    page.on('response', (r) => { if (!before && r.url().includes('/repos/o/r/issues?state=open')) before = [...sent]; });
+    await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+    await page.goto(url);
+    await page.locator('.ticket', { hasText: 'Carte r' }).waitFor({ timeout: 10000 });
+    const runner = /^\/repos\/phoibe\/factory\/contents\/(settings|status)\.json/;
+    assert.deepEqual(before.filter((p) => runner.test(p)), [], 'nothing read before the cards');
+    await page.waitForTimeout(2000);
+    for (const file of ['settings.json', 'status.json']) {
+      assert.equal(sent.filter((p) => p.startsWith(`/repos/phoibe/factory/contents/${file}`)).length, 1, `${file} read once`);
+    }
+  });
+});

@@ -65,6 +65,26 @@ test('images sent from the panel chat are already on the branch: listed, never d
   assert.deepEqual(paths, ['attachments/chat/1-a.jpg', 'attachments/chat/2-b.png']);
 });
 
+// A download that hangs must not hold the launch (and the queue lock) for minutes: each one has a time limit, and one
+// stopped by it is skipped, the others still copied.
+test('each download has a time limit; one that times out is skipped and logged, the others go on', async () => {
+  const other = '11111111-2222-3333-4444-555555555555';
+  const gh = fakeGh();
+  gh.listCommentsHtml = async () => [{ user: { login: 'phoibe' }, body_html: `<img src="${signed(ID)}"><img src="${signed(other)}">` }];
+  const inits = [];
+  const fetchImpl = async (url, init) => {
+    inits.push(init);
+    if (url.includes(ID)) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    return { ok: true, arrayBuffer: async () => new TextEncoder().encode('PNG').buffer };
+  };
+  const logs = [];
+  const paths = await mirrorAttachments({ gh, fetchImpl, numbers: [15], owner: 'phoibe', log: (m) => logs.push(m) });
+  assert.equal(inits.length, 2);
+  assert.ok(inits.every((i) => i?.signal instanceof AbortSignal));
+  assert.deepEqual(paths, [`attachments/15/${other}.png`]);
+  assert.ok(logs.some((m) => m.includes(ID) && /timeout/i.test(m)));
+});
+
 test("the owner's panel images in a copy the factory made of an outsider's request are listed", async () => {
   const copy = '<!-- factory-copy-of #12 -->\nReprise…\n<!-- factory-image: attachments/chat/1-a.png -->';
   const gh = { ...fakeGh({ branch: true }),
