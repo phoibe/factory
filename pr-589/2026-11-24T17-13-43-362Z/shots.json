@@ -1,0 +1,22 @@
+{
+  "files": [
+    "reglages-generaux--desktop--sombre.png",
+    "reglages-generaux--desktop.png",
+    "reglages-generaux--mobile--sombre.png",
+    "reglages-generaux--mobile.png"
+  ],
+  "unchanged": [
+    "suivi--mobile--sombre.png",
+    "suivi--mobile.png"
+  ],
+  "setAside": [
+    {
+      "file": "suivi--desktop--sombre.png",
+      "reason": "seul l’encodage de l’image diffère : la page est identique à l’œil"
+    },
+    {
+      "file": "suivi--desktop.png",
+      "reason": "seul l’encodage de l’image diffère : la page est identique à l’œil"
+    }
+  ]
+}
