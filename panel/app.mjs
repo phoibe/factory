@@ -3,6 +3,7 @@ import { resolveConfig, parseRawConfig } from './config-core.mjs';
 import { watchNumbers } from './numbers.mjs';
 import { setupTabs } from './tabs.mjs';
 import { errorText } from './errors.mjs';
+// Import order is the order of screen reactions, resets and document listeners (pinned by test/panel-screens.test.mjs).
 import { PROJECT_KEY, $, store, app, el, toast, resetSession, hasUnsaved, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs';
 import './github.mjs';
 import './screen-general.mjs';

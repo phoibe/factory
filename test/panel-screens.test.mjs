@@ -16,8 +16,7 @@ test('a screen never imports another screen nor the entry point; the shared part
 test('every action a part calls is provided exactly once', () => {
   const provided = [...all.matchAll(/\bprovide\('([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(provided.filter((n, i) => provided.indexOf(n) !== i), [], 'provided twice');
-  // Action names are identifiers: `call('/user')` in checkReadToken is a local fetch helper, not an action.
-  const called = new Set([...all.matchAll(/\bcall\('([\w$]+)'/g)].map((m) => m[1]));
+  const called = new Set([...all.matchAll(/\bcall\('([^']+)'/g)].map((m) => m[1]));
   assert.deepEqual([...called].filter((n) => !provided.includes(n)), [], 'called but never provided');
 });
 
