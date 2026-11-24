@@ -460,9 +460,16 @@ export function conversationId(fromServer, current, now = new Date()) {
 export const MAX_IMAGES = 4;
 export const UNSENT_TITLE = { unsent: 'Non envoyé', unanswered: 'L\'agent n\'a pas pu répondre' };
 // The reasons under the mention say what to do; the chat server's own words never show there.
-export const TOKEN_REFUSED = 'Le jeton de lecture a été refusé : créez-en un nouveau.';
+// Read once a new token is in: what is left to do is sending the message again.
+export const TOKEN_REFUSED = 'Le jeton de lecture avait été refusé : renvoyez le message.';
 export const ANSWER_CUT = 'La réponse a été coupée, renvoyez le message.';
-export const agentRefusal = (status) => (status === 413 ? 'Message trop long : raccourcissez-le avec « Modifier ».' : 'L\'agent est indisponible, réessayez dans une minute.');
+// 400, 403 and 404 are refusals that waiting will not change; the rest (5xx, an error in the answer) passes.
+// Under « L'agent n'a pas pu répondre. » the reason never starts with « L'agent » again.
+export function agentRefusal(status) {
+  if (status === 413) return 'Message trop long : raccourcissez-le avec « Modifier ».';
+  if ([400, 403, 404].includes(status)) return 'L\'agent a refusé ce message : modifiez-le ou réessayez plus tard.';
+  return 'Service indisponible, réessayez dans une minute.';
+}
 export const UNSENT_AWAY = 'Message non envoyé. Retrouvez-le dans sa conversation.';
 
 // The box key of the open conversation: a conversation not created yet is « new ».
@@ -508,5 +515,7 @@ export function mergeDraft({ text, files }, unsent, max = MAX_IMAGES) {
   return { text: mine && back ? `${mine}\n${back}` : mine || back, files: all.slice(0, max), dropped: Math.max(0, all.length - max) };
 }
 
-// The toast's distance from the bottom of the window: 12 px above the composer, never lower than the usual 24 px.
-export const toastBottom = (viewportHeight, composerTop) => Math.max(24, Math.round(viewportHeight - composerTop) + 12);
+// The toast's distance from the bottom of the window: 12 px above the composer, never lower than the usual 24 px,
+// and never so high that its top leaves the window (8 px kept above it).
+export const toastBottom = (viewportHeight, composerTop, toastHeight = 0) =>
+  Math.min(Math.max(24, Math.round(viewportHeight - composerTop) + 12), Math.round(viewportHeight - toastHeight - 8));

@@ -22,13 +22,17 @@ test('the mention depends on how far the message went', () => {
   assert.equal(failureKind({ reached: true }), 'unanswered');
   assert.equal(failureKind({ reached: true, readToken: true }), 'unsent');
   assert.deepEqual(UNSENT_TITLE, { unsent: 'Non envoyé', unanswered: "L'agent n'a pas pu répondre" });
-  assert.equal(TOKEN_REFUSED, 'Le jeton de lecture a été refusé : créez-en un nouveau.');
+  // Seen only once a new token is in: it says what to do next, not what is already done.
+  assert.equal(TOKEN_REFUSED, 'Le jeton de lecture avait été refusé : renvoyez le message.');
   assert.equal(UNSENT_AWAY, 'Message non envoyé. Retrouvez-le dans sa conversation.');
 });
 
 test('each reason under the mention says what to do, never the server\'s own words', () => {
   assert.equal(ANSWER_CUT, 'La réponse a été coupée, renvoyez le message.');
-  for (const status of [500, 502, 503, 400, 403, 0]) assert.equal(agentRefusal(status), 'L\'agent est indisponible, réessayez dans une minute.');
+  // Under « L'agent n'a pas pu répondre. »: never « L'agent » twice in a row.
+  for (const status of [500, 502, 503, 429, 0, undefined]) assert.equal(agentRefusal(status), 'Service indisponible, réessayez dans une minute.');
+  // A refusal that waiting will not change.
+  for (const status of [400, 403, 404]) assert.equal(agentRefusal(status), 'L\'agent a refusé ce message : modifiez-le ou réessayez plus tard.');
   assert.equal(agentRefusal(413), 'Message trop long : raccourcissez-le avec « Modifier ».');
 });
 
@@ -94,4 +98,9 @@ test('the toast sits 12 px above the composer, never lower than 24 px', () => {
   assert.equal(toastBottom(800, 559), 253);
   assert.equal(toastBottom(800, 715.4), 97);
   assert.equal(toastBottom(800, 790), 24);
+});
+
+test('the toast never leaves the top of the window: at most its height plus 8 px below the top', () => {
+  assert.equal(toastBottom(400, 40, 60), 332);
+  assert.equal(toastBottom(844, 780, 60), 76);
 });

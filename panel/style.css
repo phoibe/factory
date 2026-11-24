@@ -257,7 +257,8 @@ html { touch-action: manipulation; }
 .conv.fresh .conv-title { font-weight: 700; }
 .conv.fresh .conv-meta { color: var(--text); font-weight: 600; }
 /* A conversation that holds unsent messages (issue #580): failure red, always with its words. */
-.conv .conv-unsent { color: var(--danger); font-weight: 500; }
+.conv .conv-unsent, #chat-new .conv-unsent { color: var(--danger); font-weight: 500; }
+#chat-new .conv-unsent { margin-left: 8px; font-size: .8125rem; }
 .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--work); animation: blink 1.2s ease-in-out infinite; }
 .chat-sep { margin: 12px 10px 4px; font-size: .8125rem; font-weight: 700; color: var(--muted); }
 .chat-empty { padding: 10px; }

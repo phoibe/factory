@@ -1746,6 +1746,7 @@ function selectTab(name, focus = false) {
   document.body.classList.toggle('chat-wide', name === 'chat');
   if (name !== 'chat') setChatFull(false);
   fitChat();
+  replaceToast();
   if (name === 'chat' && focus) focusChat();
 }
 
@@ -2834,20 +2835,21 @@ function bubble(m, foot = null) {
 // A message that could not be sent (issue #580): it keeps its place at the bottom of its conversation, with the
 // mention in failure red, its reason, « Renvoyer » (greyed while an answer is on its way) and « Modifier ».
 // Each button names its message for screen readers: « Renvoyer « début du texte » », or its images without text.
-function unsentBubble(key, m) {
+// The buttons read the conversation's key when clicked: a new conversation gets its own key once created (issue #580).
+function unsentBubble(m) {
   const n = m.files.length;
   const what = m.text.trim() ? `« ${titleFrom(m.text)} »` : n > 1 ? `les ${n} images` : 'l\'image';
   const li = bubble({ who: 'me', text: m.text, images: m.files.map((f) => f.url), at: null }, [
     el('p', { class: 'unsent-note' }, el('strong', {}, `${UNSENT_TITLE[m.kind]}.`), ` ${m.reason}`),
     el('div', { class: 'unsent-actions' },
-      el('button', { type: 'button', class: 'secondary small-btn resend', 'aria-label': `Renvoyer ${what}`, disabled: answering(), onclick: () => resend(key, m.id) }, 'Renvoyer'),
-      el('button', { type: 'button', class: 'secondary small-btn edit', 'aria-label': `Modifier ${what}`, onclick: () => editUnsent(key, m.id) }, 'Modifier')),
+      el('button', { type: 'button', class: 'secondary small-btn resend', 'aria-label': `Renvoyer ${what}`, disabled: answering(), onclick: () => resend(unsentKey(chat.open), m.id) }, 'Renvoyer'),
+      el('button', { type: 'button', class: 'secondary small-btn edit', 'aria-label': `Modifier ${what}`, onclick: () => editUnsent(unsentKey(chat.open), m.id) }, 'Modifier')),
   ]);
   li.classList.add('unsent');
   li.dataset.unsent = String(m.id);
   return li;
 }
-const unsentBubbles = () => { const key = unsentKey(chat.open); return chat.unsent.shown(key).map((m) => unsentBubble(key, m)); };
+const unsentBubbles = () => chat.unsent.shown(unsentKey(chat.open)).map(unsentBubble);
 
 // A failed send keeps the message in its conversation, says it to screen readers, and never refills the composer.
 // Out of sight (another tab, the list on a phone, another conversation) one toast says where it waits.
@@ -3120,7 +3122,14 @@ function drawLive() {
   if (stick) list.scrollTop = list.scrollHeight;
 }
 
+// « Nouvelle conversation » carries « Non envoyé » too while a first message waits there, unsent (issue #580).
+function drawNewEntry() {
+  const waiting = chat.unsent.shown('new').length > 0;
+  $('chat-new').replaceChildren('Nouvelle conversation', ...(waiting ? [el('span', { class: 'visually-hidden' }, ', '), el('span', { class: 'conv-unsent' }, 'Non envoyé')] : []));
+}
+
 function drawChatList() {
+  drawNewEntry();
   const items = $('chat-items');
   if (!chat.list && chat.error) return items.replaceChildren(el('li', {}, el('div', { class: 'chat-error', role: 'alert' }, el('strong', {}, 'Impossible de charger les discussions'), el('span', { class: 'muted' }, 'Vérifiez votre connexion.'), el('button', { type: 'button', class: 'secondary', onclick: () => { chat.error = false; drawChatList(); refreshChat(); } }, 'Réessayer'))));
   if (!chat.list) return items.replaceChildren(el('li', { class: 'sk-chat' }, el('span', { class: 'visually-hidden' }, 'Chargement…'), el('span', { class: 'sk-bar', style: 'width:70%' }), el('span', { class: 'sk-bar', style: 'width:50%' })));
@@ -3166,7 +3175,7 @@ function drawThread() {
   fitChat();
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
-  if (chat.server) return drawServerChat(isNew);
+  if (chat.server) { drawServerChat(isNew); return replaceToast(); }
   $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.issue?.title || chat.list?.find((c) => c.number === chat.open)?.title || '';
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
@@ -3197,6 +3206,7 @@ function drawThread() {
     list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'), ...waiting);
   }
   if (stick || chat.pending) list.scrollTop = list.scrollHeight;
+  replaceToast();
 }
 
 // The agent's « typing » bubble with the time it has been thinking.
@@ -3337,8 +3347,10 @@ function placeToast() {
   const box = strip.hidden ? $('chat-form') : strip;
   if (!threadShown() || needsReadToken() || !box.getClientRects().length) { t.style.setProperty('--toast-bottom', '24px'); return; }
   const top = box.getBoundingClientRect().top;
-  t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top)}px`);
+  t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top, t.offsetHeight)}px`);
 }
+// A toast already shown moves with the screen under it: list, conversation, another tab.
+function replaceToast() { if ($('toast').classList.contains('show')) placeToast(); }
 
 // `again`: the unsent message « Renvoyer » sends again (issue #580), with its own images; the composer is not touched.
 async function sendChat(text, withImages = true, again = null) {
@@ -3644,7 +3656,7 @@ $('chat-input').addEventListener('keydown', (e) => {
 $('chat-new').addEventListener('click', () => selectConversation('new'));
 $('lightbox').addEventListener('click', () => $('lightbox').close());
 $('lightbox').addEventListener('close', () => { $('lightbox-img').removeAttribute('src'); });
-$('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); });
+$('chat-back').addEventListener('click', () => { $('chat').classList.remove('viewing'); drawChatList(); replaceToast(); });
 $('chat-feature').addEventListener('click', () => sendChat(ASK.feature, false));
 $('chat-bug').addEventListener('click', () => sendChat(ASK.bug, false));
 $('chat-attach').addEventListener('click', () => $('chat-file').click());

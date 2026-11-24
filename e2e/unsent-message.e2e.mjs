@@ -8,7 +8,7 @@ const AGENT = '<!-- factory-agent -->';
 const PHONE = { width: 390, height: 844 };
 const DESK = { width: 1280, height: 800 };
 const NET = 'Non envoyé. Connexion perdue, réessayez.';
-const DOWN = 'L\'agent n\'a pas pu répondre. L\'agent est indisponible, réessayez dans une minute.';
+const DOWN = 'L\'agent n\'a pas pu répondre. Service indisponible, réessayez dans une minute.';
 const AWAY = 'Message non envoyé. Retrouvez-le dans sa conversation.';
 const question = (n = 7, title = 'Comment publier ?') => issue(n, title, ['factory:question'], { body: title, comments: 1 });
 const answered = (n = 7) => ({ [n]: [{ id: n * 10, body: `${AGENT}\nVoici comment.`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: `https://github.com/o/r/issues/${n}#c1` }] });
@@ -598,5 +598,89 @@ test('dans la liste, une conversation qui garde un message non envoyé porte « 
     await unsent(page).first().waitFor();
     await editButton(page).click();
     assert.equal(await page.locator('.conv .conv-unsent').count(), 0);
+  });
+});
+
+// Review findings (issue #580).
+const toastGap = (page) => page.evaluate(() => innerHeight - document.getElementById('toast').getBoundingClientRect().bottom);
+const composerGap = (page) => page.evaluate(() => innerHeight - document.getElementById('chat-form').getBoundingClientRect().top);
+
+test('sur téléphone, un petit message affiché dans la liste remonte au-dessus de la zone de saisie quand j\'ouvre une conversation', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: PHONE }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await breakdown(page, 1500);
+    await send(page, 'Envoyé avant de partir');
+    await page.locator('#chat-back').click();
+    await page.locator('#toast.show', { hasText: AWAY }).waitFor({ timeout: 5000 });
+    await page.waitForTimeout(300);
+    assert.equal(Math.round(await toastGap(page)), 24);
+    await page.locator('#chat-new').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('#toast.show').count(), 1);
+    const [toast, composer] = [await toastGap(page), await composerGap(page)];
+    assert.ok(toast >= composer + 11, `le petit message cache la zone de saisie : ${toast} < ${composer} + 12`);
+  });
+});
+
+test('sur téléphone, un petit message affiché dans la conversation redescend à 24 px quand je reviens à la liste', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: PHONE }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await page.locator('#chat-file').setInputFiles(pics(5));
+    await page.locator('#toast.show', { hasText: '4 images au plus' }).waitFor();
+    await page.waitForTimeout(300);
+    assert.ok(await toastGap(page) > 24);
+    await page.locator('#chat-back').click();
+    await page.waitForTimeout(300);
+    assert.equal(Math.round(await toastGap(page)), 24);
+  });
+});
+
+test('le premier message non envoyé d\'une nouvelle conversation se signale « Non envoyé » sur « Nouvelle conversation »', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    assert.equal(await page.locator('#chat-new .conv-unsent').count(), 0);
+    await cut(page);
+    await send(page, 'Ma toute première question');
+    await unsent(page).first().waitFor();
+    assert.equal((await page.locator('#chat-new .conv-unsent').textContent()).trim(), 'Non envoyé');
+    await page.getByRole('button', { name: /^Nouvelle conversation/ }).waitFor();
+    await editButton(page).click();
+    assert.equal(await page.locator('#chat-new .conv-unsent').count(), 0);
+  });
+});
+
+test('« Modifier » sur un autre message non envoyé marche juste après la création de la conversation', async () => {
+  const offline = new Set(['/repos/o/r/issues']);
+  const slowReads = [];
+  await withPanel({ offline, slowReads, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await send(page, 'Premier');
+    await unsent(page).first().waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    await send(page, 'Second');
+    await page.waitForFunction(() => document.querySelectorAll('#chat-messages .msg.unsent').length === 2);
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    offline.clear();
+    // GitHub creates the conversation at once, then is slow to read it back: the screen is not redrawn meanwhile.
+    let created = false;
+    await page.route('https://api.github.com/repos/o/r/issues', (r) => {
+      if (r.request().method() !== 'POST') return r.fallback();
+      created = true;
+      return r.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(issue(9, 'Premier', ['factory:question'], { body: 'Premier' })) });
+    });
+    slowReads.push([/\/repos\/o\/r\/issues/, 4000]);
+    await resendButton(page, 0).click();
+    for (let i = 0; i < 50 && !created; i++) await page.waitForTimeout(100);
+    assert.ok(created, 'conversation non créée');
+    await page.waitForTimeout(300);
+    await unsent(page).filter({ hasText: 'Second' }).getByRole('button', { name: /^Modifier / }).click();
+    assert.equal(await page.locator('#chat-input').inputValue(), 'Second');
   });
 });
