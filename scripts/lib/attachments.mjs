@@ -36,6 +36,10 @@ export function attachmentPath(number, url) {
   return `attachments/${number}/${name}`;
 }
 
+// The copy the relay made of an outsider's request (issue #557): its description carries the owner's message, with
+// the `factory-image` notes of his panel images (no other hidden note is left in it).
+const isCopy = (it) => it.user === 'github-actions[bot]' && /^<!-- factory-copy-of #\d+ -->/.test(String(it.body || ''));
+
 // Copies the owner's images from these issues and PRs; returns every copied path (new or already there).
 export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner, isPr = () => false, log = () => {} }) {
   const items = [];
@@ -49,8 +53,9 @@ export async function mirrorAttachments({ gh, fetchImpl = fetch, numbers, owner,
     }
   }
   const wanted = [];
-  for (const it of items.filter((i) => i.user === owner)) {
+  for (const it of items.filter((i) => i.user === owner || isCopy(i))) {
     for (const path of panelImages(it.body)) if (!wanted.some((w) => w.path === path)) wanted.push({ path, url: null });
+    if (it.user !== owner) continue; // a copy holds an outsider's images too: only the owner's panel images are taken
     for (const url of imageSources(it.html)) {
       const path = attachmentPath(it.n, url);
       if (!wanted.some((w) => w.path === path)) wanted.push({ path, url });

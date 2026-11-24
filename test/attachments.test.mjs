@@ -84,3 +84,12 @@ test('each download has a time limit; one that times out is skipped and logged, 
   assert.deepEqual(paths, [`attachments/15/${other}.png`]);
   assert.ok(logs.some((m) => m.includes(ID) && /timeout/i.test(m)));
 });
+
+test("the owner's panel images in a copy the factory made of an outsider's request are listed", async () => {
+  const copy = '<!-- factory-copy-of #12 -->\nReprise…\n<!-- factory-image: attachments/chat/1-a.png -->';
+  const gh = { ...fakeGh({ branch: true }),
+    getIssueHtml: async () => ({ user: { login: 'github-actions[bot]' }, body: copy, body_html: `<img src="${signed(ID)}">` }),
+    listCommentsHtml: async () => [{ user: { login: 'github-actions[bot]' }, body: '<!-- factory-image: attachments/chat/2-b.png -->', body_html: '' }] };
+  const paths = await mirrorAttachments({ gh, fetchImpl: async () => assert.fail('no download'), numbers: [50], owner: 'phoibe' });
+  assert.deepEqual(paths, ['attachments/chat/1-a.png']);
+});

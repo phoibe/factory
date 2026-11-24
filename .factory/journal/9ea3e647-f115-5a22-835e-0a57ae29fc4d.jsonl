@@ -223,3 +223,4 @@
 {"t":"2026-11-24T15:18:49.172Z","kind":"test","cmd":"git add test/chat-server.test.mjs && npm test 2>&1 | grep -E \"^# (tests|pass|fail)\"","ok":true,"id":"toolu_01DHmYx6JHqz6E6vQB6pWNEk"}
 {"t":"2026-11-24T15:23:03.211Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | tail -15","ok":true,"id":"toolu_012s9s8BtFWR9g8ppvUvr7fD"}
 {"t":"2026-11-24T15:23:17.797Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 600 npm run test:a11y 2>&1 | tail -8; git status --short | grep -v \"^M \\|^A \\|^D \\|^R \" | head","ok":true,"id":"toolu_016BVGsEEGswCejuJQR8vAW2"}
+{"t":"2026-11-24T15:24:53.655Z","kind":"test","cmd":"sed -i 's/app.mjs?v=91/app.mjs?v=92/' panel/index.html && git add -A panel scripts test && git status --short | grep -v \"^M \\|^A \" | head; node --test \"test/*.test.mjs\" 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01AFoiPKTrk5vn8HvR7vt6j9"}

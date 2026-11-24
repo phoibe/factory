@@ -1,6 +1,6 @@
 // Minimal GitHub REST client on fetch. `request` is the only network call, so tests can fake it.
 import { rateLimitDelay, RateLimited, MAX_PAUSE_MS, markGitHubDown } from './ratelimit.mjs';
-import { trustNotes } from './trust.mjs';
+import { trustNotes, trustBodies } from './trust.mjs';
 import { LIVE_REF } from './version-tag.mjs';
 const HTML = 'application/vnd.github.full+json';
 
@@ -18,7 +18,9 @@ const RUN_BUDGET_MS = 12 * 60_000; // the run may have waited its turn on the qu
 
 // `timeoutMs`: a request with no answer by then is abandoned (and retried like a network error): a hung connection
 // must not eat the whole job and lose the event it handles.
-export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timeoutMs = 60_000 }) {
+// `isPublic`: whether the project is public, when the caller knows it. Unknown, it is asked once, the first time an
+// outsider's issue or PR is read (issue #557).
+export function github({ token, repo, api = 'https://api.github.com', fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timeoutMs = 60_000, isPublic }) {
   const started = now();
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
@@ -85,7 +87,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   }
   // A 5xx still there after the retries is GitHub's outage, not a refused call.
   const down = (status, e) => (status >= 500 ? markGitHubDown(e) : e);
-  async function request(method, path, body, accept = 'application/vnd.github+json') {
+  async function rawRequest(method, path, body, accept = 'application/vnd.github+json') {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
       headers: {
@@ -100,8 +102,21 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     if (!res.ok) throw down(res.status, new Error(`${method} ${path} -> ${res.status} ${await res.text()}`));
     return res.status === 204 ? null : res.json();
   }
+  // Issue #557: on a public project, the factory notes in the description of an issue or PR opened by an outsider have
+  // no effect. Every answer goes through here, so no method and no caller of request/paginate can skip it. An
+  // unreadable repository counts as public.
+  // Only a project known to be private (`false`) is left as is: an unknown visibility (null) counts as public.
+  let visibility = isPublic === undefined || isPublic === null ? null : Promise.resolve(isPublic !== false);
+  const publicRepo = () => (visibility ||= rawRequest('GET', '/repos/{repo}').then((r) => !r?.private, (e) => { visibility = null; throw e; }));
+  const owner = repo.split('/')[0];
+  async function guard(data) {
+    const clean = trustBodies(data, owner);
+    return clean === data || !(await publicRepo()) ? data : clean;
+  }
+  const request = async (...args) => guard(await rawRequest(...args));
+  const paginate = async (...args) => guard(await rawPaginate(...args));
   // Follows the Link header so long histories (events, comments) are read in full.
-  async function paginate(path, accept = 'application/vnd.github+json') {
+  async function rawPaginate(path, accept = 'application/vnd.github+json') {
     const out = [];
     let url = `${api}${path.replace('{repo}', repo)}`;
     while (url) {
@@ -118,7 +133,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // A question the open list answers: one label, open ones, by creation date.
   const fromOpenList = (q = {}) => typeof q.labels === 'string' && !q.labels.includes(',')
     && Object.keys(q).every((k) => ['labels', 'sort', 'direction'].includes(k)) && (q.sort ?? 'created') === 'created';
-  const trusted = (list) => trustNotes(list, repo.split('/')[0]);
+  const trusted = (list) => trustNotes(list, owner);
   // The queue lock: a ref that exists or not. Creating a ref is atomic (422 when it exists), and the commit it
   // points to carries the time it was taken.
   const LOCK_REF = 'factory/lock';
@@ -239,7 +254,16 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     },
     closeIssue: (n, reason = 'completed') => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'closed', state_reason: reason }),
     closePr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'closed' }),
-    updateIssue: (n, fields) => request('PATCH', `/repos/{repo}/issues/${n}`, fields),
+    // No factory note is written in the description of an outsider's request (issue #557): the body is left out.
+    updateIssue: async (n, fields) => {
+      let send = fields;
+      if (/<!--\s*factory-/.test(String(fields?.body ?? '')) && (await request('GET', `/repos/{repo}/issues/${n}`))?.untrusted) {
+        const { body: _dropped, ...rest } = fields;
+        if (!Object.keys(rest).length) return null;
+        send = rest;
+      }
+      return request('PATCH', `/repos/{repo}/issues/${n}`, send);
+    },
     reopenIssue: (n) => request('PATCH', `/repos/{repo}/issues/${n}`, { state: 'open' }),
     reopenPr: (n) => request('PATCH', `/repos/{repo}/pulls/${n}`, { state: 'open' }),
     createIssue: (title, body, labels = []) => request('POST', '/repos/{repo}/issues', { title, body, labels }),
