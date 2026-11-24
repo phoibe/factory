@@ -243,3 +243,76 @@ test('changes scattered all over a long page are the whole screen', () => {
   assert.equal(result.whole, true);
   assert.deepEqual([result.before, result.after], [[], []]);
 });
+
+// Whether one of the boxes holds the rectangle [x0, x1) × [y0, y1).
+const holds = (boxes, x0, y0, x1, y1) => boxes.some((f) => f.x <= x0 && f.y <= y0 && f.x + f.w >= x1 && f.y + f.h >= y1);
+// Paints a plain rectangle of one colour.
+const fill = (image, x0, y0, x1, y1, rgb) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) image.data.set(rgb, (y * image.width + x) * 4); return image; };
+const RED = [200, 0, 0];
+
+test('a plain bar added is framed, even when a title changed too', () => {
+  const after = fill(img(200, 304, (b) => { b(20, 20, 80, 40, 9); b(20, 104, 180, 144, 2); }), 20, 60, 180, 64, RED);
+  const result = frames(base, after);
+  assert.ok(holds(result.after, 20, 60, 180, 64), JSON.stringify(result.after));
+  assert.ok(holds(result.after, 20, 20, 80, 40) && holds(result.before, 20, 20, 80, 40), JSON.stringify(result));
+});
+
+test('a plain banner added alone gets a tight frame, not a full-width one', () => {
+  assert.deepEqual(frames(base, fill(img(200, 340, (b) => { b(20, 20, 80, 40, 1); b(20, 140, 180, 180, 2); }), 30, 55, 120, 85, RED)),
+    { before: [], after: [{ x: 25, y: 50, w: 100, h: 40 }], whole: false });
+});
+
+test('a plain banner added between two blocks is framed, with another change further down', () => {
+  const before = img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); b(20, 300, 80, 320, 3); });
+  const after = fill(img(200, 440, (b) => { b(20, 20, 80, 40, 1); b(20, 140, 180, 180, 2); b(20, 340, 80, 360, 9); }), 0, 55, 200, 95, RED);
+  const result = frames(before, after);
+  assert.ok(holds(result.after, 0, 55, 200, 95), JSON.stringify(result.after));
+  assert.ok(holds(result.after, 20, 340, 80, 360), JSON.stringify(result.after));
+});
+
+test('a plain block removed is framed before, with another change further down', () => {
+  const before = fill(img(200, 440, (b) => { b(20, 20, 80, 40, 1); b(20, 140, 180, 180, 2); b(20, 340, 80, 360, 9); }), 30, 55, 120, 85, RED);
+  const after = img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); b(20, 300, 80, 320, 3); });
+  const result = frames(before, after);
+  assert.ok(holds(result.before, 30, 55, 120, 85), JSON.stringify(result.before));
+});
+
+test('an empty box with a 2px border added is framed', () => {
+  const before = img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); b(20, 300, 80, 320, 3); });
+  const after = img(200, 440, (b) => { b(20, 20, 80, 40, 1); b(20, 140, 180, 180, 2); b(20, 340, 80, 360, 9); });
+  fill(fill(after, 30, 55, 120, 85, [0, 0, 0]), 32, 57, 118, 83, [255, 255, 255]);
+  const result = frames(before, after);
+  assert.ok(holds(result.after, 30, 55, 120, 85), JSON.stringify(result.after));
+});
+
+test('a progress bar recoloured and taller is framed on both sides', () => {
+  const before = fill(img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); }), 20, 60, 180, 68, [128, 128, 128]);
+  const after = fill(img(200, 404, (b) => { b(20, 20, 80, 40, 1); b(20, 104, 180, 144, 2); }), 20, 60, 180, 72, [0, 160, 0]);
+  const result = frames(before, after);
+  assert.ok(holds(result.before, 20, 60, 180, 68), JSON.stringify(result.before));
+  assert.ok(holds(result.after, 20, 60, 180, 72), JSON.stringify(result.after));
+});
+
+test('a plain rectangle growing taller and wider is framed after', () => {
+  const before = img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 80, 80, null); b(20, 100, 180, 140, 2); });
+  const after = img(200, 410, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 100, 90, null); b(20, 110, 180, 150, 2); });
+  const result = frames(before, after);
+  assert.ok(holds(result.after, 20, 60, 100, 90), JSON.stringify(result.after));
+});
+
+test('a soft vertical gradient added is framed', () => {
+  const before = img(200, 400, (b) => { b(20, 20, 80, 40, 1); b(20, 100, 180, 140, 2); b(20, 300, 80, 320, 3); });
+  const after = img(200, 500, (b) => { b(20, 20, 80, 40, 1); b(20, 200, 180, 240, 2); b(20, 400, 80, 420, 9); });
+  for (let y = 55; y < 155; y++) fill(after, 0, y, 200, y + 1, [255 - ((y - 55) >> 1), 255 - ((y - 55) >> 1), 255]);
+  const result = frames(before, after);
+  assert.ok(holds(result.after, 0, 57, 200, 155), JSON.stringify(result.after));
+});
+
+test('a card border 1px to 3px is framed in a few frames, not in pieces', () => {
+  const card = (image, t) => { fill(image, 20, 60, 180, 140, [0, 0, 0]); fill(image, 20 + t, 60 + t, 180 - t, 140 - t, [255, 255, 255]); return image; };
+  const before = card(img(200, 300, (b) => b(20, 20, 80, 40, 1)), 1);
+  const after = card(img(200, 300, (b) => b(20, 20, 80, 40, 1)), 3);
+  const result = frames(before, after);
+  assert.ok(result.after.length >= 1 && result.after.length <= 4, JSON.stringify(result.after));
+  assert.ok(holds(result.after, 20, 60, 180, 63) && holds(result.after, 20, 137, 180, 140), JSON.stringify(result.after));
+});

@@ -323,12 +323,12 @@ test('a capture that cannot be read is published without frames', async () => {
 });
 
 // A page whose rows of text are not a whole number of pixels high (17px/1.5), with soft shadows and an inline svg.
-async function serveFractionalPage(extra = '') {
+async function serveFractionalPage(extra = '', title = 'Bonjour') {
   const { createServer } = await import('node:http');
   const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 body{margin:0;font:17px/1.5 system-ui,sans-serif;color:#222;background:#fafafa}header{background:#234;color:#fff;padding:12px 24px;display:flex;justify-content:space-between}
 main{max-width:900px;margin:0 auto;padding:24px}.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-svg{display:block;margin:12px 0}</style><header><b>Tableau de bord</b><span>Compte</span></header><main><h1>Bonjour</h1>
+svg{display:block;margin:12px 0}</style><header><b>Tableau de bord</b><span>Compte</span></header><main><h1>${title}</h1>
 <p>Un premier paragraphe de texte assez long pour passer à la ligne sur un téléphone, avec des mots.</p>${extra}
 <div class="card"><h2>Carte une</h2><p>Du contenu dans la carte, sur plusieurs lignes peut-être. Lorem ipsum dolor sit amet consectetur.</p><button>Exporter</button></div>
 <svg width="200" height="60"><circle cx="30" cy="30" r="25" fill="#c33"/><path d="M70 50 L120 10 L190 45" stroke="#36c" stroke-width="3" fill="none"/></svg>
@@ -373,6 +373,51 @@ test('content pushed down by a fraction of a pixel is not framed, the block that
     await browser.close();
     a.server.close(); b.server.close();
     for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// Captures two versions of the fractional page; for each viewport, gives the frames and the bounding boxes of the
+// selectors in the after version.
+async function captureBoth(beforeArgs, afterArgs, selectors) {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createRequire } = await import('node:module');
+  const { capture, VIEWPORTS, launchOptions } = await import('../agent/scripts/shots.mjs');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveFractionalPage(...beforeArgs);
+  const b = await serveFractionalPage(...afterArgs);
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const browser = await createRequire(import.meta.url)('playwright').chromium.launch(launchOptions());
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    const out = [];
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      const page = await browser.newPage({ viewport });
+      await page.goto(b.url);
+      const boxes = [];
+      for (const s of selectors) boxes.push(await page.locator(s).boundingBox());
+      await page.close();
+      const f = `accueil--${name}.png`;
+      out.push({ f, frames: framesFor(join(before, f), join(after, f), lib), boxes });
+    }
+    return out;
+  } finally {
+    await browser.close();
+    a.server.close(); b.server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+}
+
+const framedBy = (boxes, p) => boxes.some((f) => f.x <= p.x && f.y <= p.y && f.x + f.w >= p.x + p.width && f.y + f.h >= p.y + p.height);
+
+test('a plain bar added is framed in a real capture, even when the title changed too', async () => {
+  const bar = '<div id="bar" style="height:4px;background:#36c;margin:8px 0"></div>';
+  for (const { f, frames, boxes: [title, added] } of await captureBoth([], [bar, 'Bonsoir'], ['h1', '#bar'])) {
+    assert.ok(framedBy(frames.after, added), `${f}: the bar is framed, ${JSON.stringify(frames.after)} for ${JSON.stringify(added)}`);
+    assert.ok(frames.after.some((b) => b.y < title.y + title.height && b.y + b.h > title.y), `${f}: the title is framed`);
   }
 });
 

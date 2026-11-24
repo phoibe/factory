@@ -180,17 +180,40 @@ function sameRow(img, y, other, j) {
   return true;
 }
 
+// Whether rows p and q of img are exactly equal (rows of one image: no shift tolerance, or a soft gradient would be
+// a stretch of rows each repeating the next).
+function equalRows({ width, data }, p, q) {
+  const w4 = width * 4;
+  for (let k = 0; k < w4; k++) if (data[p * w4 + k] !== data[q * w4 + k]) return false;
+  return true;
+}
+
+// The spacing rows of the run [y0, y1) of img (1 = spacing, indexed from y0): rows that, through rows of the run
+// repeating each other, repeat a row just outside the run, one matched on the other side. A stretch of new rows
+// repeating only each other (a plain bar, a banner, the sides of an empty box) is content.
+function spacingRows(img, y0, y1) {
+  const out = new Uint8Array(y1 - y0);
+  for (let s = y0; s < y1;) {
+    let e = s;
+    while (e + 1 < y1 && equalRows(img, e, e + 1)) e++;
+    const touches = (s === y0 && y0 > 0 && equalRows(img, y0, y0 - 1)) || (e === y1 - 1 && y1 < img.height && equalRows(img, e, y1));
+    if (touches) out.fill(1, s - y0, e + 1 - y0);
+    s = e + 1;
+  }
+  return out;
+}
+
 // Marks one run of unmatched rows [y0, y1) of img; [o0, o1) = the other side's run, compared row for row from the
 // top. A row that is the other side's row counted from the bottom of the run (what a change above it pushed), or
-// that repeats its neighbour on the side with more rows (spacing), is not marked.
+// that is spacing on the side with more rows (see spacingRows), is not marked.
 function markRun(img, y0, y1, other, o0, o1, cells) {
   const { width, height, data } = img;
   const above = y0 > 0 ? y0 - 1 : -1, below = y1 < height ? y1 : -1;
+  const spacing = y1 - y0 > o1 - o0 ? spacingRows(img, y0, y1) : null;
   for (let y = y0; y < y1; y++) {
     const j = o0 + y - y0, fromBottom = o1 - (y1 - y);
     if (fromBottom >= o0 && fromBottom !== j && sameRow(img, y, other, fromBottom)) continue;
-    // A side with more rows has some spacing: a row repeating the one above or below.
-    if (y1 - y0 > o1 - o0 && ((y > 0 && sameRow(img, y, img, y - 1)) || (y + 1 < height && sameRow(img, y, img, y + 1)))) continue;
+    if (spacing?.[y - y0]) continue;
     const same = pixelTest(y, j);
     for (let x = 0; x < width; x++) {
       const o = (y * width + x) * 4;
