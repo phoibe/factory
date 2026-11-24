@@ -19,6 +19,7 @@ async function specifiers() {
     const text = await readFile(new URL(file, dir), 'utf8');
     for (const m of text.matchAll(/\bfrom\s+'(\.\/[^']+)'/g)) add(m[1], file);
     for (const m of text.matchAll(/\bimport\(\s*'(\.\/[^']+)'\s*\)/g)) add(m[1], file);
+    for (const m of text.matchAll(/^\s*import\s+'(\.\/[^']+)'/gm)) add(m[1], file);
     for (const m of text.matchAll(/<script[^>]*\bsrc="([^"]+\.mjs[^"]*)"/g)) add(m[1], file);
   }
   return found;
