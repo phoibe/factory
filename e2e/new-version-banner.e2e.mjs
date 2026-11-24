@@ -29,6 +29,20 @@ async function open(page, url) {
   await mark(page);
 }
 const board = [issue(1, 'Une carte', ['factory:feature', 'factory:queued'])];
+// « Recharger » refused: the strip says what to do first, in place of its usual sentence; no toast, no reload.
+async function refused(page, why) {
+  await page.locator('#new-version', { hasText: why }).waitFor({ timeout: 3000 });
+  assert.equal(await page.locator('#new-version', { hasText: TEXT }).count(), 0, 'la phrase habituelle est restée à côté du refus');
+  assert.equal(await page.locator('#toast.show').count(), 0, 'le refus est dit dans un message à part');
+  assert.equal(await reloadButton(page).isVisible(), true, '« Recharger » a disparu');
+  await page.waitForTimeout(500);
+  assert.equal(await samePage(page), true, 'la page s\'est rechargée');
+}
+// The cause is gone: the usual sentence is back, and the page did not reload by itself.
+async function sentenceBack(page) {
+  await banner(page).waitFor({ timeout: 3000 });
+  assert.equal(await samePage(page), true, 'la page s\'est rechargée toute seule');
+}
 
 test('une nouvelle version est en ligne : le bandeau apparaît et la page ne se recharge pas toute seule', async () => {
   await withPanel({ issues: board }, async ({ page, url }) => {
@@ -147,7 +161,7 @@ test('un seul bandeau même si plusieurs versions arrivent', async () => {
   });
 });
 
-test('un réglage non enregistré : Recharger ne recharge pas et dit d\'enregistrer d\'abord ; une fois enregistré, il recharge', async () => {
+test('un réglage non enregistré : Recharger ne recharge pas et le bandeau dit d\'enregistrer d\'abord ; une fois enregistré, il recharge', async () => {
   await withPanel({ issues: board }, async ({ page, url }) => {
     const v = await versions(page, url);
     await open(page, url);
@@ -156,12 +170,10 @@ test('un réglage non enregistré : Recharger ne recharge pas et dit d\'enregist
     await newVersion(page, v);
     await banner(page).waitFor();
     await reloadButton(page).click();
-    await page.locator('#toast', { hasText: 'Enregistrez d\'abord vos réglages, puis rechargez.' }).waitFor({ timeout: 3000 });
-    await page.waitForTimeout(500);
-    assert.equal(await samePage(page), true, 'la page s\'est rechargée');
-    assert.equal(await banner(page).isVisible(), true, 'le bandeau a disparu');
+    await refused(page, 'Enregistrez d\'abord vos réglages, puis rechargez.');
     await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.getByText('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.').waitFor({ timeout: 5000 });
+    await sentenceBack(page);
     const loaded = page.waitForEvent('load');
     await reloadButton(page).click();
     await loaded;
@@ -179,9 +191,7 @@ test('un réglage général non enregistré : Recharger ne recharge pas et dit d
     await newVersion(page, v);
     await banner(page).waitFor();
     await reloadButton(page).click();
-    await page.locator('#toast', { hasText: 'Enregistrez d\'abord vos réglages, puis rechargez.' }).waitFor({ timeout: 3000 });
-    await page.waitForTimeout(500);
-    assert.equal(await samePage(page), true, 'la page s\'est rechargée');
+    await refused(page, 'Enregistrez d\'abord vos réglages, puis rechargez.');
   });
 });
 
@@ -194,10 +204,10 @@ test('un message en cours dans l\'onglet Agent : Recharger ne recharge pas et di
     await newVersion(page, v);
     await banner(page).waitFor();
     await reloadButton(page).click();
-    await page.locator('#toast', { hasText: 'Envoyez ou effacez d\'abord votre message, puis rechargez.' }).waitFor({ timeout: 3000 });
-    await page.waitForTimeout(500);
-    assert.equal(await samePage(page), true, 'la page s\'est rechargée');
+    await refused(page, 'Envoyez ou effacez d\'abord votre message, puis rechargez.');
     assert.equal(await page.locator('#chat-input').inputValue(), 'Un message pas fini');
+    await page.locator('#chat-input').fill('');
+    await sentenceBack(page);
   });
 });
 
@@ -212,9 +222,9 @@ test('une réponse de l\'agent en train d\'arriver : Recharger ne recharge pas e
     await newVersion(page, v);
     await banner(page).waitFor();
     await reloadButton(page).click();
-    await page.locator('#toast', { hasText: 'Attendez la fin de la réponse de l\'agent, puis rechargez.' }).waitFor({ timeout: 3000 });
-    await page.waitForTimeout(500);
-    assert.equal(await samePage(page), true, 'la page s\'est rechargée');
+    await refused(page, 'Attendez la fin de la réponse de l\'agent, puis rechargez.');
+    await page.getByText('Bien reçu.').waitFor({ timeout: 15_000 });
+    await sentenceBack(page);
   });
 });
 
@@ -329,4 +339,28 @@ test('sur téléphone, le bandeau reste en haut de l\'écran quand on fait défi
     await banner(page).waitFor();
     await stripOnTop(page, 'arrivé en bas de page');
   });
+});
+
+test('sur téléphone, le refus s\'affiche dans le bandeau, au-dessus de la conversation, et le brouillon reste', async () => {
+  for (const size of [phone, { width: 320, height: 700 }]) {
+    await withPanel({ issues: board, viewport: size, chatServer: { answer: 'Bien reçu.' } }, async ({ page, url }) => {
+      const v = await versions(page, url);
+      await open(page, url);
+      await openConversation(page);
+      await page.locator('#chat-input').fill('Un brouillon');
+      await newVersion(page, v);
+      await banner(page).waitFor();
+      await reloadButton(page).click();
+      await refused(page, 'Envoyez ou effacez d\'abord votre message, puis rechargez.');
+      await page.waitForTimeout(300); // the conversation follows the taller strip
+      const label = `${size.width} px`;
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
+      const strip = await page.locator('#new-version').boundingBox();
+      const back = await page.locator('#chat-back').boundingBox();
+      assert.ok(back.y >= strip.y + strip.height - 1, `${label} : le retour (${back.y}) est sous le bandeau (${strip.y + strip.height})`);
+      const input = await page.locator('#chat-input').boundingBox();
+      assert.ok(input.y + input.height <= size.height, `${label} : zone de saisie sous le bas de l'écran`);
+      assert.equal(await page.locator('#chat-input').inputValue(), 'Un brouillon');
+    });
+  }
 });

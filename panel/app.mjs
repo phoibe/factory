@@ -1810,10 +1810,20 @@ function fitBanner() {
 }
 addEventListener('resize', fitBanner);
 if ('ResizeObserver' in window) new ResizeObserver(() => fitBanner()).observe($('new-version'));
-// « Recharger »: never loses what is typed or still arriving, says what to do first instead.
+// « Recharger »: never loses what is typed or still arriving. The strip says what to do first, in place of its usual
+// sentence, until that is done (checked every second); then the usual sentence comes back. Never reloads by itself.
+const VERSION_TEXT = $('new-version-text').textContent;
+let refusalTimer = null;
+function sayInBanner(text) {
+  $('new-version-text').textContent = text;
+  clearInterval(refusalTimer);
+  refusalTimer = null;
+  if (text === VERSION_TEXT) return;
+  refusalTimer = setInterval(() => { if (reloadBlocker(unsavedParts()) !== text) sayInBanner(VERSION_TEXT); }, 1000);
+}
 $('new-version-reload').addEventListener('click', () => {
   const why = reloadBlocker(unsavedParts());
-  if (why) return toast(why);
+  if (why) return sayInBanner(why);
   location.reload();
 });
 let watching = false, retryTimer = null;
