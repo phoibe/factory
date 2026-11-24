@@ -23,13 +23,15 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
   // (a POST may have been applied before the connection broke).
-  async function send(method, url, init) {
+  // `guard`: run before every (re)send, retries and rate-limit pauses included (a write must not leave minutes after the
+  // turn on the queue lock was lost); none for reads and for the lock's own calls.
+  async function send(method, url, init, guard) {
     // Issue #491: a read already answered in this run asks GitHub « changed? » (If-None-Match). A 304 is not counted in
     // the hourly limit and gives back the answer kept here; anything else is GitHub's current state. Always fresh.
     const key = method === 'GET' ? `${init.headers?.accept || ''} ${url}` : null;
     const kept = key ? cache.get(key) : null;
     if (kept) init = { ...init, headers: { ...init.headers, 'if-none-match': kept.etag } };
-    const res = await sendRaw(method, url, init);
+    const res = await sendRaw(method, url, init, guard);
     tally(method, url, res);
     if (!key) return res;
     // GitHub's 304 has no Link header: the « next page » link kept with the answer is served again, or a long list
@@ -61,9 +63,10 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   }
   const routeOf = (url) => url.replace(api, '').split('?')[0].replace(`/repos/${repo}`, '/repos/{repo}')
     .split('/').map((part) => (/^\d+$/.test(part) ? ':n' : /^[0-9a-f]{40}$/.test(part) ? ':sha' : part)).join('/');
-  async function sendRaw(method, url, init) {
+  async function sendRaw(method, url, init, guard) {
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
+      guard?.();
       let res;
       try { res = await fetchImpl(url, { method, ...init, signal: AbortSignal.timeout(timeoutMs) }); } catch (e) {
         if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw markGitHubDown(e);
@@ -86,14 +89,14 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   // A 5xx still there after the retries is GitHub's outage, not a refused call.
   const down = (status, e) => (status >= 500 ? markGitHubDown(e) : e);
   // The check of the run's turn on the queue lock (`queueLock.guard`, set by withLock while it holds the lock): once the
-  // turn is lost, no write leaves this client. Every write goes through `request`, so none can be forgotten.
+  // turn is lost, no write leaves this client. Every write goes through `request`, so none can be forgotten; the check
+  // runs again before each retry of it.
   let turnCheck = null;
   const assertTurn = () => { turnCheck?.(); };
   async function request(method, path, body, accept) {
-    if (method !== 'GET') assertTurn();
-    return call(method, path, body, accept);
+    return call(method, path, body, accept, method !== 'GET' ? assertTurn : undefined);
   }
-  async function call(method, path, body, accept = 'application/vnd.github+json') {
+  async function call(method, path, body, accept = 'application/vnd.github+json', guard = undefined) {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
       headers: {
@@ -103,7 +106,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, guard);
     if (res.status === 404 && method === 'GET') return null;
     if (!res.ok) throw down(res.status, new Error(`${method} ${path} -> ${res.status} ${await res.text()}`));
     return res.status === 204 ? null : res.json();

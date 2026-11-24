@@ -543,3 +543,18 @@ test('a run that lost its turn by its own clock sends nothing more to GitHub, no
   assert.deepEqual(hub.seen, ['GET /issues/1']);
   assert.equal(hub.ref, 'c1');
 });
+
+// Issue #562 review: the turn is checked before every (re)send of a write, not only before the first one.
+for (const [what, first] of [['a 5xx', () => answer(502)], ['a rate limit', () => ({ ...answer(429), headers: new Map([['retry-after', '30']]) })]]) {
+  test(`a write answered ${what}, whose turn is lost during the wait, is not sent again`, async () => {
+    let t = 0;
+    const sent = [];
+    const gh = github({
+      token: 't', repo: 'o/r', now: () => t, sleep: async (ms) => { t += ms + 3 * 60_000; },
+      fetchImpl: async (url, init) => { sent.push(init.method); return sent.length === 1 ? first() : answer(200, {}); },
+    });
+    gh.queueLock.guard(() => { if (t >= 3 * 60_000) throw new LostTurnError('no sign of life got through in time'); });
+    await assert.rejects(gh.merge(1), isLostTurn);
+    assert.deepEqual(sent, ['PUT']);
+  });
+}
