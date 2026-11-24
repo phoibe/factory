@@ -126,6 +126,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                        allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type"])
     fetched = {}
     locks = {}
+    readers = {}  # answers reading each project's copy: it is not reset under them
 
     @app.get("/health")
     async def health():
@@ -154,11 +155,14 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         return out.decode()
 
     async def project_copy(repo, token):
-        """An up-to-date read-only copy of the project's default branch, kept between messages."""
+        """An up-to-date read-only copy of the project's default branch, kept between messages.
+        The caller reads it until it calls done_reading(repo): meanwhile no other message resets or cleans it."""
         path = os.path.join(repos_dir, repo)
         lock = locks.setdefault(repo, asyncio.Lock())
         async with lock:
-            if time.time() - fetched.get(repo, 0) < FETCH_EVERY and os.path.isdir(path):
+            fresh = time.time() - fetched.get(repo, 0) < FETCH_EVERY or readers.get(repo, 0) > 0
+            if fresh and os.path.isdir(path):
+                readers[repo] = readers.get(repo, 0) + 1
                 return path
             auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
             git = [git_bin, "-c", f"http.extraHeader=Authorization: Basic {auth}"]
@@ -177,7 +181,11 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             fetched[repo] = time.time()
             if on_repo_change:
                 on_repo_change()
+            readers[repo] = readers.get(repo, 0) + 1
             return path
+
+    def done_reading(repo):
+        readers[repo] -= 1
 
     @app.post("/chat")
     async def chat(request: Request):
@@ -236,6 +244,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
 
         proc = None
         errors = None
+        reading = False
         folder = None
         try:
             yield ev({"type": "status", "text": "Ouvre le projet…"})
@@ -248,6 +257,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             conv = conv if isinstance(conv, dict) else new_conversation(cid, message, now_iso())
             conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
+            reading = True
             files = []
             # One folder per message: two messages of one conversation may run at once.
             os.makedirs("/tmp/chat", exist_ok=True)
@@ -324,6 +334,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             except ProcessLookupError:
                 pass
             finally:
+                if reading:
+                    done_reading(repo)
                 if errors is not None and not errors.done():
                     errors.cancel()
                 if folder:

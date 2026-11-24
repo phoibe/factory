@@ -5,6 +5,7 @@ import os
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 
@@ -26,6 +27,10 @@ open(args[0] + ".args", "w").write(json.dumps(args[1:]))
 open(args[0] + ".env", "w").write(json.dumps(dict(os.environ)))
 if "LENT" in prompt:
     time.sleep(30)
+if "ATTENDS" in prompt:  # a long answer, logged next to git's commands
+    open(args[0] + ".log", "a").write("claude start\n")
+    time.sleep(1.5)
+    open(args[0] + ".log", "a").write("claude end\n")
 if "BAVARD" in prompt:  # more on stderr than the server buffers (2 x 16 MB) before the answer
     sys.stderr.write("avertissement\n" * 3000000)
     sys.stderr.flush()
@@ -380,6 +385,35 @@ class ServiceTest(unittest.TestCase):
         r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "BAVARD PANNE"})
         self.assertEqual(events[-1]["type"], "error", events[-2:])
         self.assertIn("la vraie erreur", events[-1]["message"])
+
+    def test_the_copy_is_not_refreshed_while_an_answer_reads_it(self):
+        pause, service.FETCH_EVERY = service.FETCH_EVERY, 0  # every message would fetch, reset and clean the copy
+        self.addCleanup(setattr, service, "FETCH_EVERY", pause)
+        log = self.claude + ".log"
+        logged_git = os.path.join(self.tmp, "git-logged")
+        with open(logged_git, "w") as f:
+            f.write(f'#!/bin/sh\necho "git $1 $2 $3 $4 $5" >> "{log}"\nexec git "$@"\n')
+        os.chmod(logged_git, os.stat(logged_git).st_mode | stat.S_IEXEC)
+        src = os.path.join(self.tmp, "src")
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=os.path.join(self.tmp, "repos-shared"), git_url=src,
+                         git_bin=logged_git, transport=httpx.MockTransport(self.gh))
+        results = {}
+        with TestClient(app) as client:
+            def send(name, message):
+                r = client.post("/chat", json={"repo": "phoibe/habitudes", "message": message}, headers={"authorization": "Bearer good"})
+                results[name] = [json.loads(l) for l in r.text.splitlines() if l.strip()]
+            first = threading.Thread(target=send, args=("first", "ATTENDS"))
+            first.start()
+            deadline = time.monotonic() + 10
+            while not (os.path.exists(log) and "claude start" in open(log).read()) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            send("second", "Deux")
+            first.join()
+        self.assertEqual(results["first"][-1]["type"], "done", results["first"][-2:])
+        self.assertEqual(results["second"][-1]["type"], "done", results["second"][-2:])
+        lines = open(log).read().splitlines()
+        during = lines[lines.index("claude start"):lines.index("claude end")]
+        self.assertFalse([l for l in during if " reset " in f" {l} " or " clean " in f" {l} "], lines)
 
     def test_the_owner_is_compared_ignoring_case(self):
         r, events = self.post("good", {"repo": "Phoibe/habitudes", "message": "Salut"})
