@@ -77,7 +77,8 @@ hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
   recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le glossaire
   et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
   commentaires, chemins des captures) et le fichier d'étape à suivre ; il charge lui-même les skills que l'étape nomme.
-  Il te rend, dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser et,
+  Dis-lui qu'il ne publie rien et ne pose aucun label : là où le fichier d'étape dit « publie » ou « mets le label »,
+  il écrit le texte dans un fichier et te le rend. Il te rend, dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser et,
   s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses les labels, tu ouvres la
   petite PR de documents et tu fermes une demande inutile. Une petite demande claire, qui saute les questions, a aussi
   sa spec écrite par lui. Des variantes à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du
@@ -86,10 +87,14 @@ hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
 - **Preuve de la phase amont.** Avant de publier un round de questions, une spec ou une fiche projet, lance
   `node .factory/scripts/upstream.mjs <numéro de l'issue>` depuis le dossier du projet : il lit le journal de ton run et
   affiche une ligne invisible `<!-- factory-upstream … -->` qui dit quel modèle a fait la réflexion. Colle-la telle
-  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. S'il répond qu'aucun sous-agent
-  du rôle `plan` n'a été lancé, lance-le d'abord : rien ne se publie sans cette ligne. À la construction,
-  `journal-check.mjs` relit la demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug,
-  la preuve est dans le journal du run : le sous-agent d'analyse est lancé avant le premier test rouge.
+  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. Aucun round de questions,
+  aucune spec ni fiche projet ne se publie sans cette ligne (une estimation, une alerte ou la question d'un bug n'en
+  ont pas besoin). S'il répond qu'aucun sous-agent du rôle `plan` n'a été vu, lance-le d'abord, avec le paramètre
+  `model` = `models.plan.model` du payload (sans `model`, l'outil ne le reconnaît pas), puis relance la commande.
+  S'il refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie
+  sans la ligne : le contrôle à la construction le signalera. À la construction, `journal-check.mjs` relit la
+  demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug, la preuve est dans le
+  journal du run : le sous-agent d'analyse est lancé avant le dernier test rouge.
 - **Monter d'un cran en cas d'échec** : si un sous-agent échoue (tests toujours rouges après 2 essais, ou travail
   refusé deux fois par le relecteur), relance la tâche sur le rôle au-dessus (tâches simples → code → revue),
   sans déranger le propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent

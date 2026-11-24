@@ -51,3 +51,18 @@ test('the upstream phase is delegated to the plan role, with its proof line', ()
   const question = read('stages/question.md');
   assert.ok(!question.includes('upstream.mjs') && !question.includes('`plan`'), 'the chat stays with the pilot');
 });
+
+// Review of #550: the plan sub-agent never publishes; a way out when the proof keeps being refused; words match the code.
+test('the plan sub-agent hands its text back, and the proof line has a way out', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  const g = flat(grid);
+  assert.match(g, /ne publie rien et ne pose aucun label/);
+  assert.match(g, /`model` = `models\.plan\.model`/);
+  assert.match(g, /après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne/);
+  assert.match(g, /Aucun round de questions, aucune spec ni fiche projet ne se publie sans cette ligne/);
+  assert.match(g, /avant le dernier test rouge/);
+  for (const f of ['grilling.md', 'spec.md', 'framing.md']) assert.match(flat(read(`stages/${f}`)), /ne rien publier ni poser aucun label/, f);
+  assert.match(read('stages/framing.md'), /tu poses les labels\.\n\nCette étape a lieu/);
+  assert.match(flat(read('stages/bugfix.md')), /après le rattrapage éventuel et avant tout autre travail/);
+  assert.match(flat(read('stages/grilling.md')), /factory-split[^]*sous-agent du rôle `plan` la relit[^]*upstream\.mjs <n>/);
+});
