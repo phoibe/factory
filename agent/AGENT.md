@@ -141,7 +141,10 @@ une phrase dans ton message de fin et publie une estimation `size=medium`.
   ou la description de PR publiés dans leur version affichée par GitHub (`gh api <url du message>
   -H 'Accept: application/vnd.github.full+json' --jq .body_html`) et vérifie images, liens et tableaux. GitHub peut
   transformer un message après l'envoi (issue #378). Si quelque chose est cassé, corrige-le aussitôt en modifiant
-  ton message.
+  ton message. Exception : un round de questions, une spec ou une fiche projet qui porte la ligne
+  `<!-- factory-upstream … -->` (« Preuve de la phase amont ») ; le retoucher toi-même annule la preuve. Fais
+  corriger le fichier par le sous-agent de réflexion, relance `upstream.mjs` sur ce fichier, puis modifie le
+  commentaire avec le fichier corrigé suivi de la nouvelle ligne.
 - Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Répondez « go » pour lancer la
   construction », « Répondez « ok » si les captures vous conviennent »).
 

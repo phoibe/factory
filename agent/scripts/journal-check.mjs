@@ -117,16 +117,18 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
 // Issue #559: for a bugfix, the proof that a thinking sub-agent analysed the bug, read from its own record
 // (`record(session, agent)`; the session is the journal's file name), as the entry to append to the journal of the
 // branch's latest run ({ file, entry }), or null. It only ever adds a « proved » entry: a later run, on a session
-// without the record, never removes nor replaces one.
+// without the record, never removes one. A proved entry is only replaced by one naming another maker (the review
+// sub-agent that took over after an unusable analysis).
 export function bugUpdate(files, readFile, { record } = {}) {
   const best = latestRun(files, readFile);
   if (!best) return null;
   const run = parseJournal([best.text]).at(-1);
   if (!run || run.stage !== 'bugfix' || !run.models) return null;
-  if (run.upstream?.doc === 'bug' && run.upstream.status === 'proved') return null;
   const session = basename(best.file, '.jsonl');
   const entry = bugProof(run, (a) => record(session, a));
-  return entry ? { file: best.file, entry } : null;
+  const current = run.upstream?.doc === 'bug' && run.upstream.status === 'proved' ? run.upstream : null;
+  if (!entry || (current && JSON.stringify(current.by) === JSON.stringify(entry.by))) return null;
+  return { file: best.file, entry };
 }
 
 // Issue #550: since when the proof is asked for: the date of the latest commit that brought the upstream instruction

@@ -192,10 +192,12 @@ const analyst = (run) => {
 const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
 // The journal is a committed file: a hand-edited `by` must not break the comment.
 const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
-// Issue #559: a bugfix journaled since then (its agents carry the `role` key) is proved only by the entry
-// journal-check wrote from the analysis sub-agent's record; an older one keeps the rule by model.
+// Issue #559: a bugfix journaled since then (all its agents carry the `role` key) is proved only by the entry
+// journal-check wrote from the analysis sub-agent's record; an older one, or one journaled partly by older scripts,
+// keeps the rule by model.
 const bugMaker = (run) => {
-  if ((run.agents || []).some((a) => Object.hasOwn(a, 'role'))) {
+  const agents = run.agents || [];
+  if (agents.length && agents.every((a) => Object.hasOwn(a, 'role'))) {
     const e = run.upstream;
     return e?.doc === 'bug' && e.status === 'proved' ? makers(e.by)[0] || null : null;
   }
