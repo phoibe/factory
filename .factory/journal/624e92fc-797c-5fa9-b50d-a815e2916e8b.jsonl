@@ -1,2 +1,7 @@
 {"t":"2026-11-24T09:57:37.840Z","kind":"run","stage":"build","issue":544,"pr":null,"repo":"phoibe/factory"}
 {"t":"2026-11-24T09:58:56.431Z","kind":"skill","name":"writing-plans","id":"toolu_01DjSNkJfb4Xt6koE2uKjNgt"}
+{"t":"2026-11-24T09:59:34.055Z","kind":"skill","name":"subagent-driven-development","id":"toolu_01JvyFiExr3SyWwcAGZRa2Zj"}
+{"t":"2026-11-24T09:59:34.419Z","kind":"skill","name":"dispatching-parallel-agents","id":"toolu_01EXnV8M4vQkNvu2qBezHDe2"}
+{"t":"2026-11-24T09:59:34.610Z","kind":"skill","name":"test-driven-development","id":"toolu_012tC3kMWX1sneSE89qt1zAY"}
+{"t":"2026-11-24T09:59:45.695Z","kind":"test","cmd":"cat > test/models.test.mjs <<'EOF'\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { MODEL_FAMILIES, MODEL_ROLES, resolveModels, familyLabel, roleModel } from '../scr","ok":false,"id":"toolu_01LGquYfSenKyAsmiK8nrjwM"}
+{"t":"2026-11-24T09:59:54.818Z","kind":"test","cmd":"cat > scripts/lib/models.mjs <<'EOF'\n// The models of the factory's agents (issue #544): one family per role, chosen once for every project in the\n// « Réglages généraux » of the panel and saved in se","ok":true,"id":"toolu_0169oWXB2LcBBDV2PRfN9tDV"}
