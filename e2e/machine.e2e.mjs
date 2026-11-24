@@ -77,10 +77,10 @@ test('je change le réglage général pour tous les projets', async () => {
     await openGeneral(page, url);
     await page.locator('#machine-general-github').check();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Paramètres enregistrés.', { exact: false }).waitFor({ timeout: 5000 });
+    await page.getByText('Réglages généraux enregistrés', { exact: false }).waitFor({ timeout: 5000 });
     const put = writes.find((w) => w.method === 'PUT' && w.path === '/repos/phoibe/factory/contents/settings.json');
     assert.equal(put.body.branch, 'factory-runners');
-    assert.deepEqual(decode(put), { machine: 'github', labels: ['self-hosted'], models: { plan: 'fable', code: 'opus', review: 'fable', simple: 'sonnet' } });
+    assert.deepEqual(decode(put), { machine: 'github', labels: ['self-hosted'], models: {} });
     assert.ok(!writes.some((w) => w.path === '/repos/o/r/contents/factory.config.json'), 'the project rules did not change');
   });
 });

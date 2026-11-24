@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withPanel } from './fixture.mjs';
+import { MODEL_FAMILIES, familyLabel } from '../scripts/lib/models.mjs';
 
 const decode = (w) => JSON.parse(Buffer.from(w.body.content, 'base64').toString('utf8'));
 const openPage = async (page, url) => {
@@ -9,6 +10,7 @@ const openPage = async (page, url) => {
   await page.getByRole('button', { name: 'Réglages généraux' }).click();
   await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
 };
+const labelOf = (id) => familyLabel(MODEL_FAMILIES.find((f) => f.id === id));
 const roles = ['Plans et organisation', 'Écriture du code', 'Revue', 'Tâches simples'];
 const chosen = (page) => Promise.all(roles.map((r) => page.getByRole('combobox', { name: r }).evaluate((s) => s.selectedOptions[0].textContent)));
 
@@ -33,8 +35,8 @@ test('la barre du haut montre Réglages généraux avant Se déconnecter et le r
 test('la page montre Fable, Opus, Fable, Sonnet par défaut avec leur version et la machine des tâches', async () => {
   await withPanel({}, async ({ page, url }) => {
     await openPage(page, url);
-    assert.deepEqual(await chosen(page), ['Fable (5.2 aujourd’hui)', 'Opus (5.5 aujourd’hui)', 'Fable (5.2 aujourd’hui)', 'Sonnet (5.5 aujourd’hui)']);
-    assert.equal(await page.getByRole('combobox', { name: 'Écriture du code' }).locator('option').count(), 4);
+    assert.deepEqual(await chosen(page), ['fable', 'opus', 'fable', 'sonnet'].map(labelOf));
+    assert.equal(await page.getByRole('combobox', { name: 'Écriture du code' }).locator('option').count(), MODEL_FAMILIES.length);
     await page.getByText('Écrit les plans et organise le développement.').waitFor();
     await page.getByText(/L’agent qui pilote chaque lancement tourne sur le modèle réglé dans la routine de chaque projet, sur claude\.ai/).waitFor();
     await page.getByRole('group', { name: 'Modèles' }).waitFor();
@@ -51,11 +53,11 @@ test('un modèle changé est enregistré avec la machine et les autres réglages
     await page.getByRole('combobox', { name: 'Écriture du code' }).selectOption('sonnet');
     await page.getByRole('radio', { name: 'Machines GitHub' }).check();
     await page.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Paramètres enregistrés.', { exact: false }).waitFor({ timeout: 5000 });
+    await page.getByText('Réglages généraux enregistrés : ils servent dès le prochain lancement.', { exact: false }).waitFor({ timeout: 5000 });
     const puts = writes.filter((w) => w.method === 'PUT' && w.path === '/repos/phoibe/factory/contents/settings.json');
     assert.equal(puts.length, 1);
     assert.equal(puts[0].body.branch, 'factory-runners');
-    assert.deepEqual(decode(puts[0]), { machine: 'github', labels: ['self-hosted'], models: { plan: 'fable', code: 'sonnet', review: 'fable', simple: 'sonnet' } });
+    assert.deepEqual(decode(puts[0]), { machine: 'github', labels: ['self-hosted'], models: { code: 'sonnet' } });
     assert.ok(writes.some((w) => w.method === 'POST' && w.path === '/repos/phoibe/factory/actions/workflows/runners.yml/dispatches'));
     assert.ok(!writes.some((w) => w.path === '/repos/o/r/contents/factory.config.json'), 'the project rules did not change');
   });
@@ -66,7 +68,7 @@ test('un modèle seul changé n\'attend pas le contrôle des machines', async ()
     await openPage(page, url);
     await page.getByRole('combobox', { name: 'Revue' }).selectOption('opus');
     await page.getByRole('button', { name: 'Enregistrer' }).click();
-    await page.getByText('Paramètres enregistrés.', { exact: false }).waitFor({ timeout: 5000 });
+    await page.getByText('Réglages généraux enregistrés', { exact: false }).waitFor({ timeout: 5000 });
     assert.ok(!writes.some((w) => w.path.endsWith('/runners.yml/dispatches')));
   });
 });
@@ -74,7 +76,7 @@ test('un modèle seul changé n\'attend pas le contrôle des machines', async ()
 test('les choix enregistrés s\'affichent au retour sur la page', async () => {
   await withPanel({ factoryFiles: { 'settings.json': { machine: 'github', models: { plan: 'opus', code: 'haiku', review: 'sonnet', simple: 'fable' } } } }, async ({ page, url }) => {
     await openPage(page, url);
-    const saved = ['Opus (5.5 aujourd’hui)', 'Haiku (5.5 aujourd’hui)', 'Sonnet (5.5 aujourd’hui)', 'Fable (5.2 aujourd’hui)'];
+    const saved = ['opus', 'haiku', 'sonnet', 'fable'].map(labelOf);
     assert.deepEqual(await chosen(page), saved);
     assert.equal(await page.getByRole('radio', { name: 'Machines GitHub' }).isChecked(), true);
     await page.getByRole('button', { name: '← Retour au projet' }).click();
@@ -108,5 +110,54 @@ test('sur téléphone la page tient sur une colonne', async () => {
       selects: [...document.querySelectorAll('#general-view select')].map((s) => Math.round(s.getBoundingClientRect().right)) }));
     assert.ok(m.scroll <= m.width, `horizontal scroll: ${m.scroll} > ${m.width}`);
     assert.ok(m.selects.length === 4 && m.selects.every((r) => r <= m.width), JSON.stringify(m));
+  });
+});
+
+test('un choix non enregistré reste là quand je reviens sur la page', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openPage(page, url);
+    await page.getByRole('combobox', { name: 'Revue' }).selectOption('haiku');
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.getByRole('combobox', { name: 'Revue' }).inputValue(), 'haiku');
+    await page.getByText('Modifications non enregistrées').waitFor();
+    // Clicking the top button while on the page keeps it too.
+    await page.getByRole('button', { name: 'Réglages généraux', exact: true }).click();
+    assert.equal(await page.getByRole('combobox', { name: 'Revue' }).inputValue(), 'haiku');
+  });
+});
+
+test('un réglage qui ne se lit pas n\'est pas remplacé par les valeurs par défaut', async () => {
+  for (const factoryFiles of [{ 'settings.json': 'pas du json {' }, null]) {
+    await withPanel(factoryFiles ? { factoryFiles } : { failing: new Set(['/repos/phoibe/factory/contents/settings.json']) }, async ({ page, url }) => {
+      await openPage(page, url);
+      await page.getByText('Impossible de lire les réglages actuels. Réessayez dans un instant.').waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Enregistrer' }).isDisabled(), true);
+      await page.getByRole('combobox', { name: 'Revue' }).selectOption('haiku');
+      assert.equal(await page.getByRole('button', { name: 'Enregistrer' }).isDisabled(), true);
+    });
+  }
+});
+
+test('un réglage jamais créé (404) montre les valeurs par défaut sans erreur', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openPage(page, url);
+    assert.equal(await page.getByText('Impossible de lire les réglages actuels').count(), 0);
+  });
+});
+
+test('le focus va sur le titre à l\'ouverture et revient au bouton du haut à la fermeture', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openPage(page, url);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'general-title');
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'general-open');
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByText('Avancé', { exact: true }).click();
+    await page.getByRole('button', { name: 'Changer le réglage de tous les projets' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Changer le réglage de tous les projets');
   });
 });

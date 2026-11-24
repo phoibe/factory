@@ -1,13 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_FAMILIES, MODEL_ROLES, resolveModels, familyLabel, roleModel } from '../scripts/lib/models.mjs';
+import { MODEL_FAMILIES, MODEL_ROLES, resolveModels, familyLabel, roleModel, parseModelIds } from '../scripts/lib/models.mjs';
 
 const defaults = { plan: { model: 'fable', effort: 'high' }, code: { model: 'opus', effort: 'medium' }, review: { model: 'fable', effort: 'high' }, simple: { model: 'sonnet', effort: 'low' } };
 
-test('the catalog lists every family with its current version', () => {
-  assert.deepEqual(MODEL_FAMILIES.map((f) => f.id), ['fable', 'opus', 'sonnet', 'haiku']);
-  assert.equal(familyLabel(MODEL_FAMILIES[0]), 'Fable (5.2 aujourd’hui)');
-  assert.equal(familyLabel(MODEL_FAMILIES[1]), 'Opus (5.5 aujourd’hui)');
+test('the catalog lists every family with its current version, labelled <Name> (<version> aujourd’hui)', () => {
+  assert.ok(MODEL_FAMILIES.length >= 4);
+  for (const id of ['fable', 'opus', 'sonnet', 'haiku']) assert.ok(MODEL_FAMILIES.some((f) => f.id === id), id);
+  for (const f of MODEL_FAMILIES) assert.equal(familyLabel(f), `${f.name} (${f.version} aujourd’hui)`);
+  assert.match(familyLabel(MODEL_FAMILIES[0]), /^\S+ \(\d+(\.\d+)? aujourd’hui\)$/);
+});
+
+test('model ids that are not model families are ignored', () => {
+  const text = 'claude-code-2 claude-instant-1 claude-agent-3 claude-sdk-1 claude-api-2 claude-app-1 claude-desktop-2 claude-ai-1 claude-cli-2 claude-docs-1 claude-opus-5-5';
+  assert.deepEqual(parseModelIds(text), [{ id: 'opus', version: '5.5' }]);
 });
 
 test('four roles in order: plans, code, review, simple tasks', () => {

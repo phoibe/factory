@@ -247,7 +247,7 @@ async function checkProjects() {
 }
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
-const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || Boolean($('chat-input')?.value.trim())
+const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
   || Boolean(chat.live) || chat.files.length > 0;
 
 async function mapLimit(items, limit, fn) {
@@ -1283,6 +1283,18 @@ async function runnersFile(path) {
   try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha }; } catch { return { json: null, sha: f.sha }; }
 }
 
+// Like runnersFile, but a failed read is told apart from a file never created: `unreadable` is true when the answer is
+// anything but the file or a 404, or when the file is not valid JSON (the general page must not overwrite it then).
+async function readRunnersFile(path) {
+  try {
+    const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`);
+    if (!f?.content) return { json: null, sha: null, unreadable: false };
+    try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha, unreadable: false }; } catch { return { json: null, sha: f.sha, unreadable: true }; }
+  } catch (e) {
+    return { json: null, sha: null, unreadable: e?.status !== 404 };
+  }
+}
+
 async function loadMachine(project) {
   // Never the previous project's state while this one loads (or if it cannot be read).
   Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
@@ -1378,23 +1390,32 @@ async function writeGeneral({ machine: choice, models }) {
 
 // ---- « Réglages généraux » (issue #544): a page of its own, for every project ----------------------------------------
 // `saved` is what the factory's branch holds, as text, to know when something changed.
-const general = { machine: 'dev-server', models: {}, saved: '' };
+const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null };
 const generalValue = () => JSON.stringify({ machine: general.machine, models: general.models });
+const generalDirty = () => general.saved !== '' && generalValue() !== general.saved;
 const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 'dev-server', models: Object.fromEntries(MODEL_ROLES.map((r) => [r.id, roleModel(raw, r.id)])) });
 
-async function openGeneral() {
-  const settings = await runnersFile('settings.json');
-  Object.assign(general, generalFrom(settings.json));
-  general.saved = generalValue();
+// `from` is the element to give the focus back to on closing (the top button, or the Paramètres link).
+async function openGeneral(from = $('general-open')) {
+  const open = !$('general-view').hidden;
+  if (!open) general.from = from;
+  // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
+  if (!generalDirty() || general.unreadable) {
+    const settings = await readRunnersFile('settings.json');
+    Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
+    general.saved = generalValue();
+  }
   $('project-view').classList.add('on-general');
   $('general-view').hidden = false;
   renderGeneral();
-  $('general-back').focus();
+  $('general-title').focus();
   window.scrollTo(0, 0);
 }
-function closeGeneral() {
+function closeGeneral(giveFocusBack = false) {
+  const wasOpen = !$('general-view').hidden;
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
+  if (wasOpen && giveFocusBack) (general.from?.isConnected ? general.from : $('general-open')).focus();
 }
 
 function renderGeneral() {
@@ -1407,26 +1428,27 @@ function renderGeneral() {
     el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement tourne sur le modèle réglé dans la routine de chaque projet, sur claude.ai : la factory ne peut pas le changer. Pour le changer, ouvrez la routine du projet sur claude.ai et choisissez son modèle. Ce pilote confie toujours le plan et l’écriture du code aux agents des rôles ci-dessus, même pour une petite retouche.'));
   const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }));
-  const dirty = generalValue() !== general.saved;
-  $('general').replaceChildren(models, tasks, el('div', { class: 'savebar' },
-    el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
+  const dirty = generalDirty();
+  const failed = general.unreadable ? [el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.')] : [];
+  $('general').replaceChildren(...failed, models, tasks, el('div', { class: 'savebar' },
+    el('button', { type: 'submit', class: 'secondary', disabled: !dirty || general.unreadable }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')));
 }
 
 let savingGeneral = false;
 async function saveGeneral(e) {
   e.preventDefault();
-  if (savingGeneral) return;
+  if (savingGeneral || general.unreadable) return;
   savingGeneral = true;
   try {
     const machineChanged = general.machine !== JSON.parse(general.saved).machine;
-    await writeGeneral({ machine: general.machine, models: general.models });
+    await writeGeneral({ machine: general.machine, models: Object.fromEntries(MODEL_ROLES.filter((r) => general.models[r.id] !== r.default).map((r) => [r.id, general.models[r.id]])) });
     general.saved = generalValue();
     // The dev server check applies the change now instead of at its next run (15 minutes at most).
     if (machineChanged) api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
     renderGeneral();
     if (current) renderRules();
-    toast('Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
+    toast(`Réglages généraux enregistrés : ils servent dès le prochain lancement.${machineChanged ? ' Le changement de machine s\'applique dans une minute environ.' : ''}`);
   } finally { savingGeneral = false; }
 }
 
@@ -1527,7 +1549,7 @@ function renderRules() {
     ontoggle: (e) => { if (e.target.open) store.set(ADVANCED_KEY, 'open'); else store.del(ADVANCED_KEY); } },
     el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
     machineFieldset(update, line),
-    el('p', { class: 'rules-more' }, el('button', { type: 'button', class: 'link-button', onclick: () => openGeneral().catch((err) => toast(errorText(err))) }, 'Changer le réglage de tous les projets')),
+    el('p', { class: 'rules-more' }, el('button', { type: 'button', class: 'link-button', onclick: (e) => openGeneral(e.currentTarget).catch((err) => toast(errorText(err))) }, 'Changer le réglage de tous les projets')),
     engine, checks, extras, ...packs);
   form.replaceChildren(
     rulesSection('rules-project', `Ce projet : ${name}`, [production, site, stages, parallel, ...alert, advanced]),
@@ -3359,8 +3381,8 @@ $('tab-board').addEventListener('click', () => { selectTab('board'); renderBoard
 // The arrow keys of the tab list click from code (untrusted): the keyboard stays on the tabs (WAI-ARIA tabs pattern).
 $('tab-chat').addEventListener('click', (e) => selectTab('chat', e.isTrusted));
 $('tab-rules').addEventListener('click', () => selectTab('rules'));
-$('general-open').addEventListener('click', () => openGeneral().catch((err) => toast(errorText(err))));
-$('general-back').addEventListener('click', closeGeneral);
+$('general-open').addEventListener('click', () => openGeneral($('general-open')).catch((err) => toast(errorText(err))));
+$('general-back').addEventListener('click', () => closeGeneral(true));
 $('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));

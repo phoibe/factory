@@ -140,7 +140,9 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (path === '/user/repos') return json(repos.map((full, i) => ({ id: i + 1, full_name: full, name: full.split('/')[1], owner: { login: full.split('/')[0] }, private: !publicRepos.includes(full), html_url: `https://github.com/${full}`, homepage: homepages[full] || '', created_at: created[full] || '2026-01-01T00:00:00Z', ...(pushed[full] ? { pushed_at: pushed[full] } : {}) })));
       // The factory's own branch files (dev server status and general setting, issue #271).
       const own = /^\/repos\/phoibe\/factory\/contents\/(.+)$/.exec(path)?.[1];
-      if (own) return own in factoryFiles ? json({ content: Buffer.from(JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);
+      // A file given as a string is served as it is (to test a file that is not valid JSON); `failing` makes its read fail.
+      if (own && req.method() === 'GET' && failing?.has(path)) return json({ message: 'Server Error' }, 500);
+      if (own) return own in factoryFiles ? json({ content: Buffer.from(typeof factoryFiles[own] === 'string' ? factoryFiles[own] : JSON.stringify(factoryFiles[own])).toString('base64'), encoding: 'base64', sha: 'f' }) : json({ message: 'Not Found' }, 404);
       if (chatServer && new URL(req.url()).searchParams.get('ref') === 'factory-chat') {
         const name = /^\/repos\/o\/r\/contents\/(?:chats\/(.+)\.json|index\.json)$/.exec(path);
         const data = name && (name[1] ? chatBranch.chats[name[1]] : chatBranch.index);

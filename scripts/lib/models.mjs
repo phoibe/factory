@@ -48,11 +48,14 @@ export function compareVersions(a, b) {
 }
 
 // The latest version of each family named in a text, from ids like claude-<family>-<major>[-<minor>][-YYYYMMDD].
-// Legacy ids (claude-3-5-sonnet-20241022, claude-3-opus) have the digit first and are ignored.
+// Legacy ids (claude-3-5-sonnet-20241022, claude-3-opus) have the digit first and are ignored, as are the products
+// that share the prefix (claude-code-2, claude-instant-1...).
+const NOT_FAMILIES = new Set(['code', 'instant', 'agent', 'sdk', 'api', 'app', 'desktop', 'ai', 'cli', 'docs']);
 export function parseModelIds(text) {
   const latest = new Map();
   for (const m of String(text).matchAll(/(?<![A-Za-z0-9])claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?/g)) {
     const [, id, major, minor] = m;
+    if (NOT_FAMILIES.has(id)) continue;
     const version = minor === undefined ? major : `${major}.${minor}`;
     if (!latest.has(id) || compareVersions(version, latest.get(id)) > 0) latest.set(id, version);
   }
