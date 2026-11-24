@@ -14,3 +14,9 @@
 {"t":"2026-11-24T16:44:44.803Z","kind":"test","cmd":"npm run typecheck 2>&1 | tail -3; npm run lint 2>&1 | tail -3; npm test 2>&1 | grep -E \"^# (tests|pass|fail)|^not ok\" ; npm run build 2>&1 | tail -3","ok":true,"id":"toolu_01YN3SACz85mX6WYwdrcX94V"}
 {"t":"2026-11-24T16:45:07.906Z","kind":"test","cmd":"npm run typecheck >/dev/null 2>&1; echo tc=… npm run lint >/dev/null 2>&1; echo lint=… npm run build >/dev/null 2>&1; echo build=… S=… (CHROMIUM_PATH=… timeout 300 npm run test:a11y > $S/a11y.txt 2>&1","ok":true,"id":"toolu_012GBB416YkNyLhnCmTS7JbF"}
 {"t":"2026-11-24T16:45:10.952Z","kind":"test","cmd":"S=… CHROMIUM_PATH=… timeout 600 npm run test:e2e > $S/e2e.txt 2>&1; echo \"exit=$?\" >> $S/e2e.txt; grep -E \"^# (tests|pass|fail)|^not ok|exit=… $S/e2e.txt","ok":true,"id":"toolu_01DcV8vCGV2P2umAmEqQ1Fxh"}
+{"t":"2026-11-24T16:50:11.916Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Relecture finale #572","id":"toolu_01BXJMmChKjkvQxrqCbtYF44"}
+{"t":"2026-11-24T16:50:27.952Z","kind":"skill","name":"impeccable","id":"toolu_018wMTMAaN9cBe2f82P1RAY2"}
+{"t":"2026-11-24T16:50:50.232Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Critique A bandeau","id":"toolu_01AhHT3DDt3oNwXwVibjZkop"}
+{"t":"2026-11-24T16:50:58.196Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Critique B détecteur","id":"toolu_01NcHCtMQavyZaq5UCGhnPsp"}
+{"t":"2026-11-24T16:52:31.539Z","kind":"test","cmd":"cat a11y/browser.mjs | head -40; (timeout 280 node --test e2e/new-version-banner.e2e.mjs 2>&1 | tail -40)","ok":true,"id":"toolu_01NiKRmEper8cvjnjczDuQbG"}
+{"t":"2026-11-24T16:53:11.400Z","kind":"test","cmd":"(node --test \"test/*.test.mjs\" 2>&1 | tail -12)","ok":true,"id":"toolu_01UrngS9y3wmNgrjZDunJRf2"}
