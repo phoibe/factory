@@ -220,3 +220,152 @@ test('si l\'envoi échoue pendant que je suis sur « Suivi », un petit message 
     assert.equal(await unsent(page).count(), 1);
   });
 });
+
+// « Renvoyer » and « Modifier » (task 4).
+const resendButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: 'Renvoyer', exact: true });
+const editButton = (page, i = 0) => unsent(page).nth(i).getByRole('button', { name: 'Modifier', exact: true });
+const imagePuts = (writes) => writes.filter((w) => w.method === 'PUT' && w.path.startsWith('/repos/o/r/contents/attachments/chat/'));
+
+test('« Renvoyer » fait repartir le message tel quel une fois la connexion revenue, et l\'agent répond', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 800 }, viewport: PHONE }, async ({ page, url, chatCalls, writes }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await cut(page);
+    await page.locator('#chat-file').setInputFiles(pics(1));
+    await send(page, 'Avec une image');
+    await unsent(page).first().waitFor();
+    assert.equal(await unsent(page).locator('.shot').count(), 1);
+    await restore(page);
+    await resendButton(page).click();
+    assert.equal(await unsent(page).count(), 0);
+    await page.locator('#live-bubble').waitFor();
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    assert.equal(chatCalls.length, 1);
+    assert.equal(chatCalls[0].message, 'Avec une image');
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    const saved = writes.filter((w) => w.method === 'PUT' && /\/contents\/chats\//.test(w.path))
+      .map((w) => Buffer.from(w.body.content, 'base64').toString());
+    assert.ok(saved.some((c) => c.includes('attachments/chat/')), 'l\'image n\'est pas dans la conversation enregistrée');
+    assert.equal(imagePuts(writes).length, 1, 'l\'image a été envoyée deux fois');
+  });
+});
+
+test('en mode de secours aussi, « Renvoyer » envoie le message', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  await withPanel({ issues: [question()], comments: answered(), offline, viewport: DESK }, async ({ page, url, writes }) => {
+    await openFallback(page, url);
+    await send(page, 'Mon message perdu');
+    await unsent(page).first().waitFor();
+    offline.clear();
+    await resendButton(page).click();
+    await page.waitForFunction(() => !document.querySelector('#chat-messages .msg.unsent'));
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    const posted = writes.filter((w) => w.method === 'POST' && w.path === '/repos/o/r/issues/7/comments' && w.ok !== false);
+    assert.ok(posted.some((w) => w.body.body === 'Mon message perdu'), JSON.stringify(posted));
+    assert.equal(await unsent(page).count(), 0);
+  });
+});
+
+test('si « Renvoyer » échoue encore, le message reprend son état avec la nouvelle raison', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Premier');
+    await unsent(page).first().waitFor();
+    await send(page, 'Second');
+    await page.waitForFunction(() => document.querySelectorAll('#chat-messages .msg.unsent').length === 2);
+    assert.equal((await unsent(page).nth(0).locator('.unsent-note').textContent()).trim(), NET);
+    await restore(page);
+    await breakdown(page);
+    await resendButton(page, 0).click();
+    await page.locator('#chat-messages .msg.unsent .unsent-note', { hasText: 'Panne.' }).waitFor();
+    assert.equal(await unsent(page).count(), 2);
+    assert.equal((await unsent(page).nth(0).locator('.unsent-note').textContent()).trim(), 'L\'agent n\'a pas pu répondre. Panne.');
+    assert.match(await unsent(page).nth(0).textContent(), /Premier/);
+    assert.equal((await unsent(page).nth(1).locator('.unsent-note').textContent()).trim(), NET);
+  });
+});
+
+test('pendant qu\'une réponse de l\'agent est en cours, « Renvoyer » est grisé, puis redevient actif', async () => {
+  const chatServer = { answer: 'Bonjour.', delay: 0 };
+  await withPanel({ chatServer, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Non parti');
+    await unsent(page).first().waitFor();
+    assert.equal(await resendButton(page).isDisabled(), false);
+    await restore(page);
+    chatServer.delay = 1500;
+    await send(page, 'Une autre question');
+    await page.locator('#live-bubble').waitFor();
+    assert.equal(await resendButton(page).isDisabled(), true);
+    assert.equal(await editButton(page).isDisabled(), false);
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    await page.waitForFunction(() => !document.getElementById('live-bubble'));
+    assert.equal(await resendButton(page).isDisabled(), false);
+  });
+});
+
+test('le premier message d\'une nouvelle conversation, une fois renvoyé, fait apparaître la conversation dans la liste', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Premier');
+    await unsent(page).first().waitFor();
+    await send(page, 'Second');
+    await page.waitForFunction(() => document.querySelectorAll('#chat-messages .msg.unsent').length === 2);
+    assert.equal(await page.locator('.conv').count(), 0);
+    await restore(page);
+    await resendButton(page, 0).click();
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    await page.locator('.conv').first().waitFor();
+    assert.equal(await page.locator('.conv').count(), 1);
+    assert.equal(await unsent(page).count(), 1);
+    assert.match(await unsent(page).textContent(), /Second/);
+    const last = await page.evaluate(() => [...document.querySelectorAll('#chat-messages > li')].at(-1).classList.contains('unsent'));
+    assert.ok(last, 'le message non envoyé n\'est pas sous la réponse');
+  });
+});
+
+test('« Modifier » remet le texte et l\'image dans la zone de saisie, avec le curseur dedans, et retire le message de la conversation', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  await withPanel({ issues: [question()], comments: answered(), offline, viewport: PHONE }, async ({ page, url, writes }) => {
+    await openFallback(page, url);
+    await page.locator('#chat-file').setInputFiles(pics(1));
+    await send(page, 'À corriger');
+    await unsent(page).first().waitFor();
+    assert.equal(await page.locator('.pending-image').count(), 0);
+    await editButton(page).click();
+    assert.equal(await page.locator('#chat-input').inputValue(), 'À corriger');
+    assert.equal(await page.locator('.pending-image').count(), 1);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'chat-input');
+    assert.equal(await page.evaluate(() => { const t = document.getElementById('chat-input'); return t.selectionStart === t.value.length; }), true);
+    assert.equal(await unsent(page).count(), 0);
+    offline.clear();
+    await page.locator('#chat-send').click();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled && !document.querySelector('#chat-messages .msg.unsent'));
+    const posted = writes.filter((w) => w.method === 'POST' && w.path === '/repos/o/r/issues/7/comments');
+    assert.ok(posted.some((w) => String(w.body.body).startsWith('À corriger')), JSON.stringify(posted));
+  });
+});
+
+test('« Modifier » garde ce que j\'ai commencé à écrire et ajoute le message repris à la suite, 4 images au plus', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  await withPanel({ issues: [question()], comments: answered(), offline, viewport: DESK }, async ({ page, url }) => {
+    await openFallback(page, url);
+    await page.locator('#chat-file').setInputFiles(pics(2));
+    await send(page, 'Bonjour');
+    await unsent(page).first().waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    await page.locator('#chat-input').fill('Autre chose');
+    await page.locator('#chat-file').setInputFiles(pics(3, 3));
+    await editButton(page).click();
+    assert.equal(await page.locator('#chat-input').inputValue(), 'Autre chose\nBonjour');
+    assert.equal(await page.locator('.pending-image').count(), 4);
+    await page.locator('#toast.show', { hasText: '4 images au plus par message.' }).waitFor();
+  });
+});

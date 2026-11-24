@@ -24,3 +24,26 @@ test('une nouvelle version est en ligne et un message est en cours de saisie : l
     assert.match(await page.locator('#toast').textContent(), /nouvelle version/i);
   });
 });
+
+test('une nouvelle version est en ligne et un message non envoyé attend : la page ne se recharge pas', async () => {
+  // The chat sends to a new conversation or to the one opened by itself: both writes fail.
+  const offline = new Set(['/repos/o/r/issues', '/repos/o/r/issues/1/comments']);
+  await withPanel({ issues: [issue(1, 'Une carte', ['factory:feature', 'factory:queued'])], offline }, async ({ page, url }) => {
+    let build = 'abc1234';
+    await page.route(url, async (route) => { const res = await route.fetch(); route.fulfill({ response: res, body: (await res.text()).replace('__BUILD__', 'abc1234') }); });
+    await page.route('**/version.json*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ build }) }));
+    await page.goto(url);
+    await page.locator('.ticket', { hasText: 'Une carte' }).waitFor();
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.locator('#chat-input').fill('Un message qui ne part pas');
+    await page.locator('#chat-send').click();
+    await page.locator('#chat-messages .msg.unsent').waitFor();
+    await page.evaluate(() => { window.__still = true; });
+    build = 'def5678';
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.locator('#toast', { hasText: /nouvelle version/i }).waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => window.__still), true, 'la page s\'est rechargée');
+    assert.equal(await page.locator('#chat-messages .msg.unsent').count(), 1);
+  });
+});

@@ -2852,9 +2852,28 @@ function keepUnsent(key, message, again, failure) {
   if (!threadShown() || unsentKey(chat.open) !== key) toast(UNSENT_AWAY);
 }
 
-// « Renvoyer » and « Modifier » (issue #580, task 4).
-function resend() {}
-function editUnsent() {}
+// « Renvoyer »: the message leaves again as it was, with its images; never while an answer is on its way.
+function resend(key, id) {
+  if (answering()) return;
+  const m = chat.unsent.get(key, id);
+  if (m) sendChat(m.text, m.withImages, m);
+}
+
+// « Modifier »: the message leaves the conversation for the composer, after what the owner already started there.
+function editUnsent(key, id) {
+  const m = chat.unsent.remove(key, id);
+  if (!m) return;
+  const input = $('chat-input');
+  const { text, files, dropped } = mergeDraft({ text: input.value, files: chat.files }, m);
+  input.value = text;
+  chat.files = files;
+  drawPendingImages();
+  autosize();
+  if (dropped > 0) toast(`${MAX_IMAGES} images au plus par message.`);
+  drawChat();
+  input.focus();
+  input.setSelectionRange(text.length, text.length);
+}
 
 // « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », the time ticking every second (issue #460).
 const USUAL_WAIT = 'd\'habitude, environ 1 à 2 min';
