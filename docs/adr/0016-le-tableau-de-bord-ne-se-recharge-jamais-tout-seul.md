@@ -1,0 +1,3 @@
+# Le tableau de bord ne se recharge jamais tout seul
+
+Depuis le 4 novembre, le tableau de bord se rechargeait de lui-même dès qu'une nouvelle version était en ligne, pour que le propriétaire voie tout de suite les changements ; avec plusieurs mises en ligne par jour, la page et le titre de l'onglet clignotaient sans prévenir. Décidé avec le propriétaire (#572) : plus aucun rechargement automatique ; un bandeau de nouvelle version l'annonce et c'est lui qui recharge, d'un clic, quand il veut. Recharger seulement quand l'onglet n'est pas regardé a été écarté : c'était déjà le cas le plus fréquent, et c'est très probablement lui qui faisait clignoter le titre dans la barre d'onglets. En contrepartie, il faut un clic pour voir une nouveauté du tableau de bord.
