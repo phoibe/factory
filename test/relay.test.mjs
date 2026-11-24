@@ -1,3 +1,4 @@
+import { resolveModels } from '../scripts/lib/models.mjs';
 import { test } from 'node:test';
 import { fromJobOutput } from '../scripts/lib/job-output.mjs';
 import assert from 'node:assert/strict';
@@ -145,7 +146,7 @@ test('a grilling answer fires the routine with the payload and locks the issue',
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 5 && c[2] === L.running));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].init.headers['anthropic-beta'], 'experimental-cc-routine-2026-04-01');
-  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory', models: resolveModels(null) });
 });
 
 test('a fresh lock defers the comment with a reaction', async () => {
@@ -1425,7 +1426,7 @@ test('a PR closed during its checks comes back with the resumed run, which resta
   const gh = withReopen(fakeGh(state), state);
   const sent = [];
   await createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk(sent), log: quiet }).handle(ownerSays(31, [L.feature, L.obsolete]));
-  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'r', issue: 31, pr: 40, stage: 'resume', factory: 'phoibe/factory' });
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'r', issue: 31, pr: 40, stage: 'resume', factory: 'phoibe/factory', models: resolveModels(null) });
 });
 
 test('guard: a self-close left for the tick still lets a message written meanwhile win', async () => {
@@ -2566,7 +2567,7 @@ test('waits: the merge of the awaited request resumes the blocked card with a me
   const relay = createRelay({ gh, repo: 'phoibe/app', config, env, fetchImpl: fetchOk(sent), log: quiet });
   await relay.dequeue();
   assert.equal(sent.length, 1);
-  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'resume', factory: 'phoibe/factory', merged: [12] });
+  assert.deepEqual(payloadOf(sent[0].init.body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'resume', factory: 'phoibe/factory', models: resolveModels(null), merged: [12] });
   assert.ok(!state.issues[0].labels.includes(L.blocked));
   const msg = gh.calls.find((c) => c[0] === 'comment' && c[1] === 5 && c[2].includes(WAITS_DONE_MARKER));
   assert.ok(msg[2].includes('#12 est fusionnée : je reprends.'));

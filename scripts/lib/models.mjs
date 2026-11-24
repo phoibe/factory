@@ -34,3 +34,52 @@ export function roleModel(raw, roleId, families = MODEL_FAMILIES) {
 export function resolveModels(raw, families = MODEL_FAMILIES) {
   return Object.fromEntries(MODEL_ROLES.map((r) => [r.id, { model: roleModel(raw, r.id, families), effort: r.effort }]));
 }
+
+// The monthly catalog update (scripts/models.mjs). Pure: text in, text out.
+const versionParts = (v) => String(v).split('.').map(Number);
+// > 0 when version a is newer than b ("6" > "5.5" > "5.2" > "4.8"; no minor reads as 0).
+export function compareVersions(a, b) {
+  const [x, y] = [versionParts(a), versionParts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+// The latest version of each family named in a text, from ids like claude-<family>-<major>[-<minor>][-YYYYMMDD].
+// Legacy ids (claude-3-5-sonnet-20241022, claude-3-opus) have the digit first and are ignored.
+export function parseModelIds(text) {
+  const latest = new Map();
+  for (const m of String(text).matchAll(/(?<![A-Za-z0-9])claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?/g)) {
+    const [, id, major, minor] = m;
+    const version = minor === undefined ? major : `${major}.${minor}`;
+    if (!latest.has(id) || compareVersions(version, latest.get(id)) > 0) latest.set(id, version);
+  }
+  return [...latest].map(([id, version]) => ({ id, version }));
+}
+
+// The new text of this file: only the lines between the catalog markers change. A family is bumped when newer, a new
+// one is appended (its name is the capitalised id); none is removed nor downgraded.
+export function updateCatalog(source, found) {
+  const start = source.indexOf('// catalog:start');
+  const end = source.indexOf('// catalog:end');
+  if (start < 0 || end < start) return source;
+  const from = source.indexOf('\n', start) + 1;
+  const lines = source.slice(from, end).split('\n');
+  const line = /^(\s*\{ id: ')([^']+)(', name: '[^']*', version: ')([^']+)(' \},?)$/;
+  const seen = new Set();
+  const out = lines.map((l) => {
+    const m = line.exec(l);
+    if (!m) return l;
+    seen.add(m[2]);
+    const newer = found.find((f) => f.id === m[2] && compareVersions(f.version, m[4]) > 0);
+    return newer ? `${m[1]}${m[2]}${m[3]}${newer.version}${m[5]}` : l;
+  });
+  const added = found.filter((f) => !seen.has(f.id)).map((f) => `  { id: '${f.id}', name: '${f.id[0].toUpperCase()}${f.id.slice(1)}', version: '${f.version}' },`);
+  if (added.length) {
+    const close = out.findIndex((l) => l.startsWith('];'));
+    out.splice(close < 0 ? out.length : close, 0, ...added);
+  }
+  return source.slice(0, from) + out.join('\n') + source.slice(end);
+}
