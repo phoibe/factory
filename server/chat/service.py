@@ -27,7 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from core import (
-    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, visible_text,
+    BRANCH, CID_RE, SYSTEM, build_prompt, check_access, events_from_line, extract_issues, new_conversation, title_from,
+    visible_text,
 )
 
 ATTACHMENTS = "factory-attachments"
@@ -244,7 +245,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if cid:
                 conv, _ = await gh.read_json(f"chats/{cid}.json", None)
             cid = str(cid) if cid else new_id()
-            conv = conv or new_conversation(cid, message, now_iso())
+            conv = conv if isinstance(conv, dict) else new_conversation(cid, message, now_iso())
             conv["id"] = cid  # the stored JSON's own id is never trusted
             cwd = await project_copy(repo, token)
             files = []
@@ -309,7 +310,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                 raise RuntimeError(final or err or "pas de réponse")
             text, wanted = extract_issues(final)
             # The panel creates the issues and saves the exchange with the owner's full token: the server never writes.
-            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": conv["title"]}})
+            title = str(conv.get("title") or "") or title_from(message or "Image envoyée")  # a stored file may lack it
+            yield ev({"type": "answer", "text": text, "issues": wanted, "conversation": {"id": cid, "title": title}})
             yield ev({"type": "done"})
         except Exception as e:  # the panel shows it and offers to send again
             yield ev({"type": "error", "message": str(e)[:300]})

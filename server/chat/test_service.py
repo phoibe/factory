@@ -210,6 +210,15 @@ class ServiceTest(unittest.TestCase):
         answer = next(e for e in events if e["type"] == "answer")
         self.assertEqual(answer["conversation"], {"id": cid, "title": "Début"})
 
+    def test_a_stored_conversation_without_a_title_still_gets_one(self):
+        cid = "20261113-101010-abcde"
+        for stored in ({"id": cid, "messages": [{"text": "Début"}]}, ["pas", "un", "objet"]):
+            self.gh.files[f"chats/{cid}.json"] = json.dumps(stored).encode()
+            r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et en CSV ?"})
+            self.assertEqual(events[-1]["type"], "done", events[-2:])
+            answer = next(e for e in events if e["type"] == "answer")
+            self.assertEqual(answer["conversation"], {"id": cid, "title": "Et en CSV ?"}, stored)
+
     def test_a_very_long_conversation_still_gets_an_answer(self):
         cid = self.start_conversation()
         conv = json.loads(self.gh.files[f"chats/{cid}.json"])
