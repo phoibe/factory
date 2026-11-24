@@ -202,3 +202,4 @@
 {"t":"2026-11-24T14:47:21.690Z","kind":"agent","model":"fable","effort":"high","label":"Fresh review round 3","id":"toolu_011YyVgJXMnmA3pD2D5gp4yH"}
 {"t":"2026-11-24T14:47:28.927Z","kind":"test","cmd":"(npm test > /tmp/claude-0/-home-user-factory/9ea3e647-f115-5a22-835e-0a57ae29fc4d/scratchpad/r3-npm-test.log 2>&1; echo \"exit $?\" >> /tmp/claude-0/-home-user-factory/9ea3e647-f115-5a22-835e-0a57ae29fc","ok":true,"id":"toolu_01Fm9U8YyCVigvzNCqVGmX4M"}
 {"t":"2026-11-24T14:47:45.485Z","kind":"agent","model":"sonnet","effort":"low","label":"Before/after screenshots","id":"toolu_016f7zwCEHUWpZ92vyiCVA2s"}
+{"t":"2026-11-24T14:48:32.414Z","kind":"test","cmd":"S=… (CHROMIUM_PATH=… timeout 600 npm run test:e2e > $S/r3-e2e.log 2>&1; echo \"exit $?\" >> $S/r3-e2e.log; CHROMIUM_PATH=… timeout 300 npm run test:a11y > $S/r3-a11y.log 2>&1; echo \"exit $?\" >> $S/r3-a1","ok":true,"id":"toolu_01SN92wFgtiHz3CJCFNyL88j"}
