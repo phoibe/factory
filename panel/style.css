@@ -439,8 +439,9 @@ a.button { text-decoration: none; }
 .ticket .session, #site { color: var(--text); }
 button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline-color: var(--text); }
 summary:not(.button):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
-/* The page that is open: « Réglages généraux » looks pressed while its page shows. */
-#general-open[aria-pressed="true"] { background: var(--surface); border-color: var(--text); color: var(--text); font-weight: 600; }
+/* The page that is open: « Réglages généraux » looks pressed while its page shows. Colour and an inner line only: a
+   bolder label would widen the button and move the top bar. */
+#general-open[aria-pressed="true"] { background: var(--surface); border-color: var(--text); color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
 a:not(.main):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 #chat-input:focus-visible, .tabs button:focus-visible, .conv:focus-visible { outline-color: var(--text); }
 #chat-send { background: var(--text); border-color: var(--text); color: var(--bg); }
