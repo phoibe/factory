@@ -1,0 +1,149 @@
+// Issue #557: on a public project, a request opened by an outsider never steers the factory. When the owner writes in
+// it (or puts a factory label on it), the factory opens a copy of its own, holding only the visible text, starts that
+// copy like one of the owner's requests, says so on the original and closes it. Each step is skipped when already
+// done, so that a run replayed halfway finishes the takeover without a second copy.
+import { L, AGENT_MARKER } from '../lib/labels.mjs';
+import { isRateLimited } from '../lib/ratelimit.mjs';
+import { visibleText } from '../lib/trust.mjs';
+import { say, names } from './shared.mjs';
+
+// First line of the copy, and the note in the factory's word on the original.
+export const copyMarker = (n) => `<!-- factory-copy-of #${n} -->`;
+export const copiedMarker = (n) => `<!-- factory-copied #${n} -->`;
+const COPIED_RE = /<!-- factory-copied #(\d+) -->/;
+
+export const TAKEN = (copy) => `Merci pour votre proposition. Elle est reprise dans la demande #${copy}, où la suite se passe. Je ferme celle-ci.`;
+export const ALREADY = (copy) => `Cette demande est déjà reprise dans la demande #${copy} : c'est là que la suite se passe.`;
+export const COPY_FAILED = "Je n'ai pas pu créer la copie de cette demande : GitHub n'a pas répondu. Elle reste ouverte ; réécrivez ici pour réessayer.";
+// GitHub said no (not an outage): trying again would get the same answer.
+export const COPY_REFUSED = "Je n'ai pas pu créer la copie de cette demande : GitHub l'a refusée. Elle reste ouverte.";
+
+// A 4xx (other than the rate limit, rethrown above) is GitHub refusing the copy: writing again would not mend it.
+const REFUSED = / -> 4\d\d\b/;
+
+// The labels the copy starts with, as the original would: every kind of request decide() starts, and its urgency.
+const KINDS = [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.stack, L.urgent];
+
+// GitHub refuses a description over 65,536 characters (a 422 no retry mends): each text is cut well below, visibly.
+const MAX_ORIGINAL = 40_000;
+const MAX_MESSAGE = 15_000;
+// Cut at the end of a line when there is one, so that a quoted text stays quoted to its last line.
+function cut(text, max) {
+  if (text.length <= max) return text;
+  let kept = text.slice(0, max);
+  const end = text[max] === '\n' ? max : kept.lastIndexOf('\n');
+  if (end > 0) kept = kept.slice(0, end);
+  else if (/[\uD800-\uDBFF]$/.test(kept)) kept = kept.slice(0, -1); // never half a character
+  return `${kept.trimEnd()} …`;
+}
+
+// Every line ending (`\r\n`, a lone `\r`) as `\n`: Markdown ends a line on each, the quote below splits on `\n` only.
+const unixLines = (text) => String(text ?? '').replace(/\r\n?/g, '\n');
+
+// The outsider's mentions (`@bob`, `@org/team`) are not sent again under the factory's name: a zero-width joiner after
+// the `@` keeps them readable but inert. An email (`a@b.com`), an address (`https://medium.com/@bob/post`) and code
+// (fenced blocks, `inline`) are left as they are.
+const MENTION = /(^|[^\w`/])@(?=[A-Za-z0-9])/g;
+const URL_TOKEN = /((?<![\w@.+-])[A-Za-z][\w+.-]*:\/\/[^\s<>()]*)/;
+const quietPart = (part) => part.split(URL_TOKEN).map((p, i) => (i % 2 ? p : p.replace(MENTION, '$1@\u200D'))).join('');
+// A fence (CommonMark): three or more ` or ~, indented by three spaces at most; a ``` one whose info string holds a
+// backtick is none. It closes on the same character, at least as long, with nothing after it.
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+function quietMentions(text) {
+  let open = null;
+  return text.split('\n').map((line) => {
+    const f = FENCE.exec(line);
+    if (open) {
+      if (f && f[1][0] === open[0] && f[1].length >= open.length && !f[2].trim()) open = null;
+      return line;
+    }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { open = f[1]; return line; }
+    return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part : quietPart(part))).join('');
+  }).join('\n');
+}
+
+// Every line quoted, blank ones too: nothing the outsider writes can pass for the owner's part after it.
+const quote = (text) => text.split('\n').map((line) => `> ${line}`).join('\n');
+
+// The owner's own message: his panel images (`factory-image` notes, which mirrorAttachments reads) are kept, every
+// other hidden note is taken out as in an outsider's text.
+const IMAGE_NOTE = /<!-- factory-image: attachments\/[\w./-]+ -->/g;
+function ownerText(message) {
+  const text = unixLines(message);
+  const images = text.match(IMAGE_NOTE) || [];
+  return [visibleText(text), ...images].filter(Boolean).join('\n');
+}
+
+// The copy's description: its marker, where it comes from (the login without @: nobody is notified), the visible text
+// of the original quoted, then the owner's message when he wrote one, unquoted.
+export function copyBody({ repo, original, message }) {
+  const n = original.number;
+  const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`];
+  // Cut once quoted: each `> ` adds to the length.
+  const text = visibleText(unixLines(original.body));
+  if (text) lines.push('', cut(quote(quietMentions(text)), MAX_ORIGINAL));
+  const said = cut(ownerText(message), MAX_MESSAGE);
+  if (said) lines.push('', '---', '', '**Votre message :**', '', said);
+  return lines.join('\n');
+}
+
+export function takeoverPart(ctx) {
+  const { gh, repo } = ctx;
+  const handleEvent = (...a) => ctx.handleEvent(...a);
+  const liveLabels = (...a) => ctx.liveLabels(...a);
+
+  // The copy of request #n: the one named in the factory's word on it (told), else an issue of the factory's whose
+  // description starts from it (a run stopped before the word was posted): an open one, or one closed meanwhile
+  // (looked for among the cards it opened, which all carry L.kept).
+  async function findCopy(n) {
+    for (const c of await gh.listComments(n)) {
+      const body = String(c?.body || '');
+      const m = body.includes(AGENT_MARKER) && COPIED_RE.exec(body);
+      if (m) return { number: Number(m[1]), told: true };
+    }
+    const isCopy = (i) => !i?.pull_request && !i?.untrusted && String(i?.body || '').includes(copyMarker(n));
+    let copy = ((await gh.listOpenIssues()) || []).find(isCopy);
+    copy ||= ((await gh.listIssues({ state: 'all', labels: L.kept, sort: 'created', direction: 'desc' })) || []).find(isCopy);
+    return copy ? { number: copy.number, told: false } : null;
+  }
+
+  // `snapshot`: the request's title and description as the event carried them, so that the copy holds what the owner
+  // saw; read live only when the event carries none (a deferred message replayed later).
+  async function takeOver(n, { message, ownerLogin, snapshot } = {}) {
+    const live = await gh.getIssue(n);
+    if (!live || live.untrusted !== true) return null; // only an outsider's request is ever copied
+    const original = snapshot ? { ...live, title: snapshot.title, body: snapshot.body } : live;
+    const isOpen = original.state !== 'closed';
+    const kinds = names(original.labels).filter((l) => KINDS.includes(l));
+    let found = await findCopy(n);
+    if (!found && !isOpen) return null; // a request the owner dropped: handled as today
+    // No kind of request to start the copy with: it would never start while the original is closed. Not taken over,
+    // like any outsider request that is not one for the factory.
+    if (!found && !kinds.some((l) => l !== L.urgent)) return null;
+    if (!found) {
+      try {
+        const made = await gh.createIssue(original.title, copyBody({ repo, original, message }), [...kinds, L.kept]);
+        found = { number: made.number, told: false };
+      } catch (e) {
+        if (isRateLimited(e)) throw e;
+        await gh.comment(n, say(REFUSED.test(String(e?.message)) ? COPY_REFUSED : COPY_FAILED));
+        return { type: 'takeover-failed', reason: `copie impossible : ${e.message}` };
+      }
+    }
+    const copy = found.number;
+    await gh.comment(n, say(found.told ? ALREADY(copy) : `${TAKEN(copy)}\n${copiedMarker(copy)}`));
+    // Closed as a duplicate of its copy: not as « completed », which reads as delivered (waits.mjs), nor as
+    // « not_planned », which says the request was dropped while it goes on in the copy.
+    if (isOpen) await gh.closeIssue(n, 'duplicate');
+    // The copy never started: it starts (or queues) like a request of the owner.
+    const made = await gh.getIssue(copy);
+    const labels = names(made?.labels);
+    const fresh = made && made.state !== 'closed' && !(made.comments > 0) && labels.every((l) => KINDS.includes(l) || l === L.kept);
+    if (fresh) {
+      await handleEvent({ kind: 'issue', event: 'issues', action: 'opened', number: copy, labels: await liveLabels(copy), fromOwner: true, fromAgent: false, openedRecently: false }, { ownerLogin });
+    }
+    return { type: 'takeover', copy, reason: `demande d'un inconnu reprise dans #${copy}` };
+  }
+
+  return { findCopy, takeOver };
+}

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
-const PARTS = { state: 'statePart', launches: 'launchesPart', delivery: 'deliveryPart', watch: 'watchPart', events: 'eventsPart' };
+const PARTS = { state: 'statePart', launches: 'launchesPart', delivery: 'deliveryPart', watch: 'watchPart', events: 'eventsPart', takeover: 'takeoverPart' };
 const read = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
 const lines = (f) => read(f).split('\n').length;
 

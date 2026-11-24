@@ -6,7 +6,7 @@ import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, 
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
-import { trustNotes } from './trust.mjs';
+import { trustNotes, trustRead } from './trust.mjs?v=1';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
@@ -126,6 +126,10 @@ function sessionExpired() {
   show('login');
 }
 
+// Issue #557: on a public project, an outsider's issue or PR loses its factory notes before anything reads it. A
+// project the panel does not know counts as public.
+const guardRead = (path, data) => trustRead(path, data, (full) => projects.find((p) => p.repo.full_name === full)?.repo.private === true);
+
 async function api(path, init = {}) {
   const res = await fetch(path.startsWith('http') ? path : API + path, {
     ...init,
@@ -134,7 +138,7 @@ async function api(path, init = {}) {
   if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
-  return res.status === 204 ? null : res.json();
+  return res.status === 204 ? null : guardRead(path, await res.json());
 }
 
 // A phone screen (the same width as the CSS's phone rules).
@@ -517,7 +521,7 @@ async function cachedGet(path, cache = etags) {
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  const data = await res.json();
+  const data = guardRead(path, await res.json());
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
   return { data, changed: true };
@@ -2393,7 +2397,7 @@ async function chatGet(path) {
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  const data = await res.json();
+  const data = guardRead(path, await res.json());
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
   return data;

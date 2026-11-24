@@ -3,6 +3,7 @@
 import { decide, afterChecks } from '../lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER } from '../lib/labels.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
+import { trustBodies } from '../lib/trust.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from '../lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD } from '../lib/outage.mjs';
 import { toJobOutput } from '../lib/job-output.mjs';
@@ -10,6 +11,8 @@ import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
 import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, checksTimeoutMs, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
+
+const CLOSED_TOLD = "Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle.";
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
 export function eventFromPayload(eventName, p, now = Date.now()) {
@@ -35,12 +38,20 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return { ...base, kind: 'dispatch', payload, labels: [] };
   }
   if (eventName === 'schedule') return { ...base, kind: 'tick', number: null, labels: [], fromOwner: false };
+  // Issue #557: the request as GitHub sent it with the event, its notes taken out (an outsider's on a public project):
+  // a copy is made from this text, not from one its author could change before the relay reads it.
+  const snapshotOf = (issue) => {
+    if (!issue || issue.pull_request) return undefined;
+    const seen = p.repository?.private === true ? issue : trustBodies(issue, owner);
+    return { title: String(seen.title ?? ''), body: String(seen.body ?? '') };
+  };
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
-      fromAgent: (p.issue.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
+      // An outsider's agent note on a public project is not the agent's (issue #557).
+      fromAgent: ((p.repository?.private === true ? p.issue : trustBodies(p.issue, owner))?.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
       // An issue form with labels sends "opened" and "labeled" together: the "labeled" one must not start it twice.
-      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000,
+      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000, snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'issue_comment') {
@@ -48,6 +59,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
       text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'pull_request_review') {
@@ -92,6 +104,7 @@ export function eventsPart(ctx) {
   const closeMerged = (...a) => ctx.closeMerged(...a);
   const deferredMessage = (...a) => ctx.deferredMessage(...a);
   const notifyWaiting = (...a) => ctx.notifyWaiting(...a);
+  const takeOver = (...a) => ctx.takeOver(...a);
 
   // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
   // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
@@ -269,8 +282,11 @@ export function eventsPart(ctx) {
       const issue = await gh.getIssue(ev.number);
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
+    // A request opened by an outsider on a public project (issue #557): the owner's word there starts a copy.
+    let outsider = false;
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
+      outsider = ev.kind === 'issue' && live?.untrusted === true;
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open', merged: live.pull_request?.merged_at || null } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
@@ -298,6 +314,10 @@ export function eventsPart(ctx) {
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
     let said = ev.text;
+    // The owner's own word or gesture (a message, a label, a request he opens): not the agent's end of run, whose
+    // unlabeled event also comes as the owner's.
+    const ownerGesture = (ev.event === 'issue_comment' && ev.action === 'created') || (ev.event === 'issues' && ['labeled', 'opened'].includes(ev.action));
+    let ownerSaid = Boolean(ev.fromOwner && !ev.fromAgent && ownerGesture);
     // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
     // and its checks start again.
     let reopenedPr = null;
@@ -316,7 +336,17 @@ export function eventsPart(ctx) {
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       said = text;
+      ownerSaid = true;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    if (outsider && ownerSaid && ['fire', 'queue'].includes(action.type)) {
+      const taken = await takeOver(n, { message: said, ownerLogin, snapshot: ev.snapshot });
+      if (taken) return { action: taken, outputs };
+      // No copy (a closed request, one gone, or one with no kind of request): an outsider's request never starts
+      // anything itself, not even a question's answer.
+      log('outsider request not taken over: nothing is started');
+      if (ev.closed) await gh.comment(n, say(CLOSED_TOLD));
+      return { action: { type: 'ignore', reason: ev.closed ? "demande d'un inconnu fermée" : "demande d'un inconnu sans type de demande : pas de copie" }, outputs };
     }
     if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
@@ -333,7 +363,7 @@ export function eventsPart(ctx) {
     // would otherwise send a closed issue back to grilling.
     if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
       log('closed issue: nothing is started');
-      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      await gh.comment(n, say(CLOSED_TOLD));
       return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
