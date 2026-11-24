@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, stableView } from './lib.mjs?v=28';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=28';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
@@ -6,13 +6,12 @@ import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, 
 import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=15';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
-import { trustNotes, trustRead } from './trust.mjs?v=1';
+import { trustNotes } from './trust.mjs?v=1';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
-import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs?v=2';
 import { setupTabs } from './tabs.mjs';
-import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
+import { httpError, errorText, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
@@ -21,12 +20,9 @@ import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFU
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
 import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=8';
+import { TOKEN_KEY, PROJECT_KEY, PROJECTS_KEY, FACTORY_REPO, MACHINE_CHOICES, $, store, app, el, toast, machineRadios, onReset, resetSession, sessionExpired, onUnsaved, hasUnsaved, onView, show, selectTab, holdForBoard, openBoardGate, boardFirst } from './common.mjs?v=1';
+import { API, etags, guardRead, api, cachedGet, mapLimit } from './github.mjs?v=1';
 
-const API = 'https://api.github.com';
-const TOKEN_KEY = 'factory.token';
-const PROJECT_KEY = 'factory.project';
-// The project list of the last visit, with what is known of each repository's settings file (issue #399).
-const PROJECTS_KEY = 'factory.projects';
 const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
   '2. Revue de code générale de toute l\'appli, puis correction.', '',
@@ -34,14 +30,6 @@ const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
 const UI_POLISH_BODY = ['Amélioration UI demandée depuis le tableau.', '',
   'Jusqu\'à 3 tours de critique design de tous les écrans (états vide, erreur, chargement et téléphone compris), chacun suivi de la correction de tout ce qu\'il a trouvé.', '',
   'Seulement l\'apparence et la clarté des écrans : un vrai manque fonctionnel devient une idée à trier.'].join('\n');
-const $ = (id) => document.getElementById(id);
-const store = {
-  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
-  del: (k) => { try { localStorage.removeItem(k); } catch {} },
-  keys: () => { try { return Object.keys(localStorage); } catch { return []; } },
-};
-
 const STAGES = [
   ['grilling', 'Questions préalables'],
   ['specReview', 'Valider chaque spec par « go »'],
@@ -57,21 +45,6 @@ const CHECKS = [
   ['typecheck', 'Types'], ['lint', 'Style du code'], ['test', 'Tests'], ['build', 'Construction'], ['a11y', 'Accessibilité de base'], ['e2e', 'Parcours rejoués à chaque livraison'], ['audit', 'Failles connues des dépendances'],
 ];
 
-// A phone opened from the QR code receives the token in the fragment: keep it, then wipe it from the address bar.
-// The link also carries the chat's read-only token (issue #395).
-const linked = tokenFromHash(location.hash);
-if (linked) {
-  store.set(TOKEN_KEY, linked);
-  const read = readTokenFromHash(location.hash);
-  if (read) store.set(READ_TOKEN_KEY, read); else store.del(READ_TOKEN_KEY);
-  history.replaceState(null, '', location.pathname + location.search);
-}
-let token = store.get(TOKEN_KEY);
-// The only token the chat server ever receives: it can read the projects, never change them (issue #395).
-let readToken = store.get(READ_TOKEN_KEY);
-// Ask the browser not to clear the token when it tidies its storage (mobile browsers do).
-if (token) navigator.storage?.persist?.().catch(() => {});
-let catalog, defaults, projects = [], current = null;
 // Private projects the dev server's check did not see, and the timer of their banner (issue #504).
 let forgotten = new Set(), runnerTimer = null, runnerRound = 0;
 // Each project's status dot (issue #314): full name -> 'blocked' | 'yours' | 'working' | null.
@@ -81,81 +54,11 @@ let known = new Map(), accountTag = null;
 // Settings saves from this tab, so that a check of the project list started before one does not undo it.
 let saves = 0;
 
-function el(tag, attrs = {}, ...children) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === false || v == null) continue;
-    if (k === 'class') n.className = v;
-    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else if (k in n && typeof v !== 'string') n[k] = v;
-    else n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of children.flat()) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  return n;
-}
-
 // The projects whose trigger the panel checked this session, and those known up to date (issue #427, see updateTrigger).
 const triggers = { done: new Set(), fresh: new Set() };
 
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove('show'), Math.max(4000, msg.length * 80));
-}
-
-// Forgets the session (tokens, projects, caches, live board): the next account never sees it. `forget` (logging out)
-// also removes every stored project name (open project, read answers, clicks on their way); a refused token keeps them,
-// so the owner pasting a renewed token finds the same project and the same unread marks.
-function resetSession({ forget = false } = {}) {
-  triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
-  store.del(TOKEN_KEY); store.del(PROJECTS_KEY); store.del(READ_TOKEN_KEY);
-  if (forget) for (const k of sessionKeys(store.keys())) store.del(k);
-  token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
-  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
-  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
-  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null }); closeGeneral();
-}
-
-// A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
-function sessionExpired() {
-  if (!token) return;
-  resetSession();
-  $('login-error').textContent = 'GitHub a refusé le jeton : il a sans doute expiré. Créez-en un nouveau et collez-le ici.';
-  show('login');
-}
-
-// Issue #557: on a public project, an outsider's issue or PR loses its factory notes before anything reads it. A
-// project the panel does not know counts as public.
-const guardRead = (path, data) => trustRead(path, data, (full) => projects.find((p) => p.repo.full_name === full)?.repo.private === true);
-
-async function api(path, init = {}) {
-  const res = await fetch(path.startsWith('http') ? path : API + path, {
-    ...init,
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}) },
-  });
-  if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
-  if (res.status === 401) sessionExpired();
-  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
-  return res.status === 204 ? null : guardRead(path, await res.json());
-}
-
 // A phone screen (the same width as the CSS's phone rules).
 const PHONE = '(max-width: 600px)';
-
-function show(id) {
-  for (const s of ['login', 'empty', 'project-view']) $(s).hidden = s !== id;
-  if (id !== 'project-view') closeGeneral();
-  $('general-open').hidden = id !== 'project-view'; // the page lives inside the project screen
-  $('nav').hidden = id === 'login';
-  // The project list shows with a project only (none to choose from on the empty screen).
-  $('projects').hidden = id !== 'project-view';
-  document.body.classList.toggle('has-projects', id === 'project-view');
-  if (id !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
-  if (id !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
-  if (typeof placeMenu === 'function') placeMenu();
-}
 
 // A repository is a project when it holds factory.config.json. The template is not one (it is copied to start
 // a project). Repositories are checked a few at a time: firing one request per repository at once can trip
@@ -163,7 +66,7 @@ function show(id) {
 // A repository with nothing pushed since the last visit is not read again (its settings file cannot have changed),
 // and one read again carries its last ETag (an unchanged file is a free 304, see projects.mjs).
 async function loadProjects() {
-  const session = token;
+  const session = app.token;
   const repos = [];
   for (let page = 1; page <= 5; page++) {
     // Never the browser's copy (kept a minute): a stale push date would skip a file changed meanwhile.
@@ -205,7 +108,7 @@ async function loadProjects() {
     const file = await configOf(r);
     return file ? { repo: r, file } : null;
   })).filter(Boolean);
-  if (token !== session) return found; // logged out meanwhile: nothing of it is remembered
+  if (app.token !== session) return found; // logged out meanwhile: nothing of it is remembered
   known = seen;
   if (failed.length) {
     toast(`GitHub n'a pas répondu pour ${failed.join(', ')}. Nouvel essai dans 30 s.`);
@@ -215,31 +118,31 @@ async function loadProjects() {
   return found;
 }
 
-function rememberProjects(list = projects) {
+function rememberProjects(list = app.projects) {
   if (accountTag) store.set(PROJECTS_KEY, writeProjectsCache(accountTag, list, known));
 }
 
 // The list of the last visit shows at once; GitHub's answer then replaces it (issue #399). The open project
 // stays the same object; it is opened again only when its settings file changed and nothing typed would be lost.
 async function checkProjects() {
-  const session = token, saved = saves;
+  const session = app.token, saved = saves;
   let fresh;
   try {
     fresh = await loadProjects();
   } catch (err) {
-    if (err.status !== 401 && token === session) setTimeout(() => checkProjects().catch(() => {}), 30_000);
+    if (err.status !== 401 && app.token === session) setTimeout(() => checkProjects().catch(() => {}), 30_000);
     return;
   }
-  if (!token || token !== session) return; // logged out meanwhile: this list belongs to the previous account
-  const was = current;
+  if (!app.token || app.token !== session) return; // logged out meanwhile: this list belongs to the previous account
+  const was = app.current;
   const namesOf = (list) => JSON.stringify(list.map((p) => p.repo.full_name).sort());
-  const before = namesOf(projects);
+  const before = namesOf(app.projects);
   const mine = was && fresh.find((p) => p.repo.full_name === was.repo.full_name);
-  projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
-  if (namesOf(projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
+  app.projects = fresh.map((p) => (p === mine ? Object.assign(was, { repo: p.repo }) : p));
+  if (namesOf(app.projects) !== before) refreshRuns(); // a project came or went (not just a new push order)
   refreshRunnerAlert().catch(() => {});
-  if (!projects.length) {
-    current = null;
+  if (!app.projects.length) {
+    app.current = null;
     clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
     return show('empty');
   }
@@ -251,24 +154,12 @@ async function checkProjects() {
   refreshDots();
 }
 
-// Something typed or in flight that reopening the project, or reloading the panel, would lose.
-const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
-  || Boolean(chat.live) || chat.files.length > 0;
-
-async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
-
 // After a partial load: picks up the projects GitHub did not answer for, without leaving the current one.
 async function reloadProjects() {
   const fresh = await loadProjects();
-  if (fresh.length <= projects.length) return;
-  projects = fresh;
-  if (current) renderProjectList(); else await openProject(store.get(PROJECT_KEY));
+  if (fresh.length <= app.projects.length) return;
+  app.projects = fresh;
+  if (app.current) renderProjectList(); else await openProject(store.get(PROJECT_KEY));
   refreshDots();
 }
 
@@ -281,8 +172,8 @@ function dotNode(kind, label = DOT_LABELS[kind]) {
 // `projects` keeps GitHub's order (most recently pushed first: the one opened when none was remembered);
 // the list shows them alphabetically.
 function projectItems() {
-  return sortProjects(projects).map((p) => {
-    const name = p.repo.full_name, here = current && current.repo.full_name === name;
+  return sortProjects(app.projects).map((p) => {
+    const name = p.repo.full_name, here = app.current && app.current.repo.full_name === name;
     return el('li', {}, el('button', { type: 'button', class: 'project-item', 'data-repo': name, 'aria-current': here ? 'true' : null, title: p.repo.name, onclick: () => pickProject(name) },
       dotNode(dots.get(name) || null), el('span', { class: 'pname' }, p.repo.name),
       ...(forgotten.has(p.repo.name) ? [el('span', { class: 'pwarn', role: 'img', 'aria-label': 'Pas vu par le serveur de dev', title: 'Pas vu par le serveur de dev' }, '!')] : [])));
@@ -297,10 +188,10 @@ function renderProjectList() {
   $('projects-list').replaceChildren(...projectItems());
   if ($('projects-dialog').open) $('projects-dialog-list').replaceChildren(...projectItems());
   if (focused) document.querySelector(`${$('projects-dialog').open ? '#projects-dialog-list' : '#projects-list'} [data-repo="${CSS.escape(focused)}"]`)?.focus();
-  const other = current ? othersDot(dots, current.repo.full_name) : null;
+  const other = app.current ? othersDot(dots, app.current.repo.full_name) : null;
   const sd = $('switch-dot');
   // Issue #504: no red or blue elsewhere, but another project the dev server does not see: an orange dot.
-  const warn = !other && current && [...forgotten].some((n) => n !== current.repo.name);
+  const warn = !other && app.current && [...forgotten].some((n) => n !== app.current.repo.name);
   if (warn) {
     sd.hidden = false; sd.className = 'pdot pdot-warn';
     sd.setAttribute('role', 'img'); sd.setAttribute('aria-label', OTHER_FORGOTTEN); sd.title = OTHER_FORGOTTEN;
@@ -316,7 +207,7 @@ function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
   // Like « ← Retour au projet »: the general page closes (its unsaved choices stay in memory, review #556).
   closeGeneral();
-  if (current && current.repo.full_name === fullName) return;
+  if (app.current && app.current.repo.full_name === fullName) return;
   openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
 
@@ -330,8 +221,6 @@ function setDot(repo, dot) {
 // (issue #488). Their requests carry the last ETag (an unchanged
 // answer is a free 304), and only blocked cards' comments are read, to tell a real block from « Attend #… ».
 // A project GitHub does not answer for keeps its last known dot.
-// One ETag map for the dots and the board (issue #327): a first open reuses what the dots already read.
-const etags = new Map();
 let dotsTimer = null, dotsBusy = false, dotsLast = 0, dotsPausedUntil = 0;
 // Active owner: 10 s between rounds; calm for 2 minutes or tab hidden: 30 s (issue #488).
 const dotsIdle = () => isIdle(live.activity, Date.now(), document.hidden);
@@ -360,45 +249,29 @@ async function projectDotOf(repo) {
   }
 }
 
-// The open board's own requests go first: everything else the page reads (the other projects' dots, the day's agent
-// starts, the gap with production, « Déclarer stable ») waits for its first cards, at most BOARD_FIRST_MS. Fired all
-// at once, these heavy lists (about 1 MB a page) shared the connection with the board, which took 8 to 20 s to show.
-const BOARD_FIRST_MS = 8000;
-let boardGate = Promise.resolve();
-let gateOpener = null; // set while the gate is held
-function holdForBoard() {
-  if (gateOpener) return; // already held (a project opened while the first one loads): the board on screen opens it
-  boardGate = new Promise((ok) => {
-    const timer = setTimeout(() => openBoardGate(), BOARD_FIRST_MS);
-    gateOpener = () => { clearTimeout(timer); gateOpener = null; ok(); };
-  });
-}
-function openBoardGate() { gateOpener?.(); }
-holdForBoard(); // from the panel's start: the first board is the one waited for
-
 async function refreshDots() {
-  await boardGate;
+  await boardFirst();
   clearTimeout(dotsTimer);
   // While GitHub's wait runs, every caller waits too: the next round comes at its end.
   const paused = Math.min(dotsPausedUntil - Date.now(), 300_000);
   dotsTimer = setTimeout(refreshDots, paused > 0 ? paused : dotsDelay(0, dotsIdle()));
-  if (paused > 0 || !token || !projects.length || dotsBusy) return;
+  if (paused > 0 || !app.token || !app.projects.length || dotsBusy) return;
   dotsBusy = true;
   dotsLast = Date.now();
-  const session = token;
+  const session = app.token;
   try {
-    const others = projects.filter((p) => !current || p.repo.full_name !== current.repo.full_name);
+    const others = app.projects.filter((p) => !app.current || p.repo.full_name !== app.current.repo.full_name);
     // A project opened meanwhile is skipped: the board reads it, and must see its changes first (shared ETags).
-    const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, current?.repo.full_name === p.repo.full_name ? undefined : await projectDotOf(p.repo.full_name)]);
-    if (token !== session) return; // logged out meanwhile: these dots belong to the previous session
+    const found = await mapLimit(others, 2, async (p) => [p.repo.full_name, app.current?.repo.full_name === p.repo.full_name ? undefined : await projectDotOf(p.repo.full_name)]);
+    if (app.token !== session) return; // logged out meanwhile: these dots belong to the previous session
     // The project opened meanwhile is drawn from the board's own data.
-    const results = new Map(found.filter(([repo]) => !current || repo !== current.repo.full_name));
+    const results = new Map(found.filter(([repo]) => !app.current || repo !== app.current.repo.full_name));
     const before = JSON.stringify([...dots]);
     dots = nextDots(dots, results);
     if (JSON.stringify([...dots]) !== before) renderProjectList();
   } catch (err) {
     // GitHub limits the calls: no more requests until the wait it asked for (the dots stay as they were).
-    if (err?.rateLimited && token === session) {
+    if (err?.rateLimited && app.token === session) {
       const wait = dotsDelay(err.waitMs, dotsIdle());
       dotsPausedUntil = Date.now() + wait;
       clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait);
@@ -409,30 +282,30 @@ async function refreshDots() {
 }
 
 async function openProject(fullName) {
-  const next = projects.find((p) => p.repo.full_name === fullName) || projects[0];
+  const next = app.projects.find((p) => p.repo.full_name === fullName) || app.projects[0];
   // A broken settings file opens with the default settings: it must never lock the panel on that project.
   const { raw, warning } = parseRawConfig(next.file?.content ? fromBase64(next.file.content) : null);
   if (warning) toast('Les paramètres de ce projet sont illisibles : les paramètres par défaut sont affichés.');
-  const switched = current && current.repo.full_name !== next.repo.full_name;
-  current = next;
+  const switched = app.current && app.current.repo.full_name !== next.repo.full_name;
+  app.current = next;
   // Never the old project's cards under the new name (issue #319): its late answers are dropped. The new one shows
   // at once from this tab's memory, or from what the project list knows, otherwise grey cards (issue #327).
   if (live.repo !== next.repo.full_name) enterBoard(next.repo.full_name);
   holdForBoard();
-  store.set(PROJECT_KEY, current.repo.full_name);
+  store.set(PROJECT_KEY, app.current.repo.full_name);
   renderProjectList();
-  const { config, warnings } = resolveConfig(raw, catalog, defaults);
-  current.config = config;
-  current.saved = JSON.stringify(config);
+  const { config, warnings } = resolveConfig(raw, app.catalog, app.defaults);
+  app.current.config = config;
+  app.current.saved = JSON.stringify(config);
   for (const w of warnings) console.warn(w);
-  $('project-name').textContent = current.repo.name;
-  $('project-switch-name').textContent = current.repo.name;
+  $('project-name').textContent = app.current.repo.name;
+  $('project-switch-name').textContent = app.current.repo.name;
   // The stack sheet read at the last visit stays until it is read again: the mode shows at once (issue #397).
-  current.delivery ??= null;
+  app.current.delivery ??= null;
   drawSub();
   drawGap();
   refreshGap(true).catch(() => {});
-  const base = current.repo.html_url;
+  const base = app.current.repo.html_url;
   $('new-feature').href = `${base}/issues/new?template=feature.yml`;
   $('new-bug').href = `${base}/issues/new?template=bug.yml`;
   $('issues-link').href = issuesUrl(base);
@@ -443,12 +316,12 @@ async function openProject(fullName) {
   if (switched) selectTab('board');
   resetChat();
   renderRules();
-  loadMachine(current).catch(() => {});
+  loadMachine(app.current).catch(() => {});
   drawRelease();
-  const opened = current;
-  boardGate.then(() => (current === opened ? refreshRelease() : null)).catch(() => {});
-  loadDelivery(current).catch(() => {});
-  updateTrigger(current.repo).catch((e) => console.warn('Trigger not checked', e));
+  const opened = app.current;
+  boardFirst().then(() => (app.current === opened ? refreshRelease() : null)).catch(() => {});
+  loadDelivery(app.current).catch(() => {});
+  updateTrigger(app.current.repo).catch((e) => console.warn('Trigger not checked', e));
   await renderBoard();
   if (!live.tick) startLive();
 }
@@ -505,45 +378,21 @@ const LANES = [
   ['queued', 'En file d\'attente', 'La file est vide.'],
 ];
 
-// « Too many requests »: a short wait is spent here, then the same request goes again; a long one stops this
-// refresh quietly (no « connexion perdue »), and the next one comes after the wait GitHub asked for.
-async function cachedGet(path, cache = etags) {
-  const hit = cache.get(path);
-  let res;
-  for (let pauses = 0; ; pauses++) {
-    res = await fetch(API + path, {
-      cache: 'no-store',
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
-    });
-    const wait = rateLimitDelay(res.status, res.headers);
-    if (wait === null) break;
-    if (wait > MAX_PAUSE_MS || pauses >= 1) throw Object.assign(new Error('rate limited'), { rateLimited: true, waitMs: wait });
-    await new Promise((ok) => setTimeout(ok, wait));
-  }
-  if (res.status === 304 && hit) return { data: hit.data, changed: false };
-  if (res.status === 401) sessionExpired();
-  if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  const data = guardRead(path, await res.json());
-  const etag = res.headers.get('etag');
-  if (etag) cache.set(path, { etag, data });
-  return { data, changed: true };
-}
-
 function mergeEvents(fresh) {
   const seen = new Set(live.events.map((e) => e.id));
   live.events = [...fresh.filter((e) => !seen.has(e.id)), ...live.events];
 }
 
 async function refresh() {
-  if (!current) return;
-  const repo = current.repo.full_name;
+  if (!app.current) return;
+  const repo = app.current.repo.full_name;
   if (live.busy?.repo === repo) { live.again = true; return; }
   // A refresh of a project left meanwhile does not hold this one up: it notices it was replaced and drops its answers.
   const run = { repo };
   live.busy = run;
   live.again = false;
   if (live.repo !== repo) enterBoard(repo);
-  const same = () => live.busy === run && live.repo === repo && current?.repo.full_name === repo;
+  const same = () => live.busy === run && live.repo === repo && app.current?.repo.full_name === repo;
   const soft = (fallback) => (e) => (e?.rateLimited ? Promise.reject(e) : fallback);
   try {
     // Every page: beyond 100 open items, the others would silently vanish from the board.
@@ -670,7 +519,7 @@ async function refresh() {
         previewsChanged = true;
       });
     };
-    const release = current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
+    const release = app.current.config.production === 'approval' ? refreshRelease().catch(soft(null)) : null;
     const [eventsChanged] = await Promise.all([deepEvents(), comments, release, doneRead.then(doneReleases), refreshGap()]);
     if (!same()) return;
     setDot(repo, projectDot(live.issues, live.waits));
@@ -697,7 +546,7 @@ async function refresh() {
 
 function schedule() {
   clearTimeout(live.timer);
-  if (!current) return;
+  if (!app.current) return;
   const delay = Math.max(pollDelay(live.failures, isIdle(live.activity, Date.now(), document.hidden)), live.pauseMs);
   live.pauseMs = 0;
   live.timer = setTimeout(refresh, delay);
@@ -772,7 +621,7 @@ const foldedChanges = (key, changes) => el('details', {
   ontoggle: (e) => {
     if (e.target.open) openReleases.add(key); else openReleases.delete(key);
     const lane = e.target.closest('.lane-done');
-    if (lane && !lane.querySelector('.release-fold[open]')) { doneHeight.delete(current?.repo.full_name); lane.style.removeProperty('--done-card-height'); }
+    if (lane && !lane.querySelector('.release-fold[open]')) { doneHeight.delete(app.current?.repo.full_name); lane.style.removeProperty('--done-card-height'); }
   },
 },
 el('summary', {
@@ -781,7 +630,7 @@ el('summary', {
     const lane = e.currentTarget.closest('.lane-done');
     if (!lane || lane.querySelector('.release-fold[open]')) return;
     const px = Math.max(...[...lane.querySelectorAll('.ticket')].map((t) => t.getBoundingClientRect().height));
-    doneHeight.set(current?.repo.full_name, px);
+    doneHeight.set(app.current?.repo.full_name, px);
     lane.style.setProperty('--done-card-height', `${px}px`);
   },
 }, el('span', {}, `${changes.length} modification${changes.length > 1 ? 's' : ''}`)),
@@ -896,7 +745,7 @@ const sentGo = new Set(); // « go » already posted this session: the card show
 const sendingGo = new Set(); // the answers still on their way to GitHub (« Envoi… »); the others in sentGo read « Envoyé ✓ »
 // Both are keyed by project and number: #12 of one project is not #12 of another.
 // The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
-const goKey = (c) => `${current.repo.full_name}#${c.number}@${c.column}`;
+const goKey = (c) => `${app.current.repo.full_name}#${c.number}@${c.column}`;
 // What the toast says once the answer has left, by the column it answers.
 const SENT = {
   spec: '« go » envoyé. La construction démarre.',
@@ -918,16 +767,16 @@ async function sendGo(c, btn, repo, key) {
   try {
     await postAnswer(repo, c, goWord(c));
     sendingGo.delete(key);
-    if (current?.repo.full_name === repo) { const b = goBtn(c, btn); b.textContent = goState(c).text; b.setAttribute('aria-label', goName(c)); }
+    if (app.current?.repo.full_name === repo) { const b = goBtn(c, btn); b.textContent = goState(c).text; b.setAttribute('aria-label', goName(c)); }
     toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
     // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
-    if (c.reply === 'ok' && current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
+    if (c.reply === 'ok' && app.current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
     toast(`Envoi impossible. ${errorText(e)}`);
     sentGo.delete(key);
     sendingGo.delete(key);
-    if (current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
+    if (app.current?.repo.full_name === repo) btn = goBtn(c, btn); // the board may have been redrawn while the answer was on its way
     btn.disabled = false;
     btn.textContent = goText(c);
     btn.setAttribute('aria-label', goName(c));
@@ -936,7 +785,7 @@ async function sendGo(c, btn, repo, key) {
 const goBtn = (c, fallback) => document.querySelector(`button.go[data-go="${c.number}"]`) || fallback;
 // A touch sends at once: « Envoi… » until GitHub answers, then the usual message (issue #450, no countdown).
 function answerGo(c, btn) {
-  const repo = current.repo.full_name, key = goKey(c);
+  const repo = app.current.repo.full_name, key = goKey(c);
   if (sentGo.has(key)) return;
   sentGo.add(key);
   sendingGo.add(key);
@@ -953,7 +802,7 @@ function skeleton() {
 }
 
 // Plates the owner just acted on (see pending.mjs): kept per project, on this device only.
-const pendingKey = () => `factory.pending.${current.repo.full_name}`;
+const pendingKey = () => `factory.pending.${app.current.repo.full_name}`;
 function pendingState() { try { return JSON.parse(store.get(pendingKey()) || '{}') || {}; } catch { return {}; } }
 const savePending = (state) => { if (Object.keys(state).length) store.set(pendingKey(), JSON.stringify(state)); else store.del(pendingKey()); };
 // Since when the answer of a card on hold waits: its answer seen on GitHub, else the moment the owner came back (or
@@ -970,7 +819,7 @@ for (const type of ['click', 'auxclick']) {
   document.addEventListener(type, (e) => {
     const li = e.target.closest?.('.ticket.yours[data-number], .ticket.pending[data-number]'); // a new click on a waiting card restarts its wait
     const link = e.target.closest?.('a');
-    if (!li || !current || !link) return;
+    if (!li || !app.current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
     // Reading a plate answered by a button (« go », « Ok ») is not answering it: looking at the captures, the preview or
     // the recette keeps it in « À vous de jouer »; only the button sends it to « En attente de GitHub ».
@@ -980,7 +829,7 @@ for (const type of ['click', 'auxclick']) {
   });
 }
 function owedReturn() {
-  if (!current || !live.issues) return;
+  if (!app.current || !live.issues) return;
   const state = pendingState();
   if (Object.values(state).some((x) => x.backAt == null)) savePending(noteReturn(state, Date.now()));
   drawBoard();
@@ -1005,14 +854,14 @@ function youCard(yours, headline, sub, minutes, now, movedSet) {
 // Kept per project: an answer that arrives after the owner switched project still lands in the right one.
 const sortingIdeas = new Map(); // repo → (number → 'sending' | 'sent', see ideasToShow)
 const refusedIdeas = new Map(); // repo → numbers GitHub refused: the card is back, with a red line until the next click on it
-const sortingIdea = (repo = current?.repo.full_name) => sortingIdeas.get(repo) || sortingIdeas.set(repo, new Map()).get(repo);
-const refusedIdea = (repo = current?.repo.full_name) => refusedIdeas.get(repo) || refusedIdeas.set(repo, new Set()).get(repo);
+const sortingIdea = (repo = app.current?.repo.full_name) => sortingIdeas.get(repo) || sortingIdeas.set(repo, new Map()).get(repo);
+const refusedIdea = (repo = app.current?.repo.full_name) => refusedIdeas.get(repo) || refusedIdeas.set(repo, new Set()).get(repo);
 let ideaFocus = null; // the button the focus goes on to once the sorted card is gone
 const announceIdea = new Set(); // refusals not yet drawn: read aloud once, not again at every later redraw
 const ideaRects = () => new Map([...$('board').querySelectorAll('.ticket.idea[data-idea]')].map((n) => [n.dataset.idea, n.getBoundingClientRect()]));
 function ideasLane(ideas) {
   if (!ideas.length) return null;
-  const pick = current?.config?.autoPick === true;
+  const pick = app.current?.config?.autoPick === true;
   return el('section', { class: 'lane lane-ideas', 'aria-label': 'Idées à trier' },
     el('h2', {}, 'Idées à trier', el('span', { class: 'count' }, String(ideas.length))),
     el('div', { class: 'tickets' }, ideas.map((i) => el('article', { class: 'ticket idea', 'data-idea': String(i.number) },
@@ -1061,7 +910,7 @@ function leaveIdea(n, keep) {
   }, 200);
 }
 async function sortIdea(i, keep, pick) {
-  const target = current.repo; // the owner may switch project before GitHub answers
+  const target = app.current.repo; // the owner may switch project before GitHub answers
   const repo = target.full_name;
   refusedIdea(repo).delete(i.number);
   sortingIdea(repo).set(i.number, 'sending');
@@ -1141,7 +990,7 @@ function drawBoard() {
         ? el('div', { class: 'tickets' }, byLane[id].map((c) => card(c, id, minutes, now, movedSet.has(c.number))))
         : el('p', { class: 'lane-empty' }, empty))),
     ideasLane(ideas),
-    el('section', { class: 'lane lane-done', 'aria-label': 'Terminé', style: doneHeight.has(current?.repo.full_name) && doneShown.shown.some((d) => openReleases.has(d.url)) ? `--done-card-height: ${doneHeight.get(current?.repo.full_name)}px` : null },
+    el('section', { class: 'lane lane-done', 'aria-label': 'Terminé', style: doneHeight.has(app.current?.repo.full_name) && doneShown.shown.some((d) => openReleases.has(d.url)) ? `--done-card-height: ${doneHeight.get(app.current?.repo.full_name)}px` : null },
       el('h2', {}, 'Terminé', live.doneTried ? el('span', { class: 'count' }, String(live.done.length)) : null),
       !live.doneTried ? null : live.done.length
         ? el('div', { class: 'tickets' }, doneShown.shown.map((d) => d.release ? releaseDoneCard(d, now) : el('article', { class: d.reason ? 'ticket done closed' : 'ticket done' },
@@ -1211,11 +1060,11 @@ function startLive() {
   clearInterval(live.tick);
   // Every 5 s the "à jour il y a" text moves; every minute the durations on the cards move.
   let n = 0;
-  live.tick = setInterval(() => { drawStatus(); if ((++n % 12 === 0 || (current && Object.values(pendingState()).some((x) => x.backAt != null))) && live.issues && !$('board').hidden) drawBoard(); }, 5000);
+  live.tick = setInterval(() => { drawStatus(); if ((++n % 12 === 0 || (app.current && Object.values(pendingState()).some((x) => x.backAt != null))) && live.issues && !$('board').hidden) drawBoard(); }, 5000);
 }
 
 function drawSite() {
-  const url = siteLink(current.config.siteUrl, current.repo.homepage);
+  const url = siteLink(app.current.config.siteUrl, app.current.repo.homepage);
   const a = $('site');
   if (url) {
     a.href = url;
@@ -1250,7 +1099,7 @@ for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchsta
   window.addEventListener(type, () => {
     const wasIdle = isIdle(live.activity, Date.now(), document.hidden);
     live.activity = Date.now();
-    if (wasIdle && current && !document.hidden && !live.busy) schedule();
+    if (wasIdle && app.current && !document.hidden && !live.busy) schedule();
     // The dots come back to life too: a check at once instead of waiting out the 30 s (issue #488).
     if (wasIdle && !document.hidden) wakeDots();
   }, { passive: true });
@@ -1259,7 +1108,7 @@ for (const type of ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchsta
 // A gesture after a calm moment, or a return to the tab, checks the other projects' dots at once (issue #488),
 // unless they were just checked (then the next round comes 10 s after it) or GitHub asked to wait.
 function wakeDots() {
-  if (!token) return;
+  if (!app.token) return;
   const wait = dotsWake({ now: Date.now(), last: dotsLast, pausedUntil: dotsPausedUntil });
   if (wait === 0) return refreshDots();
   if (wait != null) { clearTimeout(dotsTimer); dotsTimer = setTimeout(refreshDots, wait); }
@@ -1269,7 +1118,7 @@ function wakeDots() {
 document.addEventListener('visibilitychange', () => {
   // The owner is back: the active rhythm (8 s board, 10 s dots) starts now.
   if (!document.hidden) { live.activity = Date.now(); wakeDots(); }
-  if (!current) return clearTimeout(live.timer);
+  if (!app.current) return clearTimeout(live.timer);
   if (document.hidden) return schedule();
   if (Date.now() - live.last > 5000) refresh(); else schedule();
 });
@@ -1281,7 +1130,6 @@ function checkbox(id, checked, onchange) {
 // ---- Machine of the factory jobs (issue #271) -------------------------------------------------------------------------
 // The general setting and the dev server check live on a branch of the factory (written by scripts/runners.mjs).
 const RUNNERS_BRANCH = 'factory-runners';
-const MACHINE_CHOICES = [['dev-server', 'Serveur de dev'], ['github', 'Machines GitHub']];
 // `held`: a status read while the focus was in « Paramètres », shown when it leaves; `shown`: the line on screen.
 const machine = { settings: null, sha: null, general: 'dev-server', status: null, hash: null, repo: null, held: null, shown: null };
 
@@ -1290,8 +1138,8 @@ const runnersFile = (path) => readRunnersFile(api, path);
 // Both files for the settings line and the banner: a read already on its way is shared, never sent twice.
 let runnersReading = null;
 function runnersFiles() {
-  if (runnersReading?.session === token) return runnersReading.files;
-  const read = { session: token, files: Promise.all([runnersFile('settings.json'), runnersFile('status.json')]) };
+  if (runnersReading?.session === app.token) return runnersReading.files;
+  const read = { session: app.token, files: Promise.all([runnersFile('settings.json'), runnersFile('status.json')]) };
   runnersReading = read;
   read.files.finally(() => { if (runnersReading === read) runnersReading = null; });
   return read.files;
@@ -1300,21 +1148,17 @@ function runnersFiles() {
 async function loadMachine(project) {
   // Never the previous project's state while this one loads (or if it cannot be read), nor a status held for it.
   Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name, held: null });
-  await boardGate; // the board's cards first (review #556)
-  if (current !== project) return;
+  await boardFirst(); // the board's cards first (review #556)
+  if (app.current !== project) return;
   const [[settings, status], hash] = await Promise.all([runnersFiles(), repoKey(String(project.repo.id))]);
-  if (current !== project) return;
+  if (app.current !== project) return;
   const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
   Object.assign(machine, { settings: settings.json, sha: settings.sha, general, status: status.json, hash, repo: project.repo.full_name, held: null });
   renderRules();
 }
 
-const machineRadios = (name, choices, value, onpick, disabled = false) => choices.map(([v, t]) => el('div', { class: 'row' },
-  el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, disabled, onchange: () => onpick(v) }),
-  el('label', { for: `${name}-${v}` }, t)));
-
 // The « Machine des tâches » line for this project, with the dev server's state for it.
-const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default', created: current.repo.created_at || null });
+const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: app.current.repo.private, general: machine.general, project: app.current.config.machine || 'default', created: app.current.repo.created_at || null });
 
 // A fresh status file: « Paramètres » is rebuilt when the line it shows changes (the time of the check counts, the
 // line depends on it), never when only the file does (review #556).
@@ -1336,20 +1180,20 @@ const runnerAlertBox = (text, attrs = {}) => el('div', { class: 'runner-alert', 
 async function refreshRunnerAlert() {
   clearTimeout(runnerTimer);
   runnerTimer = setTimeout(() => refreshRunnerAlert().catch(() => {}), 15 * 60_000);
-  if (!token || !projects.length) return;
-  const session = token, round = ++runnerRound;
-  await boardGate; // the board's cards first (review #556)
-  if (token !== session || round !== runnerRound) return;
+  if (!app.token || !app.projects.length) return;
+  const session = app.token, round = ++runnerRound;
+  await boardFirst(); // the board's cards first (review #556)
+  if (app.token !== session || round !== runnerRound) return;
   const [settings, status] = await runnersFiles();
-  const list = await Promise.all(projects.map(async (p) => {
+  const list = await Promise.all(app.projects.map(async (p) => {
     let own = 'default';
     try { own = JSON.parse(fromBase64(p.file?.content || '')).machine || 'default'; } catch { /* unreadable rules: the general setting */ }
     return { name: p.repo.name, hash: await repoKey(String(p.repo.id)), isPrivate: Boolean(p.repo.private), created: p.repo.created_at || null, project: own };
   }));
-  if (token !== session || round !== runnerRound) return; // a newer round answers instead
+  if (app.token !== session || round !== runnerRound) return; // a newer round answers instead
   const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
   // The settings line follows the same fresh status (it was read when the project opened).
-  if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
+  if (app.current && status.json && machine.repo === app.current.repo.full_name && machine.hash) {
     // Never under the owner's fingers: a field being typed in keeps its text and the focus (review #556). The new
     // status waits until the focus leaves the form (focusout below), then shows at once.
     if ($('rules').contains(document.activeElement)) machine.held = status.json;
@@ -1366,7 +1210,7 @@ async function refreshRunnerAlert() {
 
 // This project's machine. A warning is shown above « Avancé » instead (issue #342), never twice.
 function machineFieldset(update, line) {
-  const c = current.config;
+  const c = app.current.config;
   const general = machine.general;
   const generalName = MACHINE_CHOICES.find(([v]) => v === general)[1].toLowerCase();
   return el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
@@ -1417,7 +1261,7 @@ const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 
 async function openGeneral(from = $('general-open')) {
   const open = !$('general-view').hidden;
   if (!open) general.from = from;
-  const session = token, project = current;
+  const session = app.token, project = app.current;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
   const clean = !generalDirty() || general.unreadable;
   const read = clean && general.read?.session === session && general.read.project === project ? general.read : null;
@@ -1440,8 +1284,8 @@ async function openGeneral(from = $('general-open')) {
   try { settings = await runnersFile('settings.json'); } finally { if (general.read === mine) general.read = null; }
   // Logged out, or another screen or project meanwhile: the late answer is dropped, and a page still shown for that
   // session or project is closed (review #556).
-  if (token !== session || current !== project || $('project-view').hidden) {
-    if (general.shown?.session !== token || general.shown?.project !== current || $('project-view').hidden) closeGeneral();
+  if (app.token !== session || app.current !== project || $('project-view').hidden) {
+    if (general.shown?.session !== app.token || general.shown?.project !== app.current || $('project-view').hidden) closeGeneral();
     return;
   }
   Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
@@ -1454,7 +1298,7 @@ function closeGeneral(giveFocusBack = false) {
   $('general-view').hidden = true;
   $('general-open').setAttribute('aria-pressed', 'false');
   // Back on « Agent »: the answer is on screen now, its badge and « Nouvelle réponse » go at once (review #556).
-  if (wasOpen && !$('chat').hidden && !$('project-view').hidden && current && chat.repo) refreshChat();
+  if (wasOpen && !$('chat').hidden && !$('project-view').hidden && app.current && chat.repo) refreshChat();
   if (wasOpen && giveFocusBack) {
     let target = general.from?.isConnected ? general.from : $('general-open');
     // On a phone the top button sits inside the closed « Plus » menu: its summary takes the focus instead.
@@ -1494,16 +1338,16 @@ async function saveGeneral(e) {
     // The dev server check applies the change now instead of at its next run (15 minutes at most).
     if (machineChanged) api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
     renderGeneral();
-    if (current) renderRules();
+    if (app.current) renderRules();
     toast(`Réglages généraux enregistrés : ils servent dès le prochain lancement.${machineChanged ? ' Le changement de machine s\'applique dans une minute environ.' : ''}`);
   } finally { savingGeneral = false; }
 }
 
 function renderRules() {
-  const c = current.config;
+  const c = app.current.config;
   // Rebuilt anyway: a dev server status held back while the owner typed shows now.
-  if (machine.held && machine.hash && machine.repo === current.repo.full_name) { machine.status = machine.held; machine.held = null; }
-  const update = (next) => { current.config = next; renderRules(); };
+  if (machine.held && machine.hash && machine.repo === app.current.repo.full_name) { machine.status = machine.held; machine.held = null; }
+  const update = (next) => { app.current.config = next; renderRules(); };
   const form = $('rules');
   const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
     el('label', { for: 'site-url' }, 'Adresse du site'),
@@ -1516,8 +1360,8 @@ function renderRules() {
         update(next);
       } }));
   // Never chosen: the stack sheet decides, and says so in one short line.
-  const mode = effectiveProduction(c, current.delivery);
-  const bySheet = !c.production && current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
+  const mode = effectiveProduction(c, app.current.delivery);
+  const bySheet = !c.production && app.current.delivery?.mode === 'manual' ? [el('p', { id: 'production-sheet', class: 'muted small' }, 'Proposé par la fiche stack.')] : [];
   const production = el('fieldset', {}, el('legend', {}, 'Mise en production'),
     ...[['auto', 'Automatique, dès qu\'une modification est validée'],
       ['approval', 'Sur mon accord, avec le bouton « Mise en production »'],
@@ -1567,7 +1411,7 @@ function renderRules() {
   const extras = extraChecksFieldset(c, update);
   // One « Savoir-faire » block, one row per pack: its switch, its name, how many of its skills are on, and the fold to pick them.
   const packs = el('fieldset', {}, el('legend', {}, 'Savoir-faire'),
-    catalog.packs.map((p) => {
+    app.catalog.packs.map((p) => {
       const pc = c.skills[p.id];
       const on = p.skills.filter((s) => pc.skills[s.id]).length;
       return el('div', { class: 'row pack-row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
@@ -1578,21 +1422,21 @@ function renderRules() {
                 checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
                 el('label', { for: `skill-${s.id}` }, s.id)))))));
     }));
-  const dirty = JSON.stringify(c) !== current.saved;
+  const dirty = JSON.stringify(c) !== app.current.saved;
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
   const open = new Set([...form.querySelectorAll('details[data-pack][open]')].map((d) => d.dataset.pack));
-  const name = current.repo.name;
+  const name = app.current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
   machine.shown = JSON.stringify(line);
   const alert = line.keys ? [runnerAlertBox(line.text, { role: 'status' })]
     : line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
   const summary = advancedSummary({
-    machine: effectiveMachine({ isPrivate: current.repo.private, project: c.machine, general: machine.general }),
+    machine: effectiveMachine({ isPrivate: app.current.repo.private, project: c.machine, general: machine.general }),
     checksOn: CHECKS.filter(([k]) => c.checks[k]).length, checksTotal: CHECKS.length,
-    packsOn: catalog.packs.filter((p) => c.skills[p.id]?.enabled).length,
+    packsOn: app.catalog.packs.filter((p) => c.skills[p.id]?.enabled).length,
   });
   // Kept open across re-renders from the page itself, so a blocked storage never folds it under the finger.
   const wasOpen = form.querySelector('details.advanced')?.open;
@@ -1638,7 +1482,7 @@ function extraChecksFieldset(c, update) {
 
 async function saveRules(e) {
   e.preventDefault();
-  if ((current.config.extraChecks || []).some((x) => !x.label?.trim() || !x.command?.trim())) {
+  if ((app.current.config.extraChecks || []).some((x) => !x.label?.trim() || !x.command?.trim())) {
     toast('Chaque contrôle supplémentaire a besoin d\'un nom et d\'une commande.');
     return;
   }
@@ -1647,11 +1491,11 @@ async function saveRules(e) {
   try { await writeRules(); } finally { savingRules = false; }
 }
 async function writeRules() {
-  const projectDirty = JSON.stringify(current.config) !== current.saved;
-  const machineChanged = current.config.machine !== JSON.parse(current.saved || '{}').machine;
-  const wasMode = effectiveProduction(JSON.parse(current.saved || '{}'), current.delivery);
+  const projectDirty = JSON.stringify(app.current.config) !== app.current.saved;
+  const machineChanged = app.current.config.machine !== JSON.parse(app.current.saved || '{}').machine;
+  const wasMode = effectiveProduction(JSON.parse(app.current.saved || '{}'), app.current.delivery);
   if (projectDirty) await writeProjectRules();
-  const released = projectDirty ? await productionModeChanged(wasMode, effectiveProduction(current.config, current.delivery)) : 0;
+  const released = projectDirty ? await productionModeChanged(wasMode, effectiveProduction(app.current.config, app.current.delivery)) : 0;
   // The dev server check applies the change now instead of at its next run (15 minutes at most).
   if (machineChanged) {
     api(`/repos/${FACTORY_REPO}/actions/workflows/runners.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) }).catch(() => {});
@@ -1660,32 +1504,32 @@ async function writeRules() {
   drawSite();
   drawSub();
   // A new production mode: the line read for the former one hides at once and is read again (issue #397).
-  if (wasMode !== effectiveProduction(current.config, current.delivery)) { drawGap(); refreshGap(true).catch(() => {}); }
+  if (wasMode !== effectiveProduction(app.current.config, app.current.delivery)) { drawGap(); refreshGap(true).catch(() => {}); }
   toast(released ? `Paramètres enregistrés. ${released} modification${released > 1 ? 's' : ''} mise${released > 1 ? 's' : ''} en ligne.` : 'Paramètres enregistrés. Ils s\'appliquent dans une minute environ.');
 }
 async function writeProjectRules() {
-  const fresh = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`);
+  const fresh = await api(`/repos/${app.current.repo.full_name}/contents/factory.config.json`);
   if (!fresh) throw saidError('Les paramètres de ce projet ont disparu de GitHub\u00a0: rechargez la page.');
   // The file changed since it was loaded (the factory, or another device): keep those changes and apply only
   // what was modified here, instead of overwriting them.
-  if (fresh.sha !== current.file.sha) {
-    const theirs = resolveConfig(parseRawConfig(fromBase64(fresh.content)).raw, catalog, defaults).config;
-    current.config = mergeConfig(JSON.parse(current.saved), current.config, theirs);
+  if (fresh.sha !== app.current.file.sha) {
+    const theirs = resolveConfig(parseRawConfig(fromBase64(fresh.content)).raw, app.catalog, app.defaults).config;
+    app.current.config = mergeConfig(JSON.parse(app.current.saved), app.current.config, theirs);
   }
-  const body = JSON.stringify(current.config, null, 2) + '\n';
-  const res = await api(`/repos/${current.repo.full_name}/contents/factory.config.json`, {
+  const body = JSON.stringify(app.current.config, null, 2) + '\n';
+  const res = await api(`/repos/${app.current.repo.full_name}/contents/factory.config.json`, {
     method: 'PUT',
     body: JSON.stringify({ message: 'chore(factory): update rules from the panel', content: toBase64(body), sha: fresh.sha }),
   });
-  const before = JSON.parse(current.saved || '{}').maxParallel;
-  current.file = { ...res.content, content: toBase64(body) };
-  current.saved = JSON.stringify(current.config);
+  const before = JSON.parse(app.current.saved || '{}').maxParallel;
+  app.current.file = { ...res.content, content: toBase64(body) };
+  app.current.saved = JSON.stringify(app.current.config);
   // The next visit opens with these settings, and reads the file again (its push date is not known yet).
   saves++;
-  known.set(current.repo.full_name, { pushed: null, etag: null, file: current.file });
+  known.set(app.current.repo.full_name, { pushed: null, etag: null, file: app.current.file });
   rememberProjects();
   // More places: ask the factory to look at the queue now instead of at its next regular check.
-  if (current.config.maxParallel > (before || 0)) wakeFactory(current.repo);
+  if (app.current.config.maxParallel > (before || 0)) wakeFactory(app.current.repo);
 }
 
 // Asks the factory to look at its free places now rather than at its next regular check (« tick »).
@@ -1704,13 +1548,13 @@ function wakeFactory(repo, { say = false } = {}) {
 async function updateTrigger(repo) {
   const name = repo.full_name;
   if (triggers.done.has(name)) return;
-  const session = token;
+  const session = app.token;
   const upgrade = async (branch) => {
     const file = await api(`/repos/${name}/contents/${TRIGGER_FILE}${branch ? `?ref=${branch}` : ''}`, { cache: 'no-store' });
     const text = file?.content ? fromBase64(file.content) : null;
     const upgraded = upgradeTrigger(text);
     if (!upgraded) return text != null && knownTrigger(text);
-    if (token !== session) return false;
+    if (app.token !== session) return false;
     await api(`/repos/${name}/contents/${TRIGGER_FILE}`, {
       method: 'PUT',
       body: JSON.stringify({ message: 'chore(factory): let every factory label wake the factory (from the panel)', content: toBase64(upgraded), sha: file.sha, ...(branch ? { branch } : {}) }),
@@ -1719,31 +1563,15 @@ async function updateTrigger(repo) {
   };
   try {
     const fresh = await upgrade(null);
-    if (token !== session) return;
+    if (app.token !== session) return;
     if (fresh) triggers.fresh.add(name);
     await upgrade('preprod');
-    if (token === session) triggers.done.add(name);
+    if (app.token === session) triggers.done.add(name);
   } catch (e) {
-    if (token !== session) return;
+    if (app.token !== session) return;
     if (e.status === 403 || e.status === 404) { triggers.done.add(name); toast(TRIGGER_REFUSED); }
     throw e;
   }
-}
-
-// `focus`: also put the cursor in the tab's field (a click on « Agent », not the arrow keys moving along the tabs).
-function selectTab(name, focus = false) {
-  const fromChat = !$('chat').hidden;
-  for (const t of ['board', 'chat', 'rules']) {
-    $(`tab-${t}`).setAttribute('aria-selected', String(name === t));
-    $(t === 'rules' ? 'rules-panel' : t).hidden = name !== t;
-  }
-  // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
-  if (name === 'chat') openChat(); else if (fromChat) scheduleChat();
-  // Issue #460: the « Agent » tab uses exactly the height left under the header.
-  document.body.classList.toggle('chat-wide', name === 'chat');
-  if (name !== 'chat') setChatFull(false);
-  fitChat();
-  if (name === 'chat' && focus) focusChat();
 }
 
 // Opening « Agent » on a computer puts the cursor where there is something to type (issue #489): the read token
@@ -1814,19 +1642,19 @@ const fetchJson = (url) => fetch(url).then((r) => { if (!r.ok) throw new Error(`
 async function start() {
   watchVersion();
   try {
-    if (!catalog) {
+    if (!app.catalog) {
       let server;
-      [catalog, defaults, server] = await Promise.all([fetchJson('catalog.json'), fetchJson('factory.config.json'),
+      [app.catalog, app.defaults, server] = await Promise.all([fetchJson('catalog.json'), fetchJson('factory.config.json'),
         fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
       chat.server = chatServerUrl(server?.url);
     }
-    if (!token) return show('login');
+    if (!app.token) return show('login');
     // No digest on a plain-http address (no crypto.subtle): the panel then works without the memory.
-    accountTag = await tokenTag(token).catch(() => null);
+    accountTag = await tokenTag(app.token).catch(() => null);
     const remembered = readProjectsCache(store.get(PROJECTS_KEY), accountTag);
     known = remembered?.known || new Map();
-    if (remembered?.projects.length && !projects.length) {
-      projects = remembered.projects;
+    if (remembered?.projects.length && !app.projects.length) {
+      app.projects = remembered.projects;
       refreshStable().catch(() => {});
       refreshRuns();
       refreshRunnerAlert().catch(() => {});
@@ -1834,10 +1662,10 @@ async function start() {
       refreshDots();
       return checkProjects();
     }
-    const session = token;
+    const session = app.token;
     const fresh = await loadProjects();
-    if (token !== session) return; // logged out meanwhile: this list belongs to the previous account
-    projects = fresh;
+    if (app.token !== session) return; // logged out meanwhile: this list belongs to the previous account
+    app.projects = fresh;
   } catch (err) {
     // Only a refused token is forgotten. A flaky mobile network or a GitHub hiccup keeps it.
     if (err.status !== 401) {
@@ -1853,7 +1681,7 @@ async function start() {
   refreshStable().catch(() => {});
   refreshRuns();
   refreshRunnerAlert().catch(() => {});
-  if (!projects.length) return show('empty');
+  if (!app.projects.length) return show('empty');
   await openProject(store.get(PROJECT_KEY));
   refreshDots(); // after the board: the open project's dot comes from it
 }
@@ -1863,11 +1691,11 @@ let runsTimer = null;
 async function refreshRuns() {
   clearTimeout(runsTimer);
   runsTimer = setTimeout(refreshRuns, 5 * 60_000);
-  await boardGate;
-  if (!token || !projects.length) return;
+  await boardFirst();
+  if (!app.token || !app.projects.length) return;
   const from = parisMidnight();
   try {
-    const counts = await mapLimit(projects, 2, async (p) => {
+    const counts = await mapLimit(app.projects, 2, async (p) => {
       const events = [];
       for (let page = 1; page <= 5; page++) {
         // A project GitHub no longer shows (404) counts no start, as before; it never stops the whole counter.
@@ -1887,16 +1715,16 @@ async function refreshRuns() {
 // A project that never chose its mode follows the sheet: « Manuelle » (a merge deploys nothing, Pulsar Wheel) means
 // « Externe ». The mode in force shows under the project name when it is external, and is pre-selected in the settings.
 function drawSub() {
-  const manual = effectiveProduction(current.config, current.delivery) === 'external';
-  $('project-sub').textContent = `${current.repo.private ? 'Privé' : 'Public'} · ${current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
+  const manual = effectiveProduction(app.current.config, app.current.delivery) === 'external';
+  $('project-sub').textContent = `${app.current.repo.private ? 'Privé' : 'Public'} · ${app.current.config.maxParallel} en parallèle${manual ? ' · Mise en production externe' : ''}`;
 }
 async function loadDelivery(project) {
   // A failed read keeps the mode known from the last visit; only a missing sheet (404, null) forgets it.
   const file = await api(`/repos/${project.repo.full_name}/contents/${STACK_FILE}`).catch(() => undefined);
-  if (current !== project || file === undefined) return;
+  if (app.current !== project || file === undefined) return;
   const delivery = file?.content ? deliveryOf(fromBase64(file.content)) : null;
-  if (JSON.stringify(delivery) === JSON.stringify(current.delivery)) return;
-  current.delivery = delivery;
+  if (JSON.stringify(delivery) === JSON.stringify(app.current.delivery)) return;
+  app.current.delivery = delivery;
   drawSub();
   drawGap(); // a line read for the former mode is hidden at once
   drawRelease();
@@ -1912,7 +1740,7 @@ const GAP_MS = 60_000;
 // when it was read, `busy` the read going and `again` the forced read waiting for it.
 const gap = { at: new Map(), busy: new Map(), again: new Map(), views: new Map() };
 function refreshGap(force = false) {
-  const project = current;
+  const project = app.current;
   const repo = project.repo.full_name;
   // One read at a time per project: opening a project and its first refresh must not fire the same requests twice.
   // A forced read (its production mode just read) waits for the one going, never lost behind it. A read of another
@@ -1921,7 +1749,7 @@ function refreshGap(force = false) {
   if (busy) {
     if (!force) return busy;
     if (!gap.again.has(repo)) {
-      const next = busy.catch(() => {}).then(() => { if (gap.again.get(repo) === next) gap.again.delete(repo); return current === project ? refreshGap(true) : null; });
+      const next = busy.catch(() => {}).then(() => { if (gap.again.get(repo) === next) gap.again.delete(repo); return app.current === project ? refreshGap(true) : null; });
       gap.again.set(repo, next);
     }
     return gap.again.get(repo);
@@ -1932,9 +1760,9 @@ function refreshGap(force = false) {
 }
 const gapMode = (project) => effectiveProduction(project.config, project.delivery);
 async function readGap(force) {
-  const project = current;
-  await boardGate;
-  if (current !== project) return; // another project opened meanwhile: its own read comes with it
+  const project = app.current;
+  await boardFirst();
+  if (app.current !== project) return; // another project opened meanwhile: its own read comes with it
   const repo = project.repo.full_name;
   if (!force && Date.now() - (gap.at.get(repo) || 0) < GAP_MS) return;
   gap.at.set(repo, Date.now());
@@ -1989,13 +1817,13 @@ async function readGap(force) {
     view = gapView({ mode, hasSite: hasSite || shown, error: true });
   }
   // A line read for another project, or before its stack sheet changed its mode, is never shown (issue #397).
-  if (current !== project || gapMode(project) !== mode) return;
+  if (app.current !== project || gapMode(project) !== mode) return;
   gap.views.set(repo, { mode, view });
   drawGap();
 }
 function drawGap() {
-  const kept = current && gap.views.get(current.repo.full_name);
-  const view = kept && kept.mode === gapMode(current) ? kept.view : null;
+  const kept = app.current && gap.views.get(app.current.repo.full_name);
+  const view = kept && kept.mode === gapMode(app.current) ? kept.view : null;
   const on = Boolean(view && view.kind !== 'none');
   $('prod-gap').hidden = !on;
   $('prod-gap-sep').hidden = !on;
@@ -2005,9 +1833,9 @@ function drawGap() {
 }
 const gapDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 $('prod-gap').addEventListener('click', () => {
-  const view = gap.views.get(current.repo.full_name)?.view;
+  const view = gap.views.get(app.current.repo.full_name)?.view;
   if (!view) return;
-  const base = current.repo.html_url;
+  const base = app.current.repo.html_url;
   // Only the reason of an unknown version, or a one-line empty state: the list speaks for itself.
   const why = view.why || (view.items.length ? '' : view.kind === 'deploying' ? 'Publication en cours.' : 'Tout est en ligne.');
   $('gap-title').textContent = view.items.length ? 'Pas encore en ligne' : view.kind === 'unknown' ? 'Version en ligne inconnue' : view.kind === 'deploying' ? 'Publication en cours' : 'Site en ligne';
@@ -2035,14 +1863,14 @@ const wasSent = (key) => Date.now() - (release.sent.get(key) || 0) < SENT_MS;
 const awaitingOf = (repo, list) => (list || []).filter((i) => (i.labels || []).some((l) => (l.name || l) === AWAITING) && !wasSent(`${repo}#${i.number}`))
   .sort((a, b) => Date.parse(a.pull_request?.merged_at || a.closed_at || 0) - Date.parse(b.pull_request?.merged_at || b.closed_at || 0));
 async function refreshRelease() {
-  const repo = current.repo.full_name;
-  if (current.config.production !== 'approval') { release.pending = []; return drawRelease(); }
+  const repo = app.current.repo.full_name;
+  if (app.current.config.production !== 'approval') { release.pending = []; return drawRelease(); }
   const res = await cachedGet(`/repos/${repo}/issues?state=closed&labels=${encodeURIComponent(AWAITING)}&per_page=100`);
-  if (current.repo.full_name !== repo) return;
+  if (app.current.repo.full_name !== repo) return;
   release.repo = repo;
   release.pending = awaitingOf(repo, res.data);
   release.changelog = release.pending.length ? await versionedChangelog(repo) : null;
-  if (current.repo.full_name !== repo) return;
+  if (app.current.repo.full_name !== repo) return;
   drawRelease();
 }
 async function versionedChangelog(repo) {
@@ -2056,11 +1884,11 @@ async function versionedChangelog(repo) {
 }
 function drawRelease() {
   const btn = $('release');
-  const on = current?.config.production === 'approval';
+  const on = app.current?.config.production === 'approval';
   btn.hidden = !on;
   placeNewFeature();
   if (!on) return;
-  const pending = release.repo === current.repo.full_name ? release.pending : [];
+  const pending = release.repo === app.current.repo.full_name ? release.pending : [];
   // Issue #370: a release is on its way while its request is still open on the board (one at a time).
   const running = (live.issues || []).some((i) => i.labels.includes('factory:production'));
   const b = releaseButton(pending, running);
@@ -2071,7 +1899,7 @@ function drawRelease() {
   btn.title = b.hint;
 }
 async function sendRelease(pending, version) {
-  const repo = current.repo.full_name;
+  const repo = app.current.repo.full_name;
   const list = pending.map((p) => `- ${p.title} (#${p.number})`).join('\n');
   const body = `Demandé depuis le tableau de bord.\n\n${version ? `${versionLine(version)}\n\n` : ''}${list}`;
   await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: version ? `Mise en production : version ${version}` : 'Mise en production', labels: ['factory:production'], body }) });
@@ -2085,7 +1913,7 @@ $('release').addEventListener('click', () => {
   $('release-title').textContent = n === 1 ? 'Mettre en production cette modification\u00a0?' : `Mettre en production ces ${n} modifications\u00a0?`;
   $('release-error').hidden = true;
   $('release-list').replaceChildren(...release.pending.map((p) => el('li', {}, p.title)));
-  const log = release.repo === current.repo.full_name ? release.changelog : null;
+  const log = release.repo === app.current.repo.full_name ? release.changelog : null;
   $('release-version').hidden = !log;
   $('release-version-input').value = '';
   $('release-version-hint').textContent = log?.last ? `Dernière version : ${log.last}` : '';
@@ -2130,10 +1958,10 @@ $('release-confirm').addEventListener('click', async () => {
 // back to « automatique » sends what was waiting at once: otherwise it would stay stuck with no button.
 async function productionModeChanged(was, now) {
   if (was === now) return 0;
-  const repo = current.repo.full_name;
+  const repo = app.current.repo.full_name;
   if (now === 'approval') {
     // Validated changes now wait on preprod, started from main (the relay creates it too if this fails).
-    const main = current.repo.default_branch || 'main';
+    const main = app.current.repo.default_branch || 'main';
     const has = await api(`/repos/${repo}/git/ref/heads/preprod`).catch(() => null);
     if (!has?.object?.sha) {
       const sha = (await api(`/repos/${repo}/git/ref/heads/${encodeURIComponent(main)}`).catch(() => null))?.object?.sha;
@@ -2155,10 +1983,9 @@ async function productionModeChanged(was, now) {
 
 // « Déclarer stable »: projects follow the factory's `stable` branch; this shows the real changes waiting on main
 // (the factory's automatic `chore(factory)` commits excluded).
-const FACTORY_REPO = 'phoibe/factory';
 let stableChanges = [];
 async function refreshStable() {
-  await boardGate;
+  await boardFirst();
   const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
   const view = stableView(cmp);
   stableChanges = view.changes;
@@ -2190,8 +2017,8 @@ $('stable').addEventListener('click', async () => {
 
 $('login-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  token = $('token').value.trim();
-  store.set(TOKEN_KEY, token);
+  app.token = $('token').value.trim();
+  store.set(TOKEN_KEY, app.token);
   $('login-error').textContent = '';
   start();
 });
@@ -2204,7 +2031,7 @@ function loadScript(src) {
 }
 
 async function openPhone() {
-  const link = phoneLink(location.href, token, readToken);
+  const link = phoneLink(location.href, app.token, app.readToken);
   if (!window.qrcode) await loadScript('vendor/qrcode.js');
   const qr = window.qrcode(0, 'M');
   qr.addData(link);
@@ -2268,15 +2095,15 @@ function stackState(text, action = null, focus = false) {
 const followLink = (url) => url && el('a', { href: url, target: '_blank', rel: 'noopener' }, 'Suivre la demande', el('span', { 'aria-hidden': 'true' }, ' ↗'));
 
 function showStack(repo, sheet) {
-  if (current?.repo.full_name !== repo) return;
+  if (app.current?.repo.full_name !== repo) return;
   $('stack-date').textContent = sheet.date;
   $('stack-date').hidden = !sheet.date;
   $('stack-body').replaceChildren(...stackNodes(sheet.parsed));
 }
 
 async function openStack() {
-  if (!current) return;
-  const repo = current.repo.full_name;
+  if (!app.current) return;
+  const repo = app.current.repo.full_name;
   const cached = stackCache.get(repo);
   if (cached) showStack(repo, cached);
   else stackState('Chargement de la fiche…');
@@ -2288,14 +2115,14 @@ async function openStack() {
       api(`/repos/${repo}/commits?path=${STACK_FILE}&per_page=1`).catch(() => null),
     ]);
   } catch (e) {
-    if (current?.repo.full_name !== repo) return;
+    if (app.current?.repo.full_name !== repo) return;
     // A sheet already shown stays: only a fresh copy failed.
     if (cached) { toast("La fiche n'a pas pu être actualisée."); return; }
     const retry = el('button', { type: 'button', onclick: () => openStack().catch(() => {}) }, 'Réessayer');
     stackState("La fiche ne s'est pas chargée.", retry, true);
     return;
   }
-  if (current?.repo.full_name !== repo) return;
+  if (app.current?.repo.full_name !== repo) return;
   if (!file?.content) { stackCache.delete(repo); return showNoStack(repo); }
   const sheet = { parsed: parseStack(fromBase64(file.content)), date: stackDate(commits?.[0]?.commit?.committer?.date) };
   stackCache.set(repo, sheet);
@@ -2306,7 +2133,7 @@ async function openStack() {
 async function showNoStack(repo) {
   const open = ((await api(`/repos/${repo}/issues?labels=factory:stack&state=open&per_page=10`).catch(() => [])) || [])
     .find((i) => !i.pull_request && (i.labels || []).some((l) => (l.name || l) === 'factory:stack'));
-  if (current?.repo.full_name !== repo) return;
+  if (app.current?.repo.full_name !== repo) return;
   if (open) return stackState("L'agent rédige la fiche.", followLink(open.html_url));
   const ask = el('button', { type: 'button', onclick: () => askStack(repo, ask) }, 'Établir la fiche');
   stackState('Pas encore de fiche.', ask, true);
@@ -2318,7 +2145,7 @@ async function askStack(repo, btn) {
   try {
     const card = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(STACK_CARD) });
     toast(frenchSpaces("C'est parti : l'agent rédige la fiche."));
-    if (current?.repo.full_name === repo) {
+    if (app.current?.repo.full_name === repo) {
       stackState("L'agent rédige la fiche.", followLink(card?.html_url));
       $('stack-close').focus();
       renderBoard().catch(() => {});
@@ -2333,12 +2160,12 @@ async function askStack(repo, btn) {
 // Opens a card the relay starts at once (or queues), with no questions and no spec: a general review (factory:audit)
 // or a UI improvement (factory:ui-polish, issue #462).
 async function startRun(buttonId, { question, title, label, body, done, failed }) {
-  if (!current) return;
+  if (!app.current) return;
   if (!confirm(question)) return;
   const btn = $(buttonId);
   btn.disabled = true;
   try {
-    const issue = await api(`/repos/${current.repo.full_name}/issues`, {
+    const issue = await api(`/repos/${app.current.repo.full_name}/issues`, {
       method: 'POST',
       body: JSON.stringify({ title, labels: [label], body }),
     });
@@ -2393,10 +2220,46 @@ function laterMarks(repo) {
 const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null), created: createdMarks(store, null), recording: false };
 const MAX_IMAGES = 4;
 
+// The screens' share of the session reset, of what is shown and of « something unsaved » (issue #560), declared here
+// until each screen moves to its own module.
+onReset(() => {
+  triggers.done.clear(); triggers.fresh.clear(); openReleases.clear(); doneHeight.clear();
+  dots = new Map(); known = new Map(); accountTag = null; boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
+  clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
+  Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
+  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null }); closeGeneral();
+});
+
+onView((e) => {
+  if (e.what === 'screen') {
+    if (e.screen !== 'project-view') closeGeneral();
+    $('general-open').hidden = e.screen !== 'project-view'; // the page lives inside the project screen
+    // The project list shows with a project only (none to choose from on the empty screen).
+    $('projects').hidden = e.screen !== 'project-view';
+    document.body.classList.toggle('has-projects', e.screen === 'project-view');
+    if (e.screen !== 'project-view' && document.body.classList.contains('chat-fullscreen')) setChatFull(false);
+    if (e.screen !== 'project-view' && $('projects-dialog').open) $('projects-dialog').close();
+    placeMenu();
+  }
+  if (e.what === 'tab') {
+    // Away from « Agent », the chat keeps being checked in the background so its badge can light up (issue #283).
+    if (e.tab === 'chat') openChat(); else if (e.was.tab === 'chat') scheduleChat();
+    // Issue #460: the « Agent » tab uses exactly the height left under the header.
+    document.body.classList.toggle('chat-wide', e.tab === 'chat');
+    if (e.tab !== 'chat') setChatFull(false);
+    fitChat();
+    if (e.tab === 'chat' && e.focus) focusChat();
+  }
+});
+
+onUnsaved(() => app.current && JSON.stringify(app.current.config) !== app.current.saved);
+onUnsaved(() => generalDirty());
+onUnsaved(() => Boolean($('chat-input')?.value.trim()) || Boolean(chat.live) || chat.files.length > 0);
+
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name), created: createdMarks(store, current.repo.full_name) });
+  Object.assign(chat, { error: false, repo: app.current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(app.current.repo.full_name), created: createdMarks(store, app.current.repo.full_name) });
   // A request made here whose choice is not recorded yet shows « Créée » with its link (review #556).
   chat.decided = new Map(chat.created.entries());
   $('chat-send').disabled = false;
@@ -2434,7 +2297,7 @@ async function chatGet(path) {
   const hit = chat.etags.get(path);
   const res = await fetch(API + path, {
     cache: 'no-store',
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
+    headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github+json', ...(hit ? { 'if-none-match': hit.etag } : {}) },
   });
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
@@ -2446,7 +2309,7 @@ async function chatGet(path) {
 }
 
 // Instant mode needs the read-only token: without it the « Agent » tab shows only the card that asks for it.
-const needsReadToken = () => Boolean(chat.server) && !readToken;
+const needsReadToken = () => Boolean(chat.server) && !app.readToken;
 function drawReadTokenCard() {
   const needed = needsReadToken();
   $('chat').classList.toggle('needs-token', needed);
@@ -2460,7 +2323,7 @@ function drawReadTokenCard() {
 // Forgets a read token the chat server refused (expired, deleted, or one that can write) and asks for a new one.
 function readTokenRefused(message) {
   store.del(READ_TOKEN_KEY);
-  readToken = null;
+  app.readToken = null;
   drawReadTokenCard();
   showReadTokenError(message);
 }
@@ -2481,19 +2344,19 @@ function showReadTokenError(message) {
 // Checks a pasted read token with GitHub: it is a fine-grained one, belongs to the owner, reads the project, and cannot
 // write (issue #558: nor launch automated tasks, change settings, or add an SSH key to the account).
 async function checkReadToken(value) {
-  if (value === token) return readTokenProblem({ same: true });
+  if (value === app.token) return readTokenProblem({ same: true });
   if (!fineGrained(value)) return readTokenProblem({ classic: true }); // before sending it anywhere
   const call = (path, init = {}) => fetch(API + path, { ...init, cache: 'no-store', headers: { authorization: `Bearer ${value}`, accept: 'application/vnd.github+json', ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers } });
   // A 403's message is read too: a secondary rate limit may say so only there.
   const down = async (r) => githubBusy(r.status, r.headers, r.status === 403 ? (await r.clone().json().catch(() => ({})))?.message : '');
   const user = await call('/user');
   if (await down(user)) throw new Error('github');
-  const owner = current.repo.owner?.login || current.repo.full_name.split('/')[0];
+  const owner = app.current.repo.owner?.login || app.current.repo.full_name.split('/')[0];
   if (user.status === 401) return readTokenProblem({ status: 401, owner });
   if (!user.ok) throw new Error('github');
   if (hasScopes(user.headers)) return readTokenProblem({ classic: true }); // only a classic token has scopes
   const { login } = await user.json();
-  const repo = current.repo.full_name;
+  const repo = app.current.repo.full_name;
   // The commit-status probe needs a commit: the project's last one, read with this token (a read it may do). The other
   // probes do not wait for it. Without one to read (mostly a token that cannot see the project, 404), any 40-hex id
   // does: GitHub refuses the token or the empty body first.
@@ -2512,7 +2375,7 @@ async function checkReadToken(value) {
 $('read-token-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const value = $('read-token').value.trim();
-  if (!value || !current) return;
+  if (!value || !app.current) return;
   const btn = $('read-token-save');
   const field = $('read-token');
   const fail = (message) => { showReadTokenError(message); field.setAttribute('aria-invalid', 'true'); field.focus(); };
@@ -2524,7 +2387,7 @@ $('read-token-form').addEventListener('submit', async (e) => {
   try {
     const problem = await checkReadToken(value);
     if (problem) return fail(problem);
-    readToken = value;
+    app.readToken = value;
     store.set(READ_TOKEN_KEY, value);
     $('read-token').value = '';
     await openChat();
@@ -2539,8 +2402,8 @@ $('read-token-form').addEventListener('submit', async (e) => {
 });
 
 async function openChat() {
-  if (!current) return;
-  if (chat.repo !== current.repo.full_name) return resetChat();
+  if (!app.current) return;
+  if (chat.repo !== app.current.repo.full_name) return resetChat();
   if (drawReadTokenCard()) return;
   pickDefaultConversation(); // the list fetched in the background, if any
   // Wakes the chat server up while the owner types (it sleeps when unused).
@@ -2552,7 +2415,7 @@ async function openChat() {
 // A JSON file of the `factory-chat` branch, or null.
 async function branchJson(path) {
   const res = await fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${CHAT_BRANCH}`, {
-    cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+    cache: 'no-store', headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' },
   });
   if (res.status === 404) return null;
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
@@ -2682,7 +2545,7 @@ async function recordCreated() {
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
 function scheduleChat(delay) {
   clearTimeout(chat.timer);
-  if (!current || !chat.repo) return;
+  if (!app.current || !chat.repo) return;
   const away = chatAway();
   if (delay == null && chat.server) delay = 30_000; // only picks up other devices' messages
   if (delay == null) {
@@ -2695,7 +2558,7 @@ function scheduleChat(delay) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  if (current && chat.repo) refreshChat();
+  if (app.current && chat.repo) refreshChat();
 });
 
 // The chat shows « and » glued to their word (quoteParts): during a copy that touches them, the glued spaces
@@ -2790,7 +2653,7 @@ function chatImage(path) {
   if (path.startsWith('blob:')) { show(path); return link; }
   if (!chat.images.has(path)) {
     chat.images.set(path, fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${ATTACHMENTS_BRANCH}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' },
+      headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' },
     }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status)))).then((b) => URL.createObjectURL(b))
       .catch(() => { chat.images.delete(path); return null; }));
   }
@@ -3223,7 +3086,7 @@ function drawPendingImages() {
 async function sendChat(text, withImages = true) {
   text = text.trim();
   const files = withImages ? [...chat.files] : [];
-  if ((!text && !files.length) || !current) return;
+  if ((!text && !files.length) || !app.current) return;
   if (chat.sending) return;
   if (chat.server) return sendToServer(text, files, withImages);
   const repo = chat.repo;
@@ -3305,10 +3168,10 @@ async function sendToServer(text, files, withImages) {
   try {
     const paths = await uploadImages(repo, files);
     // Never the full token: without the read-only one there is no chat (issue #395).
-    if (!readToken) throw Object.assign(new Error('Créez d\'abord le jeton de lecture avec le bouton ci-dessus.'), { readToken: true });
+    if (!app.readToken) throw Object.assign(new Error('Créez d\'abord le jeton de lecture avec le bouton ci-dessus.'), { readToken: true });
     const res = await fetch(`${chat.server}/chat`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${readToken}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${app.readToken}`, 'content-type': 'application/json' },
       // The open requests of this project, so the agent never proposes a duplicate (issue #506).
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths, openRequests: boardRequests(repo) }),
     });
@@ -3408,7 +3271,7 @@ async function chatFile(repo, path) {
   const meta = await api(`/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store' });
   if (!meta) return { data: null, sha: null };
   if (meta.content) return { data: JSON.parse(fromBase64(meta.content)), sha: meta.sha };
-  const res = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store', headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw' } });
+  const res = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store', headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' } });
   if (!res.ok) throw new Error(`${res.status}`);
   return { data: await res.json(), sha: meta.sha };
 }
@@ -3535,7 +3398,7 @@ $('general-back').addEventListener('click', () => closeGeneral(true));
 $('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 // The focus left « Paramètres » (after the browser moved it): a dev server status held back meanwhile shows now.
 $('rules').addEventListener('focusout', () => setTimeout(() => {
-  if (!machine.held || !machine.hash || !current || machine.repo !== current.repo.full_name || $('rules').contains(document.activeElement)) return;
+  if (!machine.held || !machine.hash || !app.current || machine.repo !== app.current.repo.full_name || $('rules').contains(document.activeElement)) return;
   showMachineStatus(machine.held);
 }));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
