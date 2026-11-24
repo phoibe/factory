@@ -194,6 +194,8 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Copier** : bouton discret (icône + « Copier ») en haut à droite d'un bloc de commande, et « Copier la réponse » sous chaque réponse ; « Copié ✓ » (vert) ou « Copie impossible » pendant 2 s.
 - **Attente** : « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », chiffres en mono.
 - **Image agrandie** : par-dessus la page sur un voile sombre (`rgb(0 0 0 / .8)`, plus opaque que le voile habituel pour isoler l'image) ; Échap, un clic à côté ou le bouton × la referme.
+- **Message non envoyé (issue 580)** : la bulle du propriétaire garde sa place, tout en bas de la conversation (plusieurs : dans l'ordre où ils ont été écrits). Dessous, alignée à droite, une ligne en rouge d'échec à 0,8125rem : « Non envoyé. » ou « L'agent n'a pas pu répondre. » en gras, puis la raison en une phrase. Puis deux petits boutons discrets, « Renvoyer » et « Modifier », 44 px sous le doigt. Pas de fond rouge, pas de bordure colorée ; le rouge est toujours accompagné de ses mots. « Renvoyer » est grisé tant qu'une réponse est en route. La ligne reste tant que le propriétaire n'a rien fait.
+- **Petit message temporaire** : fond encre, texte papier, coins 10 px, centré, à 24 px du bas. Dans l'onglet « Agent », 12 px au-dessus de la zone de saisie (images jointes comprises), jamais par-dessus ce qui est en train d'être écrit.
 
 ## Mises en page
 
@@ -241,7 +243,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Largeur** : la largeur des autres onglets ; les messages dans une colonne de lecture de 860 px au plus, centrée. Plein écran sur demande (voir « Issue 460 additions »).
 - **Libellés et explications** : une conversation vide montre un titre et trois exemples de messages à toucher, centrés ; rien d'autre.
 - **Volets repliables** : les propositions de demande dans une réponse (détail repliable).
-- **Sur téléphone** : une seule colonne : la liste des conversations, puis la conversation ouverte à sa place ; pas de plein écran.
+- **Sur téléphone** : une seule colonne : la liste des conversations, puis la conversation ouverte à sa place ; pas de plein écran. Les petits messages temporaires s'affichent par-dessus la conversation ouverte, juste au-dessus de la zone de saisie.
 - **Écrans concernés** : Agent.
 
 ### Page d'accueil réduite (connexion, aucun projet)
