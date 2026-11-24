@@ -5,7 +5,9 @@
 // the relay and the panel (copied next to it by pages.yml).
 const BOTS = ['github-actions[bot]', 'claude[bot]'];
 const ROLES = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-const NOTE = /<!--\s*factory-[\s\S]*?-->/g;
+// An unterminated one is taken out to the end of the text: GitHub hides it all the same, and a reader that looks only
+// for its start (`<!-- factory-revert-redo #9`) would still find it.
+const NOTE = /<!--\s*factory-[\s\S]*?(?:-->|$)/gi;
 
 export function trustedAuthor(comment, owner) {
   const login = String(comment?.user?.login || '').toLowerCase();
