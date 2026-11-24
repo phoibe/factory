@@ -1,0 +1,16 @@
+{
+  "files": [
+    "exemple-1-trois-changements--desktop--sombre.png",
+    "exemple-1-trois-changements--desktop.png",
+    "exemple-1-trois-changements--mobile--sombre.png",
+    "exemple-1-trois-changements--mobile.png",
+    "exemple-2-tout-change--desktop.png"
+  ],
+  "unchanged": [],
+  "framed": [
+    "exemple-1-trois-changements--desktop--sombre.png",
+    "exemple-1-trois-changements--desktop.png",
+    "exemple-1-trois-changements--mobile--sombre.png",
+    "exemple-1-trois-changements--mobile.png"
+  ]
+}
