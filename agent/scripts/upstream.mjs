@@ -102,6 +102,34 @@ export function upstreamVerdict(run, { text, record }) {
   return { ok: false, why: first };
 }
 
+// The sub-agent handed an answer back: its last answer has text, or it called SubagentHandback with a message (how a
+// sub-agent reports in the cloud sessions).
+export function returned(lines) {
+  const said = (lines || []).filter((l) => l?.type === 'assistant' && Array.isArray(l.message?.content));
+  const last = said.at(-1);
+  if (last && last.message.content.some((b) => b?.type === 'text' && String(b.text || '').trim())) return true;
+  return toolUses(lines).some((b) => b.name === 'SubagentHandback' && String(b.input?.message || '').trim());
+}
+
+// A bug has no published text: its analysis is proved when the latest sub-agent announced [role:plan:amont] (or
+// [role:review:amont]) launched before the last red test ran on its role's model and handed its analysis back
+// before that test, as its record shows. The journal entry to append, or null.
+export function bugProof(run, record) {
+  const red = (run?.tests || []).filter((x) => !x.ok).at(-1);
+  const before = (t) => !red || Date.parse(t) < Date.parse(red.t);
+  const candidates = (run?.agents || []).filter((a) => a?.up === true && ['plan', 'review'].includes(a.role) && a.id && before(a.t)).reverse();
+  for (const a of candidates) {
+    let lines = null;
+    try { lines = record(a); } catch { /* unreadable: no record */ }
+    const model = run.models?.[a.role];
+    const end = (lines || []).map((l) => l?.timestamp).filter(Boolean).at(-1);
+    if (lines && ranOn(lines, model) && returned(lines) && (!red || (end && before(end)))) {
+      return { kind: 'upstream', doc: 'bug', status: 'proved', by: [{ model: family(model), role: a.role }] };
+    }
+  }
+  return null;
+}
+
 export function upstreamMarker(run, verdict) {
   if (!run || !verdict?.ok) return null;
   return `<!-- factory-upstream stage=${run.stage} model=${verdict.model} role=${verdict.role} text=${verdict.hash} -->`;

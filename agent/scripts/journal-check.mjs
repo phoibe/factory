@@ -3,10 +3,10 @@
 // do them now instead of the owner seeing an alert. Usage: node .factory/scripts/journal-check.mjs
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
-import { latestRun, upstreamEntry } from './upstream.mjs';
+import { bugProof, latestRun, subagentRecord, upstreamEntry } from './upstream.mjs';
 import { defaultGh, repoFromRemote } from './specs.mjs';
 import { importTranscript } from './transcript.mjs';
 
@@ -114,6 +114,21 @@ export function upstreamUpdate(files, readFile, { repo = null, comments, since =
   return same ? null : { file: best.file, entry };
 }
 
+// Issue #559: for a bugfix, the proof that a thinking sub-agent analysed the bug, read from its own record
+// (`record(session, agent)`; the session is the journal's file name), as the entry to append to the journal of the
+// branch's latest run ({ file, entry }), or null. It only ever adds a « proved » entry: a later run, on a session
+// without the record, never removes nor replaces one.
+export function bugUpdate(files, readFile, { record } = {}) {
+  const best = latestRun(files, readFile);
+  if (!best) return null;
+  const run = parseJournal([best.text]).at(-1);
+  if (!run || run.stage !== 'bugfix' || !run.models) return null;
+  if (run.upstream?.doc === 'bug' && run.upstream.status === 'proved') return null;
+  const session = basename(best.file, '.jsonl');
+  const entry = bugProof(run, (a) => record(session, a));
+  return entry ? { file: best.file, entry } : null;
+}
+
 // Issue #550: since when the proof is asked for: the date of the latest commit that brought the upstream instruction
 // into .factory/AGENT.md (after a rollback of the factory and a new delivery, the new delivery). Null when unknown or
 // when the instruction is not there now: every spec then counts as « old ». In a shallow clone the parent of a commit
@@ -160,11 +175,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // A root commit has no parent: git's « invalid object name » there is expected, not for the owner's log.
     const since = upstreamSince((args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
     const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
-    if (up) {
-      appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');
+    const bug = bugUpdate(files, read, { record: (s, a) => subagentRecord(s, a.id) });
+    for (const u of [up, bug].filter(Boolean)) {
+      appendFileSync(join(root, u.file), JSON.stringify({ t: new Date().toISOString(), ...u.entry }) + '\n');
       console.log('Journal : preuve relevée : committe `.factory/journal/`.');
-      files = branchFiles(git);
     }
+    if (up || bug) files = branchFiles(git);
     if (!files.some((f) => JOURNAL.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
     else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {

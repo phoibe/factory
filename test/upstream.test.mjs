@@ -56,7 +56,7 @@ test('upstreamCheck on a bugfix', () => {
   assert.deepEqual(res.lines, []);
   assert.equal(res.missing.length, 1);
   assert.equal(res.missing[0].alert, BUG_ALERT);
-  assert.equal(res.missing[0].how, "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse");
+  assert.equal(res.missing[0].how, "analyse du bug : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il lit le relevé du sous-agent d'analyse) ; s'il la demande encore, fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec la description `[role:plan:amont]` et `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse");
 });
 
 test('upstreamCheck on a build or a foundation', () => {
@@ -475,4 +475,90 @@ test('upstream.mjs, when no run is found, does not advise publishing without the
   assert.equal(res.status, 1);
   assert.match(res.stderr, /si tu es à une construction .*ne republie rien et continue/);
   assert.match(res.stderr, /sinon.*publie sans la ligne/);
+});
+
+// Issue #559, bug analysis: proved by the analysis sub-agent's own record, written to the bugfix journal.
+const { returned, bugProof } = await import('../agent/scripts/upstream.mjs');
+const { bugUpdate } = await import('../agent/scripts/journal-check.mjs');
+const NEW_BUG_HOW = "analyse du bug : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il lit le relevé du sous-agent d'analyse) ; s'il la demande encore, fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec la description `[role:plan:amont]` et `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse";
+const recordsOf = (records) => (a) => records[a.id] ?? null;
+
+test('returned: the sub-agent handed an answer back', () => {
+  assert.equal(returned(rec()), true);
+  assert.equal(returned(rec({ final: '' })), false);
+  assert.equal(returned(rec({ final: null })), false, 'a last line that is a Write');
+  const handback = (message) => [...rec({ final: null }), { type: 'assistant', timestamp: t(), message: { model: 'fable', content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message } }] } }];
+  assert.equal(returned(handback('Analyse : la cause est…')), true);
+  assert.equal(returned(handback('  ')), false);
+});
+
+test('bug case « autre rôle, même modèle »: no proof, the alert and the new way out', () => {
+  const r = rec();
+  const run = runOf(runE('bugfix'), agent('fable', { role: 'code', id: 'a' }), red(), green());
+  assert.equal(bugProof(run, recordsOf({ a: r })), null);
+  const res = upstreamCheck([run]);
+  assert.deepEqual(res.lines, []);
+  assert.deepEqual(res.missing, [{ alert: BUG_ALERT, how: NEW_BUG_HOW }]);
+});
+
+test('bug case « le sous-agent d\'analyse »: proved before the fix began', () => {
+  const r = rec();
+  const entries = [runE('bugfix'), agent('fable', { role: 'plan', up: true, id: 'a' }), red(), green()];
+  assert.deepEqual(bugProof(runOf(...entries), recordsOf({ a: r })), { kind: 'upstream', doc: 'bug', status: 'proved', by: [{ model: 'fable', role: 'plan' }] });
+  assert.deepEqual(upstreamCheck([runOf(...entries, up('proved', [{ model: 'fable', role: 'plan' }], 'bug'))]),
+    { lines: ['**Analyse du bug** : faite par Fable (rôle « Plans et organisation »)'], missing: [] });
+});
+
+test('bug case « relais »: the review sub-agent that handed the analysis back is named', () => {
+  const a = rec({ final: '' });
+  const b = rec();
+  const run = runOf(runE('bugfix'), agent('fable', { role: 'plan', up: true, id: 'a' }), agent('fable', { role: 'review', up: true, id: 'b' }), red(), green());
+  const entry = bugProof(run, recordsOf({ a, b }));
+  assert.deepEqual(entry.by, [{ model: 'fable', role: 'review' }]);
+  assert.deepEqual(upstreamCheck([runOf(runE('bugfix'), agent('fable', { role: 'review', up: true, id: 'b' }), red(), green(), up('proved', entry.by, 'bug'))]).lines,
+    ['**Analyse du bug** : faite par Fable (rôle « Revue »)']);
+});
+
+test('bugProof refuses a missing record, another model, an analysis after the red test, the final reviewer', () => {
+  const planUpA = () => agent('fable', { role: 'plan', up: true, id: 'a' });
+  assert.equal(bugProof(runOf(runE('bugfix'), planUpA(), red(), green()), recordsOf({})), null);
+  const opus = rec({ model: 'claude-opus-5-5' });
+  assert.equal(bugProof(runOf(runE('bugfix'), planUpA(), red(), green()), recordsOf({ a: opus })), null);
+  const late = runOf(runE('bugfix'), planUpA(), red(), green());
+  assert.equal(bugProof(late, recordsOf({ a: rec() })), null, 'record ends after the red test');
+  const r = rec();
+  const reviewer = runOf(runE('bugfix'), red(), green(), agent('fable', { role: 'review', up: true, id: 'a' }));
+  assert.equal(bugProof(reviewer, recordsOf({ a: r })), null, 'launched after the last red test');
+});
+
+const bugJournal = (...entries) => ({ '.factory/journal/s.jsonl': j(...entries), 'app/x.ts': 'x' });
+const bugUp = (journal, records) => bugUpdate(Object.keys(journal), (f) => journal[f] ?? null, { record: (session, a) => (session === 's' ? records[a.id] ?? null : null) });
+
+test('bugUpdate appends the proved analysis once, never anything else', () => {
+  const r = rec();
+  const entries = [runE('bugfix'), agent('fable', { role: 'plan', up: true, id: 'a' }), red(), green()];
+  const res = bugUp(bugJournal(...entries), { a: r });
+  assert.equal(res.file, '.factory/journal/s.jsonl');
+  assert.deepEqual(res.entry, { kind: 'upstream', doc: 'bug', status: 'proved', by: [{ model: 'fable', role: 'plan' }] });
+  assert.equal(bugUp(bugJournal(...entries, up('proved', res.entry.by, 'bug')), { a: r }), null, 'already proved');
+  assert.equal(bugUp(bugJournal(...entries), {}), null, 'no record: nothing written');
+  assert.equal(bugUp(bugJournal(...entries, runE('fix-checks')), { a: r }), null, 'the last run is not a bugfix');
+  const two = { '.factory/journal/s.jsonl': j(...entries, up('proved', res.entry.by, 'bug')), '.factory/journal/z.jsonl': j(runE('fix-checks')) };
+  assert.equal(bugUp(two, {}), null, 'a later run never replaces the proof');
+});
+
+test('a bugfix journaled since #559 is proved only by its entry', () => {
+  const run = runOf(runE('bugfix'), agent('fable', { role: null }), red(), green());
+  const res = upstreamCheck([run]);
+  assert.deepEqual(res.lines, []);
+  assert.equal(res.missing[0].alert, BUG_ALERT);
+});
+
+test('journal-check lists the bug analysis on a bugfix until its entry is there', () => {
+  const base = [runE('bugfix'), agent('fable', { role: 'plan', up: true, id: 'a' }), ...['systematic-debugging', 'test-driven-development', 'requesting-code-review'].map((name) => ({ t: t(), kind: 'skill', name })), red(), green()];
+  const files = ['app/page.tsx', '.factory/journal/s.jsonl'];
+  const without = j(...base);
+  assert.match(report(files, () => without, stages, { stage: 'bugfix', current: without }), /analyse du bug/);
+  const withEntry = j(...base, up('proved', [{ model: 'fable', role: 'plan' }], 'bug'));
+  assert.doesNotMatch(report(files, () => withEntry, stages, { stage: 'bugfix', current: withEntry }), /analyse du bug/);
 });

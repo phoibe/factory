@@ -193,6 +193,16 @@ export const bugAnalysed = (run) => Boolean(analyst(run));
 const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
 // The journal is a committed file: a hand-edited `by` must not break the comment.
 const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
+// Issue #559: a bugfix journaled since then (its agents carry the `role` key) is proved only by the entry
+// journal-check wrote from the analysis sub-agent's record; an older one keeps the rule by model.
+const bugMaker = (run) => {
+  if ((run.agents || []).some((a) => Object.hasOwn(a, 'role'))) {
+    const e = run.upstream;
+    return e?.doc === 'bug' && e.status === 'proved' ? makers(e.by)[0] || null : null;
+  }
+  const found = analyst(run);
+  return found ? { model: found.a.model, role: found.role } : null;
+};
 const UNCHECKED = "l'outil n'a pas pu vérifier quel modèle les a faites";
 
 export function upstreamCheck(runs) {
@@ -200,11 +210,11 @@ export function upstreamCheck(runs) {
   const missing = [];
   const bugs = runs.filter((r) => r.stage === 'bugfix' && r.models);
   if (bugs.length) {
-    const found = bugs.map(analyst).find(Boolean);
-    if (found) lines.push(`**Analyse du bug** : faite par ${madeBy({ model: found.a.model, role: found.role })}`);
+    const found = bugs.map(bugMaker).find(Boolean);
+    if (found) lines.push(`**Analyse du bug** : faite par ${madeBy(found)}`);
     else missing.push({
       alert: "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.",
-      how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
+      how: "analyse du bug : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il lit le relevé du sous-agent d'analyse) ; s'il la demande encore, fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec la description `[role:plan:amont]` et `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
     });
   }
   const docs = runs.filter((r) => ['build', 'foundation'].includes(r.stage) && r.models && r.issue != null);
