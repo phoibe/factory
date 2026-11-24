@@ -1282,11 +1282,22 @@ const machine = { settings: null, sha: null, general: 'dev-server', savedGeneral
 
 // One read of the runner files, past the browser cache (review #556): see machine.mjs.
 const runnersFile = (path) => readRunnersFile(api, path);
+// Both files for the settings line and the banner: a read already on its way is shared, never sent twice.
+let runnersReading = null;
+function runnersFiles() {
+  if (runnersReading?.session === token) return runnersReading.files;
+  const read = { session: token, files: Promise.all([runnersFile('settings.json'), runnersFile('status.json')]) };
+  runnersReading = read;
+  read.files.finally(() => { if (runnersReading === read) runnersReading = null; });
+  return read.files;
+}
 
 async function loadMachine(project) {
   // Never the previous project's state while this one loads (or if it cannot be read).
   Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
-  const [settings, status, hash] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json'), repoKey(String(project.repo.id))]);
+  await boardGate; // the board's cards first (review #556)
+  if (current !== project) return;
+  const [[settings, status], hash] = await Promise.all([runnersFiles(), repoKey(String(project.repo.id))]);
   if (current !== project) return;
   const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
   Object.assign(machine, { settings: settings.json, sha: settings.sha, general, savedGeneral: general, status: status.json, hash, repo: project.repo.full_name });
@@ -1314,7 +1325,9 @@ async function refreshRunnerAlert() {
   runnerTimer = setTimeout(() => refreshRunnerAlert().catch(() => {}), 15 * 60_000);
   if (!token || !projects.length) return;
   const session = token, round = ++runnerRound;
-  const [settings, status] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json')]);
+  await boardGate; // the board's cards first (review #556)
+  if (token !== session || round !== runnerRound) return;
+  const [settings, status] = await runnersFiles();
   const list = await Promise.all(projects.map(async (p) => {
     let own = 'default';
     try { own = JSON.parse(fromBase64(p.file?.content || '')).machine || 'default'; } catch { /* unreadable rules: the general setting */ }
