@@ -1,3 +1,4 @@
+import { resolveModels } from '../scripts/lib/models.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay, eventFromPayload } from '../scripts/relay.mjs';
@@ -77,7 +78,7 @@ test('an owner answer fires the agent with its payload and locks the card', asyn
   const { action } = await relay.handle(owner(5, '1 oui', [L.feature, L.grilling]));
   assert.equal(action.stage, 'grilling');
   assert.ok(gh.calls.some((c) => c[0] === 'add' && c[1] === 5 && c[2] === L.running));
-  assert.deepEqual(payloadOf(sent[0].body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory' });
+  assert.deepEqual(payloadOf(sent[0].body), { repo: 'phoibe/app', issue: 5, pr: null, stage: 'grilling', factory: 'phoibe/factory', models: resolveModels(null) });
 });
 
 test('a message written while the agent runs is deferred with a reaction', async () => {
