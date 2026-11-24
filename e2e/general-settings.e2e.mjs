@@ -149,6 +149,20 @@ test('un réglage jamais créé (404) montre les valeurs par défaut sans erreur
   });
 });
 
+// Review #556, round 2, finding 6: pressed, the button changes colour only; the top bar never moves.
+test('le bouton Réglages généraux enfoncé garde sa largeur', async () => {
+  await withPanel({ viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    const width = () => page.locator('#general-open').evaluate((b) => b.getBoundingClientRect().width);
+    const before = await width();
+    await page.locator('#general-open').click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.locator('#general-open').getAttribute('aria-pressed'), 'true');
+    assert.equal(await width(), before);
+  });
+});
+
 test('le focus va sur le titre à l\'ouverture et revient au bouton du haut à la fermeture', async () => {
   await withPanel({}, async ({ page, url }) => {
     await openPage(page, url);
@@ -229,18 +243,54 @@ test('choisir un autre projet dans la liste ferme la page et montre son Suivi', 
 
 // Review #556, finding 5: the read can take seconds on a phone; nothing showed it, and it applied after a logout.
 const slowSettings = { slowReads: [[/\/repos\/phoibe\/factory\/contents\/settings\.json/, 2500]], viewport: { width: 1280, height: 800 } };
-test('le bouton Réglages généraux montre tout de suite qu\'il charge', async () => {
+// Round 2, finding 3: the page opens at once with « Chargement… » inside it; the top button keeps its label, its
+// width and the focus moves to the page's title (on a phone the button is in « Plus », which closes on the tap).
+const opensAtOnce = async (page, open) => {
+  const button = page.locator('#general-open');
+  const width = await button.evaluate((b) => b.getBoundingClientRect().width);
+  await open();
+  const heading = page.getByRole('heading', { name: 'Réglages généraux', level: 1 });
+  await heading.waitFor({ timeout: 1000 });
+  const form = page.locator('#general');
+  assert.equal(await form.getAttribute('aria-busy'), 'true');
+  assert.equal((await form.innerText()).trim(), 'Chargement…');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'general-title');
+  assert.equal(await button.textContent(), 'Réglages généraux');
+  assert.equal(await button.isDisabled(), false);
+  // On a phone « Plus » closed on the tap: the button is out of sight there.
+  if (await button.isVisible()) assert.equal(await button.evaluate((b) => b.getBoundingClientRect().width), width);
+  await page.getByRole('combobox', { name: 'Revue' }).waitFor({ timeout: 5000 });
+  assert.equal(await form.getAttribute('aria-busy'), null);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'general-title');
+};
+test('la page Réglages généraux s\'ouvre tout de suite et montre qu\'elle charge', async () => {
   await withPanel(slowSettings, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
-    const button = page.locator('#general-open');
-    await button.click();
-    assert.equal(await button.getAttribute('aria-busy'), 'true');
-    assert.equal(await button.isDisabled(), true);
-    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
-    assert.equal(await button.getAttribute('aria-busy'), null);
-    assert.equal(await button.isDisabled(), false);
-    assert.equal(await button.textContent(), 'Réglages généraux');
+    await opensAtOnce(page, () => page.locator('#general-open').click());
+  });
+});
+
+test('sur téléphone, la page Réglages généraux s\'ouvre tout de suite depuis « Plus » et montre qu\'elle charge', async () => {
+  await withPanel({ ...slowSettings, viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.getByText('Plus', { exact: true }).click();
+    await opensAtOnce(page, () => page.getByRole('button', { name: 'Réglages généraux' }).click());
+  });
+});
+
+test('choisir un autre projet pendant la lecture ferme la page, et la réponse tardive ne la rouvre pas', async () => {
+  await withPanel({ ...slowSettings, repos: ['o/r', 'o/autre'] }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.locator('#general-open').click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor({ timeout: 1000 });
+    await page.locator('#projects .project-item', { hasText: 'autre' }).click();
+    await page.getByRole('heading', { level: 1, name: 'autre' }).waitFor();
+    await page.waitForTimeout(3000); // the late answer arrives
+    assert.equal(await page.locator('#general-view').isVisible(), false);
+    assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true);
   });
 });
 

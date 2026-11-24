@@ -115,7 +115,7 @@ function resetSession({ forget = false } = {}) {
   token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
-  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null }); closeGeneral();
+  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null }); closeGeneral();
 }
 
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
@@ -1401,42 +1401,48 @@ async function writeGeneral({ machine: choice, models }) {
 
 // ---- « Réglages généraux » (issue #544): a page of its own, for every project ----------------------------------------
 // `saved` is what the factory's branch holds, as text, to know when something changed.
-const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null };
+// `read`: the read on its way, with the session and the project it was started for.
+const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null };
 const generalValue = () => JSON.stringify({ machine: general.machine, models: general.models });
 const generalDirty = () => !general.unreadable && general.saved !== '' && generalValue() !== general.saved;
 const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 'dev-server', models: Object.fromEntries(MODEL_ROLES.map((r) => [r.id, roleModel(raw, r.id)])) });
 
-// `from` is the element to give the focus back to on closing (the top button, or the Paramètres link).
+// `from` is the element to give the focus back to on closing (the top button, or the Paramètres link). The page opens
+// at once, with « Chargement… » inside it while the settings are read (review #556): on a phone the top button lives in
+// « Plus », which closes on the tap.
 async function openGeneral(from = $('general-open')) {
   const open = !$('general-view').hidden;
   if (!open) general.from = from;
+  const session = token, project = current;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
-  if (!generalDirty() || general.unreadable) {
-    const button = $('general-open');
-    if (button.getAttribute('aria-busy')) return; // already reading
-    const session = token, project = current;
-    button.setAttribute('aria-busy', 'true');
-    button.disabled = true;
-    button.textContent = 'Chargement…';
-    let settings;
-    try { settings = await runnersFile('settings.json'); } finally {
-      button.removeAttribute('aria-busy');
-      button.disabled = false;
-      button.textContent = 'Réglages généraux';
-    }
-    // Logged out, or another screen or project meanwhile: the late answer is dropped (review #556).
-    if (token !== session || current !== project || $('project-view').hidden) return;
-    Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
-    general.saved = generalValue();
-  }
+  const clean = !generalDirty() || general.unreadable;
+  const read = clean && general.read?.session === session && general.read.project === project ? general.read : null;
+  const mine = clean && !read ? { session, project } : null;
+  general.shown = { session, project };
   // The full screen removes the page's side margins: the general page never opens in it (review #556).
   if (document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('project-view').classList.add('on-general');
   $('general-view').hidden = false;
   $('general-open').setAttribute('aria-pressed', 'true');
-  renderGeneral();
+  if (read || mine) {
+    $('general').setAttribute('aria-busy', 'true');
+    $('general').replaceChildren(el('p', { class: 'muted' }, 'Chargement…'));
+  } else renderGeneral();
   $('general-title').focus();
   window.scrollTo(0, 0);
+  if (!mine) return; // nothing to read, or a read already on its way fills the page
+  general.read = mine;
+  let settings;
+  try { settings = await runnersFile('settings.json'); } finally { if (general.read === mine) general.read = null; }
+  // Logged out, or another screen or project meanwhile: the late answer is dropped, and a page still shown for that
+  // session or project is closed (review #556).
+  if (token !== session || current !== project || $('project-view').hidden) {
+    if (general.shown?.session !== token || general.shown?.project !== current || $('project-view').hidden) closeGeneral();
+    return;
+  }
+  Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
+  general.saved = generalValue();
+  if (!$('general-view').hidden) renderGeneral();
 }
 function closeGeneral(giveFocusBack = false) {
   const wasOpen = !$('general-view').hidden;
@@ -1453,6 +1459,7 @@ function closeGeneral(giveFocusBack = false) {
 }
 
 function renderGeneral() {
+  $('general').removeAttribute('aria-busy');
   const modelRows = MODEL_ROLES.map((r) => el('div', { class: 'row model-row' }, el('div', {},
     el('label', { for: `model-${r.id}` }, r.name),
     el('p', { id: `model-${r.id}-help` }, r.help),
