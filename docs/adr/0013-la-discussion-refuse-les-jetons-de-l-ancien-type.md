@@ -1,0 +1,5 @@
+# La discussion refuse tout jeton de l'ancien type, et ne vérifie jamais un droit en écrivant
+
+Décidé par le propriétaire (#558), à la suite de la décision 0007 : le jeton de lecture de la discussion doit ne rien pouvoir changer, ni sur un projet (fichiers, demandes, tâches automatiques, réglages, secrets et variables, adresse extérieure branchée sur le projet, mise en ligne, coche verte) ni sur le compte (ajout d'une clé de connexion). GitHub ne donne pas la liste des droits d'un jeton : on ne peut que les essayer un par un. La discussion ne fait donc que des essais dont on est certain qu'ils n'écrivent rien, et un droit qui ne se verrait qu'en écrivant pour de vrai n'est pas vérifié, plutôt que d'écrire puis d'effacer.
+
+Pour la même raison, tout jeton de l'ancien type (« classic ») est refusé, même s'il semble inoffensif : avec ce type, lire un projet privé donne forcément le droit de le modifier, et certains droits (comme supprimer un projet) ne se repèrent par aucun essai sans danger. On a préféré cette règle simple à un tri au cas par cas ; elle ne gêne pas le jeton créé avec le bouton de l'onglet « Agent », qui est toujours du nouveau type.

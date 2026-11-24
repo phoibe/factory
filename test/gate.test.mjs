@@ -106,7 +106,7 @@ test('a build whose spec has no upstream proof is refused', () => {
     { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true }, { t: '5', kind: 'upstream', doc: 'spec', status: 'unproved', by: [] });
   const res = decide(bash('gh pr create --fill'), env(text));
   assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
-  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /questions et fiche : la fiche publiée ne porte pas la ligne de preuve/);
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /questions et fiche : la fiche publiée n'a pas de preuve valable/);
 });
 
 // Review #556 (D1): the upstream line the agent may not be able to fix is refused once per run, so it never uses up

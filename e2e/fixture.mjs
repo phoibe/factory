@@ -23,9 +23,13 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // proposing `issues` ([{kind, title, body}]); `refuse` makes it answer that HTTP status instead. It never writes: the
 // panel saves the conversation on the `factory-chat` branch and creates the issues (issue #395). `chatCalls` lists the
 // token each message was sent with. `readToken`: the chat's read-only token already stored (default: with a chat server).
-// GitHub's `/user` knows the tokens « test » (the panel's, can write), « lecture » (read-only), « ecriture » (can write)
-// and « autre » (another account). `scopes`: token → the x-oauth-scopes header its `/user` answers (a classic token;
-// without it, none, as for a fine-grained token).
+// GitHub's `/user` knows the tokens « test » (the panel's, can write), « github_pat_lecture » (read-only),
+// « github_pat_ecriture » (can write), « github_pat_actions » (can only launch automated tasks), « github_pat_scopes »
+// (a classic token in disguise: GitHub gives it scopes) and « github_pat_autre » (another account). `probes` lists every
+// write probe (method, path, token) GitHub received. `chatServer.code`: the error code the chat server adds to `refuse`.
+// `tokenCheck`: how GitHub answers the read token's check: `head` the status of its `commits/HEAD` read (404: it
+// cannot see it; 'limited': a rate-limited 403), `secondaryLimit` its webhook probe a plain 403 saying « secondary rate limit ».
+// `scopes`: token → the x-oauth-scopes header its `/user` answers (a classic token in disguise, whatever its name).
 // `slowRepos`: full name → ms GitHub takes to answer any read of that project (a slow project to switch to).
 // `framedRepos`: the projects that have a PRODUCT.md (already framed).
 // `slowReads`: [[pattern, ms]], how long GitHub takes to answer a read whose URL matches the pattern.
@@ -39,7 +43,7 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, scopes = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -50,10 +54,11 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
   const browser = await launchBrowser(server);
   const writes = [];
   const reads = [];
+  const probes = [];
   try {
     const context = await browser.newContext();
     if (token) await context.addInitScript(() => localStorage.setItem('factory.token', 'test'));
-    if (token && readToken) await context.addInitScript(() => { if (!sessionStorage.getItem('fixture.read')) { sessionStorage.setItem('fixture.read', '1'); localStorage.setItem('factory.chatToken', 'lecture'); } });
+    if (token && readToken) await context.addInitScript(() => { if (!sessionStorage.getItem('fixture.read')) { sessionStorage.setItem('fixture.read', '1'); localStorage.setItem('factory.chatToken', 'github_pat_lecture'); } });
     await context.route('https://github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'github' }));
     const page = await context.newPage();
     if (viewport) await page.setViewportSize(viewport);
@@ -68,7 +73,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
         if (req.method() === 'OPTIONS' || !req.url().endsWith('/chat')) return route.fulfill({ status: 204, headers: cors });
         const { conversation, message, openRequests } = req.postDataJSON();
         chatCalls.push({ token: req.headers().authorization, message, openRequests });
-        if (chatServer.refuse) return route.fulfill({ status: chatServer.refuse, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Jeton refusé par GitHub.' }) });
+        if (chatServer.refuse) return route.fulfill({ status: chatServer.refuse, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Jeton refusé par GitHub.', ...(chatServer.code ? { code: chatServer.code } : {}) }) });
         if (chatServer.delay) await new Promise((r) => setTimeout(r, chatServer.delay));
         const id = conversation || `c${Object.keys(chatBranch.chats).length + chatCalls.length}`;
         const title = chatBranch.chats[id]?.title || message.slice(0, 40);
@@ -95,13 +100,27 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (req.method() === 'GET') reads.push(path);
       const auth = req.headers().authorization;
       if (path === '/user') {
-        const login = { 'Bearer test': 'o', 'Bearer lecture': 'o', 'Bearer ecriture': 'o', 'Bearer autre': 'x' }[auth];
+        const login = { 'Bearer test': 'o', 'Bearer github_pat_lecture': 'o', 'Bearer github_pat_ecriture': 'o', 'Bearer github_pat_actions': 'o', 'Bearer github_pat_scopes': 'o', 'Bearer github_pat_autre': 'x' }[auth];
         const scope = scopes[String(auth).replace(/^Bearer /, '')];
         if (login && scope !== undefined) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': scope, 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
+        if (auth === 'Bearer github_pat_scopes') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': 'repo', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
+        // As the real GitHub: a fine-grained token gets an empty X-OAuth-Scopes.
+        if (auth === 'Bearer github_pat_lecture') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': '', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
         return login ? json({ login }) : json({ message: 'Bad credentials' }, 401);
       }
+      // The last commit of the project, as GitHub gives it with the `sha` media type (the commit-status probe uses it).
+      if (req.method() === 'GET' && path === '/repos/o/r/commits/HEAD' && req.headers().accept === 'application/vnd.github.sha') {
+        if (tokenCheck.head === 'limited') return route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-ratelimit-remaining': '0', 'access-control-expose-headers': 'X-RateLimit-Remaining' }, body: JSON.stringify({ message: 'API rate limit exceeded' }) });
+        if (tokenCheck.head) return json({ message: 'Not Found' }, tokenCheck.head);
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'c0ffee'.repeat(6) + 'c0ff' });
+      }
       // Write probes (an empty body): GitHub refuses a read-only token before reading the body, a writer gets a 422.
-      if (req.method() !== 'GET' && req.postData() === '{}') return json({ message: 'probe' }, ['Bearer test', 'Bearer ecriture'].includes(auth) ? 422 : 403);
+      if (req.method() !== 'GET' && req.postData() === '{}') {
+        probes.push({ method: req.method(), path, token: auth });
+        if (tokenCheck.secondaryLimit && path === '/repos/o/r/hooks') return json({ message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' }, 403);
+        const writer = ['Bearer test', 'Bearer github_pat_ecriture'].includes(auth) || (auth === 'Bearer github_pat_actions' && path === '/repos/o/r/actions/oidc/customization/sub');
+        return json({ message: 'probe' }, writer ? 422 : 403);
+      }
       // The panel reads with the read token only to check it can see the project.
       if (chatServer && auth !== 'Bearer test') {
         if (req.method() === 'GET' && path === '/repos/o/r/contents/factory.config.json') return json({ content: Buffer.from(JSON.stringify(config)).toString('base64'), encoding: 'base64', sha: 's' });
@@ -206,7 +225,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) return json({ message: 'Not Found' }, 404);
       return json([]);
     });
-    await journey({ page, writes, reads, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
+    await journey({ page, writes, reads, probes, chatCalls, context, browser, url: `http://localhost:${server.address().port}/` });
   } finally {
     await browser.close();
     server.close();

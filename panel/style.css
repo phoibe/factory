@@ -313,7 +313,7 @@ html { touch-action: manipulation; }
 #chat.needs-token:not([hidden]) { display: block; height: auto; background: none; border: 0; box-shadow: none; overflow: visible; }
 #chat.needs-token > .chat-list, #chat.needs-token > .chat-thread { display: none; }
 .chat-setup p { margin: 0 0 16px; }
-.chat-setup .error { margin: 8px 0 0; }
+.chat-setup .error { margin: 8px 0 0; text-wrap: balance; }
 .chat-setup .error:empty { min-height: 0; margin: 0; }
 #read-token-save { margin-top: 8px; }
 .nowrap { white-space: nowrap; }

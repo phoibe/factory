@@ -56,10 +56,17 @@ export function runFromPrompt(prompt = '') {
 
 // A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on, and whether
 // it worked in its own copy. No model means it inherited the session's.
+const ROLE_TAG = /^\s*\[\s*role\s*:\s*(plan|code|review|simple)\s*(?::\s*(amont)\s*)?\]/i;
 export function agentEntry(input) {
   if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
   const i = input.tool_input || {};
-  const entry = { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, label: String(i.description || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80) };
+  // Issue #559: the description starts with the announced role, [role:<rôle>] or [role:plan:amont] for the upstream
+  // thinking. The key is always written: its presence tells a journal written since #559.
+  const desc = String(i.description || '');
+  const tag = desc.match(ROLE_TAG);
+  const label = String((tag ? desc.replace(tag[0], '') : desc) || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80);
+  const entry = { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, role: tag ? tag[1].toLowerCase() : null,
+    ...(tag?.[2] ? { up: true } : {}), label };
   // Issue #417: a task of a large plan built at the same time as others works in its own copy (git worktree).
   return i.isolation === 'worktree' ? { ...entry, copy: true } : entry;
 }

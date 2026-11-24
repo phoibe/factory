@@ -11,7 +11,7 @@ test('chat server unit tests pass', () => {
 // Guard: the server and the panel must probe the same writes, or a token the panel accepts is refused by the server
 // (or the other way round). The Python list is read from the source: the server's modules need fastapi to import.
 function pythonProbes(source) {
-  const line = source.match(/^WRITE_PROBES = \((.*)\)$/m);
+  const line = source.match(/^WRITE_PROBES = \(([\s\S]*?)^\)$/m);
   assert.ok(line, 'WRITE_PROBES not found in server/chat/service.py');
   return [...line[1].matchAll(/\("([A-Z]+)", "([^"]+)"\)/g)].map((m) => [m[1], m[2]]);
 }

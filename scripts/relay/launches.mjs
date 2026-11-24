@@ -4,11 +4,11 @@ import { L, CLOSE_REASONS, AGENT_MARKER, SESSION_MARKER, isIdea, buildStage } fr
 import { runTitle, stageName } from '../lib/run-title.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
 import { mirrorAttachments } from '../lib/attachments.mjs';
-import { trustedAuthor } from '../lib/trust.mjs';
 import { isRetry, isNetworkFailure } from '../lib/outage.mjs';
 import { readRelaunch, writeRelaunch, relaunchStep, isTransientStatus, RELAUNCH_TOLD, RELAUNCH_BLOCKED, QUESTION_RETRY_MS, QUESTION_BUSY } from '../lib/relaunch.mjs';
 import { waitedFor, mergedWaits, mergedMarker, requestState, WAITS_DONE_MARKER, RESUMED_MARKER } from '../lib/waits.mjs';
 import { resolveModels } from '../lib/models.mjs';
+import { trustedAuthor } from '../lib/trust.mjs';
 import { PROJECT_WORKFLOW, prIssue, say, names, linkedIssue } from './shared.mjs';
 
 // The factory's own repository: its instructions for the agent, and the owner's settings on its factory-runners branch.
@@ -499,6 +499,8 @@ export function launchesPart(ctx) {
 
   // With the autoPick setting on, free slots and an empty queue: starts existing issues, urgent first,
   // then bugs, then the rest, oldest first. Ideas the agent proposed are left for the owner to sort. An issue is picked only once (`auto-picked` stays on it). Never touches issues that wait for the owner or are held back.
+  // Only the requests of trusted authors are picked (issue #564): the owner, people with write access, the factory's bots.
+  // On a public project a stranger's issue, labelled by the form, waits for the owner.
   async function autoPick(free, freed = null) {
     if (!config.autoPick) return;
     const SKIP = [L.close, ...CLOSE_REASONS, L.noPick, L.question, L.project, L.audit, L.uiPolish, L.stack, L.release, L.autoPicked, L.grilling, L.specReview, L.queued,
@@ -519,8 +521,6 @@ export function launchesPart(ctx) {
       .filter((i) => !names(i.labels).some((l) => SKIP.includes(l)))
       // An idea the agent proposed waits for the owner's sorting (« Garder » on the board, or a message in it).
       .filter((i) => !isIdea(i))
-      // Only the owner's, his collaborators' and the factory's own: on a public project anyone can open an issue, and
-      // its form may put factory:bug on it by itself. A stranger's request waits for the owner to start it.
       .filter((i) => trustedAuthor(i, String(repo || '').split('/')[0]))
       .filter((i) => i.number !== freed && !withPr.has(i.number));
     const rank = (i) => (names(i.labels).includes(L.urgent) ? 0 : 2) + (names(i.labels).includes(L.bug) ? 0 : 1);

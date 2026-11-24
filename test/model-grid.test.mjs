@@ -80,3 +80,25 @@ test('the pilot opens the slice issues, the journal stays off the documents bran
     for (const w of words) assert.ok(read(f).split('\n').filter((l) => l.includes(w)).every((l) => l.length <= 120), `${f}: ${w}`);
   }
 });
+
+// Issue #559: the role is announced at launch, and the proof comes from the thinking sub-agent's own record.
+test('every sub-agent announces its role; the proof comes from its own record', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  const g = flat(grid);
+  for (const s of ['`[role:<rôle>]`', '`[role:plan:amont]`', '`[role:review:amont]`', "`node .factory/scripts/upstream.mjs <numéro de l'issue> <fichier>`", 'outil Write', 'annule la preuve']) {
+    assert.ok(g.includes(s), s);
+  }
+  for (const f of ['grilling.md', 'spec.md', 'framing.md']) {
+    const text = read(`stages/${f}`);
+    assert.ok(flat(text).includes('[role:plan:amont]'), f);
+    assert.ok(text.includes('upstream.mjs <n> <fichier>'), f);
+    assert.doesNotMatch(text, /upstream\.mjs <n>(?! <fichier>)/, f);
+  }
+  const bug = read('stages/bugfix.md');
+  assert.ok(bug.includes('[role:plan:amont]') && bug.indexOf('[role:plan:amont]') < bug.indexOf('[role:code]'), 'bugfix: analysis announced before the fix');
+  const step1 = bug.slice(bug.indexOf('1. **Analyse**'), bug.indexOf('2. Branche'));
+  assert.ok(step1.includes('node .factory/scripts/journal-check.mjs'), 'bugfix: the analysis proof is recorded as soon as it is handed back');
+  assert.match(flat(step1), /ne committe rien à ce moment : le journal partira avec la branche de l'étape 2/,
+    'bugfix: committing the journal before the step-2 branch would drop it from the PR');
+  assert.ok(!read('stages/question.md').includes('[role:'), 'the chat stays with the pilot');
+});
