@@ -1,0 +1,2 @@
+{"t":"2026-11-24T13:57:21.657Z","kind":"run","stage":"grilling","issue":560,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
+{"t":"2026-11-24T13:57:38.781Z","kind":"agent","model":"fable","effort":"high","label":"Grilling phase amont #560","id":"toolu_01ED2AV4cr1vCajNGoHDEkN7"}
