@@ -321,3 +321,57 @@ test('a capture that cannot be read is published without frames', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// A page whose rows of text are not a whole number of pixels high (17px/1.5), with soft shadows and an inline svg.
+async function serveFractionalPage(extra = '') {
+  const { createServer } = await import('node:http');
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+body{margin:0;font:17px/1.5 system-ui,sans-serif;color:#222;background:#fafafa}header{background:#234;color:#fff;padding:12px 24px;display:flex;justify-content:space-between}
+main{max-width:900px;margin:0 auto;padding:24px}.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+svg{display:block;margin:12px 0}</style><header><b>Tableau de bord</b><span>Compte</span></header><main><h1>Bonjour</h1>
+<p>Un premier paragraphe de texte assez long pour passer à la ligne sur un téléphone, avec des mots.</p>${extra}
+<div class="card"><h2>Carte une</h2><p>Du contenu dans la carte, sur plusieurs lignes peut-être. Lorem ipsum dolor sit amet consectetur.</p><button>Exporter</button></div>
+<svg width="200" height="60"><circle cx="30" cy="30" r="25" fill="#c33"/><path d="M70 50 L120 10 L190 45" stroke="#36c" stroke-width="3" fill="none"/></svg>
+<div class="card"><h2>Carte deux</h2><p>Autre contenu. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p><ul><li>un</li><li>deux</li><li>trois</li></ul></div>
+<div class="card"><h2>Carte trois</h2><p>Encore. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip.</p></div></main>`;
+  const server = createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(html); });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  return { server, url: `http://127.0.0.1:${server.address().port}` };
+}
+
+test('content pushed down by a fraction of a pixel is not framed, the block that pushed it is', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createRequire } = await import('node:module');
+  const { capture, VIEWPORTS, launchOptions } = await import('../agent/scripts/shots.mjs');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveFractionalPage();
+  const b = await serveFractionalPage('<p id="added" style="width:fit-content;height:25.5px;margin:13.3px 0">Un bloc ajouté de hauteur fractionnaire.</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const browser = await createRequire(import.meta.url)('playwright').chromium.launch(launchOptions());
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      const page = await browser.newPage({ viewport });
+      await page.goto(b.url);
+      const p = await page.locator('#added').boundingBox();
+      await page.close();
+      const f = `accueil--${name}.png`;
+      const frames = framesFor(join(before, f), join(after, f), lib);
+      const { min, red, white, pad } = frames.sizes;
+      const reach = min / 2 + red + white + pad + 2;
+      assert.deepEqual(frames.before, [], f);
+      assert.equal(frames.after.length, 1, `${f}: ${JSON.stringify(frames.after)}`);
+      const [box] = frames.after;
+      assert.ok(box.y <= p.y && box.y + box.h >= p.y + p.height && box.x <= p.x && box.x + box.w >= p.x + p.width, `${f}: the added block is framed`);
+      assert.ok(box.y + box.h <= p.y + p.height + reach && box.x + box.w <= p.x + p.width + reach, `${f}: only the added block is framed, ${JSON.stringify(box)} for ${JSON.stringify(p)}`);
+    }
+  } finally {
+    await browser.close();
+    a.server.close(); b.server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+});

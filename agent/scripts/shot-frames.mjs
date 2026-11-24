@@ -154,6 +154,12 @@ function alignRows(before, after) {
 
 const samePixel = (d1, o1, d2, o2) => d1[o1] === d2[o2] && d1[o1 + 1] === d2[o2 + 1] && d1[o1 + 2] === d2[o2 + 2] && d1[o1 + 3] === d2[o2 + 3];
 
+// How far apart (per channel, out of 255) two pixels of a row that only moved up or down may be: a browser draws an
+// element moved by a fraction of a pixel (text 17px/1.5 high, for instance) with slightly different soft edges.
+export const SHIFT_TOLERANCE = 1;
+const nearPixel = (d1, o1, d2, o2) => Math.abs(d1[o1] - d2[o2]) <= SHIFT_TOLERANCE && Math.abs(d1[o1 + 1] - d2[o2 + 1]) <= SHIFT_TOLERANCE
+  && Math.abs(d1[o1 + 2] - d2[o2 + 2]) <= SHIFT_TOLERANCE && Math.abs(d1[o1 + 3] - d2[o2 + 3]) <= SHIFT_TOLERANCE;
+
 // Marked pixels, gathered as they come into gap-sized cells that keep their tight bounds [x0, x1) × [y0, y1).
 class Cells {
   constructor(gap) { this.gap = gap; this.map = new Map(); }
@@ -165,16 +171,33 @@ class Cells {
   }
 }
 
-// Marks one run of unmatched rows [y0, y1) of img; [o0, o1) = the other side's run, compared row for row.
+// Pixels compared in place (same height on both sides) must be equal; a row compared with a row at another height
+// on the other side has only moved, and may differ a little.
+const pixelTest = (y, j) => (y === j ? samePixel : nearPixel);
+
+// Whether row y of img is row j of other (see pixelTest).
+function sameRow(img, y, other, j) {
+  const same = pixelTest(y, j), w4 = img.width * 4;
+  for (let i = 0; i < w4; i += 4) if (!same(img.data, y * w4 + i, other.data, j * w4 + i)) return false;
+  return true;
+}
+
+// Marks one run of unmatched rows [y0, y1) of img; [o0, o1) = the other side's run, compared row for row from the
+// top. A row that is the other side's row counted from the bottom of the run (what a change above it pushed), or
+// that repeats its neighbour on the side with more rows (spacing), is not marked.
 function markRun(img, y0, y1, other, o0, o1, cells) {
   const { width, height, data } = img;
   const above = y0 > 0 ? y0 - 1 : -1, below = y1 < height ? y1 : -1;
   for (let y = y0; y < y1; y++) {
-    const k = y - y0;
+    const j = o0 + y - y0, fromBottom = o1 - (y1 - y);
+    if (fromBottom >= o0 && fromBottom !== j && sameRow(img, y, other, fromBottom)) continue;
+    // A side with more rows has some spacing: a row repeating the one above or below.
+    if (y1 - y0 > o1 - o0 && ((y > 0 && sameRow(img, y, img, y - 1)) || (y + 1 < height && sameRow(img, y, img, y + 1)))) continue;
+    const same = pixelTest(y, j);
     for (let x = 0; x < width; x++) {
       const o = (y * width + x) * 4;
       let marked;
-      if (o0 + k < o1) marked = !samePixel(data, o, other.data, ((o0 + k) * width + x) * 4);
+      if (j < o1) marked = !same(data, o, other.data, (j * width + x) * 4);
       else {
         // Beyond the other side's run: a pixel that repeats the row above or below is only spacing.
         marked = true;
@@ -198,10 +221,38 @@ function markChanges(before, after, pairs, gap) {
     runs.push([b0, b1, a0, a1]);
   }
   if (cells[0].map.size || cells[1].map.size) return cells;
-  // Only spacing changed: say where, full width.
-  const fill = (c, y0, y1, width) => { for (let y = y0; y < y1; y++) for (let x = 0; x < width; x++) c.mark(x, y); };
-  for (const [b0, b1, a0, a1] of runs) { fill(cells[0], b0, b1, before.width); fill(cells[1], a0, a1, after.width); }
+  // Only spacing changed: say where, full width. The empty bottom of a short page is not where, nor the rows of one
+  // pixel a shift by a fraction of a pixel adds here and there: they are left out when there is another run to show.
+  const spans = [];
+  [before, after].forEach((img, side) => {
+    const band = bottomBand(img);
+    for (const r of runs) {
+      // As many rows on both sides: content that only moved, not spacing.
+      const extra = Math.abs(r[1] - r[0] - (r[3] - r[2]));
+      if (!extra) continue;
+      const [y0, y1] = side === 0 ? [r[0], r[1]] : [r[2], r[3]];
+      if (y0 < y1) spans.push({ side, y0, y1, minor: y0 >= band || extra === 1 });
+    }
+  });
+  const shown = spans.some((s) => !s.minor) ? spans.filter((s) => !s.minor) : spans;
+  for (const { side, y0, y1 } of shown) {
+    const width = side === 0 ? before.width : after.width;
+    for (let y = y0; y < y1; y++) for (let x = 0; x < width; x++) cells[side].mark(x, y);
+  }
   return cells;
+}
+
+// First row of the band of rows equal to the last row of img, down to its bottom.
+function bottomBand({ width, height, data }) {
+  const w4 = width * 4, last = (height - 1) * w4;
+  let y = height - 1;
+  while (y > 0) {
+    let equal = true;
+    for (let i = 0; i < w4 && equal; i++) equal = data[(y - 1) * w4 + i] === data[last + i];
+    if (!equal) break;
+    y--;
+  }
+  return y;
 }
 
 // Cells into zones: 8-connected cells make one zone, the union of their bounds.

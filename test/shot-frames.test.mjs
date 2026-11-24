@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
-import { decodePng, changeFrames, frameSizes, MAX_FRAMES, WHOLE_SCREEN } from '../agent/scripts/shot-frames.mjs';
+import { decodePng, changeFrames, frameSizes, MAX_FRAMES, WHOLE_SCREEN, SHIFT_TOLERANCE } from '../agent/scripts/shot-frames.mjs';
 
 // Builds a PNG from raw scanlines (each row = [filter, ...bytes]); CRCs are left at zero.
 const chunk = (type, body) => {
@@ -156,4 +156,72 @@ test('a long page is compared quickly', () => {
   assert.equal(result.whole, false);
   assert.equal(result.before.length, 0);
   assert.equal(result.after.length, 1);
+});
+
+// Adds `delta` to the red of every pixel of the rectangle (a browser drawing the same thing a little differently).
+const nudge = (image, x0, y0, x1, y1, delta = 1) => {
+  const data = image.data.slice();
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data[(y * image.width + x) * 4] += delta;
+  return { ...image, data };
+};
+
+test('a change of 1/255 in place is still framed', () => {
+  const box = [{ x: 21, y: 16, w: 20, h: 20 }];
+  assert.deepEqual(frames(base, nudge(base, 30, 25, 31, 26)), { before: box, after: box, whole: false });
+});
+
+test('a row pushed down and drawn 1/255 differently is not framed', () => {
+  assert.deepEqual(frames(base, nudge(added, 40, 150, 140, 152)), { before: [], after: [{ x: 25, y: 50, w: 100, h: 40 }], whole: false });
+});
+
+test('beyond the shift tolerance a pushed-down row is a change', () => {
+  const result = frames(base, nudge(added, 40, 150, 140, 152, SHIFT_TOLERANCE + 1));
+  assert.equal(result.before.length, 1);
+  assert.equal(result.after.length, 2);
+});
+
+test('rows pushed down right under a removed block are matched from the bottom', () => {
+  // Before: a block then the top of a card; after: a block added above, the first block removed, the card's top row
+  // drawn 1/255 differently (moved by a fraction of a pixel).
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(30, 60, 90, 80, 6); b(20, 100, 180, 140, 2); });
+  const shifted = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(30, 55, 120, 85, 5); b(20, 110, 180, 150, 2); });
+  const after = nudge(shifted, 20, 110, 180, 111);
+  const result = frames(before, after);
+  assert.equal(result.before.length, 1);
+  assert.ok(result.before[0].y + result.before[0].h <= 100, JSON.stringify(result.before));
+  assert.deepEqual(result.after, [{ x: 25, y: 50, w: 100, h: 40 }]);
+});
+
+test('a taller margin on a short page frames the margin, not the empty bottom left on the other side', () => {
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 180, 100, 2); });
+  const after = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 80, 180, 120, 2); });
+  assert.deepEqual(frames(before, after), { before: [], after: [{ x: 0, y: 55, w: 200, h: 30 }], whole: false });
+});
+
+test('a taller margin is framed, not the one-row gaps of a fractional shift further down', () => {
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 180, 100, 2); b(20, 150, 180, 170, 3); });
+  const after = img(200, 321, (b) => { b(20, 20, 80, 40, 1); b(20, 80, 180, 120, 2); b(20, 171, 180, 191, 3); });
+  assert.deepEqual(frames(before, after), { before: [], after: [{ x: 0, y: 55, w: 200, h: 30 }], whole: false });
+});
+
+test('a taller margin is framed, not the rows it pushed down that are drawn 1/255 differently', () => {
+  const before = img(200, 300, (b) => { b(20, 20, 80, 40, 1); b(20, 60, 180, 100, 2); });
+  const after = nudge(img(200, 320, (b) => { b(20, 20, 80, 40, 1); b(20, 80, 180, 120, 2); }), 20, 100, 180, 103);
+  assert.deepEqual(frames(before, after), { before: [], after: [{ x: 0, y: 55, w: 200, h: 30 }], whole: false });
+});
+
+test('a row of a card one pixel taller and its bottom drawn 1/255 differently are not framed', () => {
+  // A card: a patterned top, plain sides repeated row after row, a patterned bottom row.
+  const card = (top, height, data, width) => {
+    for (let y = top; y < top + height; y++) for (let x = 20; x < 180; x++) {
+      const edge = y === top || y === top + height - 1;
+      data.set(edge ? [(x * 7 + (y === top ? 0 : 50)) % 251, 90, 90] : x === 20 || x === 179 ? [0, 0, 0] : [255, 255, 255], (y * width + x) * 4);
+    }
+  };
+  const before = img(200, 300, (b) => b(20, 20, 80, 40, 1));
+  card(60, 40, before.data, 200);
+  const after = img(200, 321, (b) => b(20, 20, 80, 40, 1));
+  card(80, 41, after.data, 200);
+  const nudged = nudge(after, 20, 120, 180, 121);
+  assert.deepEqual(frames(before, nudged), { before: [], after: [{ x: 0, y: 55, w: 200, h: 30 }], whole: false });
 });
