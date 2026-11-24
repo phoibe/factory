@@ -31,7 +31,7 @@ export function deliveryPart(ctx) {
     const sha = pr?.head?.sha;
     const def = (await gh.getRepo?.())?.default_branch || 'main';
     // Only the factory's own branch, in this repo, aimed at the branch the factory merges into.
-    if (!pr || pr.state !== 'open' || pr.draft || ![def, workBranch(config.production, def)].includes(pr.base?.ref) || (pr.head?.repo?.full_name && pr.head.repo.full_name !== repo)) {
+    if (!pr || pr.state !== 'open' || pr.draft || ![def, workBranch(config.production, def)].includes(pr.base?.ref) || fromFork(pr)) {
       log(`docs PR #${prNumber}: not a plain docs PR of this repo, left alone`); return;
     }
     const list = (await gh.listPrFiles(prNumber)) || [];

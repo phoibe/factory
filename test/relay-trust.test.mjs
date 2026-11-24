@@ -89,6 +89,26 @@ test('the same undo PR from this repository is still merged by the tick once its
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 99));
 });
 
+// A docs PR is merged at once when it touches only documents. One from a fork whose repository was since deleted
+// (`head.repo: null`) is still a fork's: the owner's « Reopen » must not merge it.
+const docsPr = (repoOfHead) => ({ number: 98, state: 'open', title: 'docs', base: { ref: 'main' }, body: '', labels: [],
+  head: { sha: 'd1', ref: 'claude/docs-5', repo: repoOfHead } });
+const docsReopened = { kind: 'pr', event: 'pull_request', action: 'reopened', number: 98, labels: [], fromOwner: true, headRef: 'claude/docs-5' };
+
+test('a docs PR from a fork whose repository was deleted is never merged', async () => {
+  const gh = fakeGh({ prs: [docsPr(null)] });
+  gh.listPrFiles = async () => [{ filename: 'GLOSSARY.md' }];
+  await relayOn(gh).relay.handle(docsReopened, { ownerLogin: 'phoibe' });
+  assert.ok(!gh.calls.some((c) => c[0] === 'merge'));
+});
+
+test('the same docs PR from this repository is still merged', async () => {
+  const gh = fakeGh({ prs: [docsPr({ full_name: 'phoibe/app' })] });
+  gh.listPrFiles = async () => [{ filename: 'GLOSSARY.md' }];
+  await relayOn(gh).relay.handle(docsReopened, { ownerLogin: 'phoibe' });
+  assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 98));
+});
+
 // ---- Issues opened by someone else than the owner ----
 const bugBy = (login, association) => ({ number: 77, state: 'open', title: 'Bug : x', body: 'Do X.', created_at: '2026-11-24T11:00:00Z',
   user: { login }, author_association: association, labels: [L.bug] });
