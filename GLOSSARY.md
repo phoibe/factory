@@ -163,3 +163,7 @@ _À éviter_ : jeton principal, token du panneau
 **Jeton de l'ancien type** :
 Un jeton GitHub de la génération précédente (« classic »), dont les droits sont trop larges et trop peu vérifiables pour servir de jeton de lecture ; la discussion n'en accepte aucun.
 _À éviter_ : jeton classique, vieux jeton
+
+**Message non envoyé** :
+Un message du propriétaire qui n'est pas arrivé jusqu'à l'agent, ou auquel l'agent n'a pas pu répondre : il reste dans la conversation avec la raison de l'échec, et le propriétaire peut le renvoyer tel quel ou le reprendre pour le modifier. Une réponse arrivée mais qui n'a pas pu être enregistrée n'en est pas un : elle ne se renvoie pas, l'agent travaillerait deux fois.
+_À éviter_ : message raté, message en erreur, envoi échoué

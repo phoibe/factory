@@ -6,6 +6,7 @@ import { join, basename, relative, extname, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { SHARED, isBuild, stampModule, stampHtml, buildSite } from '../scripts/stamp-panel.mjs';
+import { all } from './panel-source.mjs';
 
 const B = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -271,5 +272,5 @@ test('every file a panel module loads at run time follows the build', () => {
 });
 
 test('the chat server address is always read fresh', () => {
-  assert.ok(readFileSync(join(PANEL, 'app.mjs'), 'utf8').includes("fetch('chat-server.json', { cache: 'no-store' })"));
+  assert.ok(all.includes("fetch('chat-server.json', { cache: 'no-store' })"));
 });

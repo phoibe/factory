@@ -18,12 +18,15 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    problème demande de changer le design validé, change `DESIGN.md` aussi et signale-le dans la PR. Si elle existe, tiens à
    jour sa partie « Mises en page » (étape 3 bis de `design-pass.md`, jamais pour un design repris).
 3. **Revue de code générale** : charge le skill `requesting-code-review` (outil Skill), puis fais relire
-   **tout le code** (pas un diff) par des sous-agents neufs (rôle `code`), un par grande partie de
-   l'appli si elle est grosse. Ils cherchent : bugs, failles de sécurité et données personnelles, erreurs mal
-   gérées, tests manquants sur ce qui compte, accessibilité, performances, code mort ou dupliqué, écarts avec
-   `PRODUCT.md`. Puis un sous-agent du rôle `review` fait la synthèse de leurs rapports (doublons,
-   priorités, ce qui manque). Corrige chaque point (skill `receiving-code-review`) ; pour un bug, écris d'abord le test qui
-   échoue. Puis une revue neuve des corrections, au plus 3 tours.
+   **tout le code** (pas un diff) par des sous-agents neufs du rôle `audit` (`model` et `effort` de
+   `models.audit`, description `[role:audit] …`), un par grande partie de l'appli si elle est grosse, un seul
+   pour une petite appli relue d'un bloc, lui aussi sur le rôle `audit`. Ils cherchent : bugs, failles de
+   sécurité et données personnelles, erreurs mal gérées, tests manquants sur ce qui compte, accessibilité,
+   performances, code mort ou dupliqué, écarts avec `PRODUCT.md`. Un relecteur qui échoue (pas de réponse, ou
+   rapport inutilisable deux fois) repart sur le rôle `review` (description `[role:review] …`). Puis un sous-agent du rôle `review` fait la synthèse de
+   leurs rapports (doublons, priorités, ce qui manque). Fais corriger chaque point par des sous-agents du rôle
+   `code` (skill `receiving-code-review`) ; pour un bug, le test qui échoue s'écrit d'abord. Puis une revue
+   neuve des corrections par un sous-agent du rôle `review`, au plus 3 tours.
 3 bis. **Architecture** : skill `improve-codebase-architecture` (s'il est installé), en autonomie : repère les
    endroits où le code s'est alourdi au fil des features (modules trop bavards, logique dupliquée, parties
    difficiles à tester). Simplifie ici ce qui est petit et sans risque, tests à l'appui ; pour un vrai chantier,

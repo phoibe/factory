@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stepsFor, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
+import { all } from './panel-source.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
   assert.deepEqual(stepsFor(['factory:feature']).map((s) => s.id), ['grilling', 'spec', 'building', 'visual', 'checks', 'acceptance']);
@@ -97,8 +98,7 @@ test('a project never read yet does not say « à jour » (issue #397)', () => {
 });
 
 test('the « À vous » card is drawn with its status text already filled (no growth after the cards are measured)', async () => {
-  const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const src = all;
   const line = src.split('\n').find((l) => l.includes("class: 'live-text'"));
   assert.match(line, /liveText\(\)/);
   assert.match(src, /const liveText = \(\) => statusText\(/);
@@ -115,8 +115,7 @@ test('a card only slides when it really moved: a few pixels of text reflow stay 
 });
 
 test('flip uses shouldSlide, so no card is animated for a tiny shift', async () => {
-  const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const src = all;
   const body = src.slice(src.indexOf('function flip('), src.indexOf('const rectsOf'));
   assert.match(body, /shouldSlide\(a, b\)/);
 });
