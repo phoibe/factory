@@ -116,3 +116,106 @@ test('visibleText keeps the visible text and no hidden comment at all', () => {
   assert.doesNotMatch(visibleText('<!-- <!-- x --> factory-agent -->'), /<!--/);
   assert.equal(visibleText(null), '');
 });
+
+// --- Task 2: the relay's GitHub client and the webhook payload ---
+import { github } from '../scripts/lib/github.mjs';
+import { eventFromPayload } from '../scripts/relay.mjs';
+import { L, AGENT_MARKER } from '../scripts/lib/labels.mjs';
+
+const reply = (status, body) => ({ ok: status < 400, status, json: async () => structuredClone(body), text: async () => JSON.stringify(body), headers: new Map() });
+// A fake GitHub: `routes` maps a path (no host, with its query) to the answer; every call is noted.
+function fakeClient(routes, opts = {}) {
+  const calls = [];
+  const gh = github({
+    token: 't', repo: 'o/r', sleep: async () => {}, ...opts,
+    fetchImpl: async (url, init) => {
+      const path = url.replace('https://api.github.com', '');
+      calls.push({ method: init.method, path, body: init.body ? JSON.parse(init.body) : undefined });
+      if (init.method !== 'GET') return reply(200, {});
+      const a = routes[path];
+      return a === undefined ? reply(404, {}) : typeof a === 'number' ? reply(a, {}) : reply(200, a);
+    },
+  });
+  return { gh, calls };
+}
+const outsiderOf = (kind, extra = {}) => itemWith(kind, { login: 'alice' }, { author_association: 'NONE', ...extra });
+const ownerOf = (kind, extra = {}) => itemWith(kind, { login: 'o' }, { author_association: 'OWNER', number: 4, ...extra });
+const readsOf = (issue, pr) => ({
+  '/repos/o/r/issues/3': issue, '/repos/o/r/pulls/3': pr,
+  '/repos/o/r/issues?state=open&per_page=100': [issue],
+  '/repos/o/r/pulls?state=open&per_page=100': [pr],
+  '/repos/o/r/issues?state=open&per_page=100&labels=a%2Cb': [issue],
+  '/repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=30': [pr],
+});
+async function everyRead(gh) {
+  return [await gh.getIssue(3), await gh.getPr(3), (await gh.listOpenIssues())[0], (await gh.listPulls())[0],
+    (await gh.listIssues({ labels: 'a,b' }))[0], (await gh.listClosedPulls())[0], await gh.request('GET', '/repos/{repo}/issues/3')];
+}
+
+test("on a public project every read of the client strips an outsider's notes and marks the item", async () => {
+  for (const kind of NOTES) {
+    const issue = outsiderOf(kind);
+    const { gh } = fakeClient(readsOf(issue, asPr(issue)), { isPublic: true });
+    for (const read of await everyRead(gh)) {
+      assert.equal(read.untrusted, true, kind.note);
+      assert.equal(has(read), false, kind.note);
+      assert.equal(kind.found(read), false, kind.note);
+    }
+    const mine = ownerOf(kind);
+    const { gh: gh2 } = fakeClient({ '/repos/o/r/issues/4': mine }, { isPublic: true });
+    assert.deepEqual(await gh2.getIssue(4), mine);
+  }
+});
+
+test("on a private project an outsider's item is left as GitHub sent it", async () => {
+  const issue = outsiderOf(NOTES[1]);
+  const { gh } = fakeClient(readsOf(issue, asPr(issue)), { isPublic: false });
+  for (const read of await everyRead(gh)) assert.ok(!read.untrusted && has(read));
+  assert.deepEqual(await gh.getIssue(3), issue);
+});
+
+test("the visibility is asked once, and only when an outsider's item is read", async () => {
+  const issue = outsiderOf(NOTES[0]);
+  const repoReads = (calls) => calls.filter((c) => c.path === '/repos/o/r').length;
+  for (const [repo, cleaned] of [[{ private: true }, false], [{ private: false }, true], [undefined, true]]) {
+    const { gh, calls } = fakeClient({ '/repos/o/r/issues/3': issue, '/repos/o/r': repo });
+    const a = await gh.getIssue(3);
+    await gh.getIssue(3);
+    assert.equal(repoReads(calls), 1);
+    assert.equal(a.untrusted === true, cleaned);
+    assert.equal(has(a), !cleaned);
+  }
+  const { gh, calls } = fakeClient({ '/repos/o/r/issues/4': ownerOf(NOTES[0]), '/repos/o/r': { private: false } });
+  await gh.getIssue(4);
+  assert.equal(repoReads(calls), 0);
+});
+
+test("no factory note is written in the description of an outsider's request", async () => {
+  const patches = (calls) => calls.filter((c) => c.method === 'PATCH');
+  const noted = 'x\n\n<!-- factory-relaunch {} -->';
+  let c = fakeClient({ '/repos/o/r/issues/3': outsiderOf(NOTES[0]) }, { isPublic: true });
+  assert.equal(await c.gh.updateIssue(3, { body: noted }), null);
+  assert.deepEqual(patches(c.calls), []);
+  c = fakeClient({ '/repos/o/r/issues/3': outsiderOf(NOTES[0]) }, { isPublic: true });
+  await c.gh.updateIssue(3, { body: noted, state: 'closed' });
+  assert.deepEqual(patches(c.calls).map((p) => p.body), [{ state: 'closed' }]);
+  for (const [item, isPublic] of [[ownerOf(NOTES[0], { number: 3 }), true], [outsiderOf(NOTES[0]), false]]) {
+    c = fakeClient({ '/repos/o/r/issues/3': item }, { isPublic });
+    await c.gh.updateIssue(3, { body: noted });
+    assert.deepEqual(patches(c.calls).map((p) => p.body), [{ body: noted }]);
+  }
+  c = fakeClient({}, { isPublic: true });
+  await c.gh.updateIssue(3, { body: 'x' });
+  assert.deepEqual(c.calls.map((p) => p.method), ['PATCH']);
+});
+
+test("the webhook's payload does not take an outsider's agent note for the agent's", () => {
+  const payload = (login, isPrivate) => ({
+    action: 'labeled', label: { name: L.feature }, sender: { login: 'phoibe' },
+    repository: { owner: { login: 'phoibe' }, private: isPrivate },
+    issue: { number: 3, title: 't', labels: [], user: { login }, author_association: 'NONE', body: AGENT_MARKER },
+  });
+  assert.equal(eventFromPayload('issues', payload('alice', false)).fromAgent, false);
+  assert.equal(eventFromPayload('issues', payload('alice', true)).fromAgent, true);
+  assert.equal(eventFromPayload('issues', payload('phoibe', false)).fromAgent, true);
+});

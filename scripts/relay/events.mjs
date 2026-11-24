@@ -3,6 +3,7 @@
 import { decide, afterChecks } from '../lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER } from '../lib/labels.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
+import { trustBodies } from '../lib/trust.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from '../lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD } from '../lib/outage.mjs';
 import { toJobOutput } from '../lib/job-output.mjs';
@@ -38,7 +39,8 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
-      fromAgent: (p.issue.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
+      // An outsider's agent note on a public project is not the agent's (issue #557).
+      fromAgent: ((p.repository?.private === true ? p.issue : trustBodies(p.issue, owner))?.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
       // An issue form with labels sends "opened" and "labeled" together: the "labeled" one must not start it twice.
       openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000,
     };
