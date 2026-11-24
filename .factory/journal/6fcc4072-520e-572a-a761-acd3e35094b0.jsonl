@@ -27,3 +27,7 @@
 {"t":"2026-11-24T17:33:08.051Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"- **Image agrandie** : par-dessus la page sur un voile sombre (`rgb(0 0 0 / .8)`, plus opaque que le voile habituel pour isoler l'image) ; Échap, un clic à côté ou le b","ok":true,"id":"toolu_01AyRERatECJTksi1J9wdnfr"}
 {"t":"2026-11-24T17:34:08.967Z","kind":"test","cmd":"L=… (npm run typecheck > $L/f-type.log 2>&1; echo \"typecheck $?\"; npm run lint > $L/f-lint.log 2>&1; echo \"lint $?\"; npm test > $L/f-unit.log 2>&1; echo \"test $?\"; npm run build > $L/f-build.log 2>&1;","ok":true,"id":"toolu_015cmYpxxweZZofoxi1YDjSK"}
 {"t":"2026-11-24T17:38:30.452Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:e2e > .superpowers/sdd/issue-580/f-e2e.log 2>&1; echo \"exit $?\"; grep -E \"^not ok|^# (pass|fail|cancelled)\" .superpowers/sdd/issue-580/f-e2e.log","ok":true,"id":"toolu_01RCxTCZjJMtmRaoz5K4qFyD"}
+{"t":"2026-11-24T17:39:09.629Z","kind":"skill","name":"requesting-code-review","id":"toolu_01NFeSirEmdCa4VTgbKpaLj7"}
+{"t":"2026-11-24T17:39:15.970Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Final review 580","id":"toolu_01UDuD6GkSUpMam3DSeqsrFu"}
+{"t":"2026-11-24T17:41:22.870Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T17:41:25.545Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
