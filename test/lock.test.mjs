@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withLock, isLockTimeout } from '../scripts/lib/lock.mjs';
+import { withLock, LostTurnError, isLostTurn, isLockTimeout, LOCK_TTL_MS, LOCK_MARGIN_MS } from '../scripts/lib/lock.mjs';
 import { createRelay } from '../scripts/relay.mjs';
 import { L } from '../scripts/lib/labels.mjs';
 
@@ -124,6 +124,119 @@ test('a takeover that changes nothing does not spin forever: the wait limit stil
   let takeOvers = 0; // a broken loop never yields to timers: it fails here instead of hanging the suite
   const store = { acquire: async () => false, ageMs: async () => 1001, takeOver: async () => { if (++takeOvers > 100) throw new Error('takeOver keeps spinning'); }, release: async () => {} };
   await assert.rejects(withLock(store, async () => {}, { ttlMs: 1000, waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }), /waited too long/);
+});
+
+// One run under the lock, played minute by minute: `beat()` is the sign of life that is due, `check()` what the GitHub
+// client does before every write (the guard withLock hands to the store).
+function turnOf(store, work, opts = {}) {
+  const run = { t: 0, logs: [], guards: [] };
+  store.guard = (fn) => { run.guards.push(fn); run.check = fn; };
+  run.done = withLock(store, () => work(run), { now: () => run.t, every: (fn) => { run.beat = fn; return () => {}; }, log: (m) => run.logs.push(m), ...opts });
+  return run;
+}
+const LOST = /turn lost/;
+
+test('a run whose signs of life no longer get through stops before its place can be taken, and launches nothing', async () => {
+  const store = fakeStore();
+  store.refresh = async () => { throw new Error('GitHub too slow'); };
+  const launched = [];
+  const run = turnOf(store, async (r) => { for (;;) { r.t += 60_000; await r.beat(); r.check(); launched.push(r.t); } });
+  await assert.rejects(run.done, isLostTurn);
+  assert.deepEqual(launched, [60_000, 120_000]); // two missed signs of life are forgiven
+  assert.equal(run.t, LOCK_TTL_MS - LOCK_MARGIN_MS); // stopped at 3 min
+  assert.ok(run.t < LOCK_TTL_MS); // the others may take over only past 4 min
+  assert.deepEqual(run.logs.filter((m) => LOST.test(m)), ['queue lock: turn lost (no sign of life got through in time): this run stops here, nothing more is launched or written']);
+  assert.ok(!store.log.includes('release') && store.held, 'not sure the lock is still its own: left to expire');
+});
+
+test('a run told by GitHub that its place was taken stops at once: the next action is not done', async () => {
+  const store = fakeStore();
+  store.refresh = async () => false; // the fast-forward was refused: another run holds the lock
+  const done = [];
+  const run = turnOf(store, async (r) => { r.check(); done.push('first'); r.t += 60_000; await r.beat(); r.check(); done.push('next'); });
+  await assert.rejects(run.done, (e) => isLostTurn(e) && /taken over by another run/.test(e.message));
+  assert.deepEqual(done, ['first']);
+  assert.ok(!store.log.includes('release'), 'never gives back the lock of the run that took over');
+  assert.equal(run.logs.filter((m) => LOST.test(m)).length, 1);
+});
+
+test('the turn is counted from the moment a sign of life was sent, and a late one never revives a stopped run', async () => {
+  const store = fakeStore();
+  let beats = 0, slow = true, run = null;
+  store.refresh = async () => { // GitHub takes 2 min to answer, then fails the follow-up sent at once
+    beats++;
+    if (beats > 1) throw new Error('GitHub too slow');
+    if (slow) run.t += 2 * 60_000;
+    return true;
+  };
+  run = turnOf(store, async (r) => {
+    r.t = 60_000; await r.beat(); // sent at 1 min, answered at 3 min; the next one, sent at 3 min, fails
+    r.t = 4 * 60_000 - 1; r.check(); // 3 min after it was sent, minus 1 ms
+    r.t = 4 * 60_000; assert.throws(r.check, isLostTurn);
+    slow = false; await r.beat(); // not even sent
+    assert.throws(r.check, isLostTurn);
+  }); // the work swallowed the refusals and returns normally
+  await assert.rejects(run.done, isLostTurn);
+  assert.equal(beats, 2);
+});
+
+test('an error that follows a lost turn is reported as the lost turn; the guard is removed at the end; the stop error carries no number', async () => {
+  const store = fakeStore();
+  store.refresh = async () => false;
+  const boom = new Error('boom');
+  const run = turnOf(store, async (r) => { r.t += 60_000; await r.beat(); throw boom; });
+  await assert.rejects(run.done, (e) => isLostTurn(e) && e.cause === boom);
+  assert.deepEqual(run.guards.map((g) => typeof g), ['function', 'object']); // installed once the lock is taken, then null
+  for (const why of ['taken over by another run', 'no sign of life got through in time']) assert.doesNotMatch(String(new LostTurnError(why)), /\d/);
+});
+
+// A virtual clock with timers: `every` and `sleep` are played in time order, nothing waits for real.
+function virtualClock() {
+  const c = { t: 0, timers: [], seq: 0 };
+  c.at = (ms, fn) => c.timers.push({ at: c.t + ms, n: c.seq++, fn });
+  c.sleep = (ms) => new Promise((r) => c.at(ms, r));
+  c.every = (fn, ms) => { let on = true; const tick = () => { if (!on) return; fn(); c.at(ms, tick); }; c.at(ms, tick); return () => { on = false; }; };
+  c.play = async (until) => {
+    let done = false;
+    until.then(() => { done = true; }, () => { done = true; });
+    while (!done) {
+      for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+      if (done || !c.timers.length) break;
+      c.timers.sort((a, b) => a.at - b.at || a.n - b.n);
+      const next = c.timers.shift();
+      c.t = next.at;
+      next.fn();
+    }
+    return until;
+  };
+  return c;
+}
+
+test('slow but successful signs of life (answered after 61 s) keep a 20-minute run alive', async () => {
+  const clock = virtualClock();
+  const store = fakeStore();
+  let check = null, sent = 0;
+  store.guard = (fn) => { check = fn; };
+  store.refresh = () => { sent++; return new Promise((r) => clock.at(61_000, () => r(true))); };
+  const logs = [];
+  const done = withLock(store, async () => {
+    for (let i = 0; i < 20; i++) { await clock.sleep(60_000); check(); }
+    return 'done';
+  }, { now: () => clock.t, every: clock.every, log: (m) => logs.push(m) });
+  assert.equal(await clock.play(done), 'done');
+  assert.deepEqual(logs, []);
+  assert.ok(sent >= 19, `a sign of life sent as soon as the previous one is answered late (${sent})`);
+});
+
+test('a run whose work ended well but whose lock is no longer sure at the end does not say it stops: it leaves the lock to expire', async () => {
+  const store = fakeStore();
+  let run = null;
+  store.refresh = async () => { await new Promise((r) => setImmediate(r)); run.t += 3 * 60_000; throw new Error('GitHub too slow'); }; // in flight when the work ends
+  run = turnOf(store, async (r) => { r.beat(); return 'ok'; });
+  assert.equal(await run.done, 'ok');
+  assert.deepEqual(run.logs.filter((m) => LOST.test(m)), []);
+  assert.ok(run.logs.includes('queue lock: not given back, it will expire by itself'), run.logs.join('\n'));
+  assert.ok(!store.log.includes('release'));
 });
 
 // A run that waited its whole time for the lock did nothing wrong: it is marked so that the tick re-runs it.

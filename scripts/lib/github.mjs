@@ -25,13 +25,15 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   let paused = 0; // ms spent in rate-limit pauses by this client
   // The network call with its retries; a network error (no answer at all) is retried only for idempotent methods
   // (a POST may have been applied before the connection broke).
-  async function send(method, url, init) {
+  // `guard`: run before every (re)send, retries and rate-limit pauses included (a write must not leave minutes after the
+  // turn on the queue lock was lost); none for reads and for the lock's own calls.
+  async function send(method, url, init, guard) {
     // Issue #491: a read already answered in this run asks GitHub « changed? » (If-None-Match). A 304 is not counted in
     // the hourly limit and gives back the answer kept here; anything else is GitHub's current state. Always fresh.
     const key = method === 'GET' ? `${init.headers?.accept || ''} ${url}` : null;
     const kept = key ? cache.get(key) : null;
     if (kept) init = { ...init, headers: { ...init.headers, 'if-none-match': kept.etag } };
-    const res = await sendRaw(method, url, init);
+    const res = await sendRaw(method, url, init, guard);
     tally(method, url, res);
     if (!key) return res;
     // GitHub's 304 has no Link header: the « next page » link kept with the answer is served again, or a long list
@@ -63,9 +65,10 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   }
   const routeOf = (url) => url.replace(api, '').split('?')[0].replace(`/repos/${repo}`, '/repos/{repo}')
     .split('/').map((part) => (/^\d+$/.test(part) ? ':n' : /^[0-9a-f]{40}$/.test(part) ? ':sha' : part)).join('/');
-  async function sendRaw(method, url, init) {
+  async function sendRaw(method, url, init, guard) {
     let pauses = 0;
     for (let attempt = 0; ; attempt++) {
+      guard?.();
       let res;
       try { res = await fetchImpl(url, { method, ...init, signal: AbortSignal.timeout(timeoutMs) }); } catch (e) {
         if (method === 'POST' || attempt >= RETRY_DELAYS_MS.length) throw markGitHubDown(e);
@@ -87,7 +90,13 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   }
   // A 5xx still there after the retries is GitHub's outage, not a refused call.
   const down = (status, e) => (status >= 500 ? markGitHubDown(e) : e);
-  async function rawRequest(method, path, body, accept = 'application/vnd.github+json') {
+  // The check of the run's turn on the queue lock (`queueLock.guard`, set by withLock while it holds the lock): once the
+  // turn is lost, no write leaves this client. Every write goes through `request`, so none can be forgotten; the check
+  // runs again before each retry of it.
+  let turnCheck = null;
+  const assertTurn = () => { turnCheck?.(); };
+  // `turn`: the check run before every (re)send; `request` passes it for every write, the lock's own calls none.
+  async function rawRequest(method, path, body, accept = 'application/vnd.github+json', turn = undefined) {
     const url = path.startsWith('http') ? path : `${api}${path.replace('{repo}', repo)}`;
     const res = await send(method, url, {
       headers: {
@@ -97,7 +106,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, turn);
     if (res.status === 404 && method === 'GET') return null;
     if (!res.ok) throw down(res.status, new Error(`${method} ${path} -> ${res.status} ${await res.text()}`));
     return res.status === 204 ? null : res.json();
@@ -113,7 +122,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     const clean = trustBodies(data, owner);
     return clean === data || !(await publicRepo()) ? data : clean;
   }
-  const request = async (...args) => guard(await rawRequest(...args));
+  const request = async (method, path, body, accept) => guard(await rawRequest(method, path, body, accept, method !== 'GET' ? assertTurn : undefined));
   const paginate = async (...args) => guard(await rawPaginate(...args));
   // Follows the Link header so long histories (events, comments) are read in full.
   async function rawPaginate(path, accept = 'application/vnd.github+json') {
@@ -140,27 +149,30 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   let mine = null; // sha of the lock commit this run created (moved forward by each sign of life)
   let tree = null; // the lock's content, reused by the signs of life
   let seen = null; // sha of the lock commit last seen held by someone else
-  const lockSha = async () => (await request('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
+  const lockSha = async () => (await rawRequest('GET', `/repos/{repo}/git/ref/${LOCK_REF}`))?.object.sha || null;
   const dropIf = async (sha) => {
     // The refs API has no compare-and-delete: check, then delete (a narrow window, far better than none).
     if (!sha || (await lockSha()) !== sha) return;
-    try { await request('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
+    try { await rawRequest('DELETE', `/repos/{repo}/git/refs/${LOCK_REF}`); } catch (e) { if (!/404|422/.test(String(e))) throw e; }
   };
   const lockDate = { sha: null, at: 0 };
+  // The lock's own calls are not guarded: a late sign of life may still save the turn, and whether to give the lock
+  // back is decided by withLock (it never does once the turn is lost).
   const queueLock = {
+    guard: (check) => { turnCheck = check || null; },
     async acquire() {
       seen = await lockSha();
       if (seen) return false; // cheap check first: waiting runs must not create a commit on every poll
-      tree = (await request('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
-      try { await request('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
+      tree = (await rawRequest('POST', '/repos/{repo}/git/trees', { tree: [{ path: 'lock', mode: '100644', type: 'blob', content: String(Date.now()) }] })).sha;
+      const commit = await rawRequest('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock', tree, parents: [] });
+      try { await rawRequest('POST', '/repos/{repo}/git/refs', { ref: `refs/${LOCK_REF}`, sha: commit.sha }); mine = commit.sha; return true; }
       catch (e) { if (String(e).includes('422')) return false; throw e; }
     },
     async ageMs() {
       if (!seen) return null;
       // A commit never changes: its date is read once per lock commit, not at every poll of a waiting run.
       if (lockDate.sha !== seen) {
-        const commit = await request('GET', `/repos/{repo}/git/commits/${seen}`);
+        const commit = await rawRequest('GET', `/repos/{repo}/git/commits/${seen}`);
         if (!commit) return null;
         Object.assign(lockDate, { sha: seen, at: Date.parse(commit.committer.date) });
       }
@@ -172,9 +184,9 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     async refresh() {
       const held = mine;
       if (!held) return false;
-      const commit = await request('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
+      const commit = await rawRequest('POST', '/repos/{repo}/git/commits', { message: 'factory queue lock (still working)', tree, parents: [held] });
       let moved = true;
-      try { await request('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
+      try { await rawRequest('PATCH', `/repos/{repo}/git/refs/${LOCK_REF}`, { sha: commit.sha, force: false }); }
       catch (e) {
         if (!/422/.test(String(e))) throw e;
         // A retried PATCH whose first try went through is refused too: the ref already being ours means it moved.
@@ -210,6 +222,7 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
   return {
     usage: () => structuredClone(use),
     queueLock,
+    assertTurn,
     getState,
     setState,
     request,
