@@ -2,10 +2,11 @@
 // Run by the agent before it opens or updates a PR: lists the steps its journal does not show yet, so it can
 // do them now instead of the owner seeing an alert. Usage: node .factory/scripts/journal-check.mjs
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
+import { latestRun, upstreamEntry } from './upstream.mjs';
 
 const HOW = {
   'writing-plans': 'charge le skill `writing-plans` (outil Skill) et écris le plan',
@@ -64,13 +65,7 @@ export function problems(files, readFile, stages, { stage = null, current = null
 // The run being checked from the command line: the journal whose latest « run » entry is the most recent. Its stage
 // is the one the lock applies, so both always agree on what is missing.
 export function runOptions(files, readFile) {
-  let best = null;
-  for (const f of files.filter((x) => JOURNAL.test(x))) {
-    const text = readFile(f);
-    const run = String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((e) => e?.kind === 'run').at(-1);
-    if (run && (!best || Date.parse(run.t) > Date.parse(best.run.t))) best = { run, text };
-  }
+  const best = latestRun(files, readFile);
   return best ? { stage: best.run.stage, current: best.text } : {};
 }
 
@@ -111,7 +106,23 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const file = importTranscript(root, repo);
       if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
     }
-    const files = branchFiles(git);
+    let files = branchFiles(git);
+    // Issue #550: for a build or a foundation, read the request back and journal who did its questions and sheet.
+    const best = latestRun(files, read);
+    if (best && repo && ['build', 'foundation'].includes(best.run.stage) && best.run.issue != null) {
+      const { defaultGh } = await import('./specs.mjs');
+      let comments = null;
+      try { comments = defaultGh(`repos/${repo}/issues/${best.run.issue}/comments`); } catch { /* GitHub unreachable: « unread » */ }
+      let since = null;
+      try { since = git(['log', '--diff-filter=A', '--format=%cI', '--', '.factory/scripts/upstream.mjs']).trim().split('\n').filter(Boolean).at(-1) || null; } catch { /* no history */ }
+      const entry = upstreamEntry(best.run, comments, { since, owner: repo.split('/')[0] });
+      const current = parseJournal([best.text]).at(-1)?.upstream;
+      const same = (a, b) => a && b && JSON.stringify([a.doc, a.status, a.by]) === JSON.stringify([b.doc, b.status, b.by]);
+      if (entry && !same(entry, current)) {
+        appendFileSync(join(root, best.file), JSON.stringify({ t: new Date().toISOString(), ...entry }) + '\n');
+        files = branchFiles(git);
+      }
+    }
     if (!files.some((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
     else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {

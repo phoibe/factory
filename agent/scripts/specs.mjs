@@ -26,7 +26,7 @@ export function specFileName(n, title) {
 // The latest comment carrying the spec marker, or null. Given the project's owner, only a trusted author's spec counts:
 // on a public project anyone can post the marker (issue #339). Same rule as scripts/lib/trust.mjs, inlined because this
 // script is copied alone into each project.
-const trusted = (c, owner) => {
+export const trusted = (c, owner) => {
   const login = String(c?.user?.login || '').toLowerCase();
   return Boolean(login) && (login === String(owner).toLowerCase() || ['github-actions[bot]', 'claude[bot]'].includes(login)
     || ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(c?.author_association));
@@ -117,7 +117,7 @@ const findSpecFile = (dir, n) => {
   return existsSync(folder) ? readdirSync(folder).find((f) => f === `${n}.md` || (f.startsWith(`${n}-`) && f.endsWith('.md'))) || null : null;
 };
 
-function defaultGh(path) {
+export function defaultGh(path) {
   const get = (p) => JSON.parse(execFileSync('gh', ['api', p], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
   if (!path.endsWith('/comments')) return get(path);
   const all = [];

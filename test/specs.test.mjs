@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  slug, specFileName, latestSpec, cleanSpec, renderSpec, parseSpec, addModifiedBy, renderIndex, saveSpec, markModified,
+  slug, specFileName, latestSpec, cleanSpec, renderSpec, parseSpec, addModifiedBy, renderIndex, saveSpec, markModified, trusted, defaultGh,
 } from '../agent/scripts/specs.mjs';
 
 const REPO = 'phoibe/demo';
@@ -220,4 +220,13 @@ test('journal-check and shots read the repository from the remote like specs doe
     assert.match(src, /repoFromRemote/, `${f} uses repoFromRemote`);
     assert.doesNotMatch(src, /github\\\.com\[/, `${f} has no regex of its own`);
   }
+});
+
+// Issue #550: the upstream proof line ends the spec comment but never reaches the saved spec; upstream.mjs reuses the trust rule.
+test('the upstream proof line is not kept in the saved spec, and the trust rule is shared', () => {
+  const body = `<!-- factory-agent -->\n<!-- factory-spec -->\n## Spec (version 1)\n\n- Une règle.\n\n<!-- factory-upstream stage=spec model=fable role=plan -->\n\n---\n_Généré par Claude Code_`;
+  assert.doesNotMatch(cleanSpec(body), /factory-upstream/);
+  assert.equal(trusted({ user: { login: 'O' } }, 'o'), true);
+  assert.equal(trusted({ user: { login: 'x' }, author_association: 'NONE' }, 'o'), false);
+  assert.equal(typeof defaultGh, 'function');
 });
