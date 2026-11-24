@@ -342,11 +342,11 @@ export function eventsPart(ctx) {
     if (outsider && ownerSaid && ['fire', 'queue'].includes(action.type)) {
       const taken = await takeOver(n, { message: said, ownerLogin, snapshot: ev.snapshot });
       if (taken) return { action: taken, outputs };
-      // No copy (a closed request, or one gone): an outsider's request never starts anything itself, not even a
-      // question's answer.
+      // No copy (a closed request, one gone, or one with no kind of request): an outsider's request never starts
+      // anything itself, not even a question's answer.
       log('outsider request not taken over: nothing is started');
       if (ev.closed) await gh.comment(n, say(CLOSED_TOLD));
-      return { action: { type: 'ignore', reason: "demande d'un inconnu fermée" }, outputs };
+      return { action: { type: 'ignore', reason: ev.closed ? "demande d'un inconnu fermée" : "demande d'un inconnu sans type de demande : pas de copie" }, outputs };
     }
     if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.

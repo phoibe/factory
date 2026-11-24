@@ -27,22 +27,38 @@ const KINDS = [L.feature, L.bug, L.project, L.question, L.audit, L.uiPolish, L.s
 // GitHub refuses a description over 65,536 characters (a 422 no retry mends): each text is cut well below, visibly.
 const MAX_ORIGINAL = 40_000;
 const MAX_MESSAGE = 15_000;
+// Cut at the end of a line when there is one, so that a quoted text stays quoted to its last line.
 function cut(text, max) {
   if (text.length <= max) return text;
   let kept = text.slice(0, max);
-  if (/[\uD800-\uDBFF]$/.test(kept)) kept = kept.slice(0, -1); // never half a character
+  const end = text[max] === '\n' ? max : kept.lastIndexOf('\n');
+  if (end > 0) kept = kept.slice(0, end);
+  else if (/[\uD800-\uDBFF]$/.test(kept)) kept = kept.slice(0, -1); // never half a character
   return `${kept.trimEnd()} …`;
 }
 
+// Every line ending (`\r\n`, a lone `\r`) as `\n`: Markdown ends a line on each, the quote below splits on `\n` only.
+const unixLines = (text) => String(text ?? '').replace(/\r\n?/g, '\n');
+
 // The outsider's mentions (`@bob`, `@org/team`) are not sent again under the factory's name: a zero-width joiner after
-// the `@` keeps them readable but inert. An email (`a@b.com`) and code (fenced blocks, `inline`) are left as they are.
-const MENTION = /(^|[^\w`])@(?=[A-Za-z0-9])/g;
+// the `@` keeps them readable but inert. An email (`a@b.com`), an address (`https://medium.com/@bob/post`) and code
+// (fenced blocks, `inline`) are left as they are.
+const MENTION = /(^|[^\w`/])@(?=[A-Za-z0-9])/g;
+const URL_TOKEN = /((?<![\w@.+-])[A-Za-z][\w+.-]*:\/\/[^\s<>()]*)/;
+const quietPart = (part) => part.split(URL_TOKEN).map((p, i) => (i % 2 ? p : p.replace(MENTION, '$1@\u200D'))).join('');
+// A fence (CommonMark): three or more ` or ~, indented by three spaces at most; a ``` one whose info string holds a
+// backtick is none. It closes on the same character, at least as long, with nothing after it.
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 function quietMentions(text) {
-  let fenced = false;
+  let open = null;
   return text.split('\n').map((line) => {
-    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return line; }
-    if (fenced) return line;
-    return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part : part.replace(MENTION, '$1@\u200D'))).join('');
+    const f = FENCE.exec(line);
+    if (open) {
+      if (f && f[1][0] === open[0] && f[1].length >= open.length && !f[2].trim()) open = null;
+      return line;
+    }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { open = f[1]; return line; }
+    return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part : quietPart(part))).join('');
   }).join('\n');
 }
 
@@ -53,8 +69,9 @@ const quote = (text) => text.split('\n').map((line) => `> ${line}`).join('\n');
 // other hidden note is taken out as in an outsider's text.
 const IMAGE_NOTE = /<!-- factory-image: attachments\/[\w./-]+ -->/g;
 function ownerText(message) {
-  const images = String(message ?? '').match(IMAGE_NOTE) || [];
-  return [visibleText(message), ...images].filter(Boolean).join('\n');
+  const text = unixLines(message);
+  const images = text.match(IMAGE_NOTE) || [];
+  return [visibleText(text), ...images].filter(Boolean).join('\n');
 }
 
 // The copy's description: its marker, where it comes from (the login without @: nobody is notified), the visible text
@@ -62,8 +79,9 @@ function ownerText(message) {
 export function copyBody({ repo, original, message }) {
   const n = original.number;
   const lines = [copyMarker(n), `Reprise de la demande [#${n}](https://github.com/${repo}/issues/${n}) de ${original.user?.login || 'ghost'}.`];
-  const text = cut(visibleText(original.body), MAX_ORIGINAL);
-  if (text) lines.push('', quote(quietMentions(text)));
+  // Cut once quoted: each `> ` adds to the length.
+  const text = visibleText(unixLines(original.body));
+  if (text) lines.push('', cut(quote(quietMentions(text)), MAX_ORIGINAL));
   const said = cut(ownerText(message), MAX_MESSAGE);
   if (said) lines.push('', '---', '', '**Votre message :**', '', said);
   return lines.join('\n');
