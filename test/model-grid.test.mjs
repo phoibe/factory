@@ -7,7 +7,7 @@ const agent = read('AGENT.md');
 const grid = agent.slice(agent.indexOf('**Modèles par rôle.**'));
 const line = (role) => grid.split('\n').find((l) => l.startsWith('|') && l.includes(`\`${role}\``)) || '';
 
-test('AGENT.md holds one table: the model and effort of each of the 4 roles', () => {
+test('AGENT.md holds one table: the model and effort of each of the 5 roles', () => {
   assert.ok(agent.includes('**Modèles par rôle.**'));
   assert.ok(!agent.includes('**Modèle et effort des sous-agents.**'));
   assert.match(grid, /`models`/);
@@ -18,11 +18,19 @@ test('AGENT.md holds one table: the model and effort of each of the 4 roles', ()
   assert.match(grid, /jamais `xhigh` ni `max`/i);
   assert.match(grid, /tâches simples → code → revue/);
   assert.match(grid, /même pour une petite/);
+  assert.match(grid, /chacun de 5 rôles/);
+  assert.match(grid, /"review": …, "audit": …, "simple": …/);
+  assert.match(line('audit'), /Relectures d'une review générale[^\n]*`opus`[^\n]*`high`[^\n]*partie par partie/);
+  assert.ok(grid.indexOf('| `review`') < grid.indexOf('| `audit`') && grid.indexOf('| `audit`') < grid.indexOf('| `simple`'));
+  assert.ok(!/générale/.test(line('code')), 'the code role no longer reviews the parts of a general review');
+  assert.match(line('review'), /synthèse d'une review générale et relecture de ses corrections/);
+  assert.match(grid, /tâches simples → code → revue ; `audit` → revue/);
+  assert.match(grid.replace(/\s+/g, ' '), /Sans ce champ, ou si un rôle y manque, prends les valeurs par défaut du tableau/);
 });
 
 test('each stage that dispatches a sub-agent names a role, not a fixed model', () => {
   const expected = {
-    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`', '`plan`', '`code`'], 'stages/audit.md': ['`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
+    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`', '`plan`', '`code`'], 'stages/audit.md': ['`audit`', '`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
     'stages/grilling.md': ['`plan`'], 'stages/spec.md': ['`plan`'], 'stages/framing.md': ['`plan`'], 'stages/docs.md': ['`plan`'],
     'stages/design-pass.md': ['`code`'], 'stages/visual-fix.md': ['`code`'], 'stages/acceptance-fix.md': ['`code`'], 'stages/skills-fix.md': ['`review`'],
   };
@@ -30,6 +38,21 @@ test('each stage that dispatches a sub-agent names a role, not a fixed model', (
     const text = read(file);
     for (const r of roles) assert.ok(text.includes(r), `${file} should name ${r}`);
     for (const m of ['haiku', 'sonnet', 'opus']) assert.ok(!text.includes(`\`${m}\``), `${file} should not name \`${m}\``);
+  }
+});
+
+// Issue #570: only the part-by-part reviewers of a general review run on the `audit` role.
+test('the general review sends its part-by-part reviews to the audit role, and nothing else', async () => {
+  const { readdirSync } = await import('node:fs');
+  const step = read('stages/audit.md').replace(/\s+/g, ' ').match(/3\. \*\*Revue de code générale\*\*.*?(?= 3 bis\.)/)[0];
+  assert.match(step, /sous-agents neufs du rôle `audit` \(`model` et `effort` de `models\.audit`, description `\[role:audit\] …`\)/);
+  assert.match(step, /un seul pour une petite appli relue d'un bloc, lui aussi sur le rôle `audit`/);
+  assert.match(step, /échoue deux fois repart sur le rôle `review`/);
+  assert.match(step, /sous-agent du rôle `review` fait la synthèse/);
+  assert.match(step, /corriger chaque point par des sous-agents du rôle `code`/);
+  assert.match(step, /revue neuve des corrections par un sous-agent du rôle `review`, au plus \{\{maxLoops\}\} tours/);
+  for (const f of readdirSync(new URL('../agent/stages/', import.meta.url)).filter((n) => n !== 'audit.md')) {
+    assert.ok(!/rôle `audit`|\[role:audit/.test(read(`stages/${f}`)), `${f} must not use the audit role`);
   }
 });
 
