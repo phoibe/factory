@@ -70,7 +70,8 @@
    Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
    après à droite). Chaque image avant/après porte des cadres rouges autour de ce qui a changé (aucun autour du
    contenu décalé, ni sur un nouvel écran ; quand presque tout diffère, la mention « tout l'écran a changé » les
-   remplace) : tu n'as rien à faire, et les captures elles-mêmes restent sans cadre. Le script la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
+   remplace) : tu n'as rien à faire, et les captures elles-mêmes restent sans cadre. Le script pousse ces images sur
+   `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
    **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
    poussées, dès que tu poses `factory:checks` sur la PR (un tableau envoyé depuis ta session peut arriver abîmé sur

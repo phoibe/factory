@@ -193,4 +193,5 @@ test('the screenshots stage tells the agent about the red frames', async () => {
   assert.match(s, /cadres rouges/);
   assert.match(s, /contenu décalé/);
   assert.match(s, /tout l'écran a changé/);
+  assert.match(s, /Le script pousse ces images sur `claude\/factory-assets`/);
 });
