@@ -5,3 +5,5 @@
 {"t":"2026-11-24T15:43:12.219Z","kind":"test","cmd":"time (npm test 2>&1 | tail -8)","ok":true,"id":"toolu_014RTxTb9nuwN9QWey7wEMvg"}
 {"t":"2026-11-24T15:46:56.499Z","kind":"test","cmd":"time (CHROMIUM_PATH=… timeout 600 npm run test:e2e 2>&1 | tail -8)","ok":true,"id":"toolu_01E7yQvkNdrPbW8QJPJsx1uz"}
 {"t":"2026-11-24T15:47:11.345Z","kind":"test","cmd":"time (CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | tail -4)","ok":true,"id":"toolu_01HpigtBBUpS52HdFJMLujRM"}
+{"t":"2026-11-24T15:49:49.269Z","kind":"test","cmd":"S=… ( s=… +%s); CHROMIUM_PATH=… timeout 900 npm run test:e2e > $S/e2e.log 2>&1; echo \"exit $? elapsed $(( $(date +%s) - s ))s\" >> $S/e2e.log; s=… +%s); CHROMIUM_PATH=… timeout 300 npm run test:a11y > ","ok":true,"id":"toolu_01PCMi7ntEFLteZ3dYsFxXhA"}
+{"t":"2026-11-24T16:00:41.528Z","kind":"gate","event":"Stop"}
