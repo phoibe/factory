@@ -46,9 +46,12 @@ export function takeoverPart(ctx) {
     return copy ? { number: copy.number, told: false } : null;
   }
 
-  async function takeOver(n, { message, ownerLogin } = {}) {
-    const original = await gh.getIssue(n);
-    if (!original) return null;
+  // `snapshot`: the request's title and description as the event carried them, so that the copy holds what the owner
+  // saw; read live only when the event carries none (a deferred message replayed later).
+  async function takeOver(n, { message, ownerLogin, snapshot } = {}) {
+    const live = await gh.getIssue(n);
+    if (!live) return null;
+    const original = snapshot ? { ...live, title: snapshot.title, body: snapshot.body } : live;
     const isOpen = original.state !== 'closed';
     const kinds = names(original.labels).filter((l) => KINDS.includes(l));
     let found = await findCopy(n);

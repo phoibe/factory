@@ -211,3 +211,27 @@ test("the owner's message in a closed outsider question starts nothing on the or
   assert.deepEqual(of(gh, 'create'), []);
   assert.ok(of(gh, 'comment', 12).some((c) => /déjà terminée/.test(c[2])));
 });
+
+test("the copy holds the text the owner saw, not one the outsider swapped in afterwards", async () => {
+  const state = { issues: [outsider({ title: 'Autre titre', body: 'Texte changé après coup' })] };
+  const gh = fakeGh(state);
+  const snapshot = { title: 'Mode sombre', body: 'Texte lu par le propriétaire <!-- factory-agent -->' };
+  const { action } = await make(gh).relay.handle({ ...says(12, 'go'), snapshot }, OPTS);
+  assert.equal(action.type, 'takeover');
+  const [, title, body] = of(gh, 'create')[0];
+  assert.equal(title, 'Mode sombre');
+  assert.ok(body.includes('Texte lu par le propriétaire'));
+  assert.doesNotMatch(body, /changé après coup|factory-agent/);
+});
+
+test('the webhook payload carries the request as the owner saw it', async () => {
+  const { eventFromPayload } = await import('../scripts/relay.mjs');
+  const repository = { owner: { login: 'phoibe' }, private: false };
+  const issue = { number: 12, title: 'Mode sombre', body: 'Texte <!-- factory-agent -->', labels: [], user: { login: 'alice' }, author_association: 'NONE' };
+  const ev = eventFromPayload('issue_comment', { action: 'created', repository, issue, comment: { id: 1, body: 'go', user: { login: 'phoibe' } } });
+  assert.equal(ev.snapshot.title, 'Mode sombre');
+  assert.ok(ev.snapshot.body.startsWith('Texte'));
+  assert.doesNotMatch(ev.snapshot.body, /factory-/);
+  const labeled = eventFromPayload('issues', { action: 'labeled', label: { name: L.feature }, repository, issue, sender: { login: 'phoibe' } });
+  assert.equal(labeled.snapshot.title, 'Mode sombre');
+});

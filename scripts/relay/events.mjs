@@ -38,13 +38,20 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return { ...base, kind: 'dispatch', payload, labels: [] };
   }
   if (eventName === 'schedule') return { ...base, kind: 'tick', number: null, labels: [], fromOwner: false };
+  // Issue #557: the request as GitHub sent it with the event, its notes taken out (an outsider's on a public project):
+  // a copy is made from this text, not from one its author could change before the relay reads it.
+  const snapshotOf = (issue) => {
+    if (!issue || issue.pull_request) return undefined;
+    const seen = p.repository?.private === true ? issue : trustBodies(issue, owner);
+    return { title: String(seen.title ?? ''), body: String(seen.body ?? '') };
+  };
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
       // An outsider's agent note on a public project is not the agent's (issue #557).
       fromAgent: ((p.repository?.private === true ? p.issue : trustBodies(p.issue, owner))?.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
       // An issue form with labels sends "opened" and "labeled" together: the "labeled" one must not start it twice.
-      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000,
+      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000, snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'issue_comment') {
@@ -52,6 +59,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
       text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'pull_request_review') {
