@@ -20,14 +20,22 @@ export function authorKind(item, owner) {
   return 'outsider';
 }
 
-// Every HTML comment removed, until none is left; an unterminated one is cut to the end.
+// Text GitHub does not show: every HTML comment (an unterminated one is cut to the end), every element with a
+// `hidden` attribute, and every link reference definition (`[//]: # (…)`, never displayed). Until none is left.
+const HIDDEN_ELEMENT = /<([a-z][\w-]*)\b[^>]*?\shidden\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const REFERENCE_LINE = /^ {0,3}\[[^\]\n]+\]:[^\n]*$/gm;
 function withoutHiddenText(text) {
   let s = String(text ?? '');
   for (;;) {
     const start = s.indexOf('<!--');
-    if (start < 0) return s;
-    const end = s.indexOf('-->', start + 4);
-    s = end < 0 ? s.slice(0, start) : s.slice(0, start) + s.slice(end + 3);
+    if (start >= 0) {
+      const end = s.indexOf('-->', start + 4);
+      s = end < 0 ? s.slice(0, start) : s.slice(0, start) + s.slice(end + 3);
+      continue;
+    }
+    const next = s.replace(HIDDEN_ELEMENT, '').replace(REFERENCE_LINE, '');
+    if (next === s) return s;
+    s = next;
   }
 }
 
@@ -35,7 +43,7 @@ const KIND_OF = { comments: 'comment', reviews: 'review', reviewComments: 'remar
 const dateOf = (x) => x.submitted_at || x.created_at || '';
 
 function keep(kind, x, from) {
-  const m = { kind, from, id: x.id, author: x.user.login, at: dateOf(x), body: x.body ?? '' };
+  const m = { kind, from, id: x.id, author: x.user?.login || '', at: dateOf(x), body: x.body ?? '' };
   if (kind === 'review') m.state = x.state;
   if (kind === 'remark') {
     m.path = x.path;
@@ -58,10 +66,20 @@ export function filterThread(raw, { owner, isPrivate }) {
     if (from === 'outsider' && !open) return { leftAside: true };
     return keep(kind, x, from);
   });
+  // A reply keeps the id it answers only when that remark is shown: the id of a remark left aside is never given.
+  const shownRemarks = new Set(messages.filter((m) => m.kind === 'remark').map((m) => m.id));
+  for (const m of messages) {
+    if (m.replyTo != null && !shownRemarks.has(m.replyTo)) {
+      delete m.replyTo;
+      m.replyToLeftAside = true;
+    }
+  }
   const dFrom = authorKind(issue, owner);
+  const sorted = dFrom === 'outsider' && !open;
   const description = {
     from: dFrom, author: issue.user?.login || '', at: issue.created_at || '',
-    body: dFrom === 'outsider' && !open ? withoutHiddenText(issue.body) : issue.body ?? '',
+    body: sorted ? withoutHiddenText(issue.body) : issue.body ?? '',
+    ...(sorted ? { outsider: true } : {}),
   };
   return {
     number: issue.number, title: issue.title || '', pr: Boolean(issue.pull_request), state: issue.state || '',
@@ -77,10 +95,16 @@ function header(m) {
   if (m.kind === 'remark') {
     parts.push(`fichier ${m.path}${m.line != null ? `, ligne ${m.line}` : ''}`);
     if (m.replyTo != null) parts.push(`en réponse à ${m.replyTo}`);
+    else if (m.replyToLeftAside) parts.push('en réponse à un message laissé de côté');
   }
   if (m.from === 'bot') parts.push(BOT_NOTE);
   return `--- ${parts.join(' · ')}`;
 }
+
+// Every line of a body is printed after BODY_MARK, so no text written by anyone can pass for a header or a
+// placeholder line of the script.
+export const BODY_MARK = '│ ';
+const quoted = (body) => String(body ?? '').split('\n').map((l) => `${BODY_MARK}${l}`).join('\n');
 
 // Readable text: title, state and labels, the description, then each message in order.
 export function renderThread(t) {
@@ -88,23 +112,24 @@ export function renderThread(t) {
     `État : ${t.state}${t.labels.length ? ` · étiquettes : ${t.labels.join(', ')}` : ''}`, ''];
   const d = t.description;
   lines.push(`--- Description de ${d.author || '?'}, ${d.at}${d.from === 'bot' ? ` · ${BOT_NOTE}` : ''}`);
-  if (d.from === 'outsider') lines.push(OUTSIDER_DESCRIPTION);
-  lines.push(d.body, '');
+  if (d.outsider) lines.push(OUTSIDER_DESCRIPTION);
+  lines.push(quoted(d.body), '');
   for (const m of t.messages) {
     if (m.leftAside) lines.push(LEFT_ASIDE, '');
-    else lines.push(header(m), m.body, '');
+    else lines.push(header(m), quoted(m.body), '');
   }
   return lines.join('\n');
 }
 
-// Every page of a list, 100 at a time, up to a page shorter than that.
+// Every page of a list, 100 at a time, up to an empty page (GitHub may send fewer than asked on a page that is
+// not the last).
 function allPages(gh, path) {
   const items = [];
   for (let page = 1; ; page++) {
     const batch = gh(`${path}?per_page=100&page=${page}`);
     if (!Array.isArray(batch)) throw new Error(`réponse inattendue pour ${path}`);
+    if (!batch.length) return items;
     items.push(...batch);
-    if (batch.length < 100) return items;
   }
 }
 
@@ -125,14 +150,22 @@ const USAGE = 'node .factory/scripts/thread.mjs <numéro> [--repo owner/name]';
 const defaultGh = (path) => JSON.parse(execFileSync('gh', ['api', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30_000 }));
 const defaultRemote = () => execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
 
+// The project of the origin remote; a failure says how to run the script so it works.
+function originRepo(remote) {
+  let url;
+  try { url = remote(); } catch { throw new Error('pas de dépôt git ici : lance-le depuis le dossier du projet, ou ajoute --repo owner/name'); }
+  return repoFromRemote(url);
+}
+
 export function main(args, { gh = defaultGh, remote = defaultRemote } = {}) {
-  const [num, ...rest] = args;
+  const rest = [...args];
   const flag = rest.indexOf('--repo');
-  const bad = !/^\d+$/.test(num || '') || (flag >= 0 && !/^[^/\s]+\/[^/\s]+$/.test(rest[flag + 1] || ''))
-    || rest.length !== (flag >= 0 ? 2 : 0);
+  const given = flag >= 0 ? rest.splice(flag, 2)[1] : null;
+  const [num] = rest;
+  const bad = !/^\d+$/.test(num || '') || (flag >= 0 && !/^[^/\s]+\/[^/\s]+$/.test(given || '')) || rest.length !== 1;
   if (bad) return { code: 1, out: '', err: `Fil : arguments incorrects. Usage : ${USAGE}` };
   try {
-    const repo = flag >= 0 ? rest[flag + 1] : repoFromRemote(remote());
+    const repo = given || originRepo(remote);
     const { raw, isPrivate } = readThread({ repo, n: Number(num), gh });
     return { code: 0, out: renderThread(filterThread(raw, { owner: repo.split('/')[0], isPrivate })), err: '' };
   } catch (e) {

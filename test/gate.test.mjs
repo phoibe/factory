@@ -188,3 +188,43 @@ test("the thread refusal never gives way and uses up none of the lock's refusals
 test('outside a factory run nothing is refused', () => {
   assert.equal(decide(bash('gh api repos/o/r/issues/5/comments --paginate'), env('')), null);
 });
+
+// Review of #565: forms that read a thread and were let through.
+test('a read is spotted however the shell wraps it, and a later write sign does not hide it', () => {
+  for (const c of ['X=$(gh api repos/o/r/issues/5/comments)', "gh api repos/o/r/issues/5/comments|jq -r '.[].body'",
+    'gh api repos/o/r/issues/5/comments>f.json', 'for i in 1; do gh api repos/o/r/issues/$i/comments; done',
+    '(gh api repos/o/r/issues/5/comments)', 'gh api repos/o/r/issues/5/comments/', 'echo `gh api repos/o/r/issues/5/comments`',
+    "gh api repos/o/r/issues/5/comments --paginate --jq '.[].body' | grep -F 'factory-spec'",
+    "gh api repos/o/r/issues/5/comments --jq '.[-1].body' | tr -d '\\r'", "gh api repos/o/r/issues/5/comments | cut -d ' ' -f 1",
+    'gh api repos/o/r/issues/5/comments && echo -f x', 'curl -s -f https://api.github.com/repos/o/r/issues/5/comments',
+    'gh api repos/o/r/issues/5/comments -f per_page=100 --method get', 'gh api repos/o/r/issues/5/comments -X get -f per_page=100',
+    'gh issue list --json number,comments', 'gh pr list --json reviews', 'gh api repos/o/r/issues/$(cat n)/comments',
+    'gh api "repos/o/r/issues/$(cat n)/comments"']) {
+    assert.ok(readsThread('Bash', { command: c }), c);
+  }
+  for (const c of ['gh api repos/o/r/issues/5/comments -F body=@c.md | jq .id', "jq -n '{body:\"x\"}' | gh api repos/o/r/issues/5/comments --input -",
+    'gh api repos/o/r/issues/5/comments -F body=@c.md && gh api -X DELETE repos/o/r/issues/5/labels/factory:running',
+    'gh api -X delete repos/o/r/issues/comments/123', "gh api repos/o/r/issues/5/comments -F body=@c.md --jq '.id | tostring'",
+    'gh api repos/o/r/issues/5/comments.patch', 'gh issue list --json number,title', 'curl -s -f https://api.github.com/repos/o/r/issues/5']) {
+    assert.ok(!readsThread('Bash', { command: c }), c);
+  }
+});
+
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+test('the hook refuses a thread read even when git fails, and journals nothing for it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-nogit-')); // not a git repository: reading the branch throws
+  const session = `t${Date.now()}`;
+  const journal = join(dir, '.factory/journal', `${session}.jsonl`);
+  mkdirSync(join(dir, '.factory/journal'), { recursive: true });
+  writeFileSync(journal, `${JSON.stringify(run('build'))}\n`);
+  const input = { ...bash('gh api repos/o/r/issues/5/comments'), session_id: session, tool_use_id: 'tu1', cwd: dir };
+  const res = spawnSync(process.execPath, [new URL('../agent/scripts/gate.mjs', import.meta.url).pathname], {
+    input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, GIT_CEILING_DIRECTORIES: tmpdir() } });
+  assert.equal(res.status, 0);
+  assert.equal(JSON.parse(res.stdout || '{}').hookSpecificOutput?.permissionDecision, 'deny', res.stdout + res.stderr);
+  assert.equal(readFileSync(journal, 'utf8'), `${JSON.stringify(run('build'))}\n`);
+});

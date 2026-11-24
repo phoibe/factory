@@ -23,9 +23,25 @@ const commandOf = (input) => String(input?.command || '').replace(HEREDOC, '').r
 
 // A gh api / curl call that sends fields (gh api then POSTs unless told otherwise), and one that says GET.
 const SENDS_FIELDS = /\s-[fFd]\s|\s--(field|raw-field|input|data[\w-]*)\b/;
-const EXPLICIT_GET = /(-X\s*|--method[\s=]+|--request[\s=]+)GET\b/;
+const EXPLICIT_GET = /(-X\s*|--method[\s=]+|--request[\s=]+)GET\b/i;
 // Each gh api / curl call on its own, so a read chained to a write (or the other way round) does not hide it.
 const apiCalls = (cmd) => cmd.split('\n').flatMap((l) => l.split(/(?=\b(?:gh\s+api|curl)\b)/));
+// A call's own arguments: up to the first shell operator outside quotes (| ; & ) or a backtick, a `$(…)` of the
+// call itself excepted), so what a pipe or a chained command adds (`grep -F`, `cut -f`, `echo -f`) is not taken for
+// the call's fields.
+export function ownArgs(call) {
+  let quote = null;
+  let depth = 0;
+  for (let i = 0; i < call.length; i++) {
+    const ch = call[i];
+    if (quote === "'") { if (ch === quote) quote = null; continue; }
+    if (ch === '$' && call[i + 1] === '(') { depth++; i++; continue; }
+    if (ch === ')' && depth) { depth--; continue; }
+    if (quote) { if (ch === quote) quote = null; } else if (ch === '"' || ch === "'") quote = ch;
+    else if ('|;&)`'.includes(ch)) return call.slice(0, i);
+  }
+  return call;
+}
 
 // Does this tool call open a PR? A read of the pull requests does not: -X GET with -f filters, or a query string
 // (`/pulls?head=…`, often inside $(…) to find the PR number) that a POST opening a PR never carries.
@@ -44,8 +60,12 @@ export function opensPr(tool, input = {}) {
 export const THREAD_REFUSAL = "Verrou de la factory : les messages d'une demande ou d'une PR (remarques de relecture comprises) ne se lisent que par "
   + '`node .factory/scripts/thread.mjs <numéro> [--repo owner/name]`, qui laisse de côté les messages des personnes extérieures au projet. '
   + 'Si ce script échoue, ne lis pas le fil autrement : arrête-toi.';
-const THREAD_ADDRESS = /\/(issues|pulls)\/(?:comments|[^/\s'"?]+\/(?:comments|timeline|reviews(?:\/[^/\s'"?]+\/comments)?))(?=$|[\s'"?#])/;
-const WRITES = new RegExp(`(${SENDS_FIELDS.source}|(-X\\s*|--method[\\s=]+|--request[\\s=]+)(POST|PATCH|PUT|DELETE)\\b)`);
+// The address ends there (a trailing slash allowed): not `…/comments/123`, `…/comments.patch` nor `…/replies`.
+const SEGMENT = String.raw`(?:\$\([^)]*\)|[^/\s'"?])+`; // one path segment, a $(…) in it included
+const THREAD_ADDRESS = new RegExp(String.raw`\/(issues|pulls)\/(?:comments|${SEGMENT}\/(?:comments|timeline|reviews(?:\/${SEGMENT}\/comments)?))\/?(?![\w/%.-])`, 'i');
+const WRITES = new RegExp(`(${SENDS_FIELDS.source}|(-X\\s*|--method[\\s=]+|--request[\\s=]+)(POST|PATCH|PUT|DELETE)\\b)`, 'i');
+// curl -f is --fail, not a field.
+const withoutCurlFail = (c) => (/^curl\b/.test(c) ? c.replace(/\s-f(?=\s)/g, ' ') : c);
 const MCP_THREAD_TOOLS = /(get_issue_comments|get_pull_request_comments|get_pull_request_reviews|get_pull_request_review_comments)$/;
 export function readsThread(tool, input = {}) {
   const name = tool || '';
@@ -54,9 +74,10 @@ export function readsThread(tool, input = {}) {
   if (/pull_request_read$/.test(name)) return ['get_comments', 'get_review_comments', 'get_reviews'].includes(input?.method);
   if (name !== 'Bash') return false;
   const cmd = commandOf(input);
-  if (/\bgh\s+(issue|pr)\s+view\b[^\n]*?(\s--comments\b|\s-c\b|--json[\s=]+['"]?[\w,]*\b(comments|reviews|latestReviews)\b)/.test(cmd)) return true;
+  if (/\bgh\s+(issue|pr)\s+(view|list)\b[^\n]*?(\s--comments\b|\s-c\b|--json[\s=]+['"]?[\w,]*\b(comments|reviews|latestReviews)\b)/.test(cmd)) return true;
   if (/\bgh\s+api\s+graphql\b/.test(cmd) && /\b(comments|reviews|reviewThreads|timelineItems)\b/.test(cmd) && !/\bmutation\b/.test(cmd)) return true;
-  return apiCalls(cmd).some((c) => /^(gh\s+api|curl)\b/.test(c) && THREAD_ADDRESS.test(c) && (!WRITES.test(c) || EXPLICIT_GET.test(c)));
+  return apiCalls(cmd).map((c) => withoutCurlFail(ownArgs(c)))
+    .some((c) => /^(gh\s+api|curl)\b/.test(c) && THREAD_ADDRESS.test(c) && (!WRITES.test(c) || EXPLICIT_GET.test(c)));
 }
 
 // Does this tool call open a PR, or hand it to the next step?
@@ -118,8 +139,11 @@ const entries = (text) => String(text || '').split('\n').map((l) => { try { retu
 const isUpstream = (line) => line.startsWith(UNPROVED_HOW);
 const UPSTREAM = 'upstream';
 
-// The hook's answer for one input, or null to let it through. `env` gives the files, the journal and config.
-export function decide(input, { files, read, stages, sessionText, readFile, cwd }) {
+// The hook's answer for one input, or null to let it through. `env` gives the files (a list, or a function that
+// reads them only when needed: the thread refusal must not depend on git), the journal and config.
+export function decide(input, { files: givenFiles, read, stages, sessionText, readFile, cwd }) {
+  let fileList;
+  const files = () => (fileList ??= typeof givenFiles === 'function' ? givenFiles() : givenFiles);
   const ev = input.hook_event_name;
   const runEntry = entries(sessionText).filter((e) => e.kind === 'run').at(-1);
   if (!runEntry) return null; // not a factory run
@@ -131,7 +155,7 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
   if (denials >= MAX_DENIALS) return null;
   const opts = { stage: runEntry.stage, current: sessionText };
   const upstreamGiven = entries(sessionText).some((e) => e.kind === 'gate' && e.cause === UPSTREAM);
-  const missing = () => problems(files, read, stages, opts).filter((l) => !(upstreamGiven && isUpstream(l)));
+  const missing = () => problems(files(), read, stages, opts).filter((l) => !(upstreamGiven && isUpstream(l)));
   const cause = (list, other) => (!other && list.length && list.every(isUpstream) ? { cause: UPSTREAM } : {});
   if (ev === 'PreToolUse') {
     const shots = shotsRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd });
@@ -149,7 +173,7 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
   }
   if (ev === 'Stop') {
     if (input.stop_hook_active) return null;
-    if (!files.some((f) => !f.startsWith('.factory/journal/'))) return null; // nothing built yet (a question, a block)
+    if (!files().some((f) => !f.startsWith('.factory/journal/'))) return null; // nothing built yet (a question, a block)
     const list = missing();
     if (!list.length) return null;
     const reason = ['Verrou de la factory : avant de t\'arrêter, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
@@ -171,7 +195,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const stages = existsSync(cfg) ? JSON.parse(readFileSync(cfg, 'utf8')).stages || {} : {};
       const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
       const readFile = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
-      const res = decide(input, { files: branchFiles(git), read, stages, sessionText: read(`.factory/journal/${session}.jsonl`), readFile, cwd: input.cwd || root });
+      const res = decide(input, { files: () => branchFiles(git), read, stages, sessionText: read(`.factory/journal/${session}.jsonl`), readFile, cwd: input.cwd || root });
       const id = input.tool_use_id ? String(input.tool_use_id) : null;
       const counted = id && read(`.factory/journal/${session}.jsonl`).includes(`"id":${JSON.stringify(id)}`);
       if (res) {
