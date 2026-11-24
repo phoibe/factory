@@ -33,10 +33,12 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // and `liveRef`, the commit the site's version tag names (issue #372).
 // `pushed`: full name → the date of the last push GitHub gives in the repository list (`repos` is read at each request:
 // a journey may add a project on the way). The journey receives `reads`, the path of every GET GitHub received.
+// `stable`: GitHub's compare of the factory's own `stable...main` (« Déclarer stable », issue #551):
+// { ahead_by, commits: [{ commit: { message } }] }. Without it GitHub answers an empty list, as before (no button).
 // `configMeta.sha`: the version GitHub gives for factory.config.json (a journey may change it with `config` on the way).
 // `etag`: GitHub answers with ETags and « 304 » for an unchanged read, as the real one does. `slowRepos` and `slowReads`
 // are read at each request: a journey may change them on the way.
-export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {} }, journey) {
+export async function withPanel({ issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -177,6 +179,7 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (ref) return branches[ref] ? json({ object: { sha: branches[ref] } }) : json({ message: 'Not Found' }, 404);
       const q = new URL(req.url()).searchParams;
       if (deploy && path === '/repos/o/r/deployments') return json(deploy.deployments || []);
+      if (stable && path === '/repos/phoibe/factory/compare/stable...main') return json(stable);
       // compare and pulls answer for one ref only: a journey pins the branch the panel must read.
       const statusOf = /^\/repos\/o\/r\/deployments\/(\d+)\/statuses$/.exec(path)?.[1];
       if (deploy && statusOf) return json(deploy.statuses?.[statusOf] || []);
