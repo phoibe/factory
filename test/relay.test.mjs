@@ -1987,6 +1987,30 @@ test('sync: a run that lost its turn sends no alert', async () => {
   gh.assertTurn = () => { throw new LostTurnError('taken over by another run'); };
   await at(24 * H);
   assert.equal(alerts().length, 0);
+  assert.ok(!stored.sync?.alerted, 'the alert is still owed: the replayed run sends it');
+  gh.assertTurn = () => {};
+  await at(24 * H + 5 * M);
+  assert.equal(alerts().length, 1);
+});
+
+test('sync: a run whose turn is lost when it marks the alert sent sends no alert', async () => {
+  const content = { content: Buffer.from(JSON.stringify({ fingerprint: 'old' })).toString('base64') };
+  const stored = {};
+  const gh = fakeGh({ issues: [], prs: [] });
+  gh.getContent = async () => content;
+  gh.getState = async (name) => stored[name] || null;
+  let lost = false;
+  gh.setState = async (name, value) => { if (lost) throw new LostTurnError('no sign of life got through in time'); stored[name] = value; };
+  const sent = [];
+  let t = T;
+  const at = async (ms) => {
+    t = T + ms;
+    await createRelay({ gh, repo: 'phoibe/mon-appli', config, env: { ...env, NTFY_TOPIC: 'topic' }, fetchImpl: fetchOk(sent), now: () => t, log: quiet }).handle(tick);
+  };
+  await at(0);
+  lost = true;
+  await at(24 * 60 * 60_000);
+  assert.equal(sent.filter((s) => s.url === 'https://ntfy.sh').length, 0);
 });
 
 // Issue #212: waiting minutes for a preview under the queue lock blocked every other decision and made the lock look dead.

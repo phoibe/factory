@@ -3,6 +3,7 @@
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, UPDATE_BRANCH_MARKER, buildStage } from '../lib/labels.mjs';
 import { PREPROD_BRANCH } from '../lib/config-core.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
+import { isLostTurn } from '../lib/lock.mjs';
 import { readWatch, writeWatch, watchStep } from '../lib/watch.mjs';
 import { syncFingerprint } from '../lib/fingerprint.mjs';
 import { WAIT_LABELS, waitingCards, alertText, sendAlert, NOTIFIED_MARKER, notifiedKeys, notifiedComment } from '../lib/notify.mjs';
@@ -294,9 +295,11 @@ export function watchPart(ctx) {
     // the owner gets one alert after a day for the same version (issue #213). The state lives in a ref, see github.mjs.
     const state = gh.getState ? await gh.getState('sync').catch(() => null) : null;
     const step = syncStep(state, { mine, theirs, now: now() });
-    if (step.changed && gh.setState) await gh.setState('sync', step.state).catch((e) => log(`sync state: ${e.message}`));
+    // A phone alert is not a GitHub write: the turn is asked explicitly, before the alert is marked sent (a run stopped
+    // in between would lose it for good).
+    if (step.alert) gh.assertTurn?.();
+    if (step.changed && gh.setState) await gh.setState('sync', step.state).catch((e) => { if (isLostTurn(e)) throw e; log(`sync state: ${e.message}`); });
     if (step.alert) {
-      gh.assertTurn?.(); // a phone alert is not a GitHub write: asked explicitly
       const project = repo.split('/')[1] || repo;
       const sent = await sendAlert({ topic: (env.NTFY_TOPIC || '').trim(), message: `La mise à jour du projet ${project} ne passe pas depuis hier. Je continue à réessayer une fois par jour.`, click: `https://github.com/${repo}/actions/workflows/factory-sync.yml`, fetchImpl });
       log(`sync failing for a day: alert ${sent ? 'sent' : 'not sent'}`);
