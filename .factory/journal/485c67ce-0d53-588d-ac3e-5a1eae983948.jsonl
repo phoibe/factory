@@ -18,3 +18,7 @@
 {"t":"2026-11-24T14:07:28.114Z","kind":"test","cmd":"sed -i 's/^- - \\*\\*/- **/' agent/AGENT.md && python3 - <<'EOF'\nimport textwrap,re\ndef wrap(text, first, rest):\n    text=… lambda m:m.group(0).replace(' ',' '), text)\n    text=… ','« ').replace(' »',' ","ok":true,"id":"toolu_01PtDeRuVptsajgZoitPSyxz"}
 {"t":"2026-11-24T14:07:37.221Z","kind":"test","cmd":"sed -i 's/^-\\*\\*Phase amont\\*\\*/- **Phase amont**/; s/^-\\*\\*Preuve de la phase/- **Preuve de la phase/' agent/AGENT.md && sed -i 's/^1\\.\\*\\*Analyse\\*\\*/1. **Analyse**/' agent/stages/bugfix.md && pytho","ok":true,"id":"toolu_01JBqRmRBHkMMg424eh4YHfK"}
 {"t":"2026-11-24T14:08:18.240Z","kind":"test","cmd":"grep -rn \"upstream.mjs <n>\\b\\|upstream.mjs <numéro de l'issue>\\`\" agent/ docs/*.md 2>/dev/null | grep -v \"<fichier>\" | head; npm test > .superpowers/sdd/issue-559/full.log 2>&1; grep -E \"^# (tests|pas","ok":true,"id":"toolu_014iYadQKqGDpaNrAjbZoiyF"}
+{"t":"2026-11-24T14:09:55.189Z","kind":"skill","name":"requesting-code-review","id":"toolu_01QwKbtUxN8hJt7DAaVGy1ce"}
+{"t":"2026-11-24T14:10:05.032Z","kind":"agent","model":"fable","effort":"high","label":"[role:review] Final review issue 559","id":"toolu_01JTbYGnLjP7xUwAfZF5a47Q"}
+{"t":"2026-11-24T14:12:06.136Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T14:12:09.811Z","kind":"upstream","doc":"spec","status":"proved","by":[{"model":"fable","role":"plan"}]}
