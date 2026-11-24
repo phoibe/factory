@@ -1,9 +1,9 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, reloadBlocker, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=29';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=28';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
-import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=4';
-import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=15';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=6';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=5';
+import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=16';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
 import { trustNotes, trustRead } from './trust.mjs?v=1';
@@ -16,11 +16,11 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=4';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=5';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=8';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=9';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -1799,6 +1799,7 @@ async function checkVersion() {
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   $('new-version').hidden = false;
+  sayInBanner(VERSION_TEXT); // the status region was there, empty: the sentence put in it is announced
   fitBanner();
 }
 // The strip's and the bar's heights, for the phone rules that keep the strip on screen: above an open conversation,
@@ -1812,7 +1813,7 @@ addEventListener('resize', fitBanner);
 if ('ResizeObserver' in window) new ResizeObserver(() => fitBanner()).observe($('new-version'));
 // « Recharger »: never loses what is typed or still arriving. The strip says what to do first, in place of its usual
 // sentence, until that is done (checked every second); then the usual sentence comes back. Never reloads by itself.
-const VERSION_TEXT = $('new-version-text').textContent;
+const VERSION_TEXT = $('new-version-text').dataset.text;
 let refusalTimer = null;
 function sayInBanner(text) {
   $('new-version-text').textContent = text;

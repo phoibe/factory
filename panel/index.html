@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://api.github.com https://*.modal.run http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <link rel="stylesheet" href="style.css?v=67">
+  <link rel="stylesheet" href="style.css?v=68">
 </head>
 <body>
   <header class="top">
@@ -21,7 +21,7 @@
       <button id="logout" data-menu class="ghost" type="button">Se déconnecter</button>
     </nav>
     <div id="new-version" class="new-version" role="status" hidden>
-      <span id="new-version-text">Une nouvelle version du tableau de bord est disponible.</span>
+      <span id="new-version-text" data-text="Une nouvelle version du tableau de bord est disponible."></span>
       <button id="new-version-reload" type="button" class="small-btn">Recharger</button>
     </div>
   </header>
@@ -173,6 +173,6 @@
     <button type="button" class="lightbox-close" aria-label="Fermer" autofocus>×</button>
   </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.mjs?v=97"></script>
+  <script type="module" src="app.mjs?v=98"></script>
 </body>
 </html>

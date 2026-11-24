@@ -1,6 +1,8 @@
 // Journeys of issue #572: the panel never reloads by itself; a banner under the top bar says a new version is online.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { withPanel, issue } from './fixture.mjs';
 
 const TEXT = 'Une nouvelle version du tableau de bord est disponible.';
@@ -19,8 +21,15 @@ async function versions(page, url) {
 // A mark on this very page: a reload forgets it.
 const mark = (page) => page.evaluate(() => { window.__samePage = true; });
 const samePage = (page) => page.evaluate(() => window.__samePage === true);
-// The panel checks the version every minute and when the owner comes back to the tab.
-const check = async (page) => { await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await page.waitForTimeout(400); };
+// The panel checks the version every minute and when the owner comes back to the tab. Once the banner shows it no
+// longer asks; until then, the check is over when version.json's answer has arrived and been read.
+async function check(page) {
+  const asks = (await page.locator('#new-version[hidden]').count()) > 0;
+  const answered = asks ? page.waitForResponse((r) => r.url().includes('version.json')).then((r) => r.finished()) : null;
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await answered;
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+}
 const newVersion = async (page, v, build = 'def5678') => { v.live = build; await check(page); };
 
 async function open(page, url) {
@@ -156,7 +165,12 @@ test('un seul bandeau même si plusieurs versions arrivent', async () => {
       await newVersion(page, v, build);
       await check(page);
     }
-    assert.equal(await page.getByText(TEXT).count(), 1);
+    await banner(page).waitFor();
+    assert.equal(await page.getByText(TEXT).count(), 1, 'la phrase est écrite plusieurs fois');
+    assert.equal(await page.locator('.new-version').count(), 1, 'plusieurs bandeaux');
+    assert.equal(await page.getByRole('button', { name: 'Recharger' }).count(), 1, 'plusieurs boutons Recharger');
+    const nodes = await page.locator('#new-version-text').evaluate((n) => [...n.childNodes].map((c) => c.textContent));
+    assert.deepEqual(nodes, [TEXT], 'la phrase du bandeau est en double');
     assert.equal(await samePage(page), true);
   });
 });
@@ -408,6 +422,68 @@ test('sur téléphone, le texte et le bouton restent sur une seule rangée', asy
       assert.ok(button.x + button.width <= size.width - 15, `${label} : le bouton touche le bord`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label} : la page déborde`);
       if (size.width === 320) assert.ok(text.height > 30, `${label} : le texte ne passe pas à la ligne (${text.height} px)`);
+    });
+  }
+});
+
+test('des images en attente dans l\'onglet Agent : Recharger ne recharge pas', async () => {
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  await withPanel({ issues: board, chatServer: { answer: 'Bien reçu.' } }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    await page.getByRole('tab', { name: 'Agent', exact: true }).click();
+    await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
+    await page.locator('#chat-file').setInputFiles({ name: 'capture.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.locator('.pending-images img').first().waitFor();
+    assert.equal(await page.locator('#chat-input').inputValue(), '', 'le texte doit être vide : seules les images retiennent');
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    await reloadButton(page).click();
+    await refused(page, 'Envoyez ou effacez d\'abord votre message, puis rechargez.');
+    assert.ok(await page.locator('.pending-images img').count() > 0, 'les images ont disparu');
+  });
+});
+
+test('le bandeau est annoncé dès son apparition : sa zone d\'annonce est déjà là, vide, avant la nouvelle version', async () => {
+  await withPanel({ issues: board }, async ({ page, url }) => {
+    const v = await versions(page, url);
+    await open(page, url);
+    const before = await page.locator('#new-version').evaluate((n) => ({ role: n.getAttribute('role'), display: getComputedStyle(n).display, text: n.innerText.trim(), hidden: n.getAttribute('aria-hidden') }));
+    assert.equal(before.role, 'status');
+    assert.notEqual(before.display, 'none', 'la zone d\'annonce n\'existe pas avant : son apparition ne sera pas lue');
+    assert.equal(before.hidden, null);
+    assert.equal(before.text, '', 'la zone d\'annonce parle avant la nouvelle version');
+    assert.equal(await reloadButton(page).count(), 0, '« Recharger » est atteignable avant la nouvelle version');
+    // What the browser gives screen readers: a status region, already there.
+    const ax = await (await page.context().newCDPSession(page)).send('Accessibility.getFullAXTree');
+    assert.ok(ax.nodes.some((n) => n.role?.value === 'status' && !n.ignored), 'pas de zone d\'annonce dans l\'arbre d\'accessibilité');
+    const box = await page.locator('#new-version').boundingBox();
+    assert.ok(!box || (box.width <= 1 && box.height <= 1), `la zone d'annonce se voit avant la nouvelle version (${JSON.stringify(box)})`);
+    await newVersion(page, v);
+    await banner(page).waitFor();
+    assert.equal(await page.getByRole('status').filter({ hasText: TEXT }).locator('#new-version-text').textContent(), TEXT);
+  });
+});
+
+test('le bandeau, avec sa phrase ou un refus, ne présente aucune erreur d\'accessibilité, en clair et en sombre', async () => {
+  const axe = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
+  for (const scheme of ['light', 'dark']) {
+    await withPanel({ issues: board, viewport: desk }, async ({ page, url }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const v = await versions(page, url);
+      await open(page, url);
+      await newVersion(page, v);
+      await banner(page).waitFor();
+      await page.evaluate(axe);
+      const run = () => page.evaluate(() => window.axe.run(document.getElementById('new-version'), { runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa'] }).then((r) => r.violations.map((x) => `${x.id}: ${x.nodes.map((n) => n.target.join(' ')).join(', ')}`)));
+      assert.deepEqual(await run(), [], `${scheme}, phrase habituelle`);
+      await page.getByRole('tab', { name: 'Paramètres' }).click();
+      await page.locator('#stage-plan').click();
+      await reloadButton(page).click();
+      await page.locator('#new-version', { hasText: 'Enregistrez d\'abord vos réglages, puis rechargez.' }).waitFor();
+      assert.deepEqual(await run(), [], `${scheme}, refus`);
+      await reloadButton(page).focus();
+      assert.deepEqual(await run(), [], `${scheme}, « Recharger » au clavier`);
     });
   }
 });

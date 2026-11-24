@@ -1,6 +1,6 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
 import { COLUMNS, columnFor } from './lib.mjs?v=29';
-import { humanMinutes, rangeText } from './eta.mjs?v=5';
+import { humanMinutes, rangeText } from './eta.mjs?v=6';
 import { readRelaunch } from './relaunch.mjs?v=1';
 
 // Issue #383: the card's launch failed for a moment and the factory starts it again by itself. An answered blocked card
