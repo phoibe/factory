@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, handsOver, MAX_DENIALS } from '../agent/scripts/gate.mjs';
+import { decide, handsOver, MAX_DENIALS, readsThread, THREAD_REFUSAL } from '../agent/scripts/gate.mjs';
 
 const j = (...entries) => entries.map((e) => JSON.stringify(e)).join('\n');
 const stages = { plan: true, tdd: true, review: true, designPass: true };
@@ -137,4 +137,54 @@ test('with another step missing too, the refusal lists both and has no upstream-
   const res = decide(bash(TRIED), env(j(...unprovedBuild(['writing-plans', 'test-driven-development', 'impeccable']))));
   assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /revue de code[\s\S]*questions et fiche/);
   assert.equal(res.cause, undefined);
+});
+
+// Issue #565: the messages of a thread are read only through thread.mjs, which leaves outsiders' messages aside.
+test("reading a thread's messages the old way is spotted", () => {
+  for (const c of ['gh api repos/o/r/issues/5/comments --paginate', "gh api repos/o/r/issues/5/comments --paginate --jq '.[] | .body'",
+    'gh api "repos/o/r/issues/$N/comments?per_page=100"', 'gh api -X GET repos/o/r/issues/5/comments -f per_page=100',
+    'gh api repos/o/r/pulls/5/comments', 'gh api repos/o/r/pulls/5/reviews', 'gh api repos/o/r/pulls/5/reviews/77/comments',
+    'gh api repos/o/r/issues/5/timeline', 'gh api repos/o/r/issues/comments', 'gh api "repos/o/r/pulls/comments?since=2026-01-01"',
+    'curl -s https://api.github.com/repos/o/r/issues/5/comments',
+    "N=$(gh api repos/o/r/pulls?head=o:b --jq '.[0].number') && gh api repos/o/r/issues/$N/comments",
+    'gh issue view 5 --comments', 'gh pr view 5 --json title,comments',
+    'gh api graphql -f query=\'{ repository(owner:"o",name:"r"){ issue(number:5){ comments(first:50){ nodes{ body } } } } }\'']) {
+    assert.ok(readsThread('Bash', { command: c }), c);
+  }
+  assert.ok(readsThread('mcp__github__issue_read', { method: 'get_comments' }));
+  for (const method of ['get_comments', 'get_review_comments', 'get_reviews']) assert.ok(readsThread('mcp__github__pull_request_read', { method }), method);
+});
+
+test('writing a message, and the other reads, still go through', () => {
+  for (const c of ['gh api repos/o/r/issues/5/comments -F body=@c.md', "gh api repos/o/r/issues/5/comments -f body='ok'",
+    'gh api -X POST repos/o/r/issues/5/comments --input c.json', 'gh api -X PATCH repos/o/r/issues/comments/123 -F body=@c.md',
+    "gh api repos/o/r/issues/comments/123 -H 'Accept: application/vnd.github.full+json' --jq .body_html",
+    'gh api repos/o/r/pulls/5/reviews -f event=APPROVE -f body=ok', 'gh api repos/o/r/pulls/5/comments/9/replies -f body=ok',
+    'gh api repos/o/r/issues/5', 'gh api repos/o/r/pulls/5', 'gh api repos/o/r/pulls/5/files',
+    "gh api repos/o/r/issues/5/labels -f 'labels[]=factory:checks'", 'gh api "repos/o/r/issues?state=open&per_page=100"',
+    'node .factory/scripts/thread.mjs 5', "cat > c.md <<'EOF'\ngh api repos/o/r/issues/5/comments\nEOF"]) {
+    assert.ok(!readsThread('Bash', { command: c }), c);
+  }
+  assert.ok(!readsThread('mcp__github__issue_read', { method: 'get' }));
+  assert.ok(!readsThread('mcp__github__pull_request_read', { method: 'get_files' }));
+  assert.ok(!readsThread('mcp__github__add_issue_comment', { body: 'x' }));
+});
+
+test('a factory run is refused and sent to thread.mjs, whatever its stage', () => {
+  for (const stage of ['question', 'build']) {
+    const res = decide(bash('gh api repos/o/r/issues/5/comments --paginate'), env(j(run(stage))));
+    assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
+    assert.equal(res.out.hookSpecificOutput.permissionDecisionReason, THREAD_REFUSAL);
+    assert.equal(res.thread, true);
+  }
+});
+
+test("the thread refusal never gives way and uses up none of the lock's refusals", () => {
+  const gates = Array.from({ length: MAX_DENIALS }, () => ({ t: '5', kind: 'gate' }));
+  const res = decide(bash('gh api repos/o/r/issues/5/comments --paginate'), env(j(run('build'), ...gates)));
+  assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('outside a factory run nothing is refused', () => {
+  assert.equal(decide(bash('gh api repos/o/r/issues/5/comments --paginate'), env('')), null);
 });
