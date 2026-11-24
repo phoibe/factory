@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SHOTS_META, shotsMeta, sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { SHOTS_META, shotsMeta, sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml, framesFor, FRAMES_SENTENCE } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -230,4 +230,94 @@ test('brokenShotRows refuses a table with no image row, or a row with a missing 
   const { brokenShotRows } = await import('../agent/scripts/shots.mjs');
   const md = '<!-- shots: claude/factory-assets -->\n| Écran | Avant (gauche) · Après (droite) |\n| --- | --- |\n| a · desktop | ![avant · après]() |';
   assert.equal(brokenShotRows(md).length, 1);
+});
+
+const SIZES = { red: 8, white: 2, text: 46 };
+
+test('red frames are drawn over each side, outline only', () => {
+  const html = sideBySideHtml({
+    beforeUri: 'data:b', afterUri: 'data:a',
+    frames: { before: [{ x: 10, y: 20, w: 100, h: 50 }], after: [{ x: 10, y: 60, w: 100, h: 50 }, { x: 0, y: 200, w: 40, h: 40 }], whole: false, sizes: SIZES },
+  });
+  assert.equal(html.match(/class="f"/g).length, 3);
+  const at = html.indexOf('left:12px;top:22px;width:96px;height:46px;border-width:8px;outline-width:2px');
+  assert.ok(at > 0 && at < html.indexOf('data:a'));
+  assert.match(html, /#f00/);
+  assert.match(html, /#fff/);
+  assert.doesNotMatch(html.match(/\.f\{[^}]*\}/)[0], /background/);
+  assert.doesNotMatch(html, /tout l'écran a changé/);
+});
+
+test('when the whole screen changed, a mention replaces the frames', () => {
+  const html = sideBySideHtml({ beforeUri: 'data:b', afterUri: 'data:a', frames: { before: [], after: [], whole: true, sizes: SIZES } });
+  assert.doesNotMatch(html, /class="f"/);
+  const at = html.lastIndexOf("tout l'écran a changé");
+  assert.ok(at > html.indexOf('Après') && at < html.indexOf('data:a'));
+  assert.match(html.slice(html.indexOf('Après'), at), /font-size:46px/);
+});
+
+test('without frames the image is as before: a new screen has none', () => {
+  const html = sideBySideHtml({ beforeUri: null, afterUri: 'data:a' });
+  assert.doesNotMatch(html, /class="f"/);
+  assert.doesNotMatch(html, /tout l'écran a changé/);
+});
+
+test('publish records the images that carry frames', () => {
+  assert.deepEqual(JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: [], framed: ['a--desktop.png'] })).framed, ['a--desktop.png']);
+  assert.ok(!('framed' in JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: [] }))));
+  assert.equal(FRAMES_SENTENCE, 'Les cadres rouges entourent ce qui a changé.');
+});
+
+test('the published image carries red frames, the captures stay untouched, a new screen has none', async () => {
+  const { mkdtempSync, readdirSync, readFileSync, copyFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture, compose } = await import('../agent/scripts/shots.mjs');
+  const { decodePng } = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveMovingPage();
+  const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const out = mkdtempSync(join(tmpdir(), 'o-'));
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    copyFileSync(join(after, 'accueil--desktop.png'), join(after, 'nouveau--desktop.png'));
+    const bytes = (dir) => Object.fromEntries(readdirSync(dir).map((f) => [f, readFileSync(join(dir, f))]));
+    const kept = { before: bytes(before), after: bytes(after) };
+    const { framed } = await compose({ before, after, out });
+    assert.deepEqual(framed.sort(), readdirSync(after).filter((f) => f !== 'nouveau--desktop.png').sort());
+    assert.deepEqual(bytes(before), kept.before);
+    assert.deepEqual(bytes(after), kept.after);
+    const hasRed = (file) => {
+      const { data } = decodePng(readFileSync(join(out, file)));
+      for (let i = 0; i < data.length; i += 4) if (data[i] === 255 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 255) return true;
+      return false;
+    };
+    assert.ok(hasRed('accueil--desktop.png'));
+    assert.ok(!hasRed('nouveau--desktop.png'));
+  } finally {
+    a.server.close(); b.server.close();
+    for (const d of [before, after, out]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('a capture that cannot be read is published without frames', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'x-'));
+  try {
+    writeFileSync(join(dir, 'b.png'), Buffer.from('x'));
+    writeFileSync(join(dir, 'a.png'), Buffer.from('y'));
+    const lines = [];
+    assert.equal(framesFor(join(dir, 'b.png'), join(dir, 'a.png'), lib, (l) => lines.push(l)), null);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /cadres rouges non calculés/);
+    assert.equal(framesFor(null, join(dir, 'a.png'), lib, (l) => lines.push(l)), null);
+    assert.equal(lines.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
