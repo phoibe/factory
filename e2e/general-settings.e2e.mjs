@@ -137,6 +137,7 @@ test('un réglage qui ne se lit pas n\'est pas remplacé par les valeurs par dé
       assert.equal(await page.getByRole('button', { name: 'Enregistrer' }).isDisabled(), true);
       for (const r of roles) assert.equal(await page.getByRole('combobox', { name: r }).isDisabled(), true, `${r} disabled`);
       for (const radio of await page.locator('#general input[type=radio]').all()) assert.equal(await radio.isDisabled(), true);
+      assert.equal(await page.locator('#general').getByText('Tout est enregistré').count(), 0, 'nothing claims to be saved');
     });
   }
 });

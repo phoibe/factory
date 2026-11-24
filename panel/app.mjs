@@ -1441,7 +1441,7 @@ function renderGeneral() {
   const failed = general.unreadable ? [el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.')] : [];
   $('general').replaceChildren(...failed, models, tasks, el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty || general.unreadable }, 'Enregistrer'),
-    el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')));
+    el('span', { class: 'muted' }, general.unreadable ? '' : dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')));
 }
 
 let savingGeneral = false;
