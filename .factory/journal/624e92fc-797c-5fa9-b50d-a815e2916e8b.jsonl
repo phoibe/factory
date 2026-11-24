@@ -25,3 +25,8 @@
 {"t":"2026-11-24T10:03:29.181Z","kind":"test","cmd":"cat >> scripts/lib/models.mjs <<'EOF'\n\n// The monthly catalog update (scripts/models.mjs). Pure: text in, text out.\nconst versionParts = (v) => String(v).split('.').map(Number);\n// > 0 when version a ","ok":false,"id":"toolu_01FdXUivJGFQwXWfVZb7SJXk"}
 {"t":"2026-11-24T10:03:37.511Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-24T10:03:38.261Z","kind":"test","cmd":"node --test test/models-catalog.test.mjs 2>&1 | grep -E \"^# (pass|fail)|not ok|Error\" | head","ok":true,"id":"toolu_01Md475jJMeYMhGQ3vB9DGAJ"}
+{"t":"2026-11-24T10:03:50.303Z","kind":"test","cmd":"cat >> test/models-catalog.test.mjs <<'EOF'\n\ntest('the CLI writes the file only when something changed, and survives a network failure', async () => {\n  const { updateModels } = await import('../scrip","ok":false,"id":"toolu_017cb6hYEmrPipJfQXUQJZMw"}
+{"t":"2026-11-24T10:04:25.039Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/general-settings.e2e.mjs 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01VuUi8qvxonMaHrZ3sLgJFZ"}
+{"t":"2026-11-24T10:04:37.122Z","kind":"test","cmd":"npm test 2>&1 | grep -E \"^# (pass|fail)|^not ok\"; npm run lint 2>&1 | tail -8","ok":true,"id":"toolu_01YW3y4kJegfWM1ewZDUYAFD"}
+{"t":"2026-11-24T10:05:28.212Z","kind":"test","cmd":"git merge -q --no-edit worktree-agent-aadd20dc3bdd90fa0 && git worktree remove .claude/worktrees/agent-aadd20dc3bdd90fa0 && npm test 2>&1 | grep -E \"^# (pass|fail)\"","ok":true,"id":"toolu_01B7CqsjUX64vC8sKLH1TpGH"}
+{"t":"2026-11-24T10:05:29.563Z","kind":"gate","event":"Stop"}
