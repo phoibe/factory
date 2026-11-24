@@ -1,0 +1,3 @@
+# Les modèles se choisissent par rôle dans les réglages généraux, l'agent principal pilote
+
+Décidé avec le propriétaire (#544), en remplacement de la grille fixe (0003) : quatre rôles (plans, code, revue, tâches simples) reçoivent chacun une famille de modèles choisie une seule fois pour toute la factory, dans les réglages généraux du tableau, sans réglage par projet. Comme la factory ne peut pas changer le modèle de la routine, l'agent principal ne fait plus que piloter : il confie toujours le plan et l'écriture du code à des sous-agents sur le modèle de leur rôle, même pour une petite retouche, au prix d'une ou deux minutes de plus. On choisit une famille et non une version précise, pour que la dernière version serve toujours sans rien faire.
