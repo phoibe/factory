@@ -72,21 +72,23 @@ construction, il relit aussi la demande pour relever quel modèle a fait les que
 committe `.factory/journal/`. Un verrou refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape
 manque : si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
-**Modèles par rôle.** Le propriétaire choisit, dans les « Réglages généraux » du panneau, une famille de modèle
-pour chacun de 4 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du
-payload : `{"plan": {"model": "fable", "effort": "high"}, "code": …, "review": …, "simple": …}`. Sans ce champ,
-prends les valeurs par défaut du tableau. Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
-`model` égal à `models.<rôle>.model` et un `effort` égal à `models.<rôle>.effort`, jamais rien d'autre. Sa
-`description` commence **toujours** par son rôle entre crochets : `[role:<rôle>]` (par exemple `[role:code] Tâche 2`),
-et `[role:plan:amont]` pour la phase amont (`[role:review:amont]` quand le rôle `review` prend le relais). Sans
-`model` ni `effort`, il hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils de modèle des
-skills (`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent, son rôle et son modèle.
+**Modèles par rôle.** Le propriétaire choisit, dans les « Réglages généraux » du panneau, une famille de modèle pour
+chacun de 5 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du payload :
+`{"plan": {"model": "fable", "effort": "high"}, "code": …, "review": …, "audit": …, "simple": …}`. Sans ce champ, ou si
+un rôle y manque, prends les valeurs par défaut du tableau. Chaque sous-agent que tu lances (outil Agent) reçoit
+**toujours** un `model` égal à `models.<rôle>.model` et un `effort` égal à `models.<rôle>.effort`, jamais rien d'autre.
+Sa `description` commence **toujours** par son rôle entre crochets : `[role:<rôle>]` (par exemple
+`[role:code] Tâche 2`), et `[role:plan:amont]` pour la phase amont (`[role:review:amont]` quand le rôle `review` prend
+le relais). Sans `model` ni `effort`, il hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
+de modèle des skills (`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent, son rôle
+et son modèle.
 
 | Rôle | Défaut | `effort` | Tâches |
 | --- | --- | --- | --- |
 | `plan` (Plans et organisation) | `fable` | `high` | phase amont d'une demande (analyse, questions, alertes, spec), cadrage d'un projet, analyse d'un bug, écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
-| `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design, chaque partie d'une revue générale |
-| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une revue générale |
+| `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design |
+| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections |
+| `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc ; rien d'autre |
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
 - Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.
@@ -126,9 +128,10 @@ skills (`subagent-driven-development`, `executing-plans`…). Le journal note ch
   d'ouvrir la PR. Pour un bug, la preuve est relevée par `journal-check.mjs` dans le relevé du sous-agent d'analyse : il
   est lancé avec `[role:plan:amont]` et rend son analyse avant le dernier test rouge.
 - **Monter d'un cran en cas d'échec** : si un sous-agent échoue (tests toujours rouges après 2 essais, ou travail
-  refusé deux fois par le relecteur), relance la tâche sur le rôle au-dessus (tâches simples → code → revue),
-  sans déranger le propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent
-  (au plus 3 tours de revue, puis escalade).
+  refusé deux fois par le relecteur ; pour un relecteur `audit` : pas de réponse, ou rapport inutilisable deux fois),
+  relance la tâche sur le rôle au-dessus (tâches simples → code → revue ; `audit` → revue), sans déranger le
+  propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent (au plus 3 tours de revue, puis
+  escalade).
 
 **Captures du propriétaire.** Les images qu'il colle dans GitHub ne s'ouvrent pas depuis ta machine. La factory
 les copie pour toi : le payload liste leurs chemins dans `attachments` (sur la branche `factory-attachments`).
