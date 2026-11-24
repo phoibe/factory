@@ -106,7 +106,7 @@ Sinon (premier cadrage d'un projet vide), suis les étapes ci-dessous.
    créer), « Pas vérifié en vrai : … » ; puis `Closes #<n>`, puis les détails techniques en anglais.
    **Hébergeur pas encore branché** (il demande un compte et rien ne signale ses déploiements sur le dépôt :
    aucun déploiement GitHub du dépôt (`gh api repos/<dépôt>/deployments`), aucun commentaire de son bot sur
-   les PR précédentes) : ne bloque rien, ouvre la PR quand même. Ajoute au
+   les PR précédentes, lus avec `node .factory/scripts/thread.mjs <numéro de PR>`) : ne bloque rien, ouvre la PR quand même. Ajoute au
    résumé et à ton message sur la PR que cette PR n'aura pas d'aperçu, en redonnant les liens et les clics de
    l'encadré « Avant de répondre « go » » de la fiche : une fois l'hébergeur branché, les PR suivantes auront
    leur aperçu.
