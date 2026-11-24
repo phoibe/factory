@@ -452,3 +452,58 @@ export function conversationId(fromServer, current, now = new Date()) {
   const at = now.toISOString().replace(/\D/g, '');
   return `${at.slice(0, 8)}-${at.slice(8, 14)}-${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Messages that could not be sent (issue #580). A failed message keeps its place at the bottom of its conversation,
+// in memory only, with « Renvoyer » and « Modifier »: never put back in the composer by itself, never retried alone.
+
+export const MAX_IMAGES = 4;
+export const UNSENT_TITLE = { unsent: 'Non envoyé', unanswered: 'L\'agent n\'a pas pu répondre' };
+export const TOKEN_REFUSED = 'Le jeton de lecture a été refusé.';
+export const UNSENT_AWAY = 'Message non envoyé. Retrouvez-le dans sa conversation.';
+
+// The box key of the open conversation: a conversation not created yet is « new ».
+export const unsentKey = (open) => (open === null || open === undefined || open === 'new' ? 'new' : open);
+
+// « L'agent n'a pas pu répondre » once the chat server took the request; a refused read token never left.
+export const failureKind = ({ reached, readToken }) => (reached && !readToken ? 'unanswered' : 'unsent');
+
+export function unsentBox() {
+  const byKey = new Map(); // key → [{ id, text, files, withImages, kind, reason, retrying }]
+  let next = 1;
+  const list = (key) => byKey.get(key) || [];
+  const find = (key, id) => list(key).find((m) => m.id === id) || null;
+  return {
+    add(key, { text, files = [], withImages = true }, { kind, reason }) {
+      const id = next++;
+      byKey.set(key, [...list(key), { id, text, files, withImages, kind, reason, retrying: false }]);
+      return id;
+    },
+    shown: (key) => list(key).filter((m) => !m.retrying),
+    get: find,
+    retry(key, id) { const m = find(key, id); if (m) m.retrying = true; return m; },
+    fail(key, id, { kind, reason }) { const m = find(key, id); if (m) Object.assign(m, { kind, reason, retrying: false }); },
+    remove(key, id) {
+      const m = find(key, id);
+      if (m) byKey.set(key, list(key).filter((x) => x !== m));
+      return m;
+    },
+    rekey(from, to) {
+      if (from === to || !list(from).length) return;
+      byKey.set(to, [...list(to), ...list(from)]);
+      byKey.delete(from);
+    },
+    get size() { let n = 0; for (const l of byKey.values()) n += l.length; return n; },
+  };
+}
+
+// « Modifier » adds the message taken back after the draft: nothing the owner started is erased.
+export function mergeDraft({ text, files }, unsent, max = MAX_IMAGES) {
+  const mine = String(text || '').trimEnd();
+  const back = String(unsent.text || '');
+  const all = [...(files || []), ...(unsent.files || [])];
+  return { text: mine && back ? `${mine}\n${back}` : mine || back, files: all.slice(0, max), dropped: Math.max(0, all.length - max) };
+}
+
+// The toast's distance from the bottom of the window: 12 px above the composer, never lower than the usual 24 px.
+export const toastBottom = (viewportHeight, composerTop) => Math.max(24, Math.round(viewportHeight - composerTop) + 12);
