@@ -1,6 +1,10 @@
 # Étape : cadrage du projet
 
 But : une vision commune du produit et un choix de stack, validés par le propriétaire, avant toute feature.
+
+**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
+(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre. Toi, tu publies son texte, terminé par la ligne de
+`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
 Cette étape a lieu une fois par projet, sur l'issue « Nouveau projet » (label `factory:project`).
 
 **Projet commencé sans la factory ?** S'il n'y a pas de fiche produit mais que le dépôt contient déjà une
@@ -154,7 +158,8 @@ jamais la visibilité du dépôt sans son « oui » écrit à cette question.
 ## La fiche projet (porte 1)
 
 Quand tout est décidé, publie un commentaire qui commence par `<!-- factory-agent -->` puis
-`<!-- factory-brief -->` et le titre `## Fiche projet (version N)`, en français :
+`<!-- factory-brief -->` et le titre `## Fiche projet (version N)`, qui se termine, juste avant la signature, par la
+ligne de preuve (`upstream.mjs`), en français :
 
 - **Vision** : pour qui, quel problème, en deux ou trois phrases ;
 - **Usages principaux** ;

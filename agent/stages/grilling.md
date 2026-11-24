@@ -2,6 +2,10 @@
 
 But : comprendre la feature demandée dans l'issue jusqu'à une compréhension partagée, avant toute spec.
 
+**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
+(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre. Toi, tu publies son texte, terminé par la ligne de
+`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
+
 **Avant tout : taille de la demande.** Dès ta première lecture (s'il n'y a pas encore d'estimation de ta part sur
 l'issue, ou si le propriétaire a donné une taille depuis), classe la demande en petite, moyenne ou grande (voir « Taille
 d'une demande » dans AGENT.md) et publie l'estimation au format de l'étape 0 de `.factory/stages/build.md` (marqueur

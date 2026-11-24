@@ -22,7 +22,8 @@ test('AGENT.md holds one table: the model and effort of each of the 4 roles', ()
 
 test('each stage that dispatches a sub-agent names a role, not a fixed model', () => {
   const expected = {
-    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`'], 'stages/audit.md': ['`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
+    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`', '`plan`', '`code`'], 'stages/audit.md': ['`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
+    'stages/grilling.md': ['`plan`'], 'stages/spec.md': ['`plan`'], 'stages/framing.md': ['`plan`'], 'stages/docs.md': ['`plan`'],
     'stages/design-pass.md': ['`code`'], 'stages/visual-fix.md': ['`code`'], 'stages/acceptance-fix.md': ['`code`'], 'stages/skills-fix.md': ['`review`'],
   };
   for (const [file, roles] of Object.entries(expected)) {
@@ -30,4 +31,23 @@ test('each stage that dispatches a sub-agent names a role, not a fixed model', (
     for (const r of roles) assert.ok(text.includes(r), `${file} should name ${r}`);
     for (const m of ['haiku', 'sonnet', 'opus']) assert.ok(!text.includes(`\`${m}\``), `${file} should not name \`${m}\``);
   }
+});
+
+// Issue #550: the upstream thinking goes to a sub-agent of role `plan`; the pilot only publishes, with the proof line.
+test('the upstream phase is delegated to the plan role, with its proof line', () => {
+  assert.match(line('plan'), /phase amont[^\n]*cadrage[^\n]*analyse d'un bug/);
+  for (const s of ['**Phase amont**', '**Preuve de la phase amont.**', 'upstream.mjs', 'factory-upstream', 'sans le réécrire', 'relance-le sur le rôle `review`', 'Seul le chat']) {
+    assert.ok(grid.includes(s), s);
+  }
+  assert.match(grid, /tâches simples → code → revue/);
+  assert.match(grid, /même pour une petite/);
+  for (const f of ['grilling.md', 'spec.md', 'framing.md']) {
+    const text = read(`stages/${f}`);
+    assert.ok(text.includes('`plan`') && text.includes('upstream.mjs'), f);
+  }
+  const bug = read('stages/bugfix.md');
+  assert.ok(bug.indexOf('`plan`') >= 0 && bug.indexOf('`plan`') < bug.indexOf('`code`'), 'bugfix: analysis by `plan` before the fix by `code`');
+  assert.ok(read('stages/docs.md').includes('`plan`'));
+  const question = read('stages/question.md');
+  assert.ok(!question.includes('upstream.mjs') && !question.includes('`plan`'), 'the chat stays with the pilot');
 });

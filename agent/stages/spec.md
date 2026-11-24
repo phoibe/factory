@@ -2,6 +2,10 @@
 
 But : une spec fonctionnelle que le propriétaire valide (porte 1).
 
+**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
+(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre. Toi, tu publies son texte, terminé par la ligne de
+`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
+
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
 2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
    - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
@@ -24,7 +28,7 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    questions est désactivée) : la spec commence, juste
    sous son titre, par la phrase « Pas de questions : la demande était claire. »
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
-   titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
+   titre `## Spec (version N)`, et se termine, juste avant la signature, par la ligne de preuve (`upstream.mjs`). Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
 4. **Faut-il la faire valider ?** Oui si l'étape « validation de chaque spec » est active (voir AGENT.md).
    Sinon, oui seulement si la spec est **sensible** : elle peut faire perdre ou effacer des données, touche à
    l'argent, à la sécurité, aux comptes ou au partage de données personnelles, change la vision ou le design
