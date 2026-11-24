@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText, stableView } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText, stableView, versioned } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -348,4 +348,14 @@ test('stableView only skips subjects that start with chore(factory)', () => {
 test('stableView ignores empty messages and null entries', () => {
   const cmp = { ahead_by: 4, commits: [null, {}, commit(''), commit('feat: real')] };
   assert.deepEqual(stableView(cmp), { changes: ['feat: real'], count: 1, hidden: false });
+});
+
+test('versioned stamps a run-time load on a deployed panel only', () => {
+  assert.equal(versioned('catalog.json', 'a1b2c3d'), 'catalog.json?v=a1b2c3d');
+  assert.equal(versioned('catalog.json', '__BUILD__'), 'catalog.json');
+  assert.equal(versioned('catalog.json', ''), 'catalog.json');
+});
+
+test('versioned appends to a query the url already has', () => {
+  assert.equal(versioned('catalog.json?lang=fr', 'a1b2c3d'), 'catalog.json?lang=fr&v=a1b2c3d');
 });

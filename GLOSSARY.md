@@ -68,6 +68,20 @@ _À éviter_ : documentation, docs
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
 
+## Captures avant/après
+
+**Image avant/après** :
+L'image que la factory publie dans une modification pour chaque écran qui a changé, à chaque taille et dans chaque thème : la capture d'avant à gauche, celle d'après à droite. C'est elle que le propriétaire regarde pour valider les captures ; les deux captures dont elle est faite restent telles quelles.
+_À éviter_ : comparatif, montage, côte à côte
+
+**Cadre rouge** :
+Le contour rouge posé sur une image avant/après autour d'un endroit qui a changé : côté « après » autour de ce qui est apparu ou a été modifié, côté « avant » autour de ce qui a disparu ou a été modifié. Il dit où regarder sans rien masquer.
+_À éviter_ : surlignage, encadré, zone de différence
+
+**Contenu décalé** :
+Ce qui a seulement changé de place sur un écran, poussé vers le bas ou remonté par un changement situé plus haut, sans avoir changé lui-même. Il ne reçoit pas de cadre rouge.
+_À éviter_ : contenu déplacé, glissement
+
 ## Projets publics
 
 **Inconnu** :
@@ -149,3 +163,7 @@ _À éviter_ : jeton principal, token du panneau
 **Jeton de l'ancien type** :
 Un jeton GitHub de la génération précédente (« classic »), dont les droits sont trop larges et trop peu vérifiables pour servir de jeton de lecture ; la discussion n'en accepte aucun.
 _À éviter_ : jeton classique, vieux jeton
+
+**Message non envoyé** :
+Un message du propriétaire qui n'est pas arrivé jusqu'à l'agent, ou auquel l'agent n'a pas pu répondre : il reste dans la conversation avec la raison de l'échec, et le propriétaire peut le renvoyer tel quel ou le reprendre pour le modifier. Une réponse arrivée mais qui n'a pas pu être enregistrée n'en est pas un : elle ne se renvoie pas, l'agent travaillerait deux fois.
+_À éviter_ : message raté, message en erreur, envoi échoué

@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
+import { SHARED } from '../scripts/stamp-panel.mjs';
 
 const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8');
 
@@ -31,6 +32,14 @@ test('the panel is published even when the chat server cannot be deployed', () =
 
 test('the test workflow only reads the repository', () => {
   assert.match(read('test.yml'), /^permissions:\n  contents: read/m);
+});
+
+test('the panel is published stamped (issue #561)', () => {
+  const yml = read('pages.yml');
+  assert.match(yml, /node scripts\/stamp-panel\.mjs _site "\$GITHUB_SHA"/);
+  assert.doesNotMatch(yml, /cp -r panel|sed -i/);
+  const paths = yml.match(/^\s*paths:.*$/m)[0];
+  for (const f of ['scripts/stamp-panel.mjs', ...SHARED.filter((s) => !s.startsWith('defaults/'))]) assert.ok(paths.includes(`'${f}'`), f);
 });
 
 // Review #556 (D4): a hung job holds a runner for GitHub's 6-hour default. A job that calls a reusable workflow

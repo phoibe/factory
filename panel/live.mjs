@@ -1,7 +1,7 @@
 // Pure helpers for the live board (tested in test/panel-live.test.mjs).
-import { COLUMNS, columnFor } from './lib.mjs?v=28';
-import { humanMinutes, rangeText } from './eta.mjs?v=5';
-import { readRelaunch } from './relaunch.mjs?v=1';
+import { COLUMNS, columnFor } from './lib.mjs';
+import { humanMinutes, rangeText } from './eta.mjs';
+import { readRelaunch } from './relaunch.mjs';
 
 // Issue #383: the card's launch failed for a moment and the factory starts it again by itself. An answered blocked card
 // counts too; only a launch given up after 3 hours (or refused by a setting) waits for the owner.

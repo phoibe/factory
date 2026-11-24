@@ -43,5 +43,5 @@
 - **ntfy** — envoie les alertes sur votre téléphone. Gratuit, sans compte. Le service public limite le nombre de messages par jour (limite à vérifier), très au-dessus de l'usage de la factory.
 
 ## Mise en production
-- **Automatique** — chaque merge sur la branche principale publie le panneau sur GitHub Pages (`.github/workflows/pages.yml`) ; vos projets reçoivent la nouvelle version quand la version stable avance
+- **Automatique** — chaque merge sur la branche principale publie le panneau sur GitHub Pages (`.github/workflows/pages.yml`), tous ses fichiers marqués du numéro de cette publication ; vos projets reçoivent la nouvelle version quand la version stable avance
 - **Retour arrière** : la factory annule d'elle-même une livraison qui casse le site en ligne

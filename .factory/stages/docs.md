@@ -20,7 +20,7 @@ que s'il est vraiment nécessaire. Le glossaire ne contient aucun détail d'impl
 **Refus du propriétaire** : chaque refus d'une idée ou d'un choix (« non, on n'a pas besoin de… ») devient une
 décision dans `docs/adr/` (une phrase : ce qui est refusé et pourquoi). Chaque round est un run à part, et rien
 n'est gardé entre deux : c'est la PR de documents de la fin des questions qui les écrit, en relisant **tout** le fil de
-l'issue, tous rounds compris. N'oublie aucun refus exprimé en cours de route.
+l'issue (`node .factory/scripts/thread.mjs <n>`), tous rounds compris. N'oublie aucun refus exprimé en cours de route.
 
 ## Rattrapage (projet sans glossaire)
 
@@ -38,7 +38,7 @@ Une seule fois par projet, **au début** de ton run `grilling`, `build` ou `bugf
    échanges : ouvertes, terminées et abandonnées
    (`gh api "R/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request == null)'` : les PR
    en sont retirées ; celles fermées avec `state_reason` `not_planned` sont les
-   abandons ; lis le fil de celles qui comptent).
+   abandons ; lis le fil de celles qui comptent avec `node .factory/scripts/thread.mjs <numéro>`).
 3. **Écris**, une fois placé sur la branche de documents (étapes 1 et 2 de la petite PR plus bas), avec le skill
    `domain-modeling` (outil Skill) :
    - `GLOSSARY.md` : les mots du projet, avec les termes du propriétaire, en français ;
