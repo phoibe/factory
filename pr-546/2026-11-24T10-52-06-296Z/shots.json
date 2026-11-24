@@ -1,0 +1,18 @@
+{
+  "files": [
+    "parametres--desktop--sombre.png",
+    "parametres--desktop.png",
+    "parametres--mobile--sombre.png",
+    "parametres--mobile.png",
+    "reglages-generaux--desktop--sombre.png",
+    "reglages-generaux--desktop.png",
+    "reglages-generaux--mobile--sombre.png",
+    "reglages-generaux--mobile.png",
+    "suivi--desktop--sombre.png",
+    "suivi--desktop.png"
+  ],
+  "unchanged": [
+    "suivi--mobile--sombre.png",
+    "suivi--mobile.png"
+  ]
+}
