@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenFromHash, readTokenFromHash, phoneLink } from '../panel/lib.mjs';
-import { newConversation, addExchange, upsertIndex, issueRequest, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN } from '../panel/chat.mjs';
+import { newConversation, addExchange, upsertIndex, issueRequest, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, fineGrained, probeUrl } from '../panel/chat.mjs';
 
 test('le lien du téléphone emporte les deux jetons', () => {
   const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_FULL_1', 'github_pat_READ_2');
@@ -81,13 +81,61 @@ test('the issues the agent proposes are created as the server created them', () 
 });
 
 test('the write probes cover files, requests and pull requests, always with an empty body', () => {
-  assert.deepEqual(WRITE_PROBES, [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']]);
+  assert.deepEqual(WRITE_PROBES.slice(0, 3), [['PUT', 'contents/.factory-write-probe'], ['POST', 'issues'], ['POST', 'pulls']]);
+});
+
+// Issue #558: a token that can launch automated tasks or change the project's settings is refused too.
+test('the write probes also cover Actions, settings, secrets, variables, environments, webhooks, Pages, deployments, statuses and SSH keys', () => {
+  assert.deepEqual(WRITE_PROBES.slice(3), [
+    ['PUT', 'actions/oidc/customization/sub'],
+    ['POST', 'keys'],
+    ['PUT', 'actions/secrets/FACTORY_WRITE_PROBE'],
+    ['POST', 'actions/variables'],
+    ['POST', 'environments/github-pages/variables'],
+    ['POST', 'hooks'],
+    ['POST', 'pages/deployments'],
+    ['POST', 'deployments'],
+    ['POST', 'statuses/{sha}'],
+    ['POST', '/user/keys'],
+  ]);
+  // Never a probe that acts with an empty body: a Pages build would really start.
+  assert.ok(!WRITE_PROBES.some(([, p]) => p.includes('pages/builds')));
+});
+
+test('a probe path is under the project unless it is absolute (the account\'s SSH keys)', () => {
+  const sha = 'a'.repeat(40);
+  assert.equal(probeUrl('o/r', 'hooks', sha), '/repos/o/r/hooks');
+  assert.equal(probeUrl('o/r', 'statuses/{sha}', sha), `/repos/o/r/statuses/${sha}`);
+  assert.equal(probeUrl('o/r', '/user/keys', sha), '/user/keys');
+});
+
+test('the panel and the chat server send exactly the same write probes', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const py = await readFile(new URL('../server/chat/service.py', import.meta.url), 'utf8');
+  const block = py.match(/^WRITE_PROBES = \(([\s\S]*?)^\)/m)[1];
+  const server = [...block.matchAll(/\("(\w+)", "([^"]+)"\)/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(server, WRITE_PROBES);
+});
+
+test('seul un jeton du nouveau type (github_pat_) est accepté, les autres sont refusés avec un message clair', () => {
+  assert.equal(CLASSIC_TOKEN, 'Ce type de jeton n\'est pas accepté : créez-en un avec le bouton ci-dessus.');
+  assert.equal(fineGrained('github_pat_11ABC'), true);
+  for (const t of ['ghp_abc', 'gho_abc', 'ghu_abc', 'ghs_abc', 'lecture', '', 'GITHUB_PAT_x', ' github_pat_x']) assert.equal(fineGrained(t), false, t);
+  const ok = { same: false, status: 200, login: 'Phoibe', owner: 'phoibe', readable: true, writable: false };
+  assert.equal(readTokenProblem({ ...ok, classic: true }), CLASSIC_TOKEN);
+  assert.equal(readTokenProblem({ ...ok, classic: true, writable: true }), CLASSIC_TOKEN);
+  // My full token pasted here keeps its own message, whatever its type.
+  assert.equal(readTokenProblem({ same: true, classic: true }), WRITABLE_TOKEN);
 });
 
 test('la fiche produit dit que le serveur de discussion ne reçoit qu\'un jeton de lecture', async () => {
   const { readFile } = await import('node:fs/promises');
   const product = await readFile(new URL('../PRODUCT.md', import.meta.url), 'utf8');
   assert.match(product, /serveur de discussion ne reçoit qu'un jeton de lecture seule/);
+  // Issue #558: what else the chat refuses.
+  assert.match(product, /lancer des tâches automatiques/);
+  assert.match(product, /ajouter une clé SSH au compte/);
+  assert.match(product, /tout jeton qui n'est pas du nouveau type/);
 });
 
 test('a conversation id from the chat server is used only when it is a plain id (never a path for the full token)', async () => {

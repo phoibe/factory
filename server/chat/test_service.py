@@ -51,20 +51,29 @@ class FakeGitHub:
         self.writes = []
         self.probe_limited = False  # every write that is not the write probe
         self.issue_queries = []  # the server never lists the issues: the read-only token may not see them
+        self.requests = []  # (method, path) of every call the server made
+        self.probes = []  # (method, path) of every write probe (an empty body)
+        self.writable = set()  # paths a « good » token may write to (a probe there gets a 422)
+        self.head = "c0ffee" * 6 + "c0ff"  # the default branch's last commit
 
 
     def __call__(self, request):
         path, method = request.url.path, request.method
+        self.requests.append((method, path))
         if path == "/user":
             if self.user_error:
                 raise self.user_error
             if self.user_status:
                 return httpx.Response(self.user_status, json={}, headers=self.user_headers)
-            return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"})
+            return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"},
+                                  headers=self.user_headers)
+        if method == "GET" and path.endswith("/commits/HEAD") and request.headers.get("accept") == "application/vnd.github.sha":
+            return httpx.Response(200, text=self.head)
         if method != "GET" and json.loads(request.content or b"null") == {}:
             # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
+            self.probes.append((method, path))
             auth = request.headers["authorization"]
-            writer = "writer" in auth or ("issues" in auth and path.endswith("/issues"))
+            writer = "writer" in auth or ("issues" in auth and path.endswith("/issues")) or path in self.writable
             if writer and self.probe_limited:  # GitHub's rate limit is a 403 too
                 return httpx.Response(403, json={}, headers={"x-ratelimit-remaining": "0"})
             return httpx.Response(422 if writer else 403, json={})
@@ -116,13 +125,13 @@ class ServiceTest(unittest.TestCase):
         return r, [json.loads(l) for l in r.text.splitlines() if l.strip()] if r.status_code == 200 else []
 
     def test_only_the_owner(self):
-        r, _ = self.post("bad", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_bad", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
-        r, _ = self.post("good", {"repo": "autre/x", "message": "Salut"})
+        r, _ = self.post("github_pat_good", {"repo": "autre/x", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
 
     def test_a_message_streams_the_answer_and_hands_the_issues_to_the_panel(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "images": ["attachments/chat/1-a.jpg"],
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "images": ["attachments/chat/1-a.jpg"],
                                        "openRequests": [{"number": 7, "title": "Exporter en PDF"}, {"number": "x", "title": "Bizarre"},
                                                         {"number": 8, "title": "T" * 500}, "pas un objet"]})
         self.assertEqual(r.status_code, 200, r.text)
@@ -148,31 +157,69 @@ class ServiceTest(unittest.TestCase):
 
     def test_without_the_open_requests_the_agent_is_told_the_list_is_missing(self):
         for value in (None, "nimporte", 3):
-            r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "openRequests": value})
+            r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?", "openRequests": value})
             self.assertEqual(events[-1]["type"], "done", events)
             self.assertIn("indisponible", open(self.claude + ".prompt").read())
 
     def test_the_server_never_writes_to_github(self):
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Je peux exporter ?"})
         self.assertEqual(events[-1]["type"], "done", events)
         self.assertEqual(self.gh.issues, [])
         self.assertEqual(self.gh.writes, [])
         self.assertFalse(any(k.startswith("chats/") or k == "index.json" for k in self.gh.files))
 
     def test_a_token_that_can_write_is_refused(self):
-        r, _ = self.post("goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
         self.assertFalse(os.path.exists(self.claude + ".prompt"))  # the agent never ran
 
     def test_a_token_that_can_only_open_issues_is_refused_too(self):
-        r, _ = self.post("goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
 
+    def test_a_token_that_can_launch_automated_tasks_or_change_settings_is_refused(self):
+        # Issue #558: each new probe alone is enough to refuse the token.
+        sha = self.gh.head
+        for path in ("/repos/phoibe/habitudes/actions/oidc/customization/sub", "/repos/phoibe/habitudes/keys",
+                     "/repos/phoibe/habitudes/actions/secrets/FACTORY_WRITE_PROBE", "/repos/phoibe/habitudes/actions/variables",
+                     "/repos/phoibe/habitudes/environments/github-pages/variables", "/repos/phoibe/habitudes/hooks",
+                     "/repos/phoibe/habitudes/pages/deployments", "/repos/phoibe/habitudes/deployments",
+                     f"/repos/phoibe/habitudes/statuses/{sha}", "/user/keys"):
+            self.gh.writable = {path}
+            r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(r.status_code, 403, path)
+            self.assertEqual(r.json()["code"], "writable", path)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
+    def test_every_write_probe_is_sent_with_an_empty_body_and_never_a_pages_build(self):
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(events[-1]["type"], "done", events)
+        expected = [(m, p if p.startswith("/") else "/repos/phoibe/habitudes/" + p.replace("{sha}", self.gh.head))
+                    for m, p in service.WRITE_PROBES]
+        self.assertEqual(sorted(self.gh.probes), sorted(expected))
+        self.assertIn(("POST", f"/repos/phoibe/habitudes/statuses/{self.gh.head}"), self.gh.probes)  # a real commit
+        self.assertFalse(any("pages/builds" in p for _, p in self.gh.requests))
+
+    def test_a_token_of_the_old_type_is_refused_before_asking_github(self):
+        for token in ("ghp_good", "gho_good", "ghu_good", "ghs_good", "good"):
+            r, _ = self.post(token, {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(r.status_code, 403, token)
+            self.assertEqual(r.json(), {"error": "Ce type de jeton n'est pas accepté : créez-en un avec le bouton ci-dessus.", "code": "classic"})
+        self.assertEqual(self.gh.requests, [])
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
+    def test_a_token_github_gives_scopes_to_is_of_the_old_type(self):
+        self.gh.user_headers = {"x-oauth-scopes": "repo"}
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["code"], "classic")
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))
+
     def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
         self.gh.probe_limited = True
-        r, _ = self.post("goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 503)
         self.assertFalse(os.path.exists(self.claude + ".prompt"))
 
@@ -180,7 +227,7 @@ class ServiceTest(unittest.TestCase):
         cid = "20261113-101010-abcde"
         self.gh.files[f"chats/{cid}.json"] = json.dumps({"id": cid, "title": "Début", "messages": [
             {"who": "me", "text": "Début", "at": ""}, {"who": "agent", "text": "Non, pas encore.", "at": ""}]}).encode()
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et en CSV ?"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et en CSV ?"})
         self.assertEqual(events[-1]["type"], "done", events)
         self.assertIn("[Toi] Non, pas encore.", open(self.claude + ".prompt").read())
         answer = next(e for e in events if e["type"] == "answer")
@@ -191,7 +238,7 @@ class ServiceTest(unittest.TestCase):
         conv = json.loads(self.gh.files[f"chats/{cid}.json"])
         conv["messages"] = [{"who": "me", "text": "x" * 20000, "at": ""} for _ in range(30)]  # ~600 KB of history
         self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et ensuite ?"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et ensuite ?"})
         self.assertEqual(events[-1]["type"], "done", events)
         self.assertLess(len(open(self.claude + ".prompt").read()), 70000)  # only the recent messages are sent
 
@@ -203,7 +250,7 @@ class ServiceTest(unittest.TestCase):
         return cid
 
     def test_the_agent_can_only_read_the_project_and_the_images(self):
-        self.post("good", {"repo": "phoibe/habitudes", "message": "Lis /etc/passwd"})
+        self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Lis /etc/passwd"})
         args = json.loads(open(self.claude + ".args").read())
         self.assertIn("--restricted", args)  # file tools confined to the project and the --add-dir image folder
         self.assertEqual(args[args.index("--permission-mode") + 1], "dontAsk")  # anything else is refused
@@ -216,26 +263,26 @@ class ServiceTest(unittest.TestCase):
     def test_project_settings_and_the_environment_stay_out_of_the_agent(self):
         os.environ["GITHUB_SECRET_FAKE"] = "s3cret"
         self.addCleanup(os.environ.pop, "GITHUB_SECRET_FAKE", None)
-        self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         args, env = self.args_and_env()
         self.assertEqual(args[args.index("--setting-sources") + 1], "user")
         self.assertNotIn("GITHUB_SECRET_FAKE", env)
         self.assertLessEqual(set(env) - {"PATH", "HOME", "LANG", "CLAUDE_CODE_OAUTH_TOKEN", "LC_CTYPE"}, set())
 
     def test_an_oversized_message_is_refused(self):
-        r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "x" * 20001})
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "x" * 20001})
         self.assertEqual(r.status_code, 413)
         self.assertIn("error", r.json())
 
     def test_a_body_that_is_not_a_json_object_is_a_400(self):
-        h = {"authorization": "Bearer good"}
+        h = {"authorization": "Bearer github_pat_good"}
         self.assertEqual(self.client.post("/chat", content=b"pas du json", headers=h).status_code, 400)
         self.assertEqual(self.client.post("/chat", json=[1, 2], headers=h).status_code, 400)
 
     def test_a_conversation_over_one_mb_is_still_read(self):
         cid = self.start_conversation()
         self.gh.big.add(f"chats/{cid}.json")
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
         self.assertEqual(events[-1]["type"], "done", events)
         self.assertGreater(self.gh.raw_calls, 0)
         self.assertIn("[Toi] Non, pas encore.", open(self.claude + ".prompt").read())
@@ -243,12 +290,12 @@ class ServiceTest(unittest.TestCase):
     def test_github_not_answering_is_a_503_not_a_403_or_500(self):
         for status in (500, 502, 429):
             self.gh.user_status = status
-            r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
             self.assertEqual(r.status_code, 503, status)
             self.assertEqual(r.json()["error"], "GitHub ne répond pas, réessayez dans un instant.")
         self.gh.user_status = None
         self.gh.user_error = httpx.ConnectTimeout("lent")
-        r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 503)
 
     def test_a_stalled_copy_of_the_project_ends_with_a_message_instead_of_hanging_the_chat(self):
@@ -259,7 +306,7 @@ class ServiceTest(unittest.TestCase):
         app = create_app("phoibe", claude_bin=self.claude, repos_dir=os.path.join(self.tmp, "repos-hang"), git_bin=hang,
                          git_timeout=0.5, clone_timeout=0.5, transport=httpx.MockTransport(self.gh))
         started = time.monotonic()
-        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer github_pat_good"})
         events = [json.loads(l) for l in r.text.splitlines() if l.strip()]
         self.assertLess(time.monotonic() - started, 10)
         self.assertIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."}, events)
@@ -272,7 +319,7 @@ class ServiceTest(unittest.TestCase):
         repos = os.path.join(self.tmp, "repos-slow")
         app = create_app("phoibe", claude_bin=self.claude, repos_dir=repos, git_bin=slow, git_timeout=0.2, clone_timeout=3,
                          transport=httpx.MockTransport(self.gh))
-        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer github_pat_good"})
         self.assertNotIn({"type": "error", "message": "GitHub ne répond pas, réessayez dans un instant."},
                          [json.loads(l) for l in r.text.splitlines() if l.strip()])
         self.assertTrue(os.path.isdir(os.path.join(repos, "phoibe/habitudes", ".git")))
@@ -284,37 +331,37 @@ class ServiceTest(unittest.TestCase):
         os.chmod(broken, os.stat(broken).st_mode | stat.S_IEXEC)
         repos = os.path.join(self.tmp, "repos-broken")
         app = create_app("phoibe", claude_bin=self.claude, repos_dir=repos, git_bin=broken, transport=httpx.MockTransport(self.gh))
-        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer good"})
+        r = TestClient(app).post("/chat", json={"repo": "phoibe/habitudes", "message": "Salut"}, headers={"authorization": "Bearer github_pat_good"})
         self.assertIn("error", [json.loads(l)["type"] for l in r.text.splitlines() if l.strip()])
         self.assertFalse(os.path.exists(os.path.join(repos, "phoibe/habitudes")))
 
     def test_a_rate_limited_403_is_a_503_but_a_401_is_a_bad_token(self):
         self.gh.user_status = 403
-        r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)  # a plain 403 is not a rate limit
         self.gh.user_status, self.gh.user_headers = 403, {"x-ratelimit-remaining": "0"}
-        r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 503)
         self.gh.user_headers = {}
         self.gh.user_status = 401
-        r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 401)
 
     def test_image_paths_follow_the_panel_rule(self):
         for bad in ("attachments/x.jpg", "attachments/chat/a b.jpg", "attachments/chat/a.svg", "attachments/chat/sub/a.png", "attachments/chat/a.jpg\n"):
-            r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut", "images": [bad]})
+            r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut", "images": [bad]})
             self.assertEqual(r.status_code, 400, bad)
 
     def test_the_image_folder_is_removed_after_the_answer(self):
-        self.post("good", {"repo": "phoibe/habitudes", "message": "Salut", "images": ["attachments/chat/1-a.jpg"]})
+        self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut", "images": ["attachments/chat/1-a.jpg"]})
         args, _ = self.args_and_env()
         self.assertFalse(os.path.exists(args[args.index("--add-dir") + 1]))
 
     def test_two_messages_of_one_conversation_never_share_their_image_folder(self):
         cid = self.start_conversation()
-        self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Un"})
+        self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Un"})
         first, _ = self.args_and_env()
-        self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Deux"})
+        self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Deux"})
         second, _ = self.args_and_env()
         self.assertNotEqual(first[first.index("--add-dir") + 1], second[second.index("--add-dir") + 1])
 
@@ -323,7 +370,7 @@ class ServiceTest(unittest.TestCase):
         conv = json.loads(self.gh.files[f"chats/{cid}.json"])
         conv["id"] = "../evil"  # a stored id is never trusted
         self.gh.files[f"chats/{cid}.json"] = json.dumps(conv).encode()
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Suite"})
         answer = next(e for e in events if e["type"] == "answer")
         self.assertEqual(answer["conversation"]["id"], cid, events)
         args, _ = self.args_and_env()
@@ -332,11 +379,11 @@ class ServiceTest(unittest.TestCase):
     def test_a_run_that_takes_too_long_is_killed_with_an_error_event(self):
         pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 1
         self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
-        r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "LENT"})
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "LENT"})
         self.assertEqual(events[-1]["type"], "error", events)
 
     def test_the_owner_is_compared_ignoring_case(self):
-        r, events = self.post("good", {"repo": "Phoibe/habitudes", "message": "Salut"})
+        r, events = self.post("github_pat_good", {"repo": "Phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 200, r.text)
 
 

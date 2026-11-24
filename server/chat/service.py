@@ -39,9 +39,30 @@ CLAUDE_TIMEOUT = 180  # seconds for one answer
 GIT_TIMEOUT = 60  # seconds for one update of the project's copy: a stalled GitHub must not hold the project's lock
 CLONE_TIMEOUT = 180  # the first copy of a big project takes longer
 IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASCII)  # same rule as the panel
-# Writes with an empty body: GitHub refuses a read-only token (403) before reading the body, and answers a token that
-# can write with a 422 (invalid body), so nothing is ever written. Files, issues, pull requests: same list as the panel.
-WRITE_PROBES = (("PUT", "contents/.factory-write-probe"), ("POST", "issues"), ("POST", "pulls"))
+# Writes with an empty body: GitHub refuses a read-only token (403/404) before reading the body, and answers a token that
+# can write with a 422 (invalid body), so nothing is ever written. A path is under /repos/{repo}/ unless it starts with
+# « / ». Exactly the panel's list (panel/chat.mjs, compared by test/panel-read-token.test.mjs): one entry per line.
+# Never a write that acts with an empty body (POST pages/builds really starts a build). Dependabot and Codespaces
+# secrets are not probed: their encrypted_value is optional, so an empty body could create an empty secret.
+WRITE_PROBES = (
+    ("PUT", "contents/.factory-write-probe"),  # files
+    ("POST", "issues"),  # requests
+    ("POST", "pulls"),  # pull requests
+    ("PUT", "actions/oidc/customization/sub"),  # Actions (use_default missing)
+    ("POST", "keys"),  # Administration: deploy keys
+    ("PUT", "actions/secrets/FACTORY_WRITE_PROBE"),  # Secrets (encrypted_value and key_id missing)
+    ("POST", "actions/variables"),  # Variables
+    ("POST", "environments/github-pages/variables"),  # Environments (a 404 without that environment: not writable)
+    ("POST", "hooks"),  # Webhooks
+    ("POST", "pages/deployments"),  # Pages
+    ("POST", "deployments"),  # Deployments (ref missing)
+    ("POST", "statuses/{sha}"),  # Commit statuses (state missing), on the default branch's last commit
+    ("POST", "/user/keys"),  # the account's SSH keys
+)
+# A commit to probe statuses on when the project has none to read (empty): any 40-hex id does, the body is refused first.
+NO_SHA = "0" * 40
+FINE_GRAINED = "github_pat_"
+CLASSIC = "Ce type de jeton n'est pas accepté : créez-en un avec le bouton ci-dessus."
 
 
 def now_iso():
@@ -75,9 +96,22 @@ class GitHub:
         r.raise_for_status()
         return r.content if raw else r.json()
 
+    async def head(self):
+        """The default branch's last commit, for the commit-status probe (a read the read token may do)."""
+        r = await self.client.get(f"/repos/{self.repo}/commits/HEAD", headers={"accept": "application/vnd.github.sha"})
+        if busy(r):
+            raise httpx.TransportError("github")
+        sha = r.text.strip() if r.status_code == 200 else ""
+        return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else NO_SHA
+
+    async def probe(self, method, path):
+        if "{sha}" in path:  # needs the commit first; the other probes do not wait for it
+            path = path.replace("{sha}", await self.head())
+        return await self.client.request(method, path if path.startswith("/") else f"/repos/{self.repo}/{path}", json={})
+
     async def can_write(self):
-        """True when the token may change the project's files, issues or pull requests."""
-        answers = await asyncio.gather(*(self.client.request(m, f"/repos/{self.repo}/{p}", json={}) for m, p in WRITE_PROBES))
+        """True when the token may change the project (files, requests, settings, automated tasks...) or the account's keys."""
+        answers = await asyncio.gather(*(self.probe(m, p) for m, p in WRITE_PROBES))
         if any(busy(r) for r in answers):  # a rate limit is a 403 too: never read it as « cannot write »
             raise httpx.TransportError("github")
         return any(r.status_code not in (401, 403, 404, 410) for r in answers)
@@ -159,6 +193,8 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
         token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
         if not token:
             return JSONResponse({"error": "Jeton manquant."}, 401)
+        if not token.startswith(FINE_GRAINED):  # a classic token cannot be limited to reading: refused before any call
+            return JSONResponse({"error": CLASSIC, "code": "classic"}, 403)
         try:
             body = json.loads(await request.body())
         except ValueError:
@@ -176,16 +212,16 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return JSONResponse({"error": "Image inconnue."}, 400)
         gh = GitHub(token, repo if "/" in repo else "x/x", github_api, transport)
         try:
-            try:
-                me = await gh.get("/user")
-            except httpx.HTTPStatusError as e:
-                r = e.response
-                if busy(r):
-                    raise httpx.TransportError("github") from e
-                if r.status_code == 401:
-                    await gh.close()
-                    return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
-                me = None
+            r = await gh.client.get("/user")
+            if busy(r):
+                raise httpx.TransportError("github")
+            if r.status_code == 401:
+                await gh.close()
+                return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
+            if "x-oauth-scopes" in r.headers:  # only a classic (or OAuth) token has scopes
+                await gh.close()
+                return JSONResponse({"error": CLASSIC, "code": "classic"}, 403)
+            me = r.json() if r.status_code == 200 else None
             refused = check_access(owner, (me or {}).get("login"), repo)
             if not refused and await gh.can_write():
                 await gh.close()
