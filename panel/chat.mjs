@@ -345,9 +345,14 @@ export function decideProposal(conv, id, state, url) {
 export const finishesConversation = (cards = []) => cards.length > 0
   && cards.every((c) => c.state === 'created' || c.state === 'ignored') && cards.some((c) => c.state === 'created');
 
-// Why a pasted read token is refused, or null when it is fine.
-export function readTokenProblem({ same, status, login, owner, readable, writable }) {
-  if (same || writable) return WRITABLE_TOKEN;
+// A classic token lists its scopes in x-oauth-scopes: delete_repo, workflow or admin:* do not show in the probes, so
+// any scope other than read:* or user:email is refused (same rule as the chat server). A fine-grained token sends none.
+export const writableScopes = (header) => String(header || '').split(',').map((s) => s.trim()).filter(Boolean)
+  .some((s) => !(s.startsWith('read:') || s === 'user:email'));
+
+// Why a pasted read token is refused, or null when it is fine. `scopes`: the x-oauth-scopes header of its `/user`.
+export function readTokenProblem({ same, status, login, owner, readable, writable, scopes }) {
+  if (same || writable || writableScopes(scopes)) return WRITABLE_TOKEN;
   if (status === 401) return 'GitHub ne reconnaît pas ce jeton : vérifiez que vous l\'avez collé en entier.';
   if (String(login || '').toLowerCase() !== String(owner || '').toLowerCase()) return 'Ce jeton appartient à un autre compte GitHub que celui du panneau.';
   if (!readable) return 'Ce jeton ne peut pas lire ce projet : sur GitHub, choisissez « All repositories » avant de le créer.';
