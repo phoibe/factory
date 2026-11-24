@@ -9,7 +9,8 @@
 //   eval "$(node .factory/scripts/shots.mjs env)"   (the same environment, for a shell that launches the app itself)
 //   node .factory/scripts/shots.mjs check comment.md   (exit 1 when a table row is not a displayed image)
 // Capture takes light shots, then dark ones; dark shots are kept only if the page really differs from light.
-// Publish builds one side-by-side image (before left, after right) per screen, size and theme.
+// Publish builds one side-by-side image (before left, after right) per screen, size and theme; red frames (« cadres
+// rouges ») drawn over it surround what changed. The captures themselves are never modified.
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,6 +23,8 @@ export const ASSETS_BRANCH = 'claude/factory-assets';
 // Written when no screen changed: there is nothing to validate, so the agent does not ask for an « ok » (issue #303).
 export const NO_CHANGE_MARKER = '<!-- factory-shots-unchanged -->';
 export const NO_CHANGE_SENTENCE = "J'ai comparé tous les écrans, en clair et en sombre : aucun n'a changé d'apparence.";
+// Said under the captures when at least one published image carries red frames (issue #578).
+export const FRAMES_SENTENCE = 'Les cadres rouges entourent ce qui a changé.';
 
 export function parseArgs(argv) {
   const out = { _: [] };
@@ -145,35 +148,68 @@ export function orderFiles(files) {
   return [...files].sort((a, b) => Number(isDark(a)) - Number(isDark(b)) || a.localeCompare(b));
 }
 
-export function sideBySideHtml({ beforeUri, afterUri }) {
+export function sideBySideHtml({ beforeUri, afterUri, frames = null }) {
   const col = (title, body) => `<div class="c"><div class="t">${title}</div>${body}</div>`;
-  const before = beforeUri ? `<img src="${beforeUri}">` : '<div class="n">nouvel écran</div>';
+  const boxes = (list) => (frames ? list : []).map(({ x, y, w, h }) => {
+    const { red, white } = frames.sizes;
+    return `<div class="f" style="left:${x + white}px;top:${y + white}px;width:${w - 2 * white}px;height:${h - 2 * white}px;border-width:${red}px;outline-width:${white}px"></div>`;
+  }).join('');
+  const whole = (hidden) => frames?.whole
+    ? `<div class="w" style="font-size:${frames.sizes.text}px${hidden ? ';visibility:hidden' : ''}">tout l'écran a changé</div>` : '';
+  const image = (uri, list) => `<div class="i"><img src="${uri}">${boxes(list)}</div>`;
+  const before = beforeUri ? `${whole(true)}${image(beforeUri, frames?.before || [])}` : '<div class="n">nouvel écran</div>';
   return `<!doctype html><meta charset="utf-8"><style>
 body{margin:0;background:#fff;font:600 16px system-ui,sans-serif;color:#222}
 .r{display:flex;gap:16px;padding:16px;align-items:flex-start;width:max-content}
 .c{display:flex;flex-direction:column;gap:8px}.t{text-transform:uppercase;font-size:13px;letter-spacing:.05em;color:#555}
-img{display:block;border:1px solid #ccc}.n{display:flex;align-items:center;justify-content:center;min-width:240px;min-height:160px;border:2px dashed #bbb;color:#888;font-style:italic;padding:24px}
-</style><div class="r">${col('Avant', before)}${col('Après', `<img src="${afterUri}">`)}</div>`;
+img{display:block}.i{position:relative;border:1px solid #ccc}
+.f{position:absolute;box-sizing:border-box;border:0 solid #f00;outline:0 solid #fff}.w{color:#d00000;font-weight:700}
+.n{display:flex;align-items:center;justify-content:center;min-width:240px;min-height:160px;border:2px dashed #bbb;color:#888;font-style:italic;padding:24px}
+</style><div class="r">${col('Avant', before)}${col('Après', `${whole(false)}${image(afterUri, frames?.after || [])}`)}</div>`;
 }
 
 const dataUri = (file) => `data:image/png;base64,${readFileSync(file).toString('base64')}`;
 
-// Writes one side-by-side image (before left, after right) per screenshot of `after` into `out`.
-export async function compose({ before, after, out, only = null }) {
+// The red frames of one image (`lib` = the loaded shot-frames.mjs); null for a new screen or when they cannot be
+// computed: frames must never stop a publication.
+export function framesFor(beforeFile, afterFile, lib, log = console.error) {
+  if (!beforeFile) return null;
+  try {
+    return lib.changeFrames(lib.decodePng(readFileSync(beforeFile)), lib.decodePng(readFileSync(afterFile)));
+  } catch (e) {
+    log(`cadres rouges non calculés pour ${afterFile} : ${e.message}`);
+    return null;
+  }
+}
+
+// Writes one side-by-side image (before left, after right) per screenshot of `after` into `out`; returns the files
+// whose image carries at least one red frame. Frames code that cannot be loaded leaves the images without frames.
+export async function compose({ before, after, out, only = null, loadFrames = () => import('./shot-frames.mjs'), log = console.error }) {
   const { chromium } = loadPlaywright();
+  let lib = null;
+  try {
+    lib = await loadFrames();
+  } catch (e) {
+    log(`cadres rouges non calculés : ${e.message}`);
+  }
   mkdirSync(out, { recursive: true });
+  const framed = [];
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await browser.newPage();
     for (const f of readdirSync(after).filter((x) => x.endsWith('.png') && (!only || only.includes(x)))) {
       const b = before && join(before, f);
-      const html = sideBySideHtml({ beforeUri: b && existsSync(b) ? dataUri(b) : null, afterUri: dataUri(join(after, f)) });
+      const has = b && existsSync(b);
+      const frames = lib && framesFor(has ? b : null, join(after, f), lib, log);
+      if (frames && (frames.before.length || frames.after.length)) framed.push(f);
+      const html = sideBySideHtml({ beforeUri: has ? dataUri(b) : null, afterUri: dataUri(join(after, f)), frames });
       await page.setContent(html, { waitUntil: 'load' });
       await page.locator('.r').screenshot({ path: join(out, f) });
     }
   } finally {
     await browser.close();
   }
+  return { framed };
 }
 
 const label = (f) => f.replace(/\.png$/, '').replace(/--/g, ' · ');
@@ -242,7 +278,8 @@ export function markdownTable({ repo, dir, files, unchanged = [], setAside = [] 
 // Written next to the images: the factory posts the table itself from that folder (issue #378), and only this file
 // tells it which screens were identical before and after.
 export const SHOTS_META = 'shots.json';
-export const shotsMeta = ({ files, unchanged = [], setAside = [] }) => JSON.stringify(setAside.length ? { files, unchanged, setAside } : { files, unchanged }, null, 2);
+export const shotsMeta = ({ files, unchanged = [], setAside = [], framed = [] }) =>
+  JSON.stringify({ files, unchanged, ...(setAside.length ? { setAside } : {}), ...(framed.length ? { framed } : {}) }, null, 2);
 
 // The table rows of a screenshots message (after its hidden shots mark) that would not show an image: the agent once
 // retyped the table by hand and the dark rows became broken links (issue #375). Empty when every row is an image
@@ -275,8 +312,8 @@ async function publish({ pr, before, after, aside = {} }) {
     const from = before && existsSync(before) ? before : null;
     const { files, unchanged, setAside } = screensToShow(from, after, aside);
     if (files.length) {
-      await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
-      writeFileSync(join(wt, dir, SHOTS_META), shotsMeta({ files, unchanged, setAside }));
+      const { framed } = await compose({ before: from, after, out: join(wt, dir, 'compare'), only: files });
+      writeFileSync(join(wt, dir, SHOTS_META), shotsMeta({ files, unchanged, setAside, framed }));
       git(['add', '.'], wt);
       git(['commit', '--quiet', '-m', `chore: screenshots for PR #${pr}`], wt);
       // Another PR may have pushed its captures meanwhile: each PR writes its own folder, so a rebase never conflicts.
