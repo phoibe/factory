@@ -141,3 +141,91 @@ test('empty bodies and quotes', () => {
   assert.equal(t.messages[1].body, '');
   assert.doesNotThrow(() => renderThread(t));
 });
+
+// --- Task 2: reading GitHub and the command ---
+import { main, readThread } from '../agent/scripts/thread.mjs';
+
+const fakeGh = (answers) => {
+  const calls = [];
+  const gh = (path) => {
+    calls.push(path);
+    if (!(path in answers)) throw new Error(`no answer for ${path}`);
+    return answers[path];
+  };
+  return { gh, calls };
+};
+const C = (p) => `repos/o/r/issues/5/comments?per_page=100&page=${p}`;
+const P = (what, p) => `repos/o/r/pulls/5/${what}?per_page=100&page=${p}`;
+const plain = { 'repos/o/r': { private: false }, 'repos/o/r/issues/5': issue({ user: { login: 'o' }, author_association: 'OWNER' }), [C(1)]: [] };
+
+test('a request is read in three calls, a modification in five', () => {
+  const a = fakeGh(plain);
+  assert.equal(main(['5', '--repo', 'o/r'], { gh: a.gh }).code, 0);
+  assert.deepEqual(a.calls, ['repos/o/r', 'repos/o/r/issues/5', C(1)]);
+  const b = fakeGh({ ...plain, 'repos/o/r/issues/5': issue({ pull_request: {} }), [P('reviews', 1)]: [], [P('comments', 1)]: [] });
+  assert.equal(main(['5', '--repo', 'o/r'], { gh: b.gh }).code, 0);
+  assert.deepEqual(b.calls, ['repos/o/r', 'repos/o/r/issues/5', C(1), P('reviews', 1), P('comments', 1)]);
+});
+
+test('a long thread is read to its last page', () => {
+  const page1 = Array.from({ length: 100 }, (_, i) => msg(i + 1, 'o', 'OWNER', `m${i + 1}`));
+  const page2 = [msg(101, 'mallory', 'NONE', SECRET), msg(102, 'o', 'OWNER', 'Le dernier mot')];
+  const { gh, calls } = fakeGh({ ...plain, [C(1)]: page1, [C(2)]: page2 });
+  const res = main(['5', '--repo', 'o/r'], { gh });
+  assert.equal(res.code, 0);
+  assert.ok(!leaks(res.out));
+  assert.match(res.out, /Le dernier mot/);
+  assert.equal(calls.length, 4);
+  const { raw } = readThread({ repo: 'o/r', n: 5, gh: fakeGh({ ...plain, [C(1)]: page1, [C(2)]: page2 }).gh });
+  assert.equal(raw.comments.length, 102);
+});
+
+test("--repo reads another project, whose owner is that project's", () => {
+  const { gh, calls } = fakeGh({ 'repos/bob/app': { private: false }, 'repos/bob/app/issues/7': issue({ number: 7 }),
+    'repos/bob/app/issues/7/comments?per_page=100&page=1': [msg(1, 'bob', 'NONE', 'Message de bob')] });
+  const res = main(['7', '--repo', 'bob/app'], { gh, remote: () => 'https://github.com/o/r.git' });
+  assert.ok(calls.every((p) => p.startsWith('repos/bob/app')));
+  assert.match(res.out, /Message de bob/);
+});
+
+test('without --repo the project is the one of the origin remote', () => {
+  const { gh, calls } = fakeGh(plain);
+  assert.equal(main(['5'], { gh, remote: () => 'git@github.com:o/r.git' }).code, 0);
+  assert.equal(calls[0], 'repos/o/r');
+});
+
+test('a private project is printed whole', () => {
+  const { gh } = fakeGh({ ...plain, 'repos/o/r': { private: true }, [C(1)]: [msg(1, 'mallory', 'NONE', SECRET)] });
+  assert.match(main(['5', '--repo', 'o/r'], { gh }).out, /bouton rouge/);
+});
+
+test('a project whose visibility is unknown is sorted as public', () => {
+  const { gh } = fakeGh({ ...plain, 'repos/o/r': {}, [C(1)]: [msg(1, 'mallory', 'NONE', SECRET)] });
+  const res = main(['5', '--repo', 'o/r'], { gh });
+  assert.ok(!leaks(res.out));
+  assert.ok(res.out.includes(LEFT_ASIDE));
+});
+
+test('when GitHub fails nothing is printed', () => {
+  const pr = { ...plain, 'repos/o/r/issues/5': issue({ pull_request: {} }), [C(1)]: Array.from({ length: 100 }, (_, i) => msg(i + 1, 'o', 'OWNER', 'x')),
+    [C(2)]: [], [P('reviews', 1)]: [], [P('comments', 1)]: [] };
+  for (const missing of ['repos/o/r', C(2), P('reviews', 1)]) {
+    const answers = { ...pr };
+    delete answers[missing];
+    const res = main(['5', '--repo', 'o/r'], { gh: fakeGh(answers).gh });
+    assert.equal(res.code, 1, missing);
+    assert.equal(res.out, '');
+    assert.match(res.err, /arrête-toi/);
+  }
+});
+
+test('a wrong number is refused', () => {
+  for (const args of [['abc'], [], ['5', '--repo']]) {
+    const { gh, calls } = fakeGh(plain);
+    const res = main(args, { gh, remote: () => 'https://github.com/o/r' });
+    assert.equal(res.code, 1);
+    assert.equal(res.out, '');
+    assert.match(res.err, /thread\.mjs <numéro>/);
+    assert.equal(calls.length, 0);
+  }
+});
