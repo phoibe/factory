@@ -38,7 +38,7 @@ test('la page montre Fable, Opus, Fable, Sonnet par défaut avec leur version et
     await openPage(page, url);
     assert.deepEqual(await chosen(page), ['fable', 'opus', 'fable', 'sonnet'].map(labelOf));
     assert.equal(await page.getByRole('combobox', { name: 'Écriture du code' }).locator('option').count(), MODEL_FAMILIES.length);
-    await page.getByText('Écrit les plans et organise le développement.').waitFor();
+    await page.getByText('Prépare les questions et la fiche de chaque demande, écrit les plans et organise le développement.').waitFor();
     await page.getByText(/L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude\.ai/).waitFor();
     await page.getByRole('group', { name: 'Modèles' }).waitFor();
     const machine = page.getByRole('group', { name: 'Machine des tâches' });

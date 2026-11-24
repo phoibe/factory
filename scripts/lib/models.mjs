@@ -15,7 +15,7 @@ export const MODEL_FAMILIES = [
 
 // The four roles, in the order of the page. `effort` is fixed (not a setting); escalation goes simple → code → review.
 export const MODEL_ROLES = [
-  { id: 'plan', name: 'Plans et organisation', help: 'Écrit les plans et organise le développement.', effort: 'high', default: 'fable' },
+  { id: 'plan', name: 'Plans et organisation', help: 'Prépare les questions et la fiche de chaque demande, écrit les plans et organise le développement.', effort: 'high', default: 'fable' },
   { id: 'code', name: 'Écriture du code', help: 'Écrit le code, fait les petites relectures de chaque tâche et la critique du design.', effort: 'medium', default: 'opus' },
   { id: 'review', name: 'Revue', help: 'Relecture finale du code avant chaque PR, revue de sécurité, synthèse d’une review générale.', effort: 'high', default: 'fable' },
   { id: 'simple', name: 'Tâches simples', help: 'Recherches, lectures et petites écritures mécaniques, captures.', effort: 'low', default: 'sonnet' },

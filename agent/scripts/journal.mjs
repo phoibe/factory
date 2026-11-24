@@ -25,7 +25,16 @@ export function isTestCommand(cmd = '') {
 // Case matters: node --test prints « # fail 0 » on a green run.
 export const FAILED_TEXT = /(\b[1-9]\d* (?:failed|failing)\b|\bFAIL\b|Tests?:\s+[1-9]\d* failed|^not ok\b|^# fail [1-9]|\bERR!|exit code [1-9])/m;
 
-// The run JSON ({"repo","issue","pr","stage"}) is somewhere in the first prompt of the run.
+// The models of the roles that may do the upstream thinking (issue #550): the payload's `models`, else the defaults
+// of scripts/lib/models.mjs (copied here because this script is installed alone in each project).
+export const ROLE_DEFAULTS = { plan: 'fable', review: 'fable' };
+const roleModels = (models) => Object.fromEntries(Object.entries(ROLE_DEFAULTS).map(([role, def]) => {
+  const v = models && typeof models === 'object' ? models[role] : null;
+  const m = typeof v === 'string' ? v : v?.model; // { model, effort } in the payload, or the model alone
+  return [role, m ? String(m) : def];
+}));
+
+// The run JSON ({"repo","issue","pr","stage","models"}) is somewhere in the first prompt of the run.
 export function runFromPrompt(prompt = '') {
   const text = String(prompt);
   // Every balanced {...} block, outermost first, until one parses as a run (it may hold nested objects).
@@ -36,7 +45,7 @@ export function runFromPrompt(prompt = '') {
       else if (text[j] === '}' && --depth === 0) {
         try {
           const o = JSON.parse(text.slice(i, j + 1));
-          if (o && typeof o.stage === 'string') return { stage: o.stage, issue: o.issue ?? null, pr: o.pr ?? null, ...(o.repo ? { repo: o.repo } : {}) };
+          if (o && typeof o.stage === 'string') return { stage: o.stage, issue: o.issue ?? null, pr: o.pr ?? null, ...(o.repo ? { repo: o.repo } : {}), models: roleModels(o.models) };
         } catch { /* not JSON */ }
         break;
       }

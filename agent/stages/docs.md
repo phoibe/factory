@@ -5,6 +5,10 @@ est installé (le dossier `.claude/skills/grill-with-docs/` existe) **ainsi que*
 `.claude/skills/domain-modeling/` existe). Sinon, ne fais rien de ce qui suit : les questions se
 posent avec le skill `grilling`, sans aucun document.
 
+Pendant la phase amont, c'est le sous-agent du rôle `plan` qui charge ces skills et écrit ces documents (« Phase amont »
+dans AGENT.md) : place-toi d'abord sur la branche de documents, demande-lui de les écrire, puis fais toi-même le
+commit et la petite PR.
+
 ## Pendant les questions
 
 Charge **directement** les skills `grilling` puis `domain-modeling` (outil Skill, deux appels). Ne charge jamais
@@ -54,6 +58,8 @@ S'il y a quelque chose à écrire (`GLOSSARY.md`, `docs/adr/*.md`) :
 
 Une seule branche de documents par issue, `claude/docs-<n>` (n = numéro de l'issue) : le rattrapage et la fin des
 questions peuvent s'en servir tour à tour. Elle ne contient que ces documents : jamais de code, jamais autre chose.
+Le journal (`.factory/journal/`) ne va jamais sur la branche `claude/docs-<n>` : ne l'ajoute pas au commit de cette
+branche, il reste sur ta branche de travail.
 Place-toi dessus **avant d'écrire** le moindre document : écrits ailleurs, ils bloqueraient le changement de branche
 ou partiraient dans la PR de la feature.
 

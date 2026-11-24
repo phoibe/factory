@@ -60,16 +60,27 @@ export function findTranscript(repo, { projectsDir = join(homedir(), '.claude/pr
   return best?.p || null;
 }
 
-// Writes .factory/journal/<session>.jsonl from the transcript when the hooks wrote nothing for this run.
+// Writes .factory/journal/<session>.jsonl from the transcript when the hooks wrote nothing for this run. A journal
+// already written from the transcript is rebuilt (the session went on since), keeping the entries other scripts
+// added to it (journal-check's « upstream » entries), each after the transcript entries older than it. A kept entry
+// whose kind and `id` the transcript already gives is not written twice.
 export function importTranscript(root, repo, opts = {}) {
   const p = findTranscript(repo, opts);
   if (!p) return null;
   const session = basename(p, '.jsonl').replace(/[^\w-]/g, '').slice(0, 36);
   const file = join(root, '.factory/journal', `${session}.jsonl`);
-  if (existsSync(file) && readFileSync(file, 'utf8').includes('"kind":"run"')) return file; // the hooks did it
-  const entries = fromTranscript(readFileSync(p, 'utf8').split('\n'));
+  const existing = existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : [];
+  if (existing.some((e) => e.kind === 'run' && e.source !== 'transcript')) return file; // the hooks did it
+  const entries = fromTranscript(readFileSync(p, 'utf8').split('\n')).map((e) => ({ ...e, source: 'transcript' }));
   if (!entries.some((e) => e.kind === 'run')) return null;
+  const key = (e) => `${e.kind} ${e.id}`;
+  const ids = new Set(entries.filter((e) => e.id != null).map(key));
+  for (const e of existing.filter((x) => x.source !== 'transcript' && !(x.id != null && ids.has(key(x))))) {
+    const next = e.t == null ? -1 : entries.findIndex((x) => x.source === 'transcript' && String(x.t) > String(e.t));
+    if (next === -1) entries.push(e);
+    else entries.splice(next, 0, e);
+  }
   mkdirSync(join(root, '.factory/journal'), { recursive: true });
-  writeFileSync(file, entries.map((e) => JSON.stringify({ ...e, source: 'transcript' })).join('\n') + '\n');
+  writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
   return file;
 }

@@ -22,12 +22,61 @@ test('AGENT.md holds one table: the model and effort of each of the 4 roles', ()
 
 test('each stage that dispatches a sub-agent names a role, not a fixed model', () => {
   const expected = {
-    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`'], 'stages/audit.md': ['`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
+    'stages/build.md': ['`code`', '`review`', '`plan`'], 'stages/bugfix.md': ['`review`', '`plan`', '`code`'], 'stages/audit.md': ['`code`', '`review`'], 'stages/ui-polish.md': ['`code`'],
+    'stages/grilling.md': ['`plan`'], 'stages/spec.md': ['`plan`'], 'stages/framing.md': ['`plan`'], 'stages/docs.md': ['`plan`'],
     'stages/design-pass.md': ['`code`'], 'stages/visual-fix.md': ['`code`'], 'stages/acceptance-fix.md': ['`code`'], 'stages/skills-fix.md': ['`review`'],
   };
   for (const [file, roles] of Object.entries(expected)) {
     const text = read(file);
     for (const r of roles) assert.ok(text.includes(r), `${file} should name ${r}`);
     for (const m of ['haiku', 'sonnet', 'opus']) assert.ok(!text.includes(`\`${m}\``), `${file} should not name \`${m}\``);
+  }
+});
+
+// Issue #550: the upstream thinking goes to a sub-agent of role `plan`; the pilot only publishes, with the proof line.
+test('the upstream phase is delegated to the plan role, with its proof line', () => {
+  assert.match(line('plan'), /phase amont[^\n]*cadrage[^\n]*analyse d'un bug/);
+  for (const s of ['**Phase amont**', '**Preuve de la phase amont.**', 'upstream.mjs', 'factory-upstream', 'sans le réécrire', 'relance-le sur le rôle `review`', 'Seul le chat']) {
+    assert.ok(grid.includes(s), s);
+  }
+  assert.match(grid, /tâches simples → code → revue/);
+  assert.match(grid, /même pour une petite/);
+  for (const f of ['grilling.md', 'spec.md', 'framing.md']) {
+    const text = read(`stages/${f}`);
+    assert.ok(text.includes('`plan`') && text.includes('upstream.mjs'), f);
+  }
+  const bug = read('stages/bugfix.md');
+  assert.ok(bug.indexOf('`plan`') >= 0 && bug.indexOf('`plan`') < bug.indexOf('`code`'), 'bugfix: analysis by `plan` before the fix by `code`');
+  assert.ok(read('stages/docs.md').includes('`plan`'));
+  const question = read('stages/question.md');
+  assert.ok(!question.includes('upstream.mjs') && !question.includes('`plan`'), 'the chat stays with the pilot');
+});
+
+// Review of #550: the plan sub-agent never publishes; a way out when the proof keeps being refused; words match the code.
+test('the plan sub-agent hands its text back, and the proof line has a way out', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  const g = flat(grid);
+  assert.match(g, /n'écrit rien sur GitHub \(commentaire, label, issue, PR\) et ne pousse rien/);
+  assert.match(g, /tu ouvres toi-même les issues des tranches/);
+  assert.match(g, /`model` = `models\.plan\.model`/);
+  assert.match(g, /après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne/);
+  assert.match(g, /Aucun round de questions, aucune spec ni fiche projet ne se publie sans cette ligne/);
+  assert.match(g, /avant le dernier test rouge/);
+  for (const f of ['grilling.md', 'spec.md', 'framing.md']) assert.match(flat(read(`stages/${f}`)), /n'écrit rien sur GitHub \(commentaire, label, issue, PR\) et ne pousse rien : là où ce fichier dit « publie », « mets le label » ou « ouvre une issue »/, f);
+  assert.match(read('stages/framing.md'), /tu poses les labels\.\n\nCette étape a lieu/);
+  assert.match(flat(read('stages/bugfix.md')), /après le rattrapage éventuel et avant tout autre travail/);
+  assert.match(flat(read('stages/grilling.md')), /factory-split[^]*sous-agent du rôle `plan` la relit[^]*upstream\.mjs <n>/);
+});
+
+// Second review of #550: who opens the slice issues, where the journal never goes, and lines that fit.
+test('the pilot opens the slice issues, the journal stays off the documents branch, lines are wrapped', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  assert.match(flat(read('stages/spec.md')), /4 bis\.[^]*Le sous-agent écrit le texte de chaque tranche dans son fichier et c'est toi qui ouvres ces issues/);
+  assert.match(flat(read('stages/docs.md')), /Le journal \(`\.factory\/journal\/`\) ne va jamais sur la branche `claude\/docs-<n>`/);
+  assert.match(flat(read('stages/docs.md')), /ne l'ajoute pas au commit de cette branche/);
+  const wrapped = { 'AGENT.md': ['il relit aussi la demande', 'Il te rend, dans un fichier', "n'écrit rien sur GitHub"], 'stages/spec.md': ['ligne de preuve (`upstream.mjs`)', 'Ouvre une issue par autre tranche'] };
+  assert.ok(!/il lit\n/.test(read('stages/bugfix.md')), 'bugfix: the analysis paragraph is wrapped');
+  for (const [f, words] of Object.entries(wrapped)) {
+    for (const w of words) assert.ok(read(f).split('\n').filter((l) => l.includes(w)).every((l) => l.length <= 120), `${f}: ${w}`);
   }
 });

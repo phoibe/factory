@@ -36,3 +36,7 @@ test('a family no longer in the list falls back to the role default', () => {
   assert.equal(resolveModels({ models: { code: 'opus' } }, families).code.model, 'opus', 'a default is always kept, even missing from a list');
   assert.equal(roleModel({ models: { review: 'opus' } }, 'review', families), 'fable');
 });
+
+test('the help of the plan role names the questions and the sheet of each request (issue #550)', () => {
+  assert.match(MODEL_ROLES.find((r) => r.id === 'plan').help, /questions et la fiche de chaque demande/);
+});

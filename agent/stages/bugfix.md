@@ -5,9 +5,12 @@ Un bug signalé dans l'issue. Pas de grilling.
 **Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
 `.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
 
-1. Si le comportement attendu n'est pas clair, pose **une** question simple sur l'issue, mets
-   `factory:blocked` et termine.
-2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Skill `systematic-debugging` : reproduis le bug par un test qui échoue,
+1. **Analyse** par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), après le rattrapage éventuel et avant
+   tout autre travail : il lit l'issue, cherche dans le code (skill `systematic-debugging`) et te rend soit la question
+   à poser quand le comportement attendu n'est pas clair, soit la cause probable, les fichiers concernés et le test
+   qui reproduira le bug. S'il rend une question : pose-la (**une** question simple) sur l'issue, mets `factory:blocked` et termine.
+2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Un sous-agent du rôle `code` part de cette analyse :
+   skill `systematic-debugging`, reproduis le bug par un test qui échoue,
    trouve la cause racine, corrige, le test passe. Si le bug se voit dans un navigateur et que le projet a
    `test:e2e`, ce test est un parcours dans `e2e/` : il protège ensuite chaque livraison.
    **Livraison retirée par la factory** (la description contient `<!-- factory-prod-check -->`) : la version en

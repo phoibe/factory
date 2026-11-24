@@ -2,6 +2,12 @@
 
 But : une spec fonctionnelle que le propriétaire valide (porte 1).
 
+**Qui fait quoi.** Tout ce que cette étape demande de réfléchir ou de rédiger est fait par un sous-agent du rôle `plan`
+(« Phase amont » dans AGENT.md) : donne-lui ce fichier à suivre et dis-lui qu'il n'écrit rien sur GitHub (commentaire,
+label, issue, PR) et ne pousse rien : là où ce fichier dit « publie », « mets le label » ou « ouvre une issue », il
+écrit le texte dans un fichier et te le rend. Toi, tu publies son texte, terminé par la ligne de
+`node .factory/scripts/upstream.mjs <n>`, et tu poses les labels.
+
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
 2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
    - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
@@ -24,7 +30,8 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
    questions est désactivée) : la spec commence, juste
    sous son titre, par la phrase « Pas de questions : la demande était claire. »
 3. Publie-la en commentaire, qui commence par `<!-- factory-agent -->` puis `<!-- factory-spec -->` et un
-   titre `## Spec (version N)`. Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
+   titre `## Spec (version N)`, et se termine, juste avant la signature, par la ligne de preuve
+   (`upstream.mjs`). Une nouvelle version remplace l'ancienne : ne modifie pas les anciens commentaires.
 4. **Faut-il la faire valider ?** Oui si l'étape « validation de chaque spec » est active (voir AGENT.md).
    Sinon, oui seulement si la spec est **sensible** : elle peut faire perdre ou effacer des données, touche à
    l'argent, à la sécurité, aux comptes ou au partage de données personnelles, change la vision ou le design
@@ -39,8 +46,11 @@ But : une spec fonctionnelle que le propriétaire valide (porte 1).
 4 bis. **Feature trop grosse pour une seule construction ?** (plusieurs écrans indépendants, ou plus d'une demi-journée
    de travail selon toi) : découpe-la avec le skill `to-tickets` s'il est installé, en tranches qui se livrent et se
    testent chacune seule. Cette issue garde la première tranche (la spec ne décrit qu'elle, avec une ligne « Ensuite : »
-   qui liste les autres). Ouvre une issue par autre tranche, titre et texte en français, même si un skill de découpage propose des titres ou rubriques en anglais (voir « Ouvrir une issue » dans AGENT.md, avec `factory:kept` :
-   elles viennent de sa demande), dont la description contient sa partie de la spec, `Découpée de #<n>.` et le marqueur
-   `<!-- factory-split -->` ; elles partiront en parallèle quand une place se libère.
+   qui liste les autres). Ouvre une issue par autre tranche, titre et texte en français, même si un skill de
+   découpage propose des titres ou rubriques en anglais (voir « Ouvrir une issue » dans AGENT.md, avec
+   `factory:kept` : elles viennent de sa demande), dont la description contient sa partie de la spec,
+   `Découpée de #<n>.` et le marqueur `<!-- factory-split -->` ; elles partiront en parallèle quand une place se
+   libère. Le sous-agent écrit le texte de chaque tranche dans son fichier et c'est toi qui ouvres ces issues : lui
+   n'écrit rien sur GitHub et ne pousse rien.
 5. Labels de l'issue : retire `factory:grilling`, ajoute `factory:spec-review`, et aussi `factory:auto-go`
    si la spec n'est pas à valider : la construction démarrera dès la fin de ce run.

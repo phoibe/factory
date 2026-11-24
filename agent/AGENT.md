@@ -46,10 +46,10 @@ suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque 
 (`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
 tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, lance `node
 .factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
-session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore : fais-le,
-puis committe `.factory/journal/`. Un verrou
-refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape manque :
-si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
+session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore (pour une
+construction, il relit aussi la demande pour relever quel modèle a fait les questions et la fiche) : fais-le, puis
+committe `.factory/journal/`. Un verrou refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape
+manque : si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
 **Modèles par rôle.** Le propriétaire choisit, dans les « Réglages généraux » du panneau, une famille de modèle
 pour chacun de 4 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du
@@ -61,15 +61,41 @@ hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
 
 | Rôle | Défaut | `effort` | Tâches |
 | --- | --- | --- | --- |
-| `plan` (Plans et organisation) | `fable` | `high` | écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
+| `plan` (Plans et organisation) | `fable` | `high` | phase amont d'une demande (analyse, questions, alertes, spec), cadrage d'un projet, analyse d'un bug, écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
 | `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design, chaque partie d'une revue générale |
 | `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une revue générale |
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
 - Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.
 - **Tu ne fais que piloter.** Tu tournes sur le modèle de la routine, que la factory ne peut pas changer : tu
-  délègues toujours l'écriture d'un plan à un sous-agent du rôle `plan`, et l'écriture du code à des sous-agents
-  du rôle `code`, même pour une petite demande.
+  délègues toujours la phase amont et l'écriture d'un plan à un sous-agent du rôle `plan`, et l'écriture du code à
+  des sous-agents du rôle `code`, même pour une petite demande.
+- **Phase amont** (étapes `grilling`, `spec` et `framing`, analyse d'un bug dans `bugfix`). Toute la réflexion revient à
+  un sous-agent du rôle `plan`, jamais à toi : analyser la demande et chercher les faits dans le code, classer sa taille,
+  repérer les alertes (demande sensible, en double, déjà réglée, obsolète, trop grosse), choisir les questions et leurs
+  recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le glossaire
+  et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
+  commentaires, chemins des captures) et le fichier d'étape à suivre ; il charge lui-même les skills que l'étape nomme.
+  Dis-lui qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où le fichier d'étape
+  dit « publie », « mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Il te rend,
+  dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser, le texte des
+  issues à ouvrir et, s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses
+  les labels, tu ouvres toi-même les issues des tranches, tu ouvres la petite PR de documents et tu fermes une
+  demande inutile. Une petite demande claire, qui saute les questions, a aussi sa spec écrite par lui. Des variantes
+  à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du rôle `code` les construit. S'il
+  échoue (pas de réponse, ou texte inutilisable deux fois), relance-le sur le rôle `review`, sans déranger le
+  propriétaire. Seul le chat (`stage` `question`) reste chez toi.
+- **Preuve de la phase amont.** Avant de publier un round de questions, une spec ou une fiche projet, lance
+  `node .factory/scripts/upstream.mjs <numéro de l'issue>` depuis le dossier du projet : il lit le journal de ton run et
+  affiche une ligne invisible `<!-- factory-upstream … -->` qui dit quel modèle a fait la réflexion. Colle-la telle
+  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. Aucun round de questions,
+  aucune spec ni fiche projet ne se publie sans cette ligne (une estimation, une alerte ou la question d'un bug n'en
+  ont pas besoin). S'il répond qu'aucun sous-agent du rôle `plan` n'a été vu, lance-le d'abord, avec le paramètre
+  `model` = `models.plan.model` du payload (sans `model`, l'outil ne le reconnaît pas), puis relance la commande.
+  S'il refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie
+  sans la ligne : le contrôle à la construction le signalera. À la construction, `journal-check.mjs` relit la
+  demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug, la preuve est dans le
+  journal du run : le sous-agent d'analyse est lancé avant le dernier test rouge.
 - **Monter d'un cran en cas d'échec** : si un sous-agent échoue (tests toujours rouges après 2 essais, ou travail
   refusé deux fois par le relecteur), relance la tâche sur le rôle au-dessus (tâches simples → code → revue),
   sans déranger le propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent
