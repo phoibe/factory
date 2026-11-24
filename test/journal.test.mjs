@@ -1,14 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { entryFor, runFromPrompt, isTestCommand } from '../agent/scripts/journal.mjs';
+import { entryFor, runFromPrompt, isTestCommand, ROLE_DEFAULTS } from '../agent/scripts/journal.mjs';
+import { MODEL_ROLES } from '../scripts/lib/models.mjs';
 
 const now = new Date('2026-11-03T10:00:00Z');
 
 test('runFromPrompt reads the run JSON from the routine prompt', () => {
-  assert.deepEqual(runFromPrompt('Voici le JSON :\n{"repo":"o/r","issue":5,"pr":null,"stage":"build","factory":"phoibe/factory"}\nLis AGENT.md'), { stage: 'build', issue: 5, pr: null, repo: 'o/r' });
+  assert.deepEqual(runFromPrompt('Voici le JSON :\n{"repo":"o/r","issue":5,"pr":null,"stage":"build","factory":"phoibe/factory"}\nLis AGENT.md'), { stage: 'build', issue: 5, pr: null, repo: 'o/r', models: { plan: 'fable', review: 'fable' } });
   assert.equal(runFromPrompt('bonjour'), null);
   // With the owner's screenshots the JSON holds nested objects.
-  assert.deepEqual(runFromPrompt('{"repo":"o/r","issue":5,"stage":"build","attachments":[{"path":"a/1.png","source":"x"}]}'), { stage: 'build', issue: 5, pr: null, repo: 'o/r' });
+  assert.deepEqual(runFromPrompt('{"repo":"o/r","issue":5,"stage":"build","attachments":[{"path":"a/1.png","source":"x"}]}'), { stage: 'build', issue: 5, pr: null, repo: 'o/r', models: { plan: 'fable', review: 'fable' } });
+});
+
+test('runFromPrompt keeps the models of the plan and review roles, else their defaults', () => {
+  assert.deepEqual(runFromPrompt('{"issue":5,"stage":"grilling","models":{"plan":{"model":"opus","effort":"high"},"review":{"model":"fable"}}}').models, { plan: 'opus', review: 'fable' });
+  assert.deepEqual(runFromPrompt('{"issue":5,"stage":"grilling"}').models, { plan: 'fable', review: 'fable' });
+  assert.deepEqual(ROLE_DEFAULTS, Object.fromEntries(MODEL_ROLES.filter((r) => ['plan', 'review'].includes(r.id)).map((r) => [r.id, r.default])));
 });
 
 test('records skills, red and green test runs, and ignores the rest', () => {

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged } from './fabrication.mjs';
+import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
 
 const HOW = {
   'writing-plans': 'charge le skill `writing-plans` (outil Skill) et écris le plan',
@@ -57,6 +57,7 @@ export function problems(files, readFile, stages, { stage = null, current = null
   if (run && GATED.includes(stage) && expectations(stage, stages, ui, { small }).some((e) => e.tdd && !missing.some((m) => m.skill === e.skill)) && !redThenGreen(run)) {
     out.push('preuve TDD : lance un test qui échoue avec la commande de test du projet, puis fais-le passer');
   }
+  if (stage !== 'skills-fix') out.push(...upstreamCheck(runs).missing.map((m) => m.how));
   return out;
 }
 

@@ -98,3 +98,13 @@ test('only a command that posts is checked for a broken screenshots table', () =
   assert.equal(decide(bash(`cat > fixture.md <<'EOF'\n${BAD_SHOTS}EOF`), e), null);
   assert.equal(decide(bash('node --test'), e), null);
 });
+
+// Issue #550: a build whose spec does not carry the upstream proof cannot open its PR.
+test('a build whose spec has no upstream proof is refused', () => {
+  const models = { plan: 'fable', review: 'fable' };
+  const text = j({ t: '1', kind: 'run', stage: 'build', issue: 42, models }, ...['writing-plans', 'test-driven-development', 'requesting-code-review', 'impeccable'].map(skill),
+    { t: '3', kind: 'test', ok: false }, { t: '4', kind: 'test', ok: true }, { t: '5', kind: 'upstream', doc: 'spec', status: 'unproved', by: [] });
+  const res = decide(bash('gh pr create --fill'), env(text));
+  assert.equal(res.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(res.out.hookSpecificOutput.permissionDecisionReason, /questions et fiche : la fiche publiée ne porte pas la ligne de preuve/);
+});
