@@ -1449,6 +1449,8 @@ function closeGeneral(giveFocusBack = false) {
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
   $('general-open').setAttribute('aria-pressed', 'false');
+  // Back on « Agent »: the answer is on screen now, its badge and « Nouvelle réponse » go at once (review #556).
+  if (wasOpen && !$('chat').hidden && !$('project-view').hidden && current && chat.repo) refreshChat();
   if (wasOpen && giveFocusBack) {
     let target = general.from?.isConnected ? general.from : $('general-open');
     // On a phone the top button sits inside the closed « Plus » menu: its summary takes the focus instead.
