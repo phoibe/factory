@@ -235,3 +235,11 @@ test('frames never overlap, even next to the edge of the image', () => {
   }
   assert.ok(boxes.some((f) => f.x <= 0 && f.x + f.w >= 120), JSON.stringify(boxes));
 });
+
+test('changes scattered all over a long page are the whole screen', () => {
+  const after = img(1280, 8000);
+  for (let y = 50; y < 8000; y += 100) for (let x = 50; x < 1280; x += 100) after.data.set([0, 0, 0], (y * 1280 + x) * 4);
+  const result = changeFrames(img(1280, 8000), after);
+  assert.equal(result.whole, true);
+  assert.deepEqual([result.before, result.after], [[], []]);
+});

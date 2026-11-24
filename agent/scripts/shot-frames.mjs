@@ -78,13 +78,11 @@ export function changeFrames(before, after, sizes = frameSizes(after.width)) {
   if (before.width !== after.width) return { before: [], after: [], whole: true, sizes };
   const pairs = alignRows(before, after);
   const cells = markChanges(before, after, pairs, sizes.gap);
-  const zones = cells.map((c, side) => {
-    const img = side === 0 ? before : after;
-    return mergeZones(groupMarks(c).map((z) => widen(z, sizes.min, img)), sizes.gap);
-  });
-  const area = (zs) => zs.reduce((sum, z) => sum + (z.x1 - z.x0) * (z.y1 - z.y0), 0);
-  if (area(zones[0]) > WHOLE_SCREEN * before.width * before.height || area(zones[1]) > WHOLE_SCREEN * after.width * after.height) {
-    return { before: [], after: [], whole: true, sizes };
+  const zones = [];
+  for (const [side, img] of [before, after].entries()) {
+    const zs = mergeZones(groupMarks(cells[side]).map((z) => widen(z, sizes.min, img)), sizes.gap, WHOLE_SCREEN * img.width * img.height);
+    if (!zs) return { before: [], after: [], whole: true, sizes };
+    zones.push(zs);
   }
   const grow = sizes.pad + sizes.red + sizes.white;
   const [b, a] = zones.map((zs, side) => {
@@ -279,22 +277,46 @@ function groupMarks({ map: cells }) {
 
 const distance = (p, q) => Math.max(0, Math.max(p.x0, q.x0) - Math.min(p.x1, q.x1), Math.max(p.y0, q.y0) - Math.min(p.y1, q.y1));
 
-// Merges the two closest zones while they are closer than gap, or while there are too many.
-function mergeZones(zones, gap) {
+// Merges the two closest zones while they are closer than gap, or while there are too many. Null as soon as they
+// cover more than `limit` pixels: the whole screen changed, no need to merge further. Each zone keeps its nearest
+// neighbour, so that a merge only looks again at the zones it concerns.
+function mergeZones(zones, gap, limit) {
   const zs = zones.slice();
+  let area = zs.reduce((sum, z) => sum + zoneArea(z), 0);
+  const near = zs.map(() => ({ d: Infinity, k: -1 }));
+  const refresh = (i) => {
+    near[i] = { d: Infinity, k: -1 };
+    for (let k = 0; k < zs.length; k++) if (k !== i) { const d = distance(zs[i], zs[k]); if (d < near[i].d) near[i] = { d, k }; }
+  };
+  zs.forEach((_, i) => refresh(i));
   while (zs.length > 1) {
-    let best = Infinity, bi = 0, bj = 1;
-    for (let i = 0; i < zs.length; i++) for (let j = i + 1; j < zs.length; j++) {
-      const d = distance(zs[i], zs[j]);
-      if (d < best) { best = d; bi = i; bj = j; }
-    }
-    if (best >= gap && zs.length <= MAX_FRAMES) break;
+    if (area > limit) return null;
+    let bi = 0;
+    for (let i = 1; i < zs.length; i++) if (near[i].d < near[bi].d) bi = i;
+    if (near[bi].d >= gap && zs.length <= MAX_FRAMES) break;
+    let bj = near[bi].k;
+    if (bj < bi) [bi, bj] = [bj, bi];
     const p = zs[bi], q = zs[bj];
     zs[bi] = { x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1) };
+    area += zoneArea(zs[bi]) - zoneArea(p) - zoneArea(q);
     zs.splice(bj, 1);
+    near.splice(bj, 1);
+    for (let i = 0; i < zs.length; i++) {
+      if (i === bi) continue;
+      const n = near[i];
+      if (n.k === bi || n.k === bj) refresh(i);
+      else {
+        if (n.k > bj) n.k--;
+        const d = distance(zs[i], zs[bi]);
+        if (d < n.d) near[i] = { d, k: bi };
+      }
+    }
+    refresh(bi);
   }
-  return zs;
+  return area > limit ? null : zs;
 }
+
+const zoneArea = (z) => (z.x1 - z.x0) * (z.y1 - z.y0);
 
 // A segment [lo, hi) at least `length` long (at most `size`), centred on itself, kept inside [0, size).
 function span(lo, hi, length, size) {
