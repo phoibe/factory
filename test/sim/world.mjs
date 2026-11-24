@@ -41,12 +41,17 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
   const asIssue = (i) => ({
     number: i.number, title: i.title, body: i.body, state: i.open ? 'open' : 'closed', created_at: i.created_at, updated_at: i.updated_at,
     labels: i.labels.map((name) => ({ name })), ...(i.pr ? { pull_request: {} } : {}),
+    user: i.user, author_association: i.author_association,
   });
   const asPr = (i) => ({
     ...asIssue(i), head: { ref: i.branch, sha: i.sha }, merged_at: i.merged_at || null, mergeable_state: i.dirty ? 'dirty' : 'clean',
     state: i.open ? 'open' : 'closed',
   });
-  const sender = (actor) => ({ login: actor === 'bot' ? 'github-actions[bot]' : OWNER });
+  // Who each actor is on GitHub: the agent works with the owner's account, a stranger has no rights on the repository.
+  const ACTORS = { bot: ['github-actions[bot]', 'CONTRIBUTOR'], stranger: ['stranger', 'NONE'] };
+  const loginOf = (actor) => (ACTORS[actor] || [OWNER])[0];
+  const associationOf = (actor) => (ACTORS[actor] || [OWNER, 'OWNER'])[1];
+  const sender = (actor) => ({ login: loginOf(actor) });
   const repository = { owner: { login: OWNER } };
   // Webhooks: none for the workflow's own token, like GitHub.
   const emit = (actor, eventName, payload) => {
@@ -78,7 +83,7 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
   }
   function comment(actor, n, body) {
     const i = get(n);
-    const c = { id: ++seq * 1000, body, user: { login: actor === 'bot' ? 'github-actions[bot]' : OWNER }, created_at: iso() };
+    const c = { id: ++seq * 1000, body, user: { login: loginOf(actor) }, author_association: associationOf(actor), created_at: iso() };
     i.comments.push(c);
     touch(i);
     emit(actor, 'issue_comment', { action: 'created', comment: c, issue: asIssue(i) });
@@ -86,7 +91,8 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
   }
   function openIssue(actor, { title, body = '', labels = [] }) {
     const n = ++num;
-    const i = { number: n, title, body, labels: [...labels], open: true, comments: [], events: [], created_at: iso(), updated_at: iso() };
+    const i = { number: n, title, body, labels: [...labels], open: true, comments: [], events: [], created_at: iso(), updated_at: iso(),
+      user: { login: loginOf(actor) }, author_association: associationOf(actor) };
     items.set(n, i);
     emit(actor, 'issues', { action: 'opened', issue: asIssue(i) });
     // An issue form with labels also sends « labeled », which the relay must not start twice.
@@ -98,6 +104,7 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
     const i = {
       number: n, pr: true, title: `PR for #${issue}`, body: `Résumé\n\nCloses #${issue}`, labels: [], open: true, comments: [], events: [],
       branch: `claude/issue-${issue}-work`, sha: `sha${n}a`, files, created_at: iso(), updated_at: iso(),
+      user: { login: loginOf(actor) }, author_association: associationOf(actor),
     };
     items.set(n, i);
     emit(actor, 'pull_request', { action: 'opened', pull_request: asPr(i) });
@@ -257,6 +264,10 @@ export function createWorld({ config, agent = {}, previews = false, spy = (gh) =
       sayNoSettle: (n, text) => comment('owner', n, text),
       // « Garder » on the board: the panel adds the kept label with the owner's token.
       keep: async (n) => { addLabels('owner', n, [L.kept]); await settle(); },
+    },
+    // Someone with no rights on a public project, opening an issue through a form (labelled by the form).
+    stranger: {
+      openIssue: async (o) => { const n = openIssue('stranger', o); await settle(); return n; },
     },
     // Time passes: the 5-minute safety tick runs at each step.
     wait: async (minutes) => {
