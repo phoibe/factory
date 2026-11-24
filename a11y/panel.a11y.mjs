@@ -27,6 +27,8 @@ async function fakeGithub(route) {
   const path = url.pathname;
   const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(data) });
   if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
+  // A chat message never leaves (the network drops): it stays in the conversation, « Non envoyé » (issue #580).
+  if (route.request().method() === 'POST' && /\/issues(\/\d+\/comments)?$/.test(path)) return route.abort('internetdisconnected');
   if (path === '/user/repos') return json([FAKE_REPO]);
   if (path === '/repos/proprio/exemple/contents/factory.config.json') {
     const content = (await readFile(join(ROOT, 'defaults/factory.config.json'))).toString('base64');
@@ -78,6 +80,14 @@ test('panel screens have no axe violations, in the light and the dark theme', as
           await page.evaluate(axeSource);
           const result = await page.evaluate(() => axe.run());
           for (const v of result.violations) found.push(`${name} (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+          if (name === 'Agent') {
+            // A message that could not be sent: its red mention and its two buttons, light and dark (issue #580).
+            await page.fill('#chat-input', 'Un message qui ne part pas');
+            await page.click('#chat-send');
+            await page.waitForSelector('.msg.unsent', { state: 'visible', timeout: 15000 });
+            const unsent = await page.evaluate(() => axe.run());
+            for (const v of unsent.violations) found.push(`Agent, message non envoyé (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+          }
           if (name === 'Paramètres') {
             // The "Features en questions en même temps" setting sits under the auto-pick switch, in its row, set to 2 by default.
             const q = await page.evaluate(() => {

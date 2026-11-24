@@ -229,10 +229,11 @@ test('si l\'agent n\'arrive pas à répondre, la conversation reste ouverte avec
     await page.locator('#chat-send').click();
     await card.getByRole('button', { name: 'Créer cette demande' }).click();
     await card.getByRole('link', { name: /Voir la demande/ }).waitFor();
-    await page.getByText(/L'agent n'a pas pu répondre/).waitFor({ timeout: 10000 });
+    await page.locator('#chat-messages .unsent-note', { hasText: /L'agent n'a pas pu répondre/ }).waitFor({ timeout: 10000 });
     await page.waitForTimeout(1000);
     assert.equal(closedIndex(writes), false);
-    assert.equal(await page.locator('#chat-input').inputValue(), 'Et aussi autre chose');
+    assert.equal(await page.locator('#chat-input').inputValue(), ''); // the message waits in the conversation (#580)
+    await page.locator('#chat-messages .msg.unsent', { hasText: 'Et aussi autre chose' }).waitFor();
   });
 });
 

@@ -254,7 +254,7 @@ async function checkProjects() {
 
 // Something typed or in flight that reopening the project, or reloading the panel, would lose.
 const hasUnsaved = () => (current && JSON.stringify(current.config) !== current.saved) || generalDirty() || Boolean($('chat-input')?.value.trim())
-  || Boolean(chat.live) || chat.files.length > 0;
+  || Boolean(chat.live) || chat.files.length > 0 || chat.unsent.size > 0;
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -2392,12 +2392,12 @@ function laterMarks(repo) {
   };
 }
 
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null), created: createdMarks(store, null), recording: false };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null), created: createdMarks(store, null), recording: false, unsent: unsentBox() };
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name), created: createdMarks(store, current.repo.full_name) });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name), created: createdMarks(store, current.repo.full_name), unsent: unsentBox() });
   // A request made here whose choice is not recorded yet shows « Créée » with its link (review #556).
   chat.decided = new Map(chat.created.entries());
   $('chat-send').disabled = false;
@@ -2590,7 +2590,7 @@ async function refreshServerChat() {
 // Only while the tab is shown: a background check from another tab must not choose (nor poll) a conversation.
 function pickDefaultConversation() {
   if (chat.open != null || !chat.list || $('chat').hidden) return;
-  const drafting = chat.live || chat.sending || chat.pending || chat.files.length || $('chat-input').value.trim();
+  const drafting = chat.live || chat.sending || chat.pending || chat.files.length || $('chat-input').value.trim() || chat.unsent.shown('new').length;
   chat.open = drafting ? 'new' : defaultConversation(chat.list, Boolean(chat.server));
   if (chat.open === 'new') return;
   $('chat').classList.add('viewing');
@@ -2813,7 +2813,8 @@ function openLightbox(src) {
   $('lightbox').showModal();
 }
 
-function bubble(m) {
+// `foot`: the nodes that replace the time line (an unsent message's mention and buttons, issue #580).
+function bubble(m, foot = null) {
   const pics = (m.images || []).map(chatImage);
   const text = !m.text ? [] : m.who === 'agent' ? richText(m.text) : [el('p', {}, m.text.split('\n').flatMap((l, i) => (i ? [el('br'), ...quoted(l)] : quoted(l))))];
   return el('li', { class: `msg ${m.who}` },
@@ -2822,10 +2823,38 @@ function bubble(m) {
     ...(m.issues || []).map((i) => el('a', { class: 'issue-chip', href: safeGithubUrl(i.url), target: '_blank', rel: 'noopener' },
       el('strong', {}, i.kind === 'bug' ? 'Bug créé' : 'Fonctionnalité créée'), ` · ${i.title}`, el('span', { 'aria-hidden': 'true' }, ' ↗'))),
     ...(m.proposals || []).map(proposalCard),
-    el('div', { class: 'msg-foot' },
+    ...(foot || [el('div', { class: 'msg-foot' },
       el('span', { class: 'meta' }, m.who === 'agent' ? 'Agent · ' : '', m.at ? timeOf(m.at) : 'envoi…'),
-      m.who === 'agent' && m.text ? copyButton('Copier la réponse', 'copy-answer', () => m.text) : null));
+      m.who === 'agent' && m.text ? copyButton('Copier la réponse', 'copy-answer', () => m.text) : null)]));
 }
+
+// A message that could not be sent (issue #580): it keeps its place at the bottom of its conversation, with the
+// mention in failure red, its reason, « Renvoyer » (greyed while an answer is on its way) and « Modifier ».
+function unsentBubble(key, m) {
+  const li = bubble({ who: 'me', text: m.text, images: m.files.map((f) => f.url), at: null }, [
+    el('p', { class: 'unsent-note' }, el('strong', {}, `${UNSENT_TITLE[m.kind]}.`), ` ${m.reason}`),
+    el('div', { class: 'unsent-actions' },
+      el('button', { type: 'button', class: 'secondary small-btn', disabled: answering(), onclick: () => resend(key, m.id) }, 'Renvoyer'),
+      el('button', { type: 'button', class: 'secondary small-btn', onclick: () => editUnsent(key, m.id) }, 'Modifier')),
+  ]);
+  li.classList.add('unsent');
+  return li;
+}
+const unsentBubbles = () => { const key = unsentKey(chat.open); return chat.unsent.shown(key).map((m) => unsentBubble(key, m)); };
+
+// A failed send keeps the message in its conversation, says it to screen readers, and never refills the composer.
+// Out of sight (another tab, the list on a phone, another conversation) one toast says where it waits.
+function keepUnsent(key, message, again, failure) {
+  if (again) chat.unsent.fail(key, again.id, failure);
+  else chat.unsent.add(key, message, failure);
+  sayInChat(`${UNSENT_TITLE[failure.kind]}. ${failure.reason}`);
+  drawChat();
+  if (!threadShown() || unsentKey(chat.open) !== key) toast(UNSENT_AWAY);
+}
+
+// « Renvoyer » and « Modifier » (issue #580, task 4).
+function resend() {}
+function editUnsent() {}
 
 // « Réfléchit… 0:42 · d'habitude, environ 1 à 2 min », the time ticking every second (issue #460).
 const USUAL_WAIT = 'd\'habitude, environ 1 à 2 min';
@@ -3093,28 +3122,37 @@ function drawChat() {
   $('chat-tools').hidden = isNew || !chat.issue;
   const list = $('chat-messages');
   const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
-  if (isNew) {
+  const waiting = unsentBubbles();
+  if (isNew && !chat.pending && !waiting.length) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
       el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
       examples()));
+  } else if (isNew) {
+    // A new conversation's first message, on its way or unsent: no intro over it.
+    const mine = chat.pending ? [bubble({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null }), thinkingBubble(chat.pending.since)] : [];
+    list.replaceChildren(...mine, ...waiting);
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const status = chat.pending ? 'thinking' : chatStatus(chat.issue, messages);
     const tail = status === 'thinking'
-      ? el('li', { class: 'msg agent' }, el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
-        thinkingMeta('Réfléchit…', chat.pending?.since || waitingSince(messages) || messages.findLast((m) => m.who === 'me')?.at))
+      ? thinkingBubble(chat.pending?.since || waitingSince(messages) || messages.findLast((m) => m.who === 'me')?.at)
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
-    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    list.replaceChildren(...messages.map((m) => bubble(m)), ...(tail ? [tail] : []), ...waiting);
     announceAnswers(chat.issue.number, messages);
     $('chat-close').hidden = status === 'closed';
   } else {
-    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'), ...waiting);
   }
   if (stick || chat.pending) list.scrollTop = list.scrollHeight;
 }
+
+// The agent's « typing » bubble with the time it has been thinking.
+const thinkingBubble = (since) => el('li', { class: 'msg agent' },
+  el('div', { class: 'bubble typing', role: 'img', 'aria-label': 'L\'agent réfléchit' }, el('span'), el('span'), el('span')),
+  thinkingMeta('Réfléchit…', since));
 
 // The list is redrawn on every poll: only a new answer of the agent is read out, not the whole conversation again.
 let announced = { id: null, count: 0 };
@@ -3122,12 +3160,15 @@ function announceAnswers(id, messages) {
   const count = messages.filter((m) => m.who === 'agent').length;
   // A new conversation gets its number with its first answer: still the same conversation.
   const same = announced.id === id || announced.id == null || announced.id === 'new';
-  if (same && count > announced.count) {
-    const live = $('chat-announce');
-    live.textContent = ''; // the same words again must still be read out
-    requestAnimationFrame(() => { live.textContent = 'Nouvelle réponse de l\'agent.'; });
-  }
+  if (same && count > announced.count) sayInChat('Nouvelle réponse de l\'agent.');
   announced = { id, count };
+}
+
+// Reads a sentence out to screen readers, through the conversation's live region.
+function sayInChat(text) {
+  const live = $('chat-announce');
+  live.textContent = ''; // the same words again must still be read out
+  requestAnimationFrame(() => { live.textContent = text; });
 }
 
 const examples = () => el('div', { class: 'examples' }, EXAMPLES.map((x) => el('button', { type: 'button', class: 'secondary example', onclick: () => { $('chat-input').value = x; autosize(); $('chat-input').focus(); } }, x)));
@@ -3139,19 +3180,22 @@ function drawServerChat(isNew) {
   $('chat-title').textContent = isNew ? 'Nouvelle conversation' : chat.conv?.title || entry?.title || (chat.live ? titleFrom(chat.pending?.text || 'Nouvelle conversation') : '');
   $('chat-tools').hidden = isNew || !chat.conv;
   $('chat-close').hidden = entry?.state === 'closed';
-  if (isNew) {
+  const waiting = unsentBubbles();
+  if (isNew && !waiting.length) {
     list.replaceChildren(el('li', { class: 'chat-intro' },
       el('p', { class: 'intro-title' }, 'Parlez à l\'agent de votre appli'),
       examples()));
+  } else if (isNew) {
+    list.replaceChildren(...waiting);
   } else if (chat.conv || chat.live) {
     const messages = serverMessages(chat.conv);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const tail = chat.live ? liveBubble()
       : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
-    list.replaceChildren(...messages.map(bubble), ...(tail ? [tail] : []));
+    list.replaceChildren(...messages.map((m) => bubble(m)), ...(tail ? [tail] : []), ...waiting);
     announceAnswers(chat.open, messages);
   } else {
-    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'));
+    list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'), ...waiting);
   }
   if (stick || chat.pending) list.scrollTop = list.scrollHeight;
 }
@@ -3205,9 +3249,12 @@ async function uploadImages(repo, files) {
   await ensureAttachmentsBranch(repo);
   const paths = [];
   for (const f of files) {
+    // Uploaded before a send that failed: « Renvoyer » does not upload it again (issue #580).
+    if (f.path) { paths.push(f.path); continue; }
     const path = imagePath('image/jpeg');
     await api(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `chore(factory): chat image ${path}`, content: await shrink(f.file), branch: ATTACHMENTS_BRANCH }) });
     chat.images.set(path, Promise.resolve(f.url)); // already on screen: no download
+    f.path = path;
     paths.push(path);
   }
   return paths;
@@ -3241,12 +3288,13 @@ function placeToast() {
   t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top)}px`);
 }
 
-async function sendChat(text, withImages = true) {
+// `again`: the unsent message « Renvoyer » sends again (issue #580), with its own images; the composer is not touched.
+async function sendChat(text, withImages = true, again = null) {
   text = text.trim();
-  const files = withImages ? [...chat.files] : [];
+  const files = again ? again.files : withImages ? [...chat.files] : [];
   if ((!text && !files.length) || !current) return;
   if (chat.sending) return;
-  if (chat.server) return sendToServer(text, files, withImages);
+  if (chat.server) return sendToServer(text, files, withImages, again);
   const repo = chat.repo;
   const btn = $('chat-send');
   const run = chat.run = {};
@@ -3254,9 +3302,14 @@ async function sendChat(text, withImages = true) {
   btn.disabled = true;
   chat.sending = true;
   const sentTo = chat.open;
+  let key = unsentKey(chat.open);
+  if (again) chat.unsent.retry(key, again.id);
   chat.later.delete(sentTo); // writing again carries the conversation on: no end on the agent's previous turn (#521)
+  // The composer empties at once and the message shows as being sent, in a new conversation too (issue #580).
+  if (withImages && !again) clearComposer();
+  chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() };
+  drawChat();
   try {
-    if (typeof chat.open === 'number') { chat.pending = { text, previews: files.map((f) => f.url), since: new Date().toISOString() }; drawChat(); }
     const open = chat.open, wasClosed = chat.issue?.state === 'closed';
     const paths = await uploadImages(repo, files);
     const body = [text, ...paths.map((p) => imageBlock(repo, p))].filter(Boolean).join('\n\n');
@@ -3264,21 +3317,21 @@ async function sendChat(text, withImages = true) {
     if (typeof open !== 'number') {
       const issue = await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFrom(text || 'Image envoyée'), labels: [CHAT_LABEL], body }) });
       if (gone()) return;
+      chat.pending = null; // the issue's description is the message
       chat.open = issue.number;
       chat.issue = issue;
       chat.comments = [];
       markSeen(issue);
+      // Messages left unsent in the new conversation follow it.
+      if (again) chat.unsent.remove(key, again.id);
+      chat.unsent.rekey(key, issue.number);
+      key = issue.number;
     } else {
       if (wasClosed) await api(`/repos/${repo}/issues/${open}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) });
       await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
     }
     if (gone()) return;
-    if (withImages) {
-      $('chat-input').value = '';
-      chat.files = [];
-      drawPendingImages();
-      autosize();
-    }
+    if (again) chat.unsent.remove(key, again.id);
     clearTimeout(chat.timer);
     chat.etags.clear();
     await refreshChat();
@@ -3286,8 +3339,8 @@ async function sendChat(text, withImages = true) {
     if (gone()) return;
     chat.pending = null;
     chat.later.delete(sentTo); // the turn never happened: no end of conversation on top of this error (#521)
-    drawChat();
-    toast(`Message non envoyé. ${errorText(e)} Votre texte est toujours là.`);
+    chat.sending = false; // « Renvoyer » is drawn active
+    keepUnsent(key, { text, files, withImages }, again, { kind: 'unsent', reason: errorText(e) });
   } finally {
     if (!gone()) { chat.sending = false; btn.disabled = false; }
   }
@@ -3297,7 +3350,7 @@ async function sendChat(text, withImages = true) {
 const boardRequests = (repo) => openRequests(live.repo === repo ? live.issues : null);
 
 // Sends a message to the chat server and shows the answer as it is written.
-async function sendToServer(text, files, withImages) {
+async function sendToServer(text, files, withImages, again = null) {
   if (chat.live) return;
   const repo = chat.repo;
   const btn = $('chat-send');
@@ -3307,6 +3360,8 @@ async function sendToServer(text, files, withImages) {
   const gone = () => chat.run !== run;
   btn.disabled = true;
   const isNew = !chat.open || chat.open === 'new';
+  const key = unsentKey(chat.open);
+  if (again) chat.unsent.retry(key, again.id);
   // The marks of this project, even once the owner went to another one (they are read from the browser each time).
   const marks = chat.later, sentTo = chat.open;
   marks.delete(sentTo); // writing again carries the conversation on (#521)
@@ -3315,14 +3370,10 @@ async function sendToServer(text, files, withImages) {
   if (streamed) streaming.add(streamed);
   chat.pending = { text, previews: files.map((f) => f.url) };
   const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
-  if (withImages) {
-    $('chat-input').value = '';
-    chat.files = [];
-    drawPendingImages();
-    autosize();
-  }
+  if (withImages && !again) clearComposer();
   drawChat();
   let answer = null;
+  let reached = false; // the chat server took the request: a failure from here on is « L'agent n'a pas pu répondre »
   try {
     const paths = await uploadImages(repo, files);
     // Never the full token: without the read-only one there is no chat (issue #395).
@@ -3333,6 +3384,7 @@ async function sendToServer(text, files, withImages) {
       // The open requests of this project, so the agent never proposes a duplicate (issue #506).
       body: JSON.stringify({ repo, conversation: isNew ? null : chat.open, message: text, images: paths, openRequests: boardRequests(repo) }),
     });
+    reached = true;
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       if (res.status === 401) throw Object.assign(saidError('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
@@ -3370,6 +3422,8 @@ async function sendToServer(text, files, withImages) {
       for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
       chat.conv = conv;
       chat.open = conv.id;
+      if (again) chat.unsent.remove(key, again.id);
+      chat.unsent.rekey(key, conv.id); // messages left unsent in a new conversation follow it
       if (!saved) {
         toast('Réponse reçue, mais conversation non enregistrée. Ne renvoyez pas votre message.');
       }
@@ -3385,11 +3439,12 @@ async function sendToServer(text, files, withImages) {
     marks.delete(sentTo); // the agent did not answer: the conversation stays open with the message to resend (#521, #535)
     if (gone()) return;
     if (e.readToken) readTokenRefused(e.message);
-    if (!$('chat-input').value) $('chat-input').value = text;
-    // The images go back too: without them the message the owner resends would not be the same.
-    if (withImages && !chat.files.length) { chat.files = files; drawPendingImages(); }
-    autosize();
-    toast(`L'agent n'a pas pu répondre. ${errorText(e)} Votre message est dans la zone de saisie, renvoyez-le.`);
+    chat.pending = null;
+    chat.live = null; // « Renvoyer » is drawn active
+    keepUnsent(key, { text, files, withImages }, again, {
+      kind: failureKind({ reached, readToken: e.readToken }),
+      reason: e.readToken ? TOKEN_REFUSED : errorText(e),
+    });
   } finally {
     if (streamed) streaming.delete(streamed);
     if (!gone()) {
@@ -3507,6 +3562,13 @@ async function closeConversation({ id = chat.open, stay = false, said } = {}) {
   } catch (e) {
     toast(`Impossible de terminer la conversation. ${errorText(e)}`);
   }
+}
+
+function clearComposer() {
+  $('chat-input').value = '';
+  chat.files = [];
+  drawPendingImages();
+  autosize();
 }
 
 function autosize() {
