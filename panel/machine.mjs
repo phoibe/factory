@@ -15,6 +15,13 @@ export async function readRunnersFile(api, path) {
   }
 }
 
+// True when two status files say the same, whatever the time of the check: the check rewrites `checkedAt` at least
+// hourly, which alone must not rebuild « Paramètres » under the owner's fingers (review #556).
+export function sameStatus(a, b) {
+  const plain = (s) => JSON.stringify(s ? { ...s, checkedAt: undefined } : s);
+  return plain(a) === plain(b);
+}
+
 // The « Machine des tâches » line of the settings (issue #271), from the dev server check's status file.
 // `hash`: the project's key in that file (repoKey); `project`: its own setting, `default` follows `general`.
 // `created`: the repository's creation date; `now`: for tests (issue #504).

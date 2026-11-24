@@ -103,3 +103,36 @@ test('« Tous les projets » n\'est plus dans « Avancé » : un lien mène à l
     assert.equal(await machine.getByRole('radio').count(), 2);
   });
 });
+
+// Review #556, finding 6: the banner's round reads the check again (every 15 minutes); « Paramètres » was rebuilt
+// from the saved settings, losing what the owner was typing and the focus.
+test('une nouvelle lecture du contrôle garde ce que je tape dans « Adresse du site » et le focus', async () => {
+  const factoryFiles = { 'status.json': { key: 'ok', checkedAt: new Date(Date.now() - 60_000).toISOString(), projects: { [H]: { machine: 'dev-server', reason: 'online' } } } };
+  await withPanel({ factoryFiles }, async ({ page, url, reads }) => {
+    // The banner's 15-minute round, fired on demand.
+    await page.addInitScript(() => {
+      const real = window.setTimeout;
+      window.setTimeout = (fn, ms, ...rest) => { if (ms === 15 * 60_000) window.runnerRound = fn; return real(fn, ms, ...rest); };
+    });
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    const field = page.getByLabel('Adresse du site');
+    await field.click();
+    await field.pressSequentially('https://exemple.fr');
+    const round = async () => {
+      const before = reads.filter((r) => r.endsWith('/contents/status.json')).length;
+      await page.evaluate(() => window.runnerRound());
+      for (let i = 0; i < 100 && reads.filter((r) => r.endsWith('/contents/status.json')).length === before; i++) await page.waitForTimeout(50);
+      await page.waitForTimeout(500);
+    };
+    factoryFiles['status.json'] = { ...factoryFiles['status.json'], checkedAt: new Date().toISOString() };
+    await round();
+    assert.equal(await field.inputValue(), 'https://exemple.fr');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'site-url');
+    // A real change waits until the owner leaves the form.
+    factoryFiles['status.json'] = { ...factoryFiles['status.json'], projects: { [H]: { machine: 'dev-server', reason: 'offline' } } };
+    await round();
+    assert.equal(await field.inputValue(), 'https://exemple.fr');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'site-url');
+  });
+});

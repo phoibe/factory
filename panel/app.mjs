@@ -16,7 +16,7 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=3';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile, sameStatus } from './machine.mjs?v=3';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
@@ -1324,9 +1324,10 @@ async function refreshRunnerAlert() {
   const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
   // The settings line follows the same fresh status (it was read when the project opened).
   if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
-    const fresh = JSON.stringify(status.json) !== JSON.stringify(machine.status);
+    const fresh = !sameStatus(status.json, machine.status);
     machine.status = status.json;
-    if (fresh && !$('rules-panel').hidden) renderRules();
+    // Never under the owner's fingers: a field being typed in keeps its text and the focus (review #556).
+    if (fresh && !$('rules-panel').hidden && !$('rules').contains(document.activeElement)) renderRules();
   }
   // Rebuilt only when the names change: a screen reader does not hear it again, a focused link keeps the focus.
   if (names.join('\n') === [...forgotten].join('\n')) return;
