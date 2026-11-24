@@ -1,0 +1,7 @@
+{"t":"2026-11-24T13:01:22.522Z","kind":"run","stage":"audit","issue":556,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
+{"t":"2026-11-24T13:01:55.710Z","kind":"skill","name":"impeccable","id":"toolu_01Xu5egDGnoXn67FHbEHU9Wx"}
+{"t":"2026-11-24T13:02:10.890Z","kind":"skill","name":"requesting-code-review","id":"toolu_014p5e9pah2jvBK2qovw15zX"}
+{"t":"2026-11-24T13:02:23.393Z","kind":"agent","model":"opus","effort":"medium","label":"Review panel code","id":"toolu_01S5BH4C1CXAPPUMESdNFFhW"}
+{"t":"2026-11-24T13:02:29.799Z","kind":"agent","model":"opus","effort":"medium","label":"Review relay and workflows","id":"toolu_01NYPG21Vaj3Ec6i1n2D7Lpk"}
+{"t":"2026-11-24T13:02:36.099Z","kind":"agent","model":"opus","effort":"medium","label":"Review agent, server, tools","id":"toolu_01LMPCouuND6ea8jeSCjMZiM"}
+{"t":"2026-11-24T13:02:45.144Z","kind":"agent","model":"sonnet","effort":"low","label":"Capture all panel screens","id":"toolu_0123sgpg6d9sxKCptMhX9545"}
