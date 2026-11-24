@@ -1407,6 +1407,7 @@ async function openGeneral(from = $('general-open')) {
   }
   $('project-view').classList.add('on-general');
   $('general-view').hidden = false;
+  $('general-open').setAttribute('aria-pressed', 'true');
   renderGeneral();
   $('general-title').focus();
   window.scrollTo(0, 0);
@@ -1415,6 +1416,7 @@ function closeGeneral(giveFocusBack = false) {
   const wasOpen = !$('general-view').hidden;
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
+  $('general-open').setAttribute('aria-pressed', 'false');
   if (wasOpen && giveFocusBack) (general.from?.isConnected ? general.from : $('general-open')).focus();
 }
 
@@ -1425,7 +1427,7 @@ function renderGeneral() {
     el('select', { id: `model-${r.id}`, 'aria-describedby': `model-${r.id}-help`, onchange: (e) => { general.models[r.id] = e.target.value; renderGeneral(); } },
       ...MODEL_FAMILIES.map((f) => el('option', { value: f.id, selected: general.models[r.id] === f.id }, familyLabel(f)))))));
   const models = el('fieldset', {}, el('legend', {}, 'Modèles'), ...modelRows,
-    el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement tourne sur le modèle réglé dans la routine de chaque projet, sur claude.ai : la factory ne peut pas le changer. Pour le changer, ouvrez la routine du projet sur claude.ai et choisissez son modèle. Ce pilote confie toujours le plan et l’écriture du code aux agents des rôles ci-dessus, même pour une petite retouche.'));
+    el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude.ai : la factory ne peut pas le changer, choisissez-le dans la routine. Il confie toujours le plan et l’écriture du code aux rôles ci-dessus, même pour une petite retouche.'));
   const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }));
   const dirty = generalDirty();

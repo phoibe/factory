@@ -24,6 +24,7 @@ test('la barre du haut montre Réglages généraux avant Se déconnecter et le r
     await page.locator('#general-open').click();
     await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
     assert.equal(await page.locator('.project-head').isVisible(), false);
+    assert.equal(await page.locator('#general-open').getAttribute('aria-pressed'), 'true');
     assert.equal(await page.getByRole('tab', { name: 'Paramètres' }).isVisible(), false);
     await page.getByRole('button', { name: '← Retour au projet' }).click();
     assert.equal(await page.locator('.project-head').isVisible(), true);
@@ -38,7 +39,7 @@ test('la page montre Fable, Opus, Fable, Sonnet par défaut avec leur version et
     assert.deepEqual(await chosen(page), ['fable', 'opus', 'fable', 'sonnet'].map(labelOf));
     assert.equal(await page.getByRole('combobox', { name: 'Écriture du code' }).locator('option').count(), MODEL_FAMILIES.length);
     await page.getByText('Écrit les plans et organise le développement.').waitFor();
-    await page.getByText(/L’agent qui pilote chaque lancement tourne sur le modèle réglé dans la routine de chaque projet, sur claude\.ai/).waitFor();
+    await page.getByText(/L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude\.ai/).waitFor();
     await page.getByRole('group', { name: 'Modèles' }).waitFor();
     const machine = page.getByRole('group', { name: 'Machine des tâches' });
     assert.equal(await machine.getByRole('radio', { name: 'Serveur de dev' }).isChecked(), true);
