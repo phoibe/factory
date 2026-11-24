@@ -1,13 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bugAnalysed, parseJournal, roleOf, summarize, upstreamAgent, upstreamCheck } from '../agent/scripts/fabrication.mjs';
+import { bugAnalysed, modelFamily, parseJournal, roleOf, summarize, upstreamAgent, upstreamCheck } from '../agent/scripts/fabrication.mjs';
 import { report } from '../agent/scripts/journal-check.mjs';
+import { MODEL_FAMILIES } from '../scripts/lib/models.mjs';
 
 const j = (...entries) => entries.map((e) => JSON.stringify(e)).join('\n');
 const FF = { plan: 'fable', review: 'fable' };
 const stages = { plan: true, tdd: true, review: true, designPass: true };
-let clock = 0;
-const t = () => `2026-11-24T10:${String(clock++).padStart(2, '0')}:00.000Z`;
+// A real clock, one second per entry, starting a little before now (upstream.mjs only reads the runs of the last hours).
+let clock = Date.now() - 3600_000;
+const t = () => new Date((clock += 1000)).toISOString();
 const runE = (stage, extra = {}) => ({ t: t(), kind: 'run', stage, issue: 42, pr: null, models: FF, ...extra });
 const agent = (model) => ({ t: t(), kind: 'agent', model, effort: null, label: model });
 const red = () => ({ t: t(), kind: 'test', cmd: 'npm test', ok: false });
@@ -25,6 +27,10 @@ test('parseJournal keeps the issue, the role models and the last upstream entry 
   assert.equal(old.upstream, null);
 });
 
+test('every family of the catalog is shown by its capitalised name', () => {
+  for (const f of MODEL_FAMILIES) assert.equal(modelFamily(`claude-${f.id}-${f.version}`), f.name);
+});
+
 test('roleOf matches a model to the plan role first, then the review role', () => {
   assert.equal(roleOf('claude-fable-5-2', FF), 'plan');
   assert.equal(roleOf('fable', { plan: 'opus', review: 'fable' }), 'review');
@@ -33,7 +39,8 @@ test('roleOf matches a model to the plan role first, then the review role', () =
   assert.equal(roleOf('fable', null), null);
 });
 
-test('upstreamAgent is the first agent with a role', () => {
+test('upstreamAgent is the latest agent with a role (after an escalation, the model that succeeded)', () => {
+  assert.deepEqual(upstreamAgent(runOf(runE('grilling', { models: { plan: 'opus', review: 'fable' } }), agent('opus'), agent('fable'), agent('sonnet'))), { model: 'fable', role: 'review' });
   assert.deepEqual(upstreamAgent(runOf(runE('grilling', { models: { plan: 'opus', review: 'fable' } }), agent('sonnet'), agent('claude-opus-5-5'))), { model: 'opus', role: 'plan' });
   assert.equal(upstreamAgent(runOf(runE('grilling'), agent('sonnet'))), null);
 });
@@ -46,7 +53,7 @@ test('bugAnalysed: an agent with a role launched before the last red test', () =
   assert.equal(bugAnalysed(runOf(runE('bugfix'), agent('fable'))), true, 'D');
 });
 
-const BUG_ALERT = 'Correction du bug : rien ne montre que le bug a été analysé par le modèle « Plans et organisation » avant sa correction.';
+const BUG_ALERT = "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.";
 
 test('upstreamCheck on a bugfix', () => {
   assert.deepEqual(upstreamCheck([runOf(runE('bugfix'), agent('fable'), red(), green())]),
@@ -60,21 +67,21 @@ test('upstreamCheck on a bugfix', () => {
 
 test('upstreamCheck on a build or a foundation', () => {
   const none = upstreamCheck([runOf(runE('build'))]);
-  assert.deepEqual(none.lines, []);
-  assert.deepEqual(none.missing, [{ alert: 'Questions et fiche : la preuve n\'a pas été relevée.', how: 'questions et fiche : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il relit la demande)' }]);
+  assert.deepEqual(none.lines, ["**Questions et fiche** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites)"]);
+  assert.deepEqual(none.missing, [{ alert: null, how: 'questions et fiche : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il relit la demande)' }]);
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('proved'))]), { lines: ['**Questions et fiche** : faites par Fable (rôle « Plans et organisation »)'], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('proved', [{ model: 'opus', role: 'plan' }, { model: 'fable', role: 'review' }]))]).lines,
     ['**Questions et fiche** : faites par Opus (rôle « Plans et organisation »), Fable (rôle « Revue »)']);
   const un = upstreamCheck([runOf(runE('build'), up('unproved'))]);
   assert.deepEqual(un.lines, []);
-  assert.equal(un.missing[0].alert, 'Questions et fiche : rien ne montre qu\'elles ont été faites par le modèle « Plans et organisation ».');
+  assert.equal(un.missing[0].alert, "Questions et fiche : l'outil n'a pas pu vérifier quel modèle les a faites (la dernière version publiée ne porte pas la preuve).");
   assert.match(un.missing[0].how, /^questions et fiche : la fiche publiée ne porte pas la ligne de preuve\./);
   assert.match(un.missing[0].how, /upstream\.mjs 42/);
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('old'))]), { lines: ['**Questions et fiche** : publiées avant la mise en place de cette preuve (non mesuré)'], missing: [] });
-  assert.deepEqual(upstreamCheck([runOf(runE('build'), up('unread', []))]), { lines: ['**Questions et fiche** : non mesuré (la demande n\'a pas pu être relue)'], missing: [] });
+  assert.deepEqual(upstreamCheck([runOf(runE('build'), up('unread', []))]), { lines: ["**Questions et fiche** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites : la demande n'a pas pu être relue)"], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('none', []))]), { lines: [], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('foundation'), up('proved', undefined, 'brief'))]).lines, ['**Questions et fiche projet** : faites par Fable (rôle « Plans et organisation »)']);
-  assert.equal(upstreamCheck([runOf(runE('foundation'))]).missing[0].alert, 'Questions et fiche projet : la preuve n\'a pas été relevée.');
+  assert.match(upstreamCheck([runOf(runE('foundation'))]).lines[0], /^\*\*Questions et fiche projet\*\* : non mesuré/);
 });
 
 test('upstreamCheck: the last upstream entry wins', () => {
@@ -96,6 +103,21 @@ test('summarize shows the upstream line after the sub-agents and alerts when unp
   assert.equal(un.alerts.filter((a) => /Questions et fiche/.test(a)).length, 1);
 });
 
+test('summarize: a build whose proof was not read shows « non mesuré », never an alert', () => {
+  const res = summarize([runOf(runE('build'))], { stages: {} });
+  assert.deepEqual(res.alerts.filter((a) => /Questions et fiche|modèle/.test(a)), []);
+  assert.match(res.body, /\*\*Questions et fiche\*\* : non mesuré/);
+  assert.doesNotMatch(res.body, /journal-check/);
+});
+
+test('a malformed « by » in the journal does not break the Fabrication lines', () => {
+  for (const by of [null, 'fable', [null, { model: 'fable', role: 'plan' }, 3]]) {
+    const res = upstreamCheck([runOf(runE('build'), { ...up('proved'), by })]);
+    assert.equal(res.lines.length, 1, String(by));
+  }
+  assert.equal(upstreamCheck([runOf(runE('build'), { ...up('proved'), by: [null, { model: 'fable', role: 'plan' }] })]).lines[0], '**Questions et fiche** : faites par Fable (rôle « Plans et organisation »)');
+});
+
 const complete = (entry) => j(runE('build'), ...['writing-plans', 'test-driven-development', 'requesting-code-review', 'impeccable'].map((name) => ({ t: t(), kind: 'skill', name })),
   red(), green(), entry);
 
@@ -111,7 +133,7 @@ test('the journal check lists the upstream proof on a build, not on a catch-up r
 // Task 2: the marker printed by upstream.mjs, the proof read from the issue's comments, and the command line.
 const { upstreamMarker, readUpstream, upstreamProof, latestRun, upstreamEntry, UPSTREAM_GRACE_MS } = await import('../agent/scripts/upstream.mjs');
 const { spawnSync } = await import('node:child_process');
-const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+const { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
 const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 
@@ -167,11 +189,12 @@ test('upstreamEntry: a spec for a build, a brief for a foundation, nothing for a
 });
 
 const SCRIPT = new URL('../agent/scripts/upstream.mjs', import.meta.url).pathname;
-const cli = (entries, arg) => {
+const EMPTY_HOME = mkdtempSync(join(tmpdir(), 'home-'));
+const cli = (entries, ...args) => {
   const dir = mkdtempSync(join(tmpdir(), 'upstream-'));
   mkdirSync(join(dir, '.factory/journal'), { recursive: true });
   writeFileSync(join(dir, '.factory/journal/s.jsonl'), j(...entries) + '\n');
-  return spawnSync(process.execPath, [SCRIPT, arg], { cwd: dir, encoding: 'utf8' });
+  return spawnSync(process.execPath, [SCRIPT, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: EMPTY_HOME } });
 };
 
 test('upstream.mjs prints the marker only when a plan sub-agent ran for this issue', () => {
@@ -180,7 +203,68 @@ test('upstream.mjs prints the marker only when a plan sub-agent ran for this iss
   assert.equal(ok.stdout.trim(), '<!-- factory-upstream stage=grilling model=fable role=plan -->');
   const none = cli([runE('grilling', { issue: 12 })], '12');
   assert.equal(none.status, 1);
-  assert.match(none.stdout + none.stderr, /aucun sous-agent du rôle `plan`/);
+  assert.equal(none.stdout, '');
+  assert.match(none.stderr, /aucun sous-agent du rôle `plan`/);
+  assert.match(none.stderr, /`model`[^\n]*models\.plan\.model/);
   assert.doesNotMatch(none.stdout + none.stderr, /factory-upstream/);
   assert.equal(cli([runE('grilling', { issue: 12 }), agent('fable')], '13').status, 1);
+});
+
+test('upstream.mjs without an issue number says how to call it', () => {
+  for (const args of [[], ['abc']]) {
+    const res = cli([runE('grilling', { issue: 12 }), agent('fable')], ...args);
+    assert.equal(res.status, 1);
+    assert.equal(res.stdout, '');
+    assert.match(res.stderr, /numéro de la demande/);
+    assert.doesNotMatch(res.stderr, /#(undefined|abc)/);
+  }
+});
+
+test('upstream.mjs ignores a run of another session older than 12 hours', () => {
+  const old = new Date(Date.now() - 13 * 3600_000).toISOString();
+  assert.equal(cli([{ ...runE('grilling', { issue: 12 }), t: old }, { ...agent('fable'), t: old }], '12').status, 1);
+});
+
+// Hooks not loaded (a routine serving several projects): the journal comes from Claude Code's transcript, which
+// grows as the session goes on. The plan sub-agent launched after a first refusal must be seen by the retry.
+test('upstream.mjs sees the plan sub-agent launched after a first refusal, from the transcript', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  mkdirSync(join(home, '.claude/projects/p'), { recursive: true });
+  const session = join(home, '.claude/projects/p/sess-1.jsonl');
+  const payload = { repo: 'o/p', issue: 12, pr: null, stage: 'grilling', models: { plan: { model: 'fable' }, review: { model: 'fable' } } };
+  const line = (o) => JSON.stringify({ timestamp: t(), ...o });
+  writeFileSync(session, line({ type: 'user', message: { role: 'user', content: `Run\n${JSON.stringify(payload)}` } }) + '\n');
+  const dir = mkdtempSync(join(tmpdir(), 'upstream-'));
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/o/p.git'], { cwd: dir });
+  const run = () => spawnSync(process.execPath, [SCRIPT, '12'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: home } });
+  assert.equal(run().status, 1);
+  appendFileSync(session, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'x', name: 'Agent', input: { model: 'fable', description: 'phase amont' } }] } }) + '\n');
+  const ok = run();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(ok.stdout.trim(), '<!-- factory-upstream stage=grilling model=fable role=plan -->');
+  assert.match(readFileSync(join(dir, '.factory/journal/sess-1.jsonl'), 'utf8'), /"kind":"agent"/);
+});
+
+// Issue #550, build time: what journal-check appends to the run's journal after reading the request back.
+const { upstreamUpdate } = await import('../agent/scripts/journal-check.mjs');
+const journalOf = (...entries) => ({ '.factory/journal/s.jsonl': j(...entries), 'app/x.ts': 'x' });
+const update = (journal, opts) => upstreamUpdate(Object.keys(journal), (f) => journal[f] ?? null, { repo: 'o/p', since: SINCE, ...opts });
+
+test('upstreamUpdate appends what the request shows, once', () => {
+  const comments = () => [spec(true, 5)];
+  const res = update(journalOf(runE('build')), { comments });
+  assert.equal(res.file, '.factory/journal/s.jsonl');
+  assert.deepEqual(res.entry, { kind: 'upstream', doc: 'spec', status: 'proved', by: [{ model: 'fable', role: 'plan' }] });
+  assert.equal(update(journalOf(runE('build'), up('proved')), { comments }), null, 'no duplicate');
+  assert.equal(update(journalOf(runE('build'), up('old', [])), { comments }).entry.status, 'proved');
+  assert.equal(update(journalOf(runE('grilling')), { comments }), null, 'only a build or a foundation');
+});
+
+test('upstreamUpdate writes « unread » when the request cannot be read, never over a measured entry', () => {
+  const fail = () => { throw new Error('offline'); };
+  assert.equal(update(journalOf(runE('build')), { comments: fail }).entry.status, 'unread');
+  assert.equal(update(journalOf(runE('build')), { repo: null, comments: () => [spec(true, 5)] }).entry.status, 'unread');
+  for (const status of ['proved', 'unproved', 'old']) assert.equal(update(journalOf(runE('build'), up(status)), { comments: fail }), null, status);
+  assert.equal(update(journalOf(runE('build'), up('unread', [])), { comments: fail }), null);
 });

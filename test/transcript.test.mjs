@@ -46,3 +46,32 @@ test('a secret put before a test command in the session never reaches the journa
   const out = fromTranscript([prompt, use('s', 'Bash', { command: 'API_KEY=sk-123 npm test' })].map((o) => JSON.stringify(o)));
   assert.equal(out.find((e) => e.kind === 'test').cmd, 'API_KEY=… npm test');
 });
+
+test('a journal written from the transcript is rebuilt as the session goes on, keeping the entries added since', () => {
+  const projects = mkdtempSync(join(tmpdir(), 'projects-'));
+  mkdirSync(join(projects, 'p'));
+  const session = join(projects, 'p', 's2.jsonl');
+  writeFileSync(session, lines.slice(0, 2).join('\n'));
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const file = importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  const upstream = JSON.stringify({ t: '9', kind: 'upstream', doc: 'spec', status: 'proved', by: [] });
+  writeFileSync(file, readFileSync(file, 'utf8') + upstream + '\n');
+  writeFileSync(session, [...lines, JSON.stringify(use('e', 'Agent', { model: 'fable', description: 'phase amont' }))].join('\n'));
+  importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  const kinds = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind);
+  assert.deepEqual(kinds, ['run', 'skill', 'test', 'test', 'agent', 'upstream']);
+});
+
+test('an entry added to a rebuilt journal stays with its run', () => {
+  const projects = mkdtempSync(join(tmpdir(), 'projects-'));
+  mkdirSync(join(projects, 'p'));
+  const session = join(projects, 'p', 's3.jsonl');
+  const at = (o, ts) => JSON.stringify({ ...o, timestamp: ts });
+  writeFileSync(session, at(prompt, '2026-11-24T10:00:00Z'));
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const file = importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  writeFileSync(file, readFileSync(file, 'utf8') + JSON.stringify({ t: '2026-11-24T10:30:00Z', kind: 'upstream' }) + '\n');
+  writeFileSync(session, [at(prompt, '2026-11-24T10:00:00Z'), at(prompt, '2026-11-24T11:00:00Z')].join('\n'));
+  importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'upstream', 'run']);
+});

@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATCH_UP, expectations, missingSkills, parseJournal, redThenGreen, smallChange, uiChanged, upstreamCheck } from './fabrication.mjs';
 import { latestRun, upstreamEntry } from './upstream.mjs';
+import { defaultGh, repoFromRemote } from './specs.mjs';
+import { importTranscript } from './transcript.mjs';
 
 const HOW = {
   'writing-plans': 'charge le skill `writing-plans` (outil Skill) et écris le plan',
@@ -80,6 +82,23 @@ export function specReminder(files, { stage = null, current = null } = {}, readF
   return `spec rangée : lance \`node .factory/scripts/specs.mjs save ${run?.issue ?? '<n>'}\` pour ranger la spec validée dans le projet`;
 }
 
+// Issue #550: for a build or a foundation, what the request's comments show about who did its questions and sheet,
+// as the entry to append to the latest run's journal ({ file, entry }), or null when there is nothing new to write.
+// `comments(repo, issue)` reads the request (it may throw: « unread »); without `repo` the request cannot be read
+// either. « unread » never replaces a measured entry, and an entry equal to the run's current one is not written again.
+const MEASURED = ['proved', 'unproved', 'old'];
+export function upstreamUpdate(files, readFile, { repo = null, comments, since = null } = {}) {
+  const best = latestRun(files, readFile);
+  if (!best || !['build', 'foundation'].includes(best.run.stage) || best.run.issue == null) return null;
+  let list = null;
+  if (repo) { try { list = comments(repo, best.run.issue); } catch { /* GitHub unreachable: « unread » */ } }
+  const entry = upstreamEntry(best.run, list, { since, owner: repo ? repo.split('/')[0] : null });
+  const current = parseJournal([best.text]).at(-1)?.upstream;
+  if (!entry || (entry.status === 'unread' && MEASURED.includes(current?.status))) return null;
+  const same = current && JSON.stringify([entry.doc, entry.status, entry.by]) === JSON.stringify([current.doc, current.status, current.by]);
+  return same ? null : { file: best.file, entry };
+}
+
 export function report(files, readFile, stages, opts) {
   const list = problems(files, readFile, stages, opts);
   const spec = specReminder(files, opts, readFile);
@@ -99,31 +118,23 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
     // Hooks are not loaded when the routine serves several projects: rebuild the journal from the transcript.
     const remote = (() => { try { return git(['remote', 'get-url', 'origin']).trim(); } catch { return ''; } })();
-    const { repoFromRemote } = await import('./specs.mjs');
     const repo = (() => { try { return repoFromRemote(remote); } catch { return null; } })();
     if (repo) {
-      const { importTranscript } = await import('./transcript.mjs');
       const file = importTranscript(root, repo);
       if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
     }
     let files = branchFiles(git);
-    // Issue #550: for a build or a foundation, read the request back and journal who did its questions and sheet.
-    const best = latestRun(files, read);
-    if (best && repo && ['build', 'foundation'].includes(best.run.stage) && best.run.issue != null) {
-      const { defaultGh } = await import('./specs.mjs');
-      let comments = null;
-      try { comments = defaultGh(`repos/${repo}/issues/${best.run.issue}/comments`); } catch { /* GitHub unreachable: « unread » */ }
-      let since = null;
-      try { since = git(['log', '--diff-filter=A', '--format=%cI', '--', '.factory/scripts/upstream.mjs']).trim().split('\n').filter(Boolean).at(-1) || null; } catch { /* no history */ }
-      const entry = upstreamEntry(best.run, comments, { since, owner: repo.split('/')[0] });
-      const current = parseJournal([best.text]).at(-1)?.upstream;
-      const same = (a, b) => a && b && JSON.stringify([a.doc, a.status, a.by]) === JSON.stringify([b.doc, b.status, b.by]);
-      if (entry && !same(entry, current)) {
-        appendFileSync(join(root, best.file), JSON.stringify({ t: new Date().toISOString(), ...entry }) + '\n');
-        files = branchFiles(git);
-      }
+    // When upstream.mjs reached the project. In a shallow clone the commit that added it may be cut off: the oldest
+    // commit shown then counts as the one that added it, a later date, which only lets more specs count as « old ».
+    let since = null;
+    try { since = git(['log', '--diff-filter=A', '--format=%cI', '--', '.factory/scripts/upstream.mjs']).trim().split('\n').filter(Boolean).at(-1) || null; } catch { /* no history */ }
+    const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
+    if (up) {
+      appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');
+      console.log('Journal : preuve relevée : committe `.factory/journal/`.');
+      files = branchFiles(git);
     }
-    if (!files.some((f) => /^\.factory\/journal\/[^/]+\.jsonl$/.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
+    if (!files.some((f) => JOURNAL.test(f))) console.log('Journal : aucun journal pour ce run. Lance ce contrôle depuis le dossier du projet, puis committe .factory/journal/.');
     else console.log(report(files, read, stages, runOptions(files, read)));
   } catch (e) {
     console.log(`Journal : contrôle impossible (${e.message}).`);

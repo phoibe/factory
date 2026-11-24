@@ -92,6 +92,8 @@ export function missingSkills(runs, { stages = {}, ui = false, small = false } =
 }
 
 // Sub-agents: which model each one ran on (the table « Modèles par rôle » of AGENT.md; any family of the catalog is valid).
+// The display names of MODEL_FAMILIES (scripts/lib/models.mjs), smallest first. Copied, not imported: the sync ships
+// this script alone into each project's .factory/scripts/, without scripts/lib. test/upstream.test.mjs keeps both equal.
 const FAMILIES = ['Haiku', 'Sonnet', 'Opus', 'Fable'];
 export function modelFamily(model) {
   if (!model) return null;
@@ -182,9 +184,10 @@ export function roleOf(model, models) {
   return ['plan', 'review'].find((role) => models[role] && family(model) === family(models[role])) || null;
 }
 const roleAgents = (run) => (run.agents || []).map((a) => ({ a, role: roleOf(a.model, run.models) })).filter((x) => x.role);
+// The latest one: after a failed `plan` sub-agent, the `review` one that took over did the thinking.
 export function upstreamAgent(run) {
-  const first = roleAgents(run)[0];
-  return first ? { model: family(first.a.model), role: first.role } : null;
+  const last = roleAgents(run).at(-1);
+  return last ? { model: family(last.a.model), role: last.role } : null;
 }
 // The analysis comes before the fix: an agent with a role launched after the last red test is the final reviewer.
 const analyst = (run) => {
@@ -193,6 +196,9 @@ const analyst = (run) => {
 };
 export const bugAnalysed = (run) => Boolean(analyst(run));
 const madeBy = ({ model, role }) => `${modelFamily(model)} (rôle « ${ROLE_NAMES[role] || role} »)`;
+// The journal is a committed file: a hand-edited `by` must not break the comment.
+const makers = (by) => (Array.isArray(by) ? by : []).filter((b) => b && typeof b === 'object' && b.model);
+const UNCHECKED = "l'outil n'a pas pu vérifier quel modèle les a faites";
 
 export function upstreamCheck(runs) {
   const lines = [];
@@ -202,7 +208,7 @@ export function upstreamCheck(runs) {
     const found = bugs.map(analyst).find(Boolean);
     if (found) lines.push(`**Analyse du bug** : faite par ${madeBy({ model: found.a.model, role: found.role })}`);
     else missing.push({
-      alert: 'Correction du bug : rien ne montre que le bug a été analysé par le modèle « Plans et organisation » avant sa correction.',
+      alert: "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.",
       how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), puis reproduis-le par un test rouge et corrige à partir de son analyse",
     });
   }
@@ -213,14 +219,19 @@ export function upstreamCheck(runs) {
     const entry = withEntry?.upstream || null;
     const brief = entry ? entry.doc === 'brief' : run.stage === 'foundation';
     const label = brief ? 'Questions et fiche projet' : 'Questions et fiche';
-    if (!entry) missing.push({ alert: `${label} : la preuve n'a pas été relevée.`, how: 'questions et fiche : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il relit la demande)' });
-    else if (entry.status === 'proved') lines.push(`**${label}** : faites par ${(entry.by || []).map(madeBy).join(', ')}`);
-    else if (entry.status === 'unproved') missing.push({
-      alert: `${label} : rien ne montre qu'elles ont été faites par le modèle « Plans et organisation ».`,
+    // Not read back yet: a step for the agent (journal-check), never an alert for the owner.
+    if (!entry) {
+      lines.push(`**${label}** : non mesuré (${UNCHECKED})`);
+      missing.push({ alert: null, how: 'questions et fiche : lance `node .factory/scripts/journal-check.mjs` depuis le dossier du projet (il relit la demande)' });
+    } else if (entry.status === 'proved') {
+      const by = makers(entry.by);
+      lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
+    } else if (entry.status === 'unproved') missing.push({
+      alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
       how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\``,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
-    else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (la demande n'a pas pu être relue)`);
+    else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);
   }
   return { lines, missing };
 }
@@ -250,7 +261,7 @@ export function summarize(runs, { stages = {}, ui = false, small = false } = {})
   const missing = missingSkills(runs, { stages, ui, small });
   for (const m of missing) alerts.push(`${STAGE_NAMES[m.stage] || m.stage} : le skill \`${m.skill}\` (${m.label}) n'a pas été utilisé.`);
   const upstream = upstreamCheck(runs);
-  for (const m of upstream.missing) alerts.push(m.alert);
+  for (const m of upstream.missing) if (m.alert) alerts.push(m.alert);
   // No journal proves nothing either way: a discreet note, never an alert (no red card for it).
   const note = runs.some((r) => ['build', 'bugfix', 'foundation', 'audit', 'ui-polish'].includes(r.stage))
     ? null : "_Pas de journal de construction dans cette PR : les skills utilisés n'ont pas pu être vérifiés._";

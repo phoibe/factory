@@ -5,10 +5,11 @@
 // time journal-check.mjs reads the issue's comments back (upstreamEntry) and journals what it found.
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseJournal, upstreamAgent } from './fabrication.mjs';
-import { trusted } from './specs.mjs';
+import { repoFromRemote, trusted } from './specs.mjs';
+import { importTranscript } from './transcript.mjs';
 
 const JOURNAL = /^\.factory\/journal\/[^/]+\.jsonl$/;
 const MARKER = /<!-- factory-upstream stage=([\w-]+) model=([\w.-]+) role=(plan|review) -->/;
@@ -44,14 +45,16 @@ export function upstreamProof(comments, { doc = 'spec', since = null, owner = nu
   return { kind: 'upstream', doc, status, by };
 }
 
-// The journal whose last « run » entry is the most recent (on `issue` when given).
-export function latestRun(files, readFile, { issue = null } = {}) {
+// The journal whose last « run » entry is the most recent (on `issue` when given). With `notBefore` (ms), a run that
+// started earlier is skipped, unless its journal is `keep` (the current session's).
+export function latestRun(files, readFile, { issue = null, notBefore = null, keep = null } = {}) {
   let best = null;
   for (const file of files.filter((x) => JOURNAL.test(x))) {
     const text = readFile(file);
     const run = String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
       .filter((e) => e?.kind === 'run').at(-1);
     if (!run || (issue != null && Number(run.issue) !== Number(issue))) continue;
+    if (notBefore != null && file !== keep && !(Date.parse(run.t) >= notBefore)) continue;
     if (!best || Date.parse(run.t) > Date.parse(best.run.t)) best = { file, run, text };
   }
   return best;
@@ -64,26 +67,36 @@ export function upstreamEntry(run, comments, { since = null, owner = null } = {}
   return upstreamProof(comments, { doc, since, owner });
 }
 
+// Only this session's journal, or a run of the last hours: an old journal of the same request proves nothing now.
+const RECENT_MS = 12 * 3600_000;
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const n = process.argv[2];
   const root = process.cwd();
-  const refuse = () => {
-    console.log(`Phase amont : aucun sous-agent du rôle \`plan\` n'a été lancé dans ce run pour la demande #${n}. Lance-le (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant.`);
+  if (!/^\d+$/.test(n || '')) {
+    console.error('Phase amont : donne le numéro de la demande, par exemple `node .factory/scripts/upstream.mjs 12`.');
     process.exit(1);
-  };
-  if (!/^\d+$/.test(n || '')) refuse();
+  }
   // Hooks are not loaded when the routine serves several projects: rebuild the journal from the transcript.
+  let keep = null;
   try {
     const remote = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    const { repoFromRemote } = await import('./specs.mjs');
-    const { importTranscript } = await import('./transcript.mjs');
-    importTranscript(root, repoFromRemote(remote));
+    const file = importTranscript(root, repoFromRemote(remote));
+    if (file) keep = `.factory/journal/${basename(file)}`;
   } catch { /* no remote or no transcript: the hooks' journal is all there is */ }
   let files = [];
   try { files = readdirSync(join(root, '.factory/journal')).map((f) => `.factory/journal/${f}`); } catch { /* no journal */ }
   const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
-  const best = latestRun(files, read, { issue: Number(n) });
+  const best = latestRun(files, read, { issue: Number(n), notBefore: Date.now() - RECENT_MS, keep });
   const marker = best ? upstreamMarker(parseJournal([best.text]).at(-1)) : null;
-  if (!marker) refuse();
+  if (!marker) {
+    console.error([
+      `Phase amont : aucun sous-agent du rôle \`plan\` n'a été vu dans ce run pour la demande #${n}.`,
+      "Cause probable : le sous-agent a été lancé sans le paramètre `model`, ou avec un autre modèle que `models.plan.model` du payload.",
+      "Lance-le avec `model` = `models.plan.model` (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant.",
+      "Si elle refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le signalera.",
+    ].join('\n'));
+    process.exit(1);
+  }
   console.log(marker);
 }

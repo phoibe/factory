@@ -230,3 +230,11 @@ test('the upstream proof line is not kept in the saved spec, and the trust rule 
   assert.equal(trusted({ user: { login: 'x' }, author_association: 'NONE' }, 'o'), false);
   assert.equal(typeof defaultGh, 'function');
 });
+
+test('defaultGh gives up after a time limit instead of hanging the check', () => {
+  const calls = [];
+  const exec = (cmd, args, opts) => { calls.push({ cmd, args, opts }); return JSON.stringify(calls.length === 1 ? [{ id: 1 }] : []); };
+  assert.deepEqual(defaultGh('repos/o/p/issues/1/comments', { exec }), [{ id: 1 }]);
+  assert.equal(calls[0].cmd, 'gh');
+  assert.equal(calls[0].opts.timeout, 30_000);
+});

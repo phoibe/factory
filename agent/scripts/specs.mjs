@@ -117,8 +117,10 @@ const findSpecFile = (dir, n) => {
   return existsSync(folder) ? readdirSync(folder).find((f) => f === `${n}.md` || (f.startsWith(`${n}-`) && f.endsWith('.md'))) || null : null;
 };
 
-export function defaultGh(path) {
-  const get = (p) => JSON.parse(execFileSync('gh', ['api', p], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+// A GitHub read through the gh CLI; a stuck call is cut after GH_TIMEOUT_MS (it throws, like GitHub being unreachable).
+const GH_TIMEOUT_MS = 30_000;
+export function defaultGh(path, { exec = execFileSync } = {}) {
+  const get = (p) => JSON.parse(exec('gh', ['api', p], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GH_TIMEOUT_MS }));
   if (!path.endsWith('/comments')) return get(path);
   const all = [];
   for (let page = 1; ; page++) {
