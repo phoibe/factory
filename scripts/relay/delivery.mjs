@@ -46,6 +46,8 @@ export function deliveryPart(ctx) {
 
   async function mergePr(prNumber, sha) {
     const pr = await gh.getPr(prNumber);
+    // Never a PR from a fork: its code was not written by the factory nor its owner.
+    if (fromFork(pr)) return log(`PR #${prNumber} comes from a fork: not merged by the factory`);
     const issue = prIssue(pr);
     // Where the change lands. External production (chosen in the settings, or by default when the stack sheet says
     // « Manuelle »: a merge deploys nothing, as on Pulsar Wheel): main, and the factory stops there. On approval

@@ -224,6 +224,8 @@ export function watchPart(ctx) {
     // One card that fails every time must not stop the rest of the guard: logged, tried again at the next tick.
     const each = async (n, fn) => { try { await fn(); } catch (e) { if (isRateLimited(e)) throw e; log(`guard: lost check of #${n}: ${e.message}`); } };
     for (const p of (await gh.listPulls?.().catch(() => null)) || []) await each(p.number, async () => {
+      // A fork PR's description is written by its author: its notes are never the factory's.
+      if (fromFork(p)) return;
       const st = readWatch(p.body);
       if (st?.kind !== 'preview') return;
       const step = watchStep(st, now());

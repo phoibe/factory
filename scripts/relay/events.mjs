@@ -75,6 +75,7 @@ export function eventsPart(ctx) {
   const postedCaptures = (...a) => ctx.postedCaptures(...a);
   const inFlight = (...a) => ctx.inFlight(...a);
   const lockFresh = (...a) => ctx.lockFresh(...a);
+  const fromFork = (...a) => ctx.fromFork(...a);
   const launch = (...a) => ctx.launch(...a);
   const relaunchOnMessage = (...a) => ctx.relaunchOnMessage(...a);
   const fireOrBlock = (...a) => ctx.fireOrBlock(...a);
@@ -470,6 +471,8 @@ export function eventsPart(ctx) {
   async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
     let pr = await gh.getPr(prNumber);
     if (!pr) return log(`report: PR #${prNumber} no longer exists`);
+    // A PR from a fork is never the factory's: none of the notes in its description is read, nothing is merged.
+    if (fromFork(pr)) return log(`report: PR #${prNumber} comes from a fork, left alone`);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
