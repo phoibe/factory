@@ -55,9 +55,11 @@ manque : si on te le refuse, fais les étapes listées, ne cherche pas à le con
 pour chacun de 4 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du
 payload : `{"plan": {"model": "fable", "effort": "high"}, "code": …, "review": …, "simple": …}`. Sans ce champ,
 prends les valeurs par défaut du tableau. Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
-`model` égal à `models.<rôle>.model` et un `effort` égal à `models.<rôle>.effort`, jamais rien d'autre. Sans eux, il
-hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils de modèle des skills
-(`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent et son modèle.
+`model` égal à `models.<rôle>.model` et un `effort` égal à `models.<rôle>.effort`, jamais rien d'autre. Sa
+`description` commence **toujours** par son rôle entre crochets : `[role:<rôle>]` (par exemple `[role:code] Tâche 2`),
+et `[role:plan:amont]` pour la phase amont (`[role:review:amont]` quand le rôle `review` prend le relais). Sans
+`model` ni `effort`, il hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils de modèle des
+skills (`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent, son rôle et son modèle.
 
 | Rôle | Défaut | `effort` | Tâches |
 | --- | --- | --- | --- |
@@ -71,31 +73,36 @@ hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils
   délègues toujours la phase amont et l'écriture d'un plan à un sous-agent du rôle `plan`, et l'écriture du code à
   des sous-agents du rôle `code`, même pour une petite demande.
 - **Phase amont** (étapes `grilling`, `spec` et `framing`, analyse d'un bug dans `bugfix`). Toute la réflexion revient à
-  un sous-agent du rôle `plan`, jamais à toi : analyser la demande et chercher les faits dans le code, classer sa taille,
-  repérer les alertes (demande sensible, en double, déjà réglée, obsolète, trop grosse), choisir les questions et leurs
-  recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le glossaire
-  et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
+  un sous-agent du rôle `plan`, jamais à toi : analyser la demande et chercher les faits dans le code, classer sa
+  taille, repérer les alertes (demande sensible, en double, déjà réglée, obsolète, trop grosse), choisir les questions
+  et leurs recommandations, décider qu'une demande est petite et claire, rédiger la spec ou la fiche projet, écrire le
+  glossaire et les décisions, trouver la cause d'un bug. Donne-lui le payload, le fil complet de l'issue (description,
   commentaires, chemins des captures) et le fichier d'étape à suivre ; il charge lui-même les skills que l'étape nomme.
-  Dis-lui qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où le fichier d'étape
-  dit « publie », « mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Il te rend,
-  dans un fichier, le texte exact du commentaire à publier, puis en quelques lignes les labels à poser, le texte des
-  issues à ouvrir et, s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses
-  les labels, tu ouvres toi-même les issues des tranches, tu ouvres la petite PR de documents et tu fermes une
-  demande inutile. Une petite demande claire, qui saute les questions, a aussi sa spec écrite par lui. Des variantes
-  à montrer (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du rôle `code` les construit. S'il
-  échoue (pas de réponse, ou texte inutilisable deux fois), relance-le sur le rôle `review`, sans déranger le
-  propriétaire. Seul le chat (`stage` `question`) reste chez toi.
+  Dis-lui qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien : là où le fichier d'étape dit
+  « publie », « mets le label » ou « ouvre une issue », il écrit le texte dans un fichier et te le rend. Il écrit avec
+  l'outil Write, dans un fichier, le texte exact et complet du commentaire à publier (de `<!-- factory-agent -->` à la
+  dernière phrase, sans ligne de preuve ni signature), puis te rend en quelques lignes les labels à poser, le texte des
+  issues à ouvrir et, s'il y en a une, l'alerte avec sa preuve. Toi, tu publies ce texte sans le réécrire, tu poses les
+  labels, tu ouvres toi-même les issues des tranches, tu ouvres la petite PR de documents et tu fermes une demande
+  inutile. Une petite demande claire, qui saute les questions, a aussi sa spec écrite par lui. Des variantes à montrer
+  (étape 3 bis de `grilling.md`) : il dit lesquelles, un sous-agent du rôle `code` les construit. S'il échoue (pas de
+  réponse, ou texte inutilisable deux fois), relance-le sur le rôle `review` (description `[role:review:amont]`), sans
+  déranger le propriétaire. Seul le chat (`stage` `question`) reste chez toi.
 - **Preuve de la phase amont.** Avant de publier un round de questions, une spec ou une fiche projet, lance
-  `node .factory/scripts/upstream.mjs <numéro de l'issue>` depuis le dossier du projet : il lit le journal de ton run et
-  affiche une ligne invisible `<!-- factory-upstream … -->` qui dit quel modèle a fait la réflexion. Colle-la telle
-  quelle à la fin du commentaire, juste avant la signature ; ne l'écris jamais toi-même. Aucun round de questions,
-  aucune spec ni fiche projet ne se publie sans cette ligne (une estimation, une alerte ou la question d'un bug n'en
-  ont pas besoin). S'il répond qu'aucun sous-agent du rôle `plan` n'a été vu, lance-le d'abord, avec le paramètre
-  `model` = `models.plan.model` du payload (sans `model`, l'outil ne le reconnaît pas), puis relance la commande.
-  S'il refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie
-  sans la ligne : le contrôle à la construction le signalera. À la construction, `journal-check.mjs` relit la
-  demande : si la spec n'a pas cette ligne, le verrou refuse d'ouvrir la PR. Pour un bug, la preuve est dans le
-  journal du run : le sous-agent d'analyse est lancé avant le dernier test rouge.
+  `node .factory/scripts/upstream.mjs <numéro de l'issue> <fichier>` (le fichier du sous-agent) depuis le dossier du
+  projet : il lit le journal de ton run et le relevé que Claude Code garde du sous-agent : la ligne invisible
+  `<!-- factory-upstream … -->` n'est donnée que si un sous-agent annoncé `[role:plan:amont]` (ou `[role:review:amont]`)
+  a réellement répondu sur le modèle de son rôle et a écrit lui-même ce fichier. Colle-la telle quelle à la fin du
+  commentaire, juste avant la signature ; ne l'écris jamais toi-même. N'ajoute rien d'autre au texte : tout changement,
+  même après la publication, annule la preuve ; pour corriger, fais corriger le fichier par le sous-agent et redemande
+  la ligne. Aucun round de questions, aucune spec ni fiche projet ne se publie sans cette ligne (une estimation, une
+  alerte ou la question d'un bug n'en ont pas besoin). S'il répond qu'aucun sous-agent du rôle `plan` n'a été vu,
+  lance-le d'abord, avec la description `[role:plan:amont]` et le paramètre `model` = `models.plan.model` du payload
+  (sans eux, l'outil ne le reconnaît pas), puis relance la commande. S'il refuse encore après un sous-agent `plan` puis
+  un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le
+  signalera. À la construction, `journal-check.mjs` relit la demande : si la spec n'a pas cette ligne, le verrou refuse
+  d'ouvrir la PR. Pour un bug, la preuve est relevée par `journal-check.mjs` dans le relevé du sous-agent d'analyse : il
+  est lancé avec `[role:plan:amont]` et rend son analyse avant le dernier test rouge.
 - **Monter d'un cran en cas d'échec** : si un sous-agent échoue (tests toujours rouges après 2 essais, ou travail
   refusé deux fois par le relecteur), relance la tâche sur le rôle au-dessus (tâches simples → code → revue),
   sans déranger le propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent
@@ -134,7 +141,10 @@ une phrase dans ton message de fin et publie une estimation `size=medium`.
   ou la description de PR publiés dans leur version affichée par GitHub (`gh api <url du message>
   -H 'Accept: application/vnd.github.full+json' --jq .body_html`) et vérifie images, liens et tableaux. GitHub peut
   transformer un message après l'envoi (issue #378). Si quelque chose est cassé, corrige-le aussitôt en modifiant
-  ton message.
+  ton message. Exception : un round de questions, une spec ou une fiche projet qui porte la ligne
+  `<!-- factory-upstream … -->` (« Preuve de la phase amont ») ; le retoucher toi-même annule la preuve. Fais
+  corriger le fichier par le sous-agent de réflexion, relance `upstream.mjs` sur ce fichier, puis modifie le
+  commentaire avec le fichier corrigé suivi de la nouvelle ligne.
 - Dis toujours ce que tu attends de lui en une phrase claire à la fin (« Répondez « go » pour lancer la
   construction », « Répondez « ok » si les captures vous conviennent »).
 
