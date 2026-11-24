@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bugAnalysed, modelFamily, parseJournal, roleOf, summarize, upstreamAgent, upstreamCheck } from '../agent/scripts/fabrication.mjs';
+import { bugAnalysed, modelFamily, parseJournal, roleOf, summarize, upstreamCheck } from '../agent/scripts/fabrication.mjs';
 import { report } from '../agent/scripts/journal-check.mjs';
 import { MODEL_FAMILIES } from '../scripts/lib/models.mjs';
 
@@ -11,7 +11,7 @@ const stages = { plan: true, tdd: true, review: true, designPass: true };
 let clock = Date.now() - 3600_000;
 const t = () => new Date((clock += 1000)).toISOString();
 const runE = (stage, extra = {}) => ({ t: t(), kind: 'run', stage, issue: 42, pr: null, models: FF, ...extra });
-const agent = (model) => ({ t: t(), kind: 'agent', model, effort: null, label: model });
+const agent = (model, extra = {}) => ({ t: t(), kind: 'agent', model, effort: null, label: model, ...extra });
 const red = () => ({ t: t(), kind: 'test', cmd: 'npm test', ok: false });
 const green = () => ({ t: t(), kind: 'test', cmd: 'npm test', ok: true });
 const up = (status, by = [{ model: 'fable', role: 'plan' }], doc = 'spec') => ({ t: t(), kind: 'upstream', doc, status, by });
@@ -37,12 +37,6 @@ test('roleOf matches a model to the plan role first, then the review role', () =
   assert.equal(roleOf('sonnet', FF), null);
   assert.equal(roleOf(null, FF), null);
   assert.equal(roleOf('fable', null), null);
-});
-
-test('upstreamAgent is the latest agent with a role (after an escalation, the model that succeeded)', () => {
-  assert.deepEqual(upstreamAgent(runOf(runE('grilling', { models: { plan: 'opus', review: 'fable' } }), agent('opus'), agent('fable'), agent('sonnet'))), { model: 'fable', role: 'review' });
-  assert.deepEqual(upstreamAgent(runOf(runE('grilling', { models: { plan: 'opus', review: 'fable' } }), agent('sonnet'), agent('claude-opus-5-5'))), { model: 'opus', role: 'plan' });
-  assert.equal(upstreamAgent(runOf(runE('grilling'), agent('sonnet'))), null);
 });
 
 test('bugAnalysed: an agent with a role launched before the last red test', () => {
@@ -77,6 +71,8 @@ test('upstreamCheck on a build or a foundation', () => {
   assert.equal(un.missing[0].alert, "Questions et fiche : l'outil n'a pas pu vérifier quel modèle les a faites (la dernière version publiée ne porte pas la preuve).");
   assert.match(un.missing[0].how, /^questions et fiche : la fiche publiée ne porte pas la ligne de preuve\./);
   assert.match(un.missing[0].how, /upstream\.mjs 42/);
+  assert.match(un.missing[0].how, /\[role:plan:amont\]/);
+  assert.match(un.missing[0].how, /upstream\.mjs 42 <fichier>/);
   assert.match(un.missing[0].how, /si `upstream\.mjs` refuse encore, ne republie rien \(aucune nouvelle version pour le propriétaire\) et continue : le bilan le signalera$/);
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('old'))]), { lines: ['**Questions et fiche** : publiées avant la mise en place de cette preuve (non mesuré)'], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('unread', []))]), { lines: ["**Questions et fiche** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites : la demande n'a pas pu être relue)"], missing: [] });
@@ -132,21 +128,118 @@ test('the journal check lists the upstream proof on a build, not on a catch-up r
 });
 
 // Task 2: the marker printed by upstream.mjs, the proof read from the issue's comments, and the command line.
-const { upstreamMarker, readUpstream, upstreamProof, latestRun, upstreamEntry, UPSTREAM_GRACE_MS } = await import('../agent/scripts/upstream.mjs');
+const { upstreamMarker, readUpstream, upstreamProof, latestRun, upstreamEntry, UPSTREAM_GRACE_MS, proofText, textHash, subagentRecord, writtenTexts, ranOn, upstreamVerdict } = await import('../agent/scripts/upstream.mjs');
 const { spawnSync } = await import('node:child_process');
 const { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
 const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 
-test('upstreamMarker names the model and role of the upstream thinking', () => {
-  assert.equal(upstreamMarker(runOf(runE('spec'), agent('fable'))), '<!-- factory-upstream stage=spec model=fable role=plan -->');
-  assert.equal(upstreamMarker(runOf(runE('spec', { models: { plan: 'opus', review: 'fable' } }), agent('claude-opus-5-5'))), '<!-- factory-upstream stage=spec model=opus role=plan -->');
-  assert.equal(upstreamMarker(runOf(runE('spec'), agent('sonnet'))), null);
-  assert.equal(upstreamMarker(runOf(runE('spec'))), null);
+// Issue #559: the proof comes from Claude Code's own record of the thinking sub-agent.
+const TEXT = '<!-- factory-agent -->\n<!-- factory-spec -->\n## Spec (version 1)\n\nLe texte.';
+const SIGN = '\n\n---\n_Généré par [Claude Code](https://claude.ai/code) · software factory_\n';
+// A sub-agent's record: one assistant line per Write, Edit, then its final text block (none when `final` is null).
+const rec = ({ model = 'claude-fable-5-2', writes = [['/tmp/c.md', TEXT]], edits = [], final = 'Rendu.' } = {}) => {
+  const lines = [];
+  const say = (block) => lines.push({ type: 'assistant', timestamp: t(), message: { model, content: [block] } });
+  for (const [file_path, content] of writes) say({ type: 'tool_use', id: `w${lines.length}`, name: 'Write', input: { file_path, content } });
+  for (const [file_path, old_string, new_string] of edits) say({ type: 'tool_use', id: `e${lines.length}`, name: 'Edit', input: { file_path, old_string, new_string } });
+  if (final != null) say({ type: 'text', text: final });
+  return lines;
+};
+// A HOME holding the sub-agents' records of `session`, as Claude Code keeps them.
+const home = (session, records) => {
+  const dir = mkdtempSync(join(tmpdir(), 'home-'));
+  const sub = join(dir, '.claude/projects/p', session, 'subagents');
+  mkdirSync(sub, { recursive: true });
+  records.forEach(({ id, lines }, i) => {
+    writeFileSync(join(sub, `agent-a${i}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    writeFileSync(join(sub, `agent-a${i}.meta.json`), JSON.stringify({ agentType: 'general-purpose', toolUseId: id }));
+  });
+  return dir;
+};
+const comment = (body, h = 5) => ({ body, created_at: new Date(Date.parse('2026-11-20T10:00:00Z') + h * 3600_000).toISOString(), user: { login: 'o' } });
+
+test('proofText leaves out the proof line and the signatures, and nothing else', () => {
+  const marker = '<!-- factory-upstream stage=spec model=fable role=plan text=0123456789abcdef -->';
+  for (const body of [TEXT + '\n\n' + marker + SIGN, TEXT + SIGN, TEXT.replace(/\n/g, ' \r\n') + '  \r\n',
+    TEXT + '\n\n' + marker + SIGN + '\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_\n']) assert.equal(proofText(body), TEXT, JSON.stringify(body));
+  assert.notEqual(textHash(TEXT.replace('Le texte.', 'Le texte!')), textHash(TEXT));
+  assert.match(textHash(TEXT), /^[0-9a-f]{16}$/);
+});
+
+test('subagentRecord finds the record of a sub-agent by the id of its launch', () => {
+  const dir = home('s1', [{ id: 'tu1', lines: rec({ final: 'un' }) }, { id: 'tu2', lines: rec({ final: 'deux' }) }]);
+  const projectsDir = join(dir, '.claude/projects');
+  assert.equal(subagentRecord('s1', 'tu2', { projectsDir }).at(-1).message.content[0].text, 'deux');
+  assert.equal(subagentRecord('s1', 'tu3', { projectsDir }), null);
+  assert.equal(subagentRecord('s2', 'tu1', { projectsDir }), null);
+  assert.equal(subagentRecord('s1', 'tu1', { projectsDir: join(dir, 'nowhere') }), null);
+  writeFileSync(join(projectsDir, 'p/s1/subagents/agent-a0.meta.json'), '{ not json');
+  assert.equal(subagentRecord('s1', 'tu1', { projectsDir }), null);
+});
+
+test('writtenTexts replays the Write and Edit calls: the final content of each file', () => {
+  assert.deepEqual(writtenTexts(rec({ writes: [['/f', 'A'], ['/f', 'B']] })), ['B']);
+  assert.deepEqual(writtenTexts(rec({ writes: [['/f', 'Le texte.']], edits: [['/f', 'texte', 'mot']] })), ['Le mot.']);
+  assert.deepEqual(writtenTexts(rec({ writes: [['/f', 'Le texte.']], edits: [['/f', 'absent', 'mot']] })), []);
+  const bash = [{ type: 'assistant', timestamp: t(), message: { model: 'fable', content: [{ type: 'tool_use', name: 'Bash', input: { command: `cat > /f <<'EOF'\n${TEXT}\nEOF` } }] } }];
+  assert.deepEqual(writtenTexts(bash), []);
+});
+
+test('ranOn: every answer of the record came from the model of the role', () => {
+  assert.equal(ranOn(rec(), 'fable'), true);
+  assert.equal(ranOn([...rec(), ...rec({ model: 'claude-opus-5-5' })], 'fable'), false);
+  assert.equal(ranOn(rec({ model: '<synthetic>' }), 'fable'), false);
+  assert.equal(ranOn([{ type: 'user', message: { content: 'x' } }], 'fable'), false);
+  assert.equal(ranOn([...rec(), ...rec({ model: '<synthetic>', writes: [] })], 'fable'), true);
+});
+
+const verdictOf = (run, text, records) => upstreamVerdict(run, { text, record: (a) => records[a.id] ?? null });
+
+test('spec case « un seul sous-agent d\'un autre rôle »: no proof', () => {
+  const run = runOf(runE('spec'), agent('fable', { role: 'code', id: 'a' }), agent('fable', { role: null, id: 'b' }));
+  const v = verdictOf(run, TEXT, { a: rec(), b: rec() });
+  assert.deepEqual(v, { ok: false, why: 'none' });
+  assert.equal(upstreamMarker(run, v), null);
+});
+
+test('spec case « le vrai sous-agent de réflexion »: proved, and the marker reads back', () => {
+  const run = runOf(runE('spec'), agent('fable', { role: 'plan', up: true, id: 'a' }));
+  const v = verdictOf(run, TEXT, { a: rec() });
+  assert.deepEqual(v, { ok: true, model: 'fable', role: 'plan', hash: textHash(TEXT) });
+  const marker = upstreamMarker(run, v);
+  assert.equal(marker, `<!-- factory-upstream stage=spec model=fable role=plan text=${textHash(TEXT)} -->`);
+  assert.deepEqual(readUpstream(marker), { stage: 'spec', model: 'fable', role: 'plan', text: textHash(TEXT) });
+  assert.deepEqual(upstreamProof([comment(TEXT + '\n\n' + marker + SIGN)]), { kind: 'upstream', doc: 'spec', status: 'proved', by: [{ model: 'fable', role: 'plan' }] });
+});
+
+test('spec case « relais par le rôle Revue »: the review sub-agent that wrote the text is named', () => {
+  const run = runOf(runE('spec'), agent('fable', { role: 'plan', up: true, id: 'a' }), agent('fable', { role: 'review', up: true, id: 'b' }));
+  assert.deepEqual(verdictOf(run, TEXT, { a: rec({ writes: [] }), b: rec() }), { ok: true, model: 'fable', role: 'review', hash: textHash(TEXT) });
+  assert.deepEqual(upstreamCheck([runOf(runE('build'), up('proved', [{ model: 'fable', role: 'review' }]))]).lines, ['**Questions et fiche** : faites par Fable (rôle « Revue »)']);
+});
+
+test('spec case « texte réécrit par l\'agent qui pilote »: no proof', () => {
+  const run = runOf(runE('spec'), agent('fable', { role: 'plan', up: true, id: 'a' }));
+  const rewritten = TEXT.replace('Le texte.', 'Un autre texte.');
+  assert.deepEqual(verdictOf(run, rewritten, { a: rec() }), { ok: false, why: 'text' });
+  const marker = upstreamMarker(run, verdictOf(run, TEXT, { a: rec() }));
+  for (const h of [-5, 5]) {
+    assert.deepEqual(upstreamProof([comment(rewritten + '\n\n' + marker + SIGN, h)], { since: '2026-11-20T10:00:00Z' }),
+      { kind: 'upstream', doc: 'spec', status: 'unproved', by: [] }, String(h));
+  }
+});
+
+test('upstreamVerdict refuses a missing record, another model, a launch without id', () => {
+  const run = runOf(runE('spec'), agent('fable', { role: 'plan', up: true, id: 'a' }));
+  assert.deepEqual(verdictOf(run, TEXT, {}), { ok: false, why: 'record' });
+  assert.deepEqual(verdictOf(run, TEXT, { a: rec({ model: 'claude-opus-5-5' }) }), { ok: false, why: 'model' });
+  assert.deepEqual(verdictOf(runOf(runE('spec'), agent('fable', { role: 'plan', up: true })), TEXT, { undefined: rec() }), { ok: false, why: 'none' });
+  assert.deepEqual(verdictOf(run, '', { a: rec({ writes: [['/f', '']] }) }), { ok: false, why: 'text' });
 });
 
 test('readUpstream reads the marker back, only for the plan or review role', () => {
-  assert.deepEqual(readUpstream(`texte\n${upstreamMarker(runOf(runE('spec'), agent('fable')))}\n---`), { stage: 'spec', model: 'fable', role: 'plan' });
+  assert.deepEqual(readUpstream('texte\n<!-- factory-upstream stage=spec model=fable role=plan text=0123456789abcdef -->\n---'), { stage: 'spec', model: 'fable', role: 'plan', text: '0123456789abcdef' });
   assert.equal(readUpstream('<!-- factory-upstream stage=spec model=fable role=code -->'), null);
   assert.equal(readUpstream('<!-- factory-spec -->\nrien'), null);
 });
@@ -154,6 +247,9 @@ test('readUpstream reads the marker back, only for the plan or review role', () 
 const SINCE = '2026-11-20T10:00:00Z';
 const at = (h) => new Date(Date.parse(SINCE) + h * 3600_000).toISOString();
 const MARK = '<!-- factory-upstream stage=spec model=fable role=plan -->';
+test('a marker printed before #559 (no text=) is still read', () => {
+  assert.deepEqual(readUpstream(MARK), { stage: 'spec', model: 'fable', role: 'plan', text: null });
+});
 const c = (body, h, user = { login: 'o' }, extra = {}) => ({ body, created_at: at(h), user, ...extra });
 const spec = (marked, h, user) => c(`<!-- factory-agent -->\n<!-- factory-spec -->\n## Spec\n${marked ? `\n${MARK}\n` : ''}`, h, user);
 
@@ -191,29 +287,40 @@ test('upstreamEntry: a spec for a build, a brief for a foundation, nothing for a
 
 const SCRIPT = new URL('../agent/scripts/upstream.mjs', import.meta.url).pathname;
 const EMPTY_HOME = mkdtempSync(join(tmpdir(), 'home-'));
-const cli = (entries, ...args) => {
+// `args` may hold FILE: the path of a file holding `text`.
+const cli = (entries, args, { home = EMPTY_HOME, text = TEXT } = {}) => {
   const dir = mkdtempSync(join(tmpdir(), 'upstream-'));
   mkdirSync(join(dir, '.factory/journal'), { recursive: true });
   writeFileSync(join(dir, '.factory/journal/s.jsonl'), j(...entries) + '\n');
-  return spawnSync(process.execPath, [SCRIPT, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: EMPTY_HOME } });
+  writeFileSync(join(dir, 'c.md'), text);
+  return spawnSync(process.execPath, [SCRIPT, ...args.map((a) => (a === 'FILE' ? join(dir, 'c.md') : a))], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: home } });
 };
+const planUp = (id = 'tu1') => agent('fable', { role: 'plan', up: true, id });
 
-test('upstream.mjs prints the marker only when a plan sub-agent ran for this issue', () => {
-  const ok = cli([runE('grilling', { issue: 12 }), agent('fable')], '12');
-  assert.equal(ok.status, 0);
-  assert.equal(ok.stdout.trim(), '<!-- factory-upstream stage=grilling model=fable role=plan -->');
-  const none = cli([runE('grilling', { issue: 12 })], '12');
-  assert.equal(none.status, 1);
-  assert.equal(none.stdout, '');
-  assert.match(none.stderr, /aucun sous-agent du rôle `plan`/);
-  assert.match(none.stderr, /`model`[^\n]*models\.plan\.model/);
-  assert.doesNotMatch(none.stdout + none.stderr, /factory-upstream/);
-  assert.equal(cli([runE('grilling', { issue: 12 }), agent('fable')], '13').status, 1);
+test('upstream.mjs prints the marker only when the announced plan sub-agent wrote this text', () => {
+  const homeDir = home('s', [{ id: 'tu1', lines: rec() }]);
+  const ok = cli([runE('grilling', { issue: 12 }), planUp()], ['12', 'FILE'], { home: homeDir });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(ok.stdout.trim(), `<!-- factory-upstream stage=grilling model=fable role=plan text=${textHash(TEXT)} -->`);
+  const other = cli([runE('grilling', { issue: 12 }), planUp()], ['12', 'FILE'], { home: homeDir, text: TEXT.replace('Le texte.', 'Un autre texte.') });
+  assert.equal(other.status, 1);
+  assert.equal(other.stdout, '');
+  assert.match(other.stderr, /n'est pas celui que le sous-agent a écrit/);
+  const code = cli([runE('grilling', { issue: 12 }), agent('fable', { role: 'code', id: 'tu1' })], ['12', 'FILE'], { home: homeDir });
+  assert.equal(code.status, 1);
+  assert.equal(code.stdout, '');
+  assert.match(code.stderr, /aucun sous-agent du rôle `plan`/);
+  assert.match(code.stderr, /`model`[^\n]*models\.plan\.model/);
+  assert.doesNotMatch(code.stdout + code.stderr, /factory-upstream/);
+  const lost = cli([runE('grilling', { issue: 12 }), planUp()], ['12', 'FILE']);
+  assert.equal(lost.status, 1);
+  assert.match(lost.stderr, /relevé du sous-agent de réflexion est introuvable/);
+  assert.equal(cli([runE('grilling', { issue: 12 }), planUp()], ['13', 'FILE'], { home: homeDir }).status, 1);
 });
 
-test('upstream.mjs without an issue number says how to call it', () => {
-  for (const args of [[], ['abc']]) {
-    const res = cli([runE('grilling', { issue: 12 }), agent('fable')], ...args);
+test('upstream.mjs without an issue number or a file says how to call it', () => {
+  for (const args of [[], ['abc', 'FILE'], ['12'], ['12', '/nonexistent/c.md']]) {
+    const res = cli([runE('grilling', { issue: 12 }), planUp()], args);
     assert.equal(res.status, 1);
     assert.equal(res.stdout, '');
     assert.match(res.stderr, /numéro de la demande/);
@@ -223,27 +330,28 @@ test('upstream.mjs without an issue number says how to call it', () => {
 
 test('upstream.mjs ignores a run of another session older than 12 hours', () => {
   const old = new Date(Date.now() - 13 * 3600_000).toISOString();
-  assert.equal(cli([{ ...runE('grilling', { issue: 12 }), t: old }, { ...agent('fable'), t: old }], '12').status, 1);
+  const homeDir = home('s', [{ id: 'tu1', lines: rec() }]);
+  assert.equal(cli([{ ...runE('grilling', { issue: 12 }), t: old }, { ...planUp(), t: old }], ['12', 'FILE'], { home: homeDir }).status, 1);
 });
 
 // Hooks not loaded (a routine serving several projects): the journal comes from Claude Code's transcript, which
 // grows as the session goes on. The plan sub-agent launched after a first refusal must be seen by the retry.
 test('upstream.mjs sees the plan sub-agent launched after a first refusal, from the transcript', () => {
-  const home = mkdtempSync(join(tmpdir(), 'home-'));
-  mkdirSync(join(home, '.claude/projects/p'), { recursive: true });
-  const session = join(home, '.claude/projects/p/sess-1.jsonl');
+  const homeDir = home('sess-1', [{ id: 'x', lines: rec() }]);
+  const session = join(homeDir, '.claude/projects/p/sess-1.jsonl');
   const payload = { repo: 'o/p', issue: 12, pr: null, stage: 'grilling', models: { plan: { model: 'fable' }, review: { model: 'fable' } } };
   const line = (o) => JSON.stringify({ timestamp: t(), ...o });
   writeFileSync(session, line({ type: 'user', message: { role: 'user', content: `Run\n${JSON.stringify(payload)}` } }) + '\n');
   const dir = mkdtempSync(join(tmpdir(), 'upstream-'));
   spawnSync('git', ['init', '-q'], { cwd: dir });
   spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/o/p.git'], { cwd: dir });
-  const run = () => spawnSync(process.execPath, [SCRIPT, '12'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: home } });
+  writeFileSync(join(dir, 'c.md'), TEXT);
+  const run = () => spawnSync(process.execPath, [SCRIPT, '12', 'c.md'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: homeDir } });
   assert.equal(run().status, 1);
-  appendFileSync(session, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'x', name: 'Agent', input: { model: 'fable', description: 'phase amont' } }] } }) + '\n');
+  appendFileSync(session, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'x', name: 'Agent', input: { model: 'fable', description: '[role:plan:amont] phase amont' } }] } }) + '\n');
   const ok = run();
   assert.equal(ok.status, 0, ok.stderr);
-  assert.equal(ok.stdout.trim(), '<!-- factory-upstream stage=grilling model=fable role=plan -->');
+  assert.equal(ok.stdout.trim(), `<!-- factory-upstream stage=grilling model=fable role=plan text=${textHash(TEXT)} -->`);
   assert.match(readFileSync(join(dir, '.factory/journal/sess-1.jsonl'), 'utf8'), /"kind":"agent"/);
 });
 
@@ -304,12 +412,12 @@ test('upstreamSince is the date of the latest delivery of the upstream instructi
 
 test('upstream.mjs, when it refuses during a build or a foundation, says not to publish again', () => {
   for (const stage of ['build', 'foundation']) {
-    const res = cli([runE(stage, { issue: 12 })], '12');
+    const res = cli([runE(stage, { issue: 12 })], ['12', 'FILE']);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /ne republie rien/, stage);
     assert.doesNotMatch(res.stderr, /publie sans la ligne/, stage);
   }
-  assert.match(cli([runE('spec', { issue: 12 })], '12').stderr, /publie sans la ligne/);
+  assert.match(cli([runE('spec', { issue: 12 })], ['12', 'FILE']).stderr, /publie sans la ligne/);
 });
 
 test('upstreamUpdate measures the latest build of the branch, even when a later run resumed it', () => {
@@ -363,7 +471,7 @@ test('journal-check stays quiet when the instruction came with the first commit 
 });
 
 test('upstream.mjs, when no run is found, does not advise publishing without the line blindly', () => {
-  const res = cli([], '12');
+  const res = cli([], ['12', 'FILE']);
   assert.equal(res.status, 1);
   assert.match(res.stderr, /si tu es à une construction .*ne republie rien et continue/);
   assert.match(res.stderr, /sinon.*publie sans la ligne/);

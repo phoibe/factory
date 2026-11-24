@@ -184,11 +184,6 @@ export function roleOf(model, models) {
   return ['plan', 'review'].find((role) => models[role] && family(model) === family(models[role])) || null;
 }
 const roleAgents = (run) => (run.agents || []).map((a) => ({ a, role: roleOf(a.model, run.models) })).filter((x) => x.role);
-// The latest one: after a failed `plan` sub-agent, the `review` one that took over did the thinking.
-export function upstreamAgent(run) {
-  const last = roleAgents(run).at(-1);
-  return last ? { model: family(last.a.model), role: last.role } : null;
-}
 // The analysis comes before the fix: an agent with a role launched after the last red test is the final reviewer.
 const analyst = (run) => {
   const red = (run.tests || []).filter((x) => !x.ok).at(-1);
@@ -228,7 +223,7 @@ export function upstreamCheck(runs) {
       lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
     } else if (entry.status === 'unproved') missing.push({
       alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
-      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
+      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
     else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);
