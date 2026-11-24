@@ -227,7 +227,8 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ### Réglages généraux (page à part)
 - **Disposition générale** : ouverte par le bouton « Réglages généraux » de la barre du haut (ou par le lien « Changer le réglage de tous les projets » des Paramètres), elle remplace l'écran du projet (en-tête, onglets et panneaux disparaissent). En haut, le bouton-lien « ← Retour au projet », puis le titre « Réglages généraux », puis deux blocs encadrés comme ceux de « Paramètres » : « Modèles » (une ligne par rôle : son nom, une phrase d'aide grise, une liste de choix) et « Machine des tâches » (deux boutons radio). La même barre « Enregistrer » avec son état reste collée en bas.
-- **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire. Tant que la page est ouverte, le bouton « Réglages généraux » de la barre du haut paraît enfoncé (fond surface, filet encre).
+- **Chargement** : la page s'ouvre aussitôt ; pendant la lecture des réglages, les blocs sont remplacés par le seul mot gris « Chargement… », sans autre texte. Le bouton du haut garde son libellé et sa largeur.
+- **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire. Tant que la page est ouverte, le bouton « Réglages généraux » de la barre du haut paraît enfoncé (fond surface, filet encre, trait intérieur en bas ; jamais en gras, la barre ne bouge pas).
 - **Largeur** : celle du contenu du projet ; les listes de choix de 420 px au plus.
 - **Libellés et explications** : le nom du rôle en gras, sa phrase d'aide en gris dessous, puis la liste ; sous les quatre rôles, un court paragraphe gris dit que le modèle de l'agent qui pilote se règle sur claude.ai.
 - **Volets repliables** : aucun.
