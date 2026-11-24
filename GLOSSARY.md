@@ -70,6 +70,20 @@ _À éviter_ : menu déroulant, sélecteur
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
 
+## Réglages généraux
+
+**Réglages généraux** :
+La page à part du tableau de bord, ouverte par le bouton du même nom dans la barre du haut, qui regroupe les réglages valables pour tous les projets à la fois (les modèles par rôle, la machine des tâches par défaut). Elle s'oppose à l'onglet Paramètres, propre à chaque projet.
+_À éviter_ : paramètres globaux, configuration générale
+
+**Rôle de modèle** :
+L'un des quatre types de travail auxquels la factory attribue un modèle : les plans et l'organisation du développement, l'écriture du code, la revue, et les tâches simples de lecture et d'écriture.
+_À éviter_ : niveau, palier, léger / intermédiaire / puissant
+
+**Famille de modèles** :
+Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle ; c'est toujours sa version la plus récente qui sert.
+_À éviter_ : version, modèle précis
+
 ## Design
 
 **Document de design** :
