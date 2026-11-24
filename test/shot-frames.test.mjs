@@ -325,3 +325,13 @@ test('a taller margin is framed even when a title changed too', () => {
   // The margin between the middle block and the last one (after rows 80 to 130) is framed full width.
   assert.ok(result.after.some((f) => f.w === 200 && f.y >= 75 && f.y + f.h <= 135), JSON.stringify(result.after));
 });
+
+test('zones that overlap before they are merged do not count twice towards the whole screen', () => {
+  // Nine dots, each widened to 40×40: their areas add up to more than three quarters of the image, the frame that
+  // holds them all covers about half of it.
+  const after = img(120, 120);
+  for (const y of [24, 48, 72]) for (const x of [24, 48, 72]) fill(after, x, y, x + 1, y + 1, [0, 0, 0]);
+  const result = changeFrames(img(120, 120), after, { ...S, min: 40 });
+  assert.equal(result.whole, false);
+  assert.ok(holds(result.after, 24, 24, 73, 73), JSON.stringify(result.after));
+});

@@ -297,12 +297,14 @@ function groupMarks({ map: cells }) {
 
 const distance = (p, q) => Math.max(0, Math.max(p.x0, q.x0) - Math.min(p.x1, q.x1), Math.max(p.y0, q.y0) - Math.min(p.y1, q.y1));
 
-// Merges the two closest zones while they are closer than gap, or while there are too many. Null as soon as they
-// cover more than `limit` pixels: the whole screen changed, no need to merge further. Each zone keeps its nearest
-// neighbour, so that a merge only looks again at the zones it concerns.
+// Merges the two closest zones while they are closer than gap, or while there are too many. Null as soon as one zone
+// covers more than `limit` pixels (zones only grow, so the finished merge would too): the whole screen changed, no
+// need to merge further. Zones may overlap until they are merged, so their summed area is only checked at the end,
+// when they no longer do. Each zone keeps its nearest neighbour, so that a merge only looks again at the zones it
+// concerns.
 function mergeZones(zones, gap, limit) {
   const zs = zones.slice();
-  let area = zs.reduce((sum, z) => sum + zoneArea(z), 0);
+  let largest = zs.reduce((m, z) => Math.max(m, zoneArea(z)), 0);
   const near = zs.map(() => ({ d: Infinity, k: -1 }));
   const refresh = (i) => {
     near[i] = { d: Infinity, k: -1 };
@@ -310,7 +312,7 @@ function mergeZones(zones, gap, limit) {
   };
   zs.forEach((_, i) => refresh(i));
   while (zs.length > 1) {
-    if (area > limit) return null;
+    if (largest > limit) return null;
     let bi = 0;
     for (let i = 1; i < zs.length; i++) if (near[i].d < near[bi].d) bi = i;
     if (near[bi].d >= gap && zs.length <= MAX_FRAMES) break;
@@ -318,7 +320,7 @@ function mergeZones(zones, gap, limit) {
     if (bj < bi) [bi, bj] = [bj, bi];
     const p = zs[bi], q = zs[bj];
     zs[bi] = { x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1) };
-    area += zoneArea(zs[bi]) - zoneArea(p) - zoneArea(q);
+    largest = Math.max(largest, zoneArea(zs[bi]));
     zs.splice(bj, 1);
     near.splice(bj, 1);
     for (let i = 0; i < zs.length; i++) {
@@ -333,7 +335,7 @@ function mergeZones(zones, gap, limit) {
     }
     refresh(bi);
   }
-  return area > limit ? null : zs;
+  return zs.reduce((sum, z) => sum + zoneArea(z), 0) > limit ? null : zs;
 }
 
 const zoneArea = (z) => (z.x1 - z.x0) * (z.y1 - z.y0);
