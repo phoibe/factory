@@ -5,3 +5,11 @@
 {"t":"2026-11-24T11:26:08.848Z","kind":"test","cmd":"cd /home/user/factory; grep -n \"mjs?v=\" panel/index.html; sed -i \"3s/issuesLinkText } from '..\\/panel\\/lib.mjs';/issuesLinkText, stableView } from '..\\/panel\\/lib.mjs';/\" test/panel-lib.test.mjs; sed ","ok":false,"id":"toolu_01KBvu7xse3VQfuMYtQUnoC3"}
 {"t":"2026-11-24T11:26:52.542Z","kind":"test","cmd":"cd /home/user/factory; cat >> panel/lib.mjs <<'EOF'\n\n// « Déclarer stable »: what main holds that stable does not, without the factory's own automatic commits\n// (`chore(factory)…`), which are no chan","ok":true,"id":"toolu_01HUnMYUcqVTndAKawKRK3x6"}
 {"t":"2026-11-24T11:27:09.307Z","kind":"skill","name":"requesting-code-review","id":"toolu_014k7g2wpuL7x4io6y7ARBy3"}
+{"t":"2026-11-24T11:27:18.736Z","kind":"agent","model":"fable","effort":"high","label":"Review stable button fix","id":"toolu_011zgTzcYtG78x2qQciYKRec"}
+{"t":"2026-11-24T11:28:26.707Z","kind":"test","cmd":"npm test 2>&1 | tail -25","ok":true,"id":"toolu_01WViADpcHrZbQuSV2Bhq7j4"}
+{"t":"2026-11-24T11:29:28.986Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-24T11:29:33.071Z","kind":"skill","name":"impeccable","id":"toolu_01CUQh8mMhkyHV3L7eEKpd2Y"}
+{"t":"2026-11-24T11:29:48.281Z","kind":"agent","model":"opus","effort":"medium","label":"Design critique stable button","id":"toolu_01NvXrZQdW9ezhByfQ2BFJxo"}
+{"t":"2026-11-24T11:29:49.938Z","kind":"skill","name":"impeccable","id":"toolu_012qQ887KXGJ3BoJCqowkhP6"}
+{"t":"2026-11-24T11:32:05.410Z","kind":"test","cmd":"cd /home/user/factory; sed -i \"s/eta\\.mjs?v=4'/eta.mjs?v=5'/; s/live\\.mjs?v=13'/live.mjs?v=14'/; s/projects\\.mjs?v=6'/projects.mjs?v=7'/\" panel/app.mjs; sed -i \"s/live\\.mjs?v=13'/live.mjs?v=14'/\" pane","ok":false,"id":"toolu_01CcHV6eiPZ1MVXVE8XWzo1G"}
+{"t":"2026-11-24T11:32:49.269Z","kind":"test","cmd":"cd /home/user/factory; python3 - <<'EOF'\np=…; s=…\nold=…\"  return { changes, count: changes.length, hidden: changes.length === 0 };\"\"\"\nnew=…\"  // GitHub lists at most 250 commits while ahead_by is the ","ok":true,"id":"toolu_01DiN7z6NR32TrUJg3noSS5c"}

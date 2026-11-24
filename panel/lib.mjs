@@ -266,5 +266,7 @@ export const sessionKeys = (keys) => keys.filter((k) => k.startsWith('factory.')
 // (`chore(factory)…`), which are no change for the owner. Nothing real left → no button.
 export const stableView = (cmp) => {
   const changes = (cmp?.commits || []).map((c) => (c?.commit?.message || '').split('\n')[0]).filter((s) => s && !s.startsWith('chore(factory)'));
-  return { changes, count: changes.length, hidden: changes.length === 0 };
+  // GitHub lists at most 250 commits while ahead_by is the true total: a cut list may hide real changes, so keep the button.
+  const truncated = (cmp?.ahead_by || 0) > (cmp?.commits?.length || 0);
+  return { changes, count: changes.length, hidden: changes.length === 0 && !truncated };
 };

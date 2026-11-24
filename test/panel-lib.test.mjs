@@ -333,3 +333,19 @@ test('stableView tolerates a missing comparison', () => {
   assert.deepEqual(stableView(null), { changes: [], count: 0, hidden: true });
   assert.deepEqual(stableView({ ahead_by: 0 }), { changes: [], count: 0, hidden: true });
 });
+
+test('stableView keeps the button when the compare list is truncated', () => {
+  const cmp = { ahead_by: 300, commits: [commit('chore(factory): sync skills')] };
+  assert.equal(stableView(cmp).hidden, false);
+  assert.equal(stableView(cmp).count, 0);
+});
+
+test('stableView only skips subjects that start with chore(factory)', () => {
+  const cmp = { ahead_by: 2, commits: [commit('fix: undo chore(factory) noise'), commit('chore: bump deps')] };
+  assert.deepEqual(stableView(cmp).changes, ['fix: undo chore(factory) noise', 'chore: bump deps']);
+});
+
+test('stableView ignores empty messages and null entries', () => {
+  const cmp = { ahead_by: 4, commits: [null, {}, commit(''), commit('feat: real')] };
+  assert.deepEqual(stableView(cmp), { changes: ['feat: real'], count: 1, hidden: false });
+});
