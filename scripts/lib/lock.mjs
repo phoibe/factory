@@ -52,14 +52,22 @@ export async function withLock(store, fn, { ttlMs = LOCK_TTL_MS, waitMs = LOCK_W
     return !lost;
   };
   const assertTurn = () => { if (!held()) throw new LostTurnError(lost); };
-  let beating = null; // the sign of life on its way, waited for before the lock is given back
-  const beat = async () => {
-    const at = now();
+  let beating = null; // the signs of life on their way, waited for before the lock is given back
+  let stopped = false;
+  const beat = async (at) => {
     try {
       if (await store.refresh()) { if (!lost) sureAt = at; } else lose('taken over by another run');
     } catch (e) { log(`queue lock: no sign of life sent (${e.message || e})`); }
   };
-  const stop = store.refresh ? every(() => { if (!beating && held()) beating = beat().finally(() => { beating = null; }); return beating; }, beatMs) : () => {};
+  // A sign of life answered after the next one was due sends that next one at once: waiting for the following tick
+  // would leave two beats between signs of life, and slow answers alone would end a healthy run.
+  const beats = async () => {
+    let at;
+    do { at = now(); await beat(at); } while (!stopped && held() && now() - at >= beatMs);
+  };
+  const tick = () => { if (!beating && held()) beating = beats().finally(() => { beating = null; }); return beating; };
+  const stopTimer = store.refresh ? every(tick, beatMs) : () => {};
+  const stop = () => { stopped = true; stopTimer(); };
   store.guard?.(assertTurn);
   try {
     let result;

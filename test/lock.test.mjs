@@ -163,16 +163,21 @@ test('a run told by GitHub that its place was taken stops at once: the next acti
 test('the turn is counted from the moment a sign of life was sent, and a late one never revives a stopped run', async () => {
   const store = fakeStore();
   let beats = 0, slow = true, run = null;
-  store.refresh = async () => { beats++; if (slow) run.t += 2 * 60_000; return true; }; // GitHub takes 2 min to answer
+  store.refresh = async () => { // GitHub takes 2 min to answer, then fails the follow-up sent at once
+    beats++;
+    if (beats > 1) throw new Error('GitHub too slow');
+    if (slow) run.t += 2 * 60_000;
+    return true;
+  };
   run = turnOf(store, async (r) => {
-    r.t = 60_000; await r.beat(); // sent at 1 min, answered at 3 min
+    r.t = 60_000; await r.beat(); // sent at 1 min, answered at 3 min; the next one, sent at 3 min, fails
     r.t = 4 * 60_000 - 1; r.check(); // 3 min after it was sent, minus 1 ms
     r.t = 4 * 60_000; assert.throws(r.check, isLostTurn);
     slow = false; await r.beat(); // not even sent
     assert.throws(r.check, isLostTurn);
   }); // the work swallowed the refusals and returns normally
   await assert.rejects(run.done, isLostTurn);
-  assert.equal(beats, 1);
+  assert.equal(beats, 2);
 });
 
 test('an error that follows a lost turn is reported as the lost turn; the guard is removed at the end; the stop error carries no number', async () => {
@@ -183,4 +188,42 @@ test('an error that follows a lost turn is reported as the lost turn; the guard 
   await assert.rejects(run.done, (e) => isLostTurn(e) && e.cause === boom);
   assert.deepEqual(run.guards.map((g) => typeof g), ['function', 'object']); // installed once the lock is taken, then null
   for (const why of ['taken over by another run', 'no sign of life got through in time']) assert.doesNotMatch(String(new LostTurnError(why)), /\d/);
+});
+
+// A virtual clock with timers: `every` and `sleep` are played in time order, nothing waits for real.
+function virtualClock() {
+  const c = { t: 0, timers: [], seq: 0 };
+  c.at = (ms, fn) => c.timers.push({ at: c.t + ms, n: c.seq++, fn });
+  c.sleep = (ms) => new Promise((r) => c.at(ms, r));
+  c.every = (fn, ms) => { let on = true; const tick = () => { if (!on) return; fn(); c.at(ms, tick); }; c.at(ms, tick); return () => { on = false; }; };
+  c.play = async (until) => {
+    let done = false;
+    until.then(() => { done = true; }, () => { done = true; });
+    while (!done) {
+      for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+      if (done || !c.timers.length) break;
+      c.timers.sort((a, b) => a.at - b.at || a.n - b.n);
+      const next = c.timers.shift();
+      c.t = next.at;
+      next.fn();
+    }
+    return until;
+  };
+  return c;
+}
+
+test('slow but successful signs of life (answered after 61 s) keep a 20-minute run alive', async () => {
+  const clock = virtualClock();
+  const store = fakeStore();
+  let check = null, sent = 0;
+  store.guard = (fn) => { check = fn; };
+  store.refresh = () => { sent++; return new Promise((r) => clock.at(61_000, () => r(true))); };
+  const logs = [];
+  const done = withLock(store, async () => {
+    for (let i = 0; i < 20; i++) { await clock.sleep(60_000); check(); }
+    return 'done';
+  }, { now: () => clock.t, every: clock.every, log: (m) => logs.push(m) });
+  assert.equal(await clock.play(done), 'done');
+  assert.deepEqual(logs, []);
+  assert.ok(sent >= 19, `a sign of life sent as soon as the previous one is answered late (${sent})`);
 });
