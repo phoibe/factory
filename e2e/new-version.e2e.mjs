@@ -65,6 +65,6 @@ test('une nouvelle version est en ligne et seul un message non envoyé attend : 
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await page.locator('#toast', { hasText: /nouvelle version/i }).waitFor();
     assert.equal((await page.locator('#toast').textContent()).trim(),
-      'Une nouvelle version du panneau est en ligne : elle se chargera dès que vos messages non envoyés auront été renvoyés ou repris.');
+      'Nouvelle version prête : renvoyez ou modifiez vos messages non envoyés.');
   });
 });

@@ -92,8 +92,15 @@ test('panel screens have no axe violations, in the light and the dark theme', as
             await page.waitForSelector('.msg.unsent', { state: 'visible', timeout: 15000 });
             const phone = await page.evaluate(() => axe.run());
             for (const v of phone.violations) found.push(`Agent, message non envoyé, téléphone (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
-            const box = await page.locator('.msg.unsent button.resend').boundingBox();
-            if (!box || box.height < 44) found.push(`Agent, message non envoyé, téléphone (${scheme}): « Renvoyer » trop petit ou caché : ${JSON.stringify(box)}`);
+            // 32 px seen, 44 px under the finger: the rows of pixels around the button where a touch lands on it.
+            const hit = await page.locator('.msg.unsent button.resend').evaluate((b) => {
+              b.scrollIntoView({ block: 'center' });
+              const r = b.getBoundingClientRect(), x = r.left + r.width / 2;
+              let n = 0;
+              for (let y = Math.floor(r.top) - 12; y <= r.bottom + 12; y++) if (b.contains(document.elementFromPoint(x, y))) n++;
+              return n;
+            }).catch(() => 0);
+            if (hit < 44) found.push(`Agent, message non envoyé, téléphone (${scheme}): « Renvoyer » trop petit ou caché : ${hit} px sous le doigt`);
             await page.setViewportSize({ width: 1280, height: 720 });
           }
           if (name === 'Paramètres') {

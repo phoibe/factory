@@ -8,6 +8,7 @@ const AGENT = '<!-- factory-agent -->';
 const PHONE = { width: 390, height: 844 };
 const DESK = { width: 1280, height: 800 };
 const NET = 'Non envoyé. Connexion perdue, réessayez.';
+const DOWN = 'L\'agent n\'a pas pu répondre. L\'agent est indisponible, réessayez dans une minute.';
 const AWAY = 'Message non envoyé. Retrouvez-le dans sa conversation.';
 const question = (n = 7, title = 'Comment publier ?') => issue(n, title, ['factory:question'], { body: title, comments: 1 });
 const answered = (n = 7) => ({ [n]: [{ id: n * 10, body: `${AGENT}\nVoici comment.`, user: { login: 'o' }, author_association: 'OWNER', created_at: new Date().toISOString(), html_url: `https://github.com/o/r/issues/${n}#c1` }] });
@@ -37,14 +38,25 @@ const breakdown = (page, wait = 0) => page.route('http://localhost:7777/chat', a
 });
 const restore = (page) => page.unroute('http://localhost:7777/chat');
 
+// The height under the finger: the rows of pixels around the button where a touch lands on it.
+const hitHeight = (button) => button.evaluate((b) => {
+  b.scrollIntoView({ block: 'center' });
+  const r = b.getBoundingClientRect(), x = r.left + r.width / 2;
+  let n = 0;
+  for (let y = Math.floor(r.top) - 12; y <= r.bottom + 12; y++) if (b.contains(document.elementFromPoint(x, y))) n++;
+  return n;
+});
+
 async function assertUnsentShown(page, text) {
   await unsent(page).first().waitFor();
   assert.equal(await unsent(page).count(), 1);
   assert.match(await unsent(page).textContent(), new RegExp(text));
   assert.equal((await unsent(page).locator('.unsent-note').textContent()).trim(), NET);
   for (const name of ['Renvoyer', 'Modifier']) {
-    const box = await unsent(page).getByRole('button', { name: new RegExp(`^${name} `) }).boundingBox();
-    assert.ok(box && box.height >= 44, `${name} : ${JSON.stringify(box)}`);
+    const button = unsent(page).getByRole('button', { name: new RegExp(`^${name} `) });
+    const box = await button.boundingBox();
+    assert.ok(box && Math.round(box.height) === 32, `${name} visible : ${JSON.stringify(box)}`);
+    assert.ok(await hitHeight(button) >= 44, `${name} sous le doigt : ${await hitHeight(button)}`);
   }
   assert.equal(await page.locator('#chat-input').inputValue(), '');
 }
@@ -81,7 +93,7 @@ test('en réponse instantanée, un message auquel l\'agent n\'a pas pu répondre
     await breakdown(page);
     await send(page, 'Première question');
     await unsent(page).first().waitFor();
-    assert.equal((await unsent(page).locator('.unsent-note').textContent()).trim(), 'L\'agent n\'a pas pu répondre. Panne.');
+    assert.equal((await unsent(page).locator('.unsent-note').textContent()).trim(), DOWN);
     await restore(page);
     await cut(page);
     await send(page, 'Deuxième question');
@@ -284,9 +296,9 @@ test('si « Renvoyer » échoue encore, le message reprend son état avec la nou
     await restore(page);
     await breakdown(page);
     await resendButton(page, 0).click();
-    await page.locator('#chat-messages .msg.unsent .unsent-note', { hasText: 'Panne.' }).waitFor();
+    await page.locator('#chat-messages .msg.unsent .unsent-note', { hasText: 'indisponible' }).waitFor();
     assert.equal(await unsent(page).count(), 2);
-    assert.equal((await unsent(page).nth(0).locator('.unsent-note').textContent()).trim(), 'L\'agent n\'a pas pu répondre. Panne.');
+    assert.equal((await unsent(page).nth(0).locator('.unsent-note').textContent()).trim(), DOWN);
     assert.match(await unsent(page).nth(0).textContent(), /Premier/);
     assert.equal((await unsent(page).nth(1).locator('.unsent-note').textContent()).trim(), NET);
   });
@@ -409,5 +421,182 @@ test('au clavier, après « Renvoyer », je reste dans la zone de saisie, ou sur
     await page.keyboard.press('Enter');
     await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat-input');
+  });
+});
+
+// Review of #580.
+const touchScreen = (page) => page.addInitScript(() => {
+  const real = window.matchMedia.bind(window);
+  window.matchMedia = (q) => {
+    const m = real(q);
+    if (q.includes('pointer: fine')) Object.defineProperty(m, 'matches', { value: false });
+    return m;
+  };
+});
+
+test('« Renvoyer » grisé se voit grisé', async () => {
+  const chatServer = { answer: 'Bonjour.', delay: 0 };
+  await withPanel({ chatServer, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Non parti');
+    await unsent(page).first().waitFor();
+    const look = (b) => b.evaluate((x) => { const s = getComputedStyle(x); return { opacity: s.opacity, cursor: s.cursor }; });
+    assert.deepEqual(await look(resendButton(page)), { opacity: '1', cursor: 'pointer' });
+    await restore(page);
+    chatServer.delay = 1500;
+    await send(page, 'Une autre question');
+    await page.locator('#live-bubble').waitFor();
+    assert.equal(await resendButton(page).isDisabled(), true);
+    assert.deepEqual(await look(resendButton(page)), { opacity: '0.6', cursor: 'default' });
+  });
+});
+
+test('sur un écran tactile, « Renvoyer » ne fait pas apparaître le clavier', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 800 }, viewport: PHONE }, async ({ page, url }) => {
+    await touchScreen(page);
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await cut(page);
+    await send(page, 'Non parti');
+    await unsent(page).first().waitFor();
+    await restore(page);
+    await resendButton(page).click();
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'chat-input');
+    await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).waitFor();
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'chat-input');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat-messages');
+  });
+});
+
+test('toucher la conversation ouverte pendant une réponse avec image ne fait pas passer le message pour non envoyé', async () => {
+  const chatServer = { answer: 'Bonjour.', delay: 0 };
+  await withPanel({ chatServer, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await send(page, 'Première question');
+    await page.locator('.conv.current').waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    chatServer.delay = 1500;
+    await page.locator('#chat-file').setInputFiles(pics(1));
+    await send(page, 'Avec une image');
+    await page.locator('#live-bubble').waitFor();
+    await page.locator('.conv.current').click();
+    await page.waitForFunction(() => !document.getElementById('live-bubble') && !document.getElementById('chat-send').disabled, null, { timeout: 8000 });
+    await page.waitForTimeout(300);
+    assert.equal(await unsent(page).count(), 0);
+    assert.equal(await page.locator('#chat-messages .msg.agent', { hasText: 'Bonjour.' }).count(), 2);
+  });
+});
+
+test('sur téléphone, dans la liste des conversations, le petit message est à 24 px du bas, comme dans les autres onglets', async () => {
+  await withPanel({ chatServer: { answer: 'Bonjour.', delay: 0 }, viewport: PHONE }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await page.locator('#chat-new').click();
+    await breakdown(page, 1500);
+    await send(page, 'Envoyé avant de partir');
+    await page.locator('#chat-back').click();
+    await page.locator('#toast.show', { hasText: AWAY }).waitFor({ timeout: 5000 });
+    await page.waitForTimeout(300);
+    const gap = await page.evaluate(() => innerHeight - document.getElementById('toast').getBoundingClientRect().bottom);
+    assert.equal(Math.round(gap), 24);
+  });
+});
+
+test('le clavier reste sur « Modifier » quand la conversation se met à jour en arrière-plan', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  await withPanel({ issues: [question()], comments: answered(), offline, viewport: DESK }, async ({ page, url }) => {
+    await openFallback(page, url);
+    await send(page, 'Mon message perdu');
+    await unsent(page).first().waitFor();
+    await editButton(page).focus();
+    await page.evaluate(() => { window.oldRow = document.querySelector('#chat-messages .msg.unsent'); });
+    await page.waitForFunction(() => !window.oldRow.isConnected, null, { timeout: 20000 });
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Modifier « Mon message perdu »');
+  });
+});
+
+test('un échec pendant que je relis le haut de la conversation me ramène en bas, sur le message non envoyé', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  const long = Array.from({ length: 60 }, (_, i) => `Paragraphe ${i + 1} de la réponse.`).join('\n\n');
+  const comments = { 7: [{ ...answered()[7][0], body: `${AGENT}\n${long}` }] };
+  await withPanel({ issues: [question()], comments, offline, writeDelay: 1500, viewport: DESK }, async ({ page, url }) => {
+    await openFallback(page, url);
+    await send(page, 'Mon message perdu');
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { document.getElementById('chat-messages').scrollTop = 0; });
+    await unsent(page).first().waitFor();
+    await page.waitForTimeout(200);
+    const gap = await page.evaluate(() => { const l = document.getElementById('chat-messages'); return l.scrollHeight - l.scrollTop - l.clientHeight; });
+    assert.ok(gap < 2, `pas en bas : ${gap}`);
+  });
+});
+
+test('un message non envoyé reste au-dessus de « Réfléchit… » et de la réponse en cours', async () => {
+  // Instant mode: the live answer.
+  const chatServer = { answer: 'Bonjour.', delay: 0 };
+  await withPanel({ chatServer, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    await cut(page);
+    await send(page, 'Non parti');
+    await unsent(page).first().waitFor();
+    await restore(page);
+    chatServer.delay = 1500;
+    await send(page, 'Une autre question');
+    await page.locator('#live-bubble').waitFor();
+    const order = await page.evaluate(() => [...document.querySelectorAll('#chat-messages > li')].map((li) => (li.classList.contains('unsent') ? 'unsent' : li.querySelector('#live-bubble') || li.id === 'live-bubble' ? 'live' : li.classList.contains('me') ? 'me' : 'other')));
+    assert.ok(order.indexOf('unsent') < order.indexOf('live'), order.join(','));
+  });
+  // Fallback mode: « Réfléchit… ».
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  await withPanel({ issues: [question()], comments: answered(), offline, writeDelay: 1500, viewport: DESK }, async ({ page, url }) => {
+    await openFallback(page, url);
+    await send(page, 'Non parti');
+    await unsent(page).first().waitFor();
+    await page.waitForFunction(() => !document.getElementById('chat-send').disabled);
+    offline.clear();
+    await send(page, 'Une autre question');
+    await page.locator('#chat-messages .bubble.typing').waitFor();
+    const order = await page.evaluate(() => [...document.querySelectorAll('#chat-messages > li')].map((li) => (li.classList.contains('unsent') ? 'unsent' : li.querySelector('.typing') ? 'thinking' : 'other')));
+    assert.ok(order.indexOf('unsent') < order.indexOf('thinking'), order.join(','));
+  });
+});
+
+test('dans la liste, une conversation qui garde un message non envoyé porte « Non envoyé » en rouge, jusqu\'à ce qu\'il soit repris', async () => {
+  const offline = new Set(['/repos/o/r/issues/7/comments']);
+  const issues = [question(7, 'Comment publier ?'), question(8, 'Autre sujet')];
+  await withPanel({ issues, comments: { ...answered(7), ...answered(8) }, offline, viewport: DESK }, async ({ page, url }) => {
+    await page.goto(url);
+    await agentTab(page);
+    const row = (t) => page.locator('.conv', { hasText: t });
+    await row('Comment publier ?').click();
+    await page.locator('#chat-messages .msg.agent').first().waitFor();
+    assert.equal(await page.locator('.conv .conv-unsent').count(), 0);
+    await send(page, 'Mon message perdu');
+    await unsent(page).first().waitFor();
+    await row('Autre sujet').click();
+    await page.locator('#chat-title', { hasText: 'Autre sujet' }).waitFor();
+    const mark = row('Comment publier ?').locator('.conv-unsent');
+    assert.equal((await mark.textContent()).trim(), 'Non envoyé');
+    assert.equal(await row('Autre sujet').locator('.conv-unsent').count(), 0);
+    // Read in one go: the list is redrawn at each refresh.
+    const [color, danger] = await page.evaluate(() => {
+      const m = document.querySelector('.conv .conv-unsent');
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--danger)';
+      document.body.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return [getComputedStyle(m).color, c];
+    });
+    assert.equal(color, danger);
+    await row('Comment publier ?').click();
+    await unsent(page).first().waitFor();
+    await editButton(page).click();
+    assert.equal(await page.locator('.conv .conv-unsent').count(), 0);
   });
 });

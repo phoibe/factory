@@ -459,7 +459,10 @@ export function conversationId(fromServer, current, now = new Date()) {
 
 export const MAX_IMAGES = 4;
 export const UNSENT_TITLE = { unsent: 'Non envoyé', unanswered: 'L\'agent n\'a pas pu répondre' };
-export const TOKEN_REFUSED = 'Le jeton de lecture a été refusé.';
+// The reasons under the mention say what to do; the chat server's own words never show there.
+export const TOKEN_REFUSED = 'Le jeton de lecture a été refusé : créez-en un nouveau.';
+export const ANSWER_CUT = 'La réponse a été coupée, renvoyez le message.';
+export const agentRefusal = (status) => (status === 413 ? 'Message trop long : raccourcissez-le avec « Modifier ».' : 'L\'agent est indisponible, réessayez dans une minute.');
 export const UNSENT_AWAY = 'Message non envoyé. Retrouvez-le dans sa conversation.';
 
 // The box key of the open conversation: a conversation not created yet is « new ».

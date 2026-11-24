@@ -256,6 +256,8 @@ html { touch-action: manipulation; }
 .conv-meta { display: inline-flex; align-items: center; gap: 6px; font-size: .8125rem; color: var(--muted); font-weight: 400; }
 .conv.fresh .conv-title { font-weight: 700; }
 .conv.fresh .conv-meta { color: var(--text); font-weight: 600; }
+/* A conversation that holds unsent messages (issue #580): failure red, always with its words. */
+.conv .conv-unsent { color: var(--danger); font-weight: 500; }
 .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--work); animation: blink 1.2s ease-in-out infinite; }
 .chat-sep { margin: 12px 10px 4px; font-size: .8125rem; font-weight: 700; color: var(--muted); }
 .chat-empty { padding: 10px; }
@@ -291,6 +293,13 @@ html { touch-action: manipulation; }
 /* A message that could not be sent (issue #580): failure red always with its words, two quiet buttons. */
 .unsent-note { margin: 0; color: var(--danger); font-size: .8125rem; text-align: right; }
 .unsent-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+/* Small like the buttons of the cards: 32 px seen, 44 px under the finger (32 px - 2 px of border + 2 x 7 px). */
+.unsent-actions button { position: relative; min-height: 32px; padding: 5px 12px; font-weight: 500; line-height: 1.25; }
+.unsent-actions button::after { content: ""; position: absolute; inset: -7px -4px; }
+/* « Renvoyer » while an answer is on its way: greyed like the other disabled buttons. */
+.unsent-actions button:disabled, .unsent-actions button:disabled:hover { opacity: .6; cursor: default; border-color: var(--line); }
+/* The conversation's « Renvoyer » focus lands on the list on a touch screen: no ring around the whole thread. */
+#chat-messages:focus { outline: none; }
 /* Callouts: a line the agent starts with ⚠️, ✅ or ➡️ (issue #460). Colour is a signal, never decoration. */
 .bubble .callout { padding: 8px 12px; border-radius: 10px; border: 1px solid; }
 .callout.warn { background: var(--warn-soft); border-color: var(--warn-line); }

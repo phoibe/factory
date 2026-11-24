@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView, isDeployed, versioned } from './lib.mjs';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks, MAX_IMAGES, UNSENT_TITLE, TOKEN_REFUSED, UNSENT_AWAY, unsentKey, failureKind, unsentBox, mergeDraft, toastBottom } from './chat.mjs';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks, MAX_IMAGES, UNSENT_TITLE, TOKEN_REFUSED, ANSWER_CUT, agentRefusal, UNSENT_AWAY, unsentKey, failureKind, unsentBox, mergeDraft, toastBottom } from './chat.mjs';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs';
 import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs';
@@ -1800,7 +1800,8 @@ async function checkVersion() {
   if (hasUnsaved()) {
     if (toldBuild === live.build) return; // already told for this version
     toldBuild = live.build;
-    return toast(`Une nouvelle version du panneau est en ligne : elle se chargera dès que ${hasUnsavedWork() ? 'vous aurez enregistré' : 'vos messages non envoyés auront été renvoyés ou repris'}.`);
+    return toast(hasUnsavedWork() ? 'Une nouvelle version du panneau est en ligne : elle se chargera dès que vous aurez enregistré.'
+      : 'Nouvelle version prête : renvoyez ou modifiez vos messages non envoyés.');
   }
   location.reload();
 }
@@ -2840,7 +2841,7 @@ function unsentBubble(key, m) {
     el('p', { class: 'unsent-note' }, el('strong', {}, `${UNSENT_TITLE[m.kind]}.`), ` ${m.reason}`),
     el('div', { class: 'unsent-actions' },
       el('button', { type: 'button', class: 'secondary small-btn resend', 'aria-label': `Renvoyer ${what}`, disabled: answering(), onclick: () => resend(key, m.id) }, 'Renvoyer'),
-      el('button', { type: 'button', class: 'secondary small-btn', 'aria-label': `Modifier ${what}`, onclick: () => editUnsent(key, m.id) }, 'Modifier')),
+      el('button', { type: 'button', class: 'secondary small-btn edit', 'aria-label': `Modifier ${what}`, onclick: () => editUnsent(key, m.id) }, 'Modifier')),
   ]);
   li.classList.add('unsent');
   li.dataset.unsent = String(m.id);
@@ -2855,22 +2856,26 @@ function keepUnsent(key, message, again, failure) {
   else chat.unsent.add(key, message, failure);
   sayInChat(`${UNSENT_TITLE[failure.kind]}. ${failure.reason}`);
   drawChat();
-  if (!threadShown() || unsentKey(chat.open) !== key) toast(UNSENT_AWAY);
+  if (!threadShown() || unsentKey(chat.open) !== key) return toast(UNSENT_AWAY);
+  const list = $('chat-messages');
+  list.scrollTop = list.scrollHeight; // seen even when the owner was reading higher up
 }
 
 // « Renvoyer »: the message leaves again as it was, with its images; never while an answer is on its way.
 // The redraw removes the button: the keyboard goes to the composer, or back to the same « Renvoyer » if it fails again.
+// On a touch screen the composer would open the on-screen keyboard: the focus goes to the conversation instead.
 async function resend(key, id) {
   if (answering()) return;
   const m = chat.unsent.get(key, id);
   if (!m) return;
   const input = $('chat-input');
+  const landing = matchMedia('(pointer: fine)').matches ? input : $('chat-messages');
   const sent = sendChat(m.text, true, m);
-  if (document.activeElement === document.body) input.focus();
+  if (document.activeElement === document.body) landing.focus();
   await sent;
   const again = chat.unsent.get(unsentKey(chat.open), id);
   const button = again && $('chat-messages').querySelector(`.msg.unsent[data-unsent="${id}"] button.resend`);
-  if (button && document.activeElement === input && !input.value) button.focus();
+  if (button && document.activeElement === landing && !input.value) button.focus();
 }
 
 // « Modifier »: the message leaves the conversation for the composer, after what the owner already started there.
@@ -3126,11 +3131,13 @@ function drawChatList() {
     const key = chat.server ? c.id : c.number;
     const thinking = chat.server ? Boolean(chat.live) && chat.open === key : c.state === 'open' && c.labels.some((l) => l.name === 'factory:running');
     const fresh = isUnread(c) && !(chat.open === key && threadShown());
+    const unsent = chat.unsent.shown(key).length > 0;
     return el('li', {},
       el('button', { type: 'button', class: `conv${chat.open === key ? ' current' : ''}${fresh ? ' fresh' : ''}`, 'aria-current': chat.open === key ? 'true' : false, onclick: () => selectConversation(key) },
         el('span', { class: 'conv-title' }, c.title),
         el('span', { class: 'conv-meta' }, thinking ? el('span', { class: 'typing-dot', 'aria-hidden': 'true' }) : null,
-          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated || c.updated_at))));
+          thinking ? 'L\'agent réfléchit' : fresh ? 'Nouvelle réponse' : timeOf(c.updated || c.updated_at),
+          unsent ? el('span', { class: 'conv-unsent' }, 'Non envoyé') : null)));
   };
   items.replaceChildren(...open.map(row), ...(done.length ? [el('li', { class: 'chat-sep' }, 'Terminées')] : []), ...done.map(row));
   const n = open.filter(isUnread).length;
@@ -3146,7 +3153,16 @@ function drawChatList() {
   $('chat-badge-label').textContent = n ? `${n} ${n > 1 ? 'nouvelles réponses' : 'nouvelle réponse'}` : '';
 }
 
+// Each redraw replaces every row: the keyboard stays on the « Renvoyer » / « Modifier » it was on (issue #580).
 function drawChat() {
+  const focused = document.activeElement?.closest?.('#chat-messages .msg.unsent button');
+  const keep = focused && { id: focused.closest('.msg.unsent').dataset.unsent, which: focused.classList.contains('resend') ? 'resend' : 'edit' };
+  drawThread();
+  if (!keep || document.activeElement !== document.body) return;
+  $('chat-messages').querySelector(`.msg.unsent[data-unsent="${keep.id}"] button.${keep.which}`)?.focus({ preventScroll: true });
+}
+
+function drawThread() {
   fitChat();
   drawChatList();
   const isNew = (chat.open === 'new' || chat.open == null) && !chat.live;
@@ -3162,8 +3178,9 @@ function drawChat() {
       examples()));
   } else if (isNew) {
     // A new conversation's first message, on its way or unsent: no intro over it.
-    const mine = chat.pending ? [bubble({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null }), thinkingBubble(chat.pending.since)] : [];
-    list.replaceChildren(...mine, ...waiting);
+    // Unsent messages stay above « Réfléchit… »: never read as the message being answered.
+    const mine = chat.pending ? [bubble({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null })] : [];
+    list.replaceChildren(...mine, ...waiting, ...(chat.pending ? [thinkingBubble(chat.pending.since)] : []));
   } else if (chat.issue && chat.issue.number === chat.open) {
     const messages = chatMessages(chat.issue, chat.comments);
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
@@ -3173,7 +3190,7 @@ function drawChat() {
       : status === 'late'
         ? el('li', { class: 'notice' }, 'Pas encore de réponse. Renvoyez votre message un peu plus tard.')
         : status === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
-    list.replaceChildren(...messages.map((m) => bubble(m)), ...(tail ? [tail] : []), ...waiting);
+    list.replaceChildren(...messages.map((m) => bubble(m)), ...waiting, ...(tail ? [tail] : []));
     announceAnswers(chat.issue.number, messages);
     $('chat-close').hidden = status === 'closed';
   } else {
@@ -3225,7 +3242,7 @@ function drawServerChat(isNew) {
     if (chat.pending) messages.push({ who: 'me', text: chat.pending.text, images: chat.pending.previews, at: null });
     const tail = chat.live ? liveBubble()
       : entry?.state === 'closed' ? el('li', { class: 'notice' }, 'Conversation terminée. Écrivez un message pour la reprendre.') : null;
-    list.replaceChildren(...messages.map((m) => bubble(m)), ...(tail ? [tail] : []), ...waiting);
+    list.replaceChildren(...messages.map((m) => bubble(m)), ...waiting, ...(tail ? [tail] : []));
     announceAnswers(chat.open, messages);
   } else {
     list.replaceChildren(el('li', { class: 'muted chat-empty' }, 'Chargement…'), ...waiting);
@@ -3312,13 +3329,13 @@ function drawPendingImages() {
 }
 
 // On the Agent tab the toast sits 12 px above the composer (attached images included), measured: a text of several
-// lines never hides under it (issue #580). Elsewhere, and while no composer shows (the read-token card), it keeps its
-// place at the bottom.
+// lines never hides under it (issue #580). Elsewhere, and while no composer shows (the list of conversations on a
+// phone, the read-token card), it keeps its usual place, 24 px from the bottom.
 function placeToast() {
   const t = $('toast');
   const strip = $('chat-pending');
   const box = strip.hidden ? $('chat-form') : strip;
-  if (!threadShown() || needsReadToken() || !box.getClientRects().length) { t.style.removeProperty('--toast-bottom'); return; }
+  if (!threadShown() || needsReadToken() || !box.getClientRects().length) { t.style.setProperty('--toast-bottom', '24px'); return; }
   const top = box.getBoundingClientRect().top;
   t.style.setProperty('--toast-bottom', `${toastBottom(innerHeight, top)}px`);
 }
@@ -3403,7 +3420,9 @@ async function sendToServer(text, files, withImages, again = null) {
   // Its answer is on its way even if the owner goes to another project and back: no end meanwhile (#535).
   const streamed = isNew ? null : `${repo}:${chat.open}`;
   if (streamed) streaming.add(streamed);
-  chat.pending = { text, previews: files.map((f) => f.url) };
+  // Kept here: a click on the open conversation clears chat.pending while the answer is on its way.
+  const previews = files.map((f) => f.url);
+  chat.pending = { text, previews };
   const live = chat.live = { text: '', status: files.length ? 'Envoi des images…' : 'Envoi…', since: new Date().toISOString() };
   if (withImages && !again) clearComposer();
   drawChat();
@@ -3425,7 +3444,7 @@ async function sendToServer(text, files, withImages, again = null) {
       if (res.status === 401) throw Object.assign(saidError('GitHub a refusé votre jeton de lecture : il a sans doute expiré ou été supprimé. Créez-en un nouveau avec le bouton ci-dessus.'), { readToken: true });
       if (body.code === 'writable') throw Object.assign(saidError(WRITABLE_TOKEN), { readToken: true });
       if (body.code === 'classic') throw Object.assign(saidError(CLASSIC_TOKEN), { readToken: true });
-      throw saidError(body.error || `Le serveur de l'agent a répondu ${res.status}.`);
+      throw saidError(agentRefusal(res.status));
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -3441,11 +3460,11 @@ async function sendToServer(text, files, withImages, again = null) {
         else if (e.type === 'draft') live.text = e.text;
         else if (e.type === 'reset') live.text = '';
         else if (e.type === 'answer') answer = e;
-        else if (e.type === 'error') throw saidError(e.message);
+        else if (e.type === 'error') throw saidError(agentRefusal());
       }
       if (!gone()) drawLive();
     }
-    if (!answer) throw saidError('La réponse a été coupée.');
+    if (!answer) throw saidError(ANSWER_CUT);
     // The answer is complete: from here on nothing may make the owner resend it (the issues would be made twice).
     live.status = 'Enregistre…';
     if (!gone()) drawLive();
@@ -3454,7 +3473,7 @@ async function sendToServer(text, files, withImages, again = null) {
     // Its answer lives only on screen (or nowhere, on another project): never put away on top of it (#521, #535).
     if (!saved) marks.delete(conv.id);
     if (!gone()) {
-      for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(chat.pending.previews[i]));
+      for (const [i, p] of paths.entries()) chat.images.set(p, Promise.resolve(previews[i]));
       chat.conv = conv;
       chat.open = conv.id;
       if (again) chat.unsent.remove(key, again.id);

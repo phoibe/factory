@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_IMAGES, UNSENT_TITLE, TOKEN_REFUSED, UNSENT_AWAY, unsentKey, failureKind, unsentBox, mergeDraft, toastBottom,
+  MAX_IMAGES, UNSENT_TITLE, TOKEN_REFUSED, UNSENT_AWAY, ANSWER_CUT, agentRefusal, unsentKey, failureKind, unsentBox, mergeDraft, toastBottom,
 } from '../panel/chat.mjs';
 
 const pic = () => ({ file: {}, url: 'blob:n' });
@@ -22,8 +22,14 @@ test('the mention depends on how far the message went', () => {
   assert.equal(failureKind({ reached: true }), 'unanswered');
   assert.equal(failureKind({ reached: true, readToken: true }), 'unsent');
   assert.deepEqual(UNSENT_TITLE, { unsent: 'Non envoyé', unanswered: "L'agent n'a pas pu répondre" });
-  assert.equal(TOKEN_REFUSED, 'Le jeton de lecture a été refusé.');
+  assert.equal(TOKEN_REFUSED, 'Le jeton de lecture a été refusé : créez-en un nouveau.');
   assert.equal(UNSENT_AWAY, 'Message non envoyé. Retrouvez-le dans sa conversation.');
+});
+
+test('each reason under the mention says what to do, never the server\'s own words', () => {
+  assert.equal(ANSWER_CUT, 'La réponse a été coupée, renvoyez le message.');
+  for (const status of [500, 502, 503, 400, 403, 0]) assert.equal(agentRefusal(status), 'L\'agent est indisponible, réessayez dans une minute.');
+  assert.equal(agentRefusal(413), 'Message trop long : raccourcissez-le avec « Modifier ».');
 });
 
 test('each conversation keeps its unsent messages in the order written', () => {
