@@ -310,6 +310,8 @@ function renderProjectList() {
 
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
+  // Like « ← Retour au projet »: the general page closes (its unsaved choices stay in memory, review #556).
+  closeGeneral();
   if (current && current.repo.full_name === fullName) return;
   openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
@@ -1391,6 +1393,8 @@ async function openGeneral(from = $('general-open')) {
     Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
     general.saved = generalValue();
   }
+  // The full screen removes the page's side margins: the general page never opens in it (review #556).
+  if (document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('project-view').classList.add('on-general');
   $('general-view').hidden = false;
   $('general-open').setAttribute('aria-pressed', 'true');

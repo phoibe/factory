@@ -209,3 +209,20 @@ test('deux enregistrements de suite passent et la page rouverte montre le dernie
     assert.equal(await page.getByRole('combobox', { name: 'Revue' }).inputValue(), 'haiku');
   });
 });
+
+// Review #556, finding 4: the project list stays on screen beside the general page; a click on it must show the project.
+test('choisir un autre projet dans la liste ferme la page et montre son Suivi', async () => {
+  await withPanel({ repos: ['o/r', 'o/autre'], viewport: { width: 1280, height: 800 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Paramètres' }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.locator('#projects .project-item', { hasText: 'autre' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#general-view').isVisible(), false);
+    const board = page.getByRole('tab', { name: 'Suivi' });
+    assert.equal(await board.isVisible(), true);
+    assert.equal(await board.getAttribute('aria-selected'), 'true');
+    assert.equal(await page.getByRole('heading', { level: 1, name: 'autre' }).count(), 1);
+  });
+});
