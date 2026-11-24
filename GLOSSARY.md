@@ -77,7 +77,7 @@ La page à part du tableau de bord, ouverte par le bouton du même nom dans la b
 _À éviter_ : paramètres globaux, configuration générale
 
 **Rôle de modèle** :
-L'un des quatre types de travail auxquels la factory attribue un modèle : les plans et l'organisation du développement, l'écriture du code, la revue, et les tâches simples de lecture et d'écriture.
+L'un des quatre types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, et les tâches simples de lecture et d'écriture.
 _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 
 **Famille de modèles** :
