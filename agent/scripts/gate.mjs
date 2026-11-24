@@ -86,8 +86,9 @@ export function realCheckRefusal(tool, input, io) {
 const entries = (text) => String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 
 // Review #556: the « unproved » upstream step may be out of the agent's reach (its instruction even says to go on).
-// A refusal caused by that line alone is given once per run, so it never uses up the refusals that keep the other
-// guards on; the PR alert still reports it.
+// Once a refusal was caused by that line alone (recorded as cause « upstream »), the line is no longer asked for in
+// this run. Every refusal that showed it still counts toward the MAX_DENIALS: one when it came alone, more when it
+// first came with other missing steps (no cause is recorded then, so it is asked again). The PR alert still reports it.
 const isUpstream = (line) => line.startsWith(UNPROVED_HOW);
 const UPSTREAM = 'upstream';
 
