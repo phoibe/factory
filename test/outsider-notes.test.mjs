@@ -219,3 +219,33 @@ test("the webhook's payload does not take an outsider's agent note for the agent
   assert.equal(eventFromPayload('issues', payload('alice', true)).fromAgent, true);
   assert.equal(eventFromPayload('issues', payload('phoibe', false)).fromAgent, true);
 });
+
+// --- Task 3: every read of the panel goes through the rule ---
+import { readFileSync } from 'node:fs';
+import { readRelaunch as panelReadRelaunch, relaunchLine } from '../panel/relaunch.mjs';
+
+test("the panel's three GitHub readers clean every answer, and no other read of issues or PRs skips them", () => {
+  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const bodyOf = (head) => {
+    const start = src.indexOf(head);
+    assert.ok(start >= 0, head);
+    return src.slice(start, src.indexOf('\n}\n', start));
+  };
+  for (const head of ['async function api(', 'async function cachedGet(', 'async function chatGet(']) assert.match(bodyOf(head), /guardRead\(path, /, head);
+  const others = src.split('\n').filter((l) => /\bfetch\(/.test(l) && /\/(issues|pulls)\b/.test(l));
+  assert.deepEqual(others, []);
+});
+
+test("through the panel's rule the owner's and the agent's notes keep working on a public project, an outsider's do not", () => {
+  const isPrivate = () => false;
+  const idea = { number: 5, title: 'Idée', labels: ['factory:feature'], user: { login: 'claude[bot]' }, author_association: 'NONE', body: `Idée\n${AGENT_MARKER}` };
+  const next = Date.now() + 3600_000;
+  const card = { number: 6, title: 'Carte', labels: ['factory:relaunch'], user: { login: 'o' }, author_association: 'OWNER', body: `Carte\n\n<!-- factory-relaunch {"stage":"build","next":${next}} -->` };
+  const [i, c] = trustRead('/repos/o/r/issues?state=open', [idea, card], isPrivate);
+  assert.equal(ideaItems([i]).length, 1);
+  assert.match(relaunchLine(panelReadRelaunch(c.body)), /^Relance prévue à /);
+  const alice = { user: { login: 'alice' }, author_association: 'NONE' };
+  const [i2, c2] = trustRead('/repos/o/r/issues?state=open', [{ ...idea, ...alice }, { ...card, ...alice }], isPrivate);
+  assert.equal(ideaItems([i2]).length, 0);
+  assert.equal(relaunchLine(panelReadRelaunch(c2.body)), null);
+});
