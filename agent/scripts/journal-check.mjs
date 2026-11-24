@@ -83,20 +83,53 @@ export function specReminder(files, { stage = null, current = null } = {}, readF
 }
 
 // Issue #550: for a build or a foundation, what the request's comments show about who did its questions and sheet,
-// as the entry to append to the latest run's journal ({ file, entry }), or null when there is nothing new to write.
+// as the entry to append to the journal of the branch's latest build or foundation run ({ file, entry }), or null when
+// there is nothing new to write. A later run that resumes the work (fix-checks, update-branch…) does not hide it.
 // `comments(repo, issue)` reads the request (it may throw: « unread »); without `repo` the request cannot be read
-// either. « unread » never replaces a measured entry, and an entry equal to the run's current one is not written again.
+// either. « unread » never replaces a measured entry, and an entry equal to the newest one of those runs is not
+// written again.
 const MEASURED = ['proved', 'unproved', 'old'];
+const DOC_STAGES = ['build', 'foundation'];
 export function upstreamUpdate(files, readFile, { repo = null, comments, since = null } = {}) {
-  const best = latestRun(files, readFile);
-  if (!best || !['build', 'foundation'].includes(best.run.stage) || best.run.issue == null) return null;
+  let best = null;
+  const texts = [];
+  for (const file of files.filter((f) => JOURNAL.test(f))) {
+    const text = readFile(file);
+    if (!text) continue;
+    texts.push(text);
+    // Appended at the end of its journal, the entry belongs to the journal's last run: only that one can take it.
+    const run = parseJournal([text]).at(-1);
+    if (!run || !DOC_STAGES.includes(run.stage) || run.issue == null) continue;
+    if (!best || String(run.t) > String(best.run.t)) best = { file, run };
+  }
+  if (!best) return null;
   let list = null;
   if (repo) { try { list = comments(repo, best.run.issue); } catch { /* GitHub unreachable: « unread » */ } }
   const entry = upstreamEntry(best.run, list, { since, owner: repo ? repo.split('/')[0] : null });
-  const current = parseJournal([best.text]).at(-1)?.upstream;
+  const current = parseJournal(texts)
+    .filter((r) => DOC_STAGES.includes(r.stage) && Number(r.issue) === Number(best.run.issue) && r.upstream)
+    .map((r) => r.upstream).sort((a, b) => String(a.t).localeCompare(String(b.t))).at(-1);
   if (!entry || (entry.status === 'unread' && MEASURED.includes(current?.status))) return null;
   const same = current && JSON.stringify([entry.doc, entry.status, entry.by]) === JSON.stringify([current.doc, current.status, current.by]);
   return same ? null : { file: best.file, entry };
+}
+
+// Issue #550: since when the proof is asked for: the date of the latest commit that brought the upstream instruction
+// into .factory/AGENT.md (after a rollback of the factory and a new delivery, the new delivery). Null when unknown or
+// when the instruction is not there now: every spec then counts as « old ». In a shallow clone the parent of a commit
+// may be cut off: that commit then counts as the delivery, a later date, which only lets more specs count as « old ».
+const INSTRUCTION = 'upstream.mjs';
+export function upstreamSince(git) {
+  const has = (rev) => { try { return git(['show', `${rev}:.factory/AGENT.md`]).includes(INSTRUCTION); } catch { return false; } };
+  try {
+    if (!has('HEAD')) return null;
+    const log = git(['log', '--format=%H %cI', `-S${INSTRUCTION}`, '--', '.factory/AGENT.md']).trim().split('\n').filter(Boolean);
+    for (const line of log) {
+      const [sha, date] = line.split(' ');
+      if (has(sha) && !has(`${sha}^`)) return date || null;
+    }
+  } catch { /* no history */ }
+  return null;
 }
 
 export function report(files, readFile, stages, opts) {
@@ -124,10 +157,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (file) console.log(`Journal reconstitué depuis la session : ${file.slice(root.length + 1)} (à committer avec le reste).`);
     }
     let files = branchFiles(git);
-    // When upstream.mjs reached the project. In a shallow clone the commit that added it may be cut off: the oldest
-    // commit shown then counts as the one that added it, a later date, which only lets more specs count as « old ».
-    let since = null;
-    try { since = git(['log', '--diff-filter=A', '--format=%cI', '--', '.factory/scripts/upstream.mjs']).trim().split('\n').filter(Boolean).at(-1) || null; } catch { /* no history */ }
+    const since = upstreamSince(git);
     const up = upstreamUpdate(files, read, { repo, since, comments: (r, n) => defaultGh(`repos/${r}/issues/${n}/comments`) });
     if (up) {
       appendFileSync(join(root, up.file), JSON.stringify({ t: new Date().toISOString(), ...up.entry }) + '\n');

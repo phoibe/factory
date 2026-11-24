@@ -75,3 +75,15 @@ test('an entry added to a rebuilt journal stays with its run', () => {
   importTranscript(root, 'phoibe/factory', { projectsDir: projects });
   assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'upstream', 'run']);
 });
+
+test('a kept entry already rebuilt from the transcript (same id) is not written twice', () => {
+  const projects = mkdtempSync(join(tmpdir(), 'projects-'));
+  mkdirSync(join(projects, 'p'));
+  writeFileSync(join(projects, 'p', 's4.jsonl'), lines.slice(0, 2).join('\n'));
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const file = importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  const skill = JSON.stringify({ t: '2', kind: 'skill', name: 'factory:writing-plans', id: 'a' });
+  writeFileSync(file, readFileSync(file, 'utf8') + skill + '\n');
+  importTranscript(root, 'phoibe/factory', { projectsDir: projects });
+  assert.deepEqual(readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).kind), ['run', 'skill']);
+});

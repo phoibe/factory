@@ -15,6 +15,7 @@ test('runFromPrompt reads the run JSON from the routine prompt', () => {
 test('runFromPrompt keeps the models of the plan and review roles, else their defaults', () => {
   assert.deepEqual(runFromPrompt('{"issue":5,"stage":"grilling","models":{"plan":{"model":"opus","effort":"high"},"review":{"model":"fable"}}}').models, { plan: 'opus', review: 'fable' });
   assert.deepEqual(runFromPrompt('{"issue":5,"stage":"grilling"}').models, { plan: 'fable', review: 'fable' });
+  assert.deepEqual(runFromPrompt('{"issue":5,"stage":"grilling","models":{"plan":"opus","review":{"model":"sonnet"}}}').models, { plan: 'opus', review: 'sonnet' });
   assert.deepEqual(ROLE_DEFAULTS, Object.fromEntries(MODEL_ROLES.filter((r) => ['plan', 'review'].includes(r.id)).map((r) => [r.id, r.default])));
 });
 

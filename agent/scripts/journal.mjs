@@ -29,7 +29,8 @@ export const FAILED_TEXT = /(\b[1-9]\d* (?:failed|failing)\b|\bFAIL\b|Tests?:\s+
 // of scripts/lib/models.mjs (copied here because this script is installed alone in each project).
 export const ROLE_DEFAULTS = { plan: 'fable', review: 'fable' };
 const roleModels = (models) => Object.fromEntries(Object.entries(ROLE_DEFAULTS).map(([role, def]) => {
-  const m = models && typeof models === 'object' ? models[role]?.model : null;
+  const v = models && typeof models === 'object' ? models[role] : null;
+  const m = typeof v === 'string' ? v : v?.model; // { model, effort } in the payload, or the model alone
   return [role, m ? String(m) : def];
 }));
 

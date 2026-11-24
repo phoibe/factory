@@ -62,7 +62,7 @@ test('upstreamCheck on a bugfix', () => {
   assert.deepEqual(res.lines, []);
   assert.equal(res.missing.length, 1);
   assert.equal(res.missing[0].alert, BUG_ALERT);
-  assert.equal(res.missing[0].how, "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), puis reproduis-le par un test rouge et corrige à partir de son analyse");
+  assert.equal(res.missing[0].how, "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse");
 });
 
 test('upstreamCheck on a build or a foundation', () => {
@@ -77,6 +77,7 @@ test('upstreamCheck on a build or a foundation', () => {
   assert.equal(un.missing[0].alert, "Questions et fiche : l'outil n'a pas pu vérifier quel modèle les a faites (la dernière version publiée ne porte pas la preuve).");
   assert.match(un.missing[0].how, /^questions et fiche : la fiche publiée ne porte pas la ligne de preuve\./);
   assert.match(un.missing[0].how, /upstream\.mjs 42/);
+  assert.match(un.missing[0].how, /si `upstream\.mjs` refuse encore, ne republie rien/);
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('old'))]), { lines: ['**Questions et fiche** : publiées avant la mise en place de cette preuve (non mesuré)'], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('unread', []))]), { lines: ["**Questions et fiche** : non mesuré (l'outil n'a pas pu vérifier quel modèle les a faites : la demande n'a pas pu être relue)"], missing: [] });
   assert.deepEqual(upstreamCheck([runOf(runE('build'), up('none', []))]), { lines: [], missing: [] });
@@ -267,4 +268,67 @@ test('upstreamUpdate writes « unread » when the request cannot be read, never 
   assert.equal(update(journalOf(runE('build')), { repo: null, comments: () => [spec(true, 5)] }).entry.status, 'unread');
   for (const status of ['proved', 'unproved', 'old']) assert.equal(update(journalOf(runE('build'), up(status)), { comments: fail }), null, status);
   assert.equal(update(journalOf(runE('build'), up('unread', [])), { comments: fail }), null);
+});
+
+// Issue #550: the proof is required from the day the instruction reached the project's AGENT.md. After a rollback of
+// the factory and a new delivery, it counts from the new delivery: a spec published while it was rolled back is « old ».
+const { upstreamSince } = await import('../agent/scripts/journal-check.mjs');
+test('upstreamSince is the date of the latest delivery of the upstream instruction', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'since-'));
+  const git = (args, date) => spawnSync('git', args, {
+    cwd: dir, encoding: 'utf8',
+    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' },
+  }).stdout;
+  const run = (args) => git(args);
+  const commit = (text, date) => {
+    mkdirSync(join(dir, '.factory/scripts'), { recursive: true });
+    writeFileSync(join(dir, '.factory/AGENT.md'), text);
+    writeFileSync(join(dir, '.factory/scripts/upstream.mjs'), '// script\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'sync'], date);
+  };
+  git(['init', '-q']);
+  assert.equal(upstreamSince(run), null, 'no history: unknown');
+  commit('# Agent\n', '2026-01-01T00:00:00Z');
+  assert.equal(upstreamSince(run), null, 'instruction not delivered yet');
+  commit('# Agent\nlance `node .factory/scripts/upstream.mjs <n>`\n', '2026-02-01T00:00:00Z');
+  assert.equal(Date.parse(upstreamSince(run)), Date.parse('2026-02-01T00:00:00Z'));
+  commit('# Agent\n', '2026-03-01T00:00:00Z'); // rollback
+  assert.equal(upstreamSince(run), null, 'rolled back: the proof is not asked for');
+  commit('# Agent\nautre texte\nlance `node .factory/scripts/upstream.mjs <n>`\n', '2026-04-01T00:00:00Z'); // re-delivery
+  assert.equal(Date.parse(upstreamSince(run)), Date.parse('2026-04-01T00:00:00Z'));
+  commit('# Agent\nautre texte modifié\nlance `node .factory/scripts/upstream.mjs <n>`\n', '2026-05-01T00:00:00Z');
+  assert.equal(Date.parse(upstreamSince(run)), Date.parse('2026-04-01T00:00:00Z'), 'a later edit keeps the delivery date');
+  assert.equal(upstreamSince(() => { throw new Error('no git'); }), null);
+});
+
+test('upstream.mjs, when it refuses during a build or a foundation, says not to publish again', () => {
+  for (const stage of ['build', 'foundation']) {
+    const res = cli([runE(stage, { issue: 12 })], '12');
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /ne republie rien/, stage);
+    assert.doesNotMatch(res.stderr, /publie sans la ligne/, stage);
+  }
+  assert.match(cli([runE('spec', { issue: 12 })], '12').stderr, /publie sans la ligne/);
+});
+
+test('upstreamUpdate measures the latest build of the branch, even when a later run resumed it', () => {
+  const journals = {
+    '.factory/journal/a.jsonl': j(runE('build')),
+    '.factory/journal/b.jsonl': j(runE('fix-checks')),
+  };
+  const res = update(journals, { comments: () => [spec(true, 5)] });
+  assert.equal(res?.file, '.factory/journal/a.jsonl');
+  assert.equal(res.entry.status, 'proved');
+});
+
+test('upstreamUpdate never writes « unread » over a measured entry of an earlier build of the branch', () => {
+  const fail = () => { throw new Error('offline'); };
+  const journals = {
+    '.factory/journal/a.jsonl': j(runE('build'), up('proved')),
+    '.factory/journal/b.jsonl': j(runE('build')),
+  };
+  assert.equal(update(journals, { comments: fail }), null);
+  assert.equal(update(journals, { comments: () => [spec(true, 5)] }), null, 'same as the newest entry');
+  assert.equal(update(journals, { comments: () => [spec(false, 5)] })?.file, '.factory/journal/b.jsonl');
 });

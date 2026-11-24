@@ -209,7 +209,7 @@ export function upstreamCheck(runs) {
     if (found) lines.push(`**Analyse du bug** : faite par ${madeBy({ model: found.a.model, role: found.role })}`);
     else missing.push({
       alert: "Correction du bug : l'outil n'a pas pu vérifier quel modèle a analysé le bug avant sa correction.",
-      how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), puis reproduis-le par un test rouge et corrige à partir de son analyse",
+      how: "analyse du bug : fais analyser le bug par un sous-agent du rôle `plan` (« Phase amont » dans AGENT.md), lancé avec `model` = `models.plan.model`, puis reproduis-le par un test rouge et corrige à partir de son analyse",
     });
   }
   const docs = runs.filter((r) => ['build', 'foundation'].includes(r.stage) && r.models && r.issue != null);
@@ -228,7 +228,7 @@ export function upstreamCheck(runs) {
       lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
     } else if (entry.status === 'unproved') missing.push({
       alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
-      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\``,
+      how: `questions et fiche : la fiche publiée ne porte pas la ligne de preuve. Fais-la réécrire par un sous-agent du rôle \`plan\` à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue}\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire)`,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
     else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);

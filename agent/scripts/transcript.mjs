@@ -62,7 +62,8 @@ export function findTranscript(repo, { projectsDir = join(homedir(), '.claude/pr
 
 // Writes .factory/journal/<session>.jsonl from the transcript when the hooks wrote nothing for this run. A journal
 // already written from the transcript is rebuilt (the session went on since), keeping the entries other scripts
-// added to it (journal-check's « upstream » entries), each after the transcript entries older than it.
+// added to it (journal-check's « upstream » entries), each after the transcript entries older than it. A kept entry
+// whose `id` the transcript already gives is not written twice.
 export function importTranscript(root, repo, opts = {}) {
   const p = findTranscript(repo, opts);
   if (!p) return null;
@@ -72,7 +73,8 @@ export function importTranscript(root, repo, opts = {}) {
   if (existing.some((e) => e.kind === 'run' && e.source !== 'transcript')) return file; // the hooks did it
   const entries = fromTranscript(readFileSync(p, 'utf8').split('\n')).map((e) => ({ ...e, source: 'transcript' }));
   if (!entries.some((e) => e.kind === 'run')) return null;
-  for (const e of existing.filter((x) => x.source !== 'transcript')) {
+  const ids = new Set(entries.map((e) => e.id).filter((id) => id != null));
+  for (const e of existing.filter((x) => x.source !== 'transcript' && !(x.id != null && ids.has(x.id)))) {
     const next = e.t == null ? -1 : entries.findIndex((x) => x.source === 'transcript' && String(x.t) > String(e.t));
     if (next === -1) entries.push(e);
     else entries.splice(next, 0, e);

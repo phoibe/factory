@@ -88,13 +88,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try { files = readdirSync(join(root, '.factory/journal')).map((f) => `.factory/journal/${f}`); } catch { /* no journal */ }
   const read = (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return null; } };
   const best = latestRun(files, read, { issue: Number(n), notBefore: Date.now() - RECENT_MS, keep });
-  const marker = best ? upstreamMarker(parseJournal([best.text]).at(-1)) : null;
+  const run = best ? parseJournal([best.text]).at(-1) : null;
+  const marker = run ? upstreamMarker(run) : null;
   if (!marker) {
+    // At build or foundation time the document is already published: a version without the proof changes nothing.
+    const repair = ['build', 'foundation'].includes(run?.stage);
     console.error([
       `Phase amont : aucun sous-agent du rôle \`plan\` n'a été vu dans ce run pour la demande #${n}.`,
       "Cause probable : le sous-agent a été lancé sans le paramètre `model`, ou avec un autre modèle que `models.plan.model` du payload.",
       "Lance-le avec `model` = `models.plan.model` (« Phase amont » dans AGENT.md), puis relance cette commande. Ne publie rien avant.",
-      "Si elle refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le signalera.",
+      repair
+        ? "Si elle refuse encore, ne republie rien : la version déjà publiée reste celle du propriétaire, le bilan le signalera."
+        : "Si elle refuse encore après un sous-agent `plan` puis un sous-agent `review`, chacun lancé avec son `model`, publie sans la ligne : le contrôle à la construction le signalera.",
     ].join('\n'));
     process.exit(1);
   }
