@@ -79,3 +79,4 @@
 {"t":"2026-11-24T17:52:25.369Z","kind":"test","cmd":"npm run typecheck 2>&1 | tail -5; npm run lint 2>&1 | tail -5; npm test 2>&1 | tail -15; npm run build 2>&1 | tail -5","ok":true,"id":"toolu_017rfXiZ9SBnZUyoVDsZWbh6"}
 {"t":"2026-11-24T17:56:55.182Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 900 npm run test:e2e > /tmp/claude-0/-home-user-factory/8615ba7e-2d97-522a-9547-bb33f27ea1d5/scratchpad/e2e.log 2>&1; echo exit $?; grep -E '^# (tests|pass|fail|skipped|cancell","ok":true,"id":"toolu_01D6P7jcUuJGKBKrKeXRoqNn"}
 {"t":"2026-11-24T17:57:10.188Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E '^# (tests|pass|fail|skipped|cancelled)|exit|Error' ; echo exit ${PIPESTATUS[0]}; grep -c 'new-version-banner\\|build-stamp' /tmp/claude-0/-","ok":true,"id":"toolu_01S8rdon5b6AMkHhAaE4bgcb"}
+{"t":"2026-11-24T17:58:37.859Z","kind":"gate","event":"PreToolUse","id":"toolu_01SW3HuYn1csE7ZW3ZSD2H8H"}
