@@ -249,6 +249,8 @@ export function eventsPart(ctx) {
 
   async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
+      // A « Run workflow » with no payload: nothing to give the agent, so no agent job.
+      if (!ev.payload) return { action: { type: 'ignore', reason: 'rien à lancer' }, outputs };
       outputs.agent = 'true';
       outputs.payload = toJobOutput(ev.payload); // hex, see job-output.mjs
       return { action: { type: 'agent' }, outputs };

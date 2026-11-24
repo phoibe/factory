@@ -231,6 +231,15 @@ test('the dispatched run hands the payload to the agent job', async () => {
   assert.equal(fromJobOutput(outputs.payload), '{"stage":"build"}');
 });
 
+test('a manual run with no payload starts no agent job', async () => {
+  for (const payload of ['', undefined]) {
+    const relay = createRelay({ gh: fakeGh({ issues: [], prs: [] }), repo: 'r', config, env, log: quiet });
+    const { action, outputs } = await relay.handle({ kind: 'dispatch', payload });
+    assert.notEqual(outputs.agent, 'true', String(payload));
+    assert.equal(action.type, 'ignore');
+  }
+});
+
 test('a failed fire leaves the state labels untouched so the same answer works again', async () => {
   const gh = fakeGh({ issues: [{ number: 3, labels: [L.feature, L.specReview] }], prs: [] });
   const failing = async () => ({ ok: false, status: 401, text: async () => 'bad token' });
