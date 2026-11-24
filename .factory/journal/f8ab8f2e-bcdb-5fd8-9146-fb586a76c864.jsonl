@@ -1,0 +1,7 @@
+{"t":"2026-11-24T11:25:33.068Z","kind":"run","stage":"bugfix","issue":551,"pr":null,"repo":"phoibe/factory"}
+{"t":"2026-11-24T11:25:41.838Z","kind":"skill","name":"systematic-debugging","id":"toolu_014J1i7Fgeo49CRkhqEt7iFz"}
+{"t":"2026-11-24T11:25:56.463Z","kind":"agent","model":"opus","effort":"medium","label":"Fix stable button count","id":"toolu_014scYazebxkjNDEgyFWkCuA"}
+{"t":"2026-11-24T11:25:57.472Z","kind":"skill","name":"test-driven-development","id":"toolu_01VNMobuA8cpcjvsF2WZFFtH"}
+{"t":"2026-11-24T11:26:08.848Z","kind":"test","cmd":"cd /home/user/factory; grep -n \"mjs?v=\" panel/index.html; sed -i \"3s/issuesLinkText } from '..\\/panel\\/lib.mjs';/issuesLinkText, stableView } from '..\\/panel\\/lib.mjs';/\" test/panel-lib.test.mjs; sed ","ok":false,"id":"toolu_01KBvu7xse3VQfuMYtQUnoC3"}
+{"t":"2026-11-24T11:26:52.542Z","kind":"test","cmd":"cd /home/user/factory; cat >> panel/lib.mjs <<'EOF'\n\n// « Déclarer stable »: what main holds that stable does not, without the factory's own automatic commits\n// (`chore(factory)…`), which are no chan","ok":true,"id":"toolu_01HUnMYUcqVTndAKawKRK3x6"}
+{"t":"2026-11-24T11:27:09.307Z","kind":"skill","name":"requesting-code-review","id":"toolu_014k7g2wpuL7x4io6y7ARBy3"}

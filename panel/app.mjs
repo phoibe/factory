@@ -1,4 +1,4 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys } from './lib.mjs?v=27';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
 import { answerForPr } from './answer.mjs';
 import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=25';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=4';
@@ -2117,10 +2117,11 @@ let stableChanges = [];
 async function refreshStable() {
   await boardGate;
   const cmp = await api(`/repos/${FACTORY_REPO}/compare/stable...main`);
-  stableChanges = (cmp?.commits || []).map((c) => c.commit.message.split('\n')[0]).filter((s) => !s.startsWith('chore(factory)'));
+  const view = stableView(cmp);
+  stableChanges = view.changes;
   const btn = $('stable');
-  btn.hidden = !(cmp?.ahead_by > 0);
-  btn.textContent = `Déclarer stable (${cmp?.ahead_by || 0})`;
+  btn.hidden = view.hidden;
+  btn.textContent = `Déclarer stable (${view.count})`;
 }
 
 $('stable').addEventListener('click', async () => {

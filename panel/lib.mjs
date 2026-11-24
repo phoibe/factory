@@ -261,3 +261,10 @@ export const siteLink = (...candidates) => candidates.find((u) => typeof u === '
 // shared browser keeps no private project name. Only the display preference (« Avancé » opened) stays.
 const KEPT_KEYS = new Set(['factory.advanced']);
 export const sessionKeys = (keys) => keys.filter((k) => k.startsWith('factory.') && !KEPT_KEYS.has(k));
+
+// « Déclarer stable »: what main holds that stable does not, without the factory's own automatic commits
+// (`chore(factory)…`), which are no change for the owner. Nothing real left → no button.
+export const stableView = (cmp) => {
+  const changes = (cmp?.commits || []).map((c) => (c?.commit?.message || '').split('\n')[0]).filter((s) => s && !s.startsWith('chore(factory)'));
+  return { changes, count: changes.length, hidden: changes.length === 0 };
+};

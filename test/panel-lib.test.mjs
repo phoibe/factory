@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText } from '../panel/lib.mjs';
+import { COLUMNS, doneItems, doneView, olderNote, doneAgo, columnFor, waitsForOwner, boardItems, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, phoneLink, previewFrom, focusComment, projectCandidates, sessionFrom, issuesUrl, chatServerUrl, allPages, mergeConfig, openIssueCount, issuesLinkText, stableView } from '../panel/lib.mjs';
 
 test('columnFor picks the most urgent state', () => {
   assert.equal(columnFor(['factory:feature', 'factory:grilling']), 'grilling');
@@ -315,4 +315,21 @@ test('sessionKeys lists every stored key of the session, so a logout leaves no p
     'factory.chat.seen.o/secret', 'factory.advanced', 'other.app'];
   assert.deepEqual(sessionKeys(stored).sort(), ['factory.chat.seen.o/secret', 'factory.chatToken', 'factory.pending.o/secret',
     'factory.project', 'factory.projects', 'factory.token']);
+});
+
+const commit = (message) => ({ commit: { message } });
+
+test('stableView hides the button when main is ahead only by factory chores', () => {
+  const cmp = { ahead_by: 1, commits: [commit('chore(factory): sync skills and agent instructions')] };
+  assert.deepEqual(stableView(cmp), { changes: [], count: 0, hidden: true });
+});
+
+test('stableView counts only real changes', () => {
+  const cmp = { ahead_by: 2, commits: [commit('fix(panel): real change\n\nbody'), commit('chore(factory): sync skills')] };
+  assert.deepEqual(stableView(cmp), { changes: ['fix(panel): real change'], count: 1, hidden: false });
+});
+
+test('stableView tolerates a missing comparison', () => {
+  assert.deepEqual(stableView(null), { changes: [], count: 0, hidden: true });
+  assert.deepEqual(stableView({ ahead_by: 0 }), { changes: [], count: 0, hidden: true });
 });
