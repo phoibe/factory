@@ -2094,7 +2094,7 @@ test('an undo GitHub refuses to open: the redo card starts at once as a normal u
 });
 
 test('a relaunch finds the undo prepared but never opened: it opens it for the existing card, no second card', async () => {
-  const stuck = { number: 20, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
+  const stuck = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.noPick], body: `${PROD_BUG_MARKER}\nAprès la mise en ligne de la PR #10 (demande #1), la version en ligne ne marchait plus : x.\n\n\`git cherry-pick m1\`` };
   const issues = [stuck];
   const gh = undoSetup({ issues });
   await createRelay({ gh, repo: 'r', config, env, log: quiet }).prodReport({ pr: 10, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur', git: () => '' });
@@ -2211,7 +2211,7 @@ test('a stuck card started without its undo says the delivery is still live (no 
 });
 
 test('a relaunch after a refused undo leaves alone the card already started: no undo, no second message', async () => {
-  const started = { number: 20, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
+  const started = { number: 20, user: { login: 'github-actions[bot]' }, labels: [L.bug, L.urgent, L.kept, L.building], body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #10 abc1234 -->` };
   const issues = [started];
   const gh = undoSetup({ issues });
   const git = [];

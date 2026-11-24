@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay } from '../scripts/relay.mjs';
-import { L, REVERT_MARKER } from '../scripts/lib/labels.mjs';
+import { L, REVERT_MARKER, PROD_BUG_MARKER } from '../scripts/lib/labels.mjs';
 
 const NOW = Date.parse('2026-11-24T12:00:00Z');
 const quiet = () => {};
@@ -19,7 +19,7 @@ function fakeGh({ issues = [], prs = [] }) {
   const gh = {
     calls,
     getIssue: async (n) => { const i = find(n); return i && { ...shape(i), ...(prs.includes(i) ? { pull_request: {} } : {}) }; },
-    updateIssue: async (n, patch) => { calls.push(['update', n]); Object.assign(find(n), patch); },
+    updateIssue: async (n, patch) => { calls.push(['update', n]); const i = find(n); if (i) Object.assign(i, patch); },
     getRepo: async () => ({ default_branch: 'main' }),
     dispatch: async (...a) => calls.push(['dispatch', ...a]),
     getPr: async (n) => prs.find((p) => p.number === n),
@@ -116,4 +116,34 @@ test('auto-pick still starts the issues of the owner and of the factory\'s bot',
     assert.match(JSON.parse(fired[0].body).text, /"stage":"bugfix"/, login);
     assert.ok(issue.labels.includes(L.autoPicked), login);
   }
+});
+
+// ---- The automatic undo of a broken delivery ----
+const delivered = { number: 42, state: 'closed', title: 'Créneaux', body: 'Closes #1', head: { sha: 'abc', ref: 'claude/issue-1-x', repo: { full_name: 'phoibe/app' } } };
+function undoWorld(card) {
+  const gh = fakeGh({ issues: card ? [card] : [], prs: [delivered] });
+  gh.createIssue = async (title, body, labels) => { gh.calls.push(['createIssue']); return { number: 60, title, body, labels }; };
+  gh.createPr = async () => { gh.calls.push(['createPr']); return { number: 61 }; };
+  return gh;
+}
+const brokenLive = (gh) => relayOn(gh).relay.prodReport({ pr: 42, sha: 'm1', url: 'https://app.example', result: 'failed', detail: 'erreur 500', git: () => '' });
+
+test('a stranger\'s issue that looks like the redo card of a delivery does not stop its undo', async () => {
+  for (const body of [`${PROD_BUG_MARKER}\nla PR #42`, `${PROD_BUG_MARKER}\n<!-- factory-redo-of #42 abc1234 -->`]) {
+    const fake = { number: 50, title: 'x', body, labels: [L.bug], user: { login: 'stranger' }, author_association: 'NONE' };
+    const gh = undoWorld(fake);
+    await brokenLive(gh);
+    assert.ok(gh.calls.some((c) => c[0] === 'createPr'), body);
+    assert.ok(gh.calls.some((c) => c[0] === 'createIssue'), body);
+    assert.ok(!gh.calls.some((c) => c[0] === 'update' && c[1] === 50), body);
+  }
+});
+
+test('the factory\'s own redo card left behind is still reused by the undo', async () => {
+  const card = { number: 50, title: 'x', body: `${PROD_BUG_MARKER}\n<!-- factory-redo-of #42 abc1234 -->`, labels: [L.bug, L.urgent, L.kept, L.noPick], user: { login: 'github-actions[bot]' } };
+  const gh = undoWorld(card);
+  await brokenLive(gh);
+  assert.ok(gh.calls.some((c) => c[0] === 'createPr'));
+  assert.ok(!gh.calls.some((c) => c[0] === 'createIssue'));
+  assert.ok(gh.calls.some((c) => c[0] === 'update' && c[1] === 50));
 });

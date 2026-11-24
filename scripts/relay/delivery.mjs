@@ -5,6 +5,7 @@ import { effectiveProduction, workBranch, PREPROD_BRANCH } from '../lib/config-c
 import { mergeBranchesSettling, MergeConflict } from '../lib/merge-generated.mjs';
 import { isRateLimited, isGitHubDown } from '../lib/ratelimit.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
+import { trustedAuthor } from '../lib/trust.mjs';
 import { deliveryOf, DELIVERY_SECTION } from '../../panel/stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, cutVersion, sectionOf, versionOf } from '../../panel/changelog.mjs';
 import { readSiteTag, tagConcerned, VERSION_TAG_MARKER } from '../lib/version-tag.mjs';
@@ -608,9 +609,12 @@ export function deliveryPart(ctx) {
   }
 
   // The open card that redoes the delivery of PR `prNumber`, if any (its marker, or the sentence of older cards).
+  // Only a card the factory or the owner wrote: anyone can open an issue whose description looks like one, and its
+  // label (factory:bug, put by the bug form) proves nothing.
   async function findRedo(prNumber) {
     const open = (await gh.listOpenIssues?.().catch(() => null)) || [];
-    return open.find((i) => !i.pull_request && redoOf(i.body)?.pr === prNumber) || null;
+    const owner = String(repo || '').split('/')[0];
+    return open.find((i) => !i.pull_request && redoOf(i.body)?.pr === prNumber && trustedAuthor(i, owner)) || null;
   }
 
   // Right after a push to main GitHub has not computed mergeability yet ("unknown"): ask again for a while.
