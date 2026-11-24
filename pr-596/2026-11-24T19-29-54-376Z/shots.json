@@ -1,0 +1,18 @@
+{
+  "files": [
+    "agent-envoi-rate--desktop--sombre.png",
+    "agent-envoi-rate--desktop.png",
+    "agent-envoi-rate--mobile--sombre.png",
+    "agent-envoi-rate--mobile.png",
+    "agent-petit-message--desktop--sombre.png",
+    "agent-petit-message--desktop.png",
+    "agent-petit-message--mobile--sombre.png",
+    "agent-petit-message--mobile.png"
+  ],
+  "unchanged": [
+    "agent--desktop--sombre.png",
+    "agent--desktop.png",
+    "agent--mobile--sombre.png",
+    "agent--mobile.png"
+  ]
+}
