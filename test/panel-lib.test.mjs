@@ -337,7 +337,7 @@ test('stableView tolerates a missing comparison', () => {
 test('stableView keeps the button when the compare list is truncated', () => {
   const cmp = { ahead_by: 300, commits: [commit('chore(factory): sync skills')] };
   assert.equal(stableView(cmp).hidden, false);
-  assert.equal(stableView(cmp).count, 0);
+  assert.equal(stableView(cmp).count, null); // a cut list has no reliable number: the label shows none
 });
 
 test('stableView only skips subjects that start with chore(factory)', () => {

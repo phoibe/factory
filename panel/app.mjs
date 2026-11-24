@@ -2122,7 +2122,8 @@ async function refreshStable() {
   stableChanges = view.changes;
   const btn = $('stable');
   btn.hidden = view.hidden;
-  btn.textContent = `Déclarer stable (${view.count})`;
+  btn.textContent = 'Déclarer stable';
+  if (view.count !== null) btn.append(' (', el('span', { class: 'num' }, String(view.count)), ')');
 }
 
 $('stable').addEventListener('click', async () => {
