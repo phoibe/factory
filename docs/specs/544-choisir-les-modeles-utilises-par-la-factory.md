@@ -3,6 +3,8 @@
 > Demande [#544](https://github.com/phoibe/factory/issues/544) · 2026-11-24
 >
 > Modifiée par la demande n° [#550](https://github.com/phoibe/factory/issues/550)
+>
+> Modifiée par la demande n° [#570](https://github.com/phoibe/factory/issues/570)
 
 **En une phrase** : une nouvelle page « Réglages généraux », ouverte depuis la barre du haut du tableau, permet de choisir une fois pour toute la factory le modèle de chacun des 4 rôles (plans, code, revue, tâches simples) et la machine des tâches par défaut.
 
