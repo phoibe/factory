@@ -1993,6 +1993,39 @@ test('outage: a lost report of checks that failed on an outage is made again as 
   assert.ok(readOutage(pr.body), 'the outage is still followed');
 });
 
+// No report job follows a report made again by the tick: its first retry is the next tick's, about 2 minutes later,
+// not 47 (the margin kept for a retry the report job would have started itself).
+test('outage: a lost report made again by the tick plans its first retry for the next tick', async () => {
+  const { gh, pr, state } = outageWorld({ sha: 'abc', since: T, tries: 0, next: null });
+  state.issues.push({ number: 10, labels: [L.checks], pull_request: {} });
+  gh.checkRuns = async () => [
+    { name: 'factory / checks', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:05:00Z', completed_at: '2026-11-06T10:08:00Z' },
+    { name: 'factory / report', status: 'completed', conclusion: 'failure', started_at: '2026-11-06T10:09:00Z' },
+  ];
+  const clock = { t: T + 15 * 60_000 };
+  const at = clock.t;
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), now: () => clock.t, log: quiet });
+  await relay.handle(tick);
+  const st = readOutage(pr.body);
+  assert.equal(st.tries, 0, 'no retry started yet');
+  assert.equal(st.next, at + 2 * 60_000);
+  const retries = () => gh.calls.filter((c) => c[0] === 'dispatch' && JSON.parse(c[3].payload).checksFor === 10).length;
+  assert.equal(retries(), 0);
+  gh.checkRuns = async () => []; // the next tick finds no lost report any more
+  clock.t = at + 5 * 60_000;
+  await relay.handle(tick);
+  assert.equal(retries(), 1, 'the next tick starts it');
+  assert.equal(readOutage(pr.body).tries, 1);
+});
+
+test('outage: the report job\'s own first retry keeps the margin that stops the tick from starting it twice', async () => {
+  const { gh, pr } = outageWorld(null);
+  const relay = createRelay({ gh, repo: 'r', config, env, fetchImpl: fetchOk([]), log: quiet, sleep: async () => {} });
+  await relay.report({ result: 'failure', transient: true, pr: 10, sha: 'abc', now: T });
+  assert.equal(relay.outputs.retryInMs, 2 * 60_000);
+  assert.equal(readOutage(pr.body).next, T + 2 * 60_000 + 45 * 60_000);
+});
+
 test('outage: « réessaie » relaunches the checks even when the factory is full', async () => {
   const { gh, state } = outageWorld({ sha: 'abc', since: T, tries: 7, told: true, blocked: true }, { prLabels: [], issueLabels: [L.feature, L.building, L.blocked] });
   state.issues.push({ number: 2, labels: [L.feature, L.building] }, { number: 3, labels: [L.feature, L.building] });

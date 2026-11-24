@@ -477,7 +477,8 @@ export function eventsPart(ctx) {
   // `preview`: the result of the preview check ({ result: passed|failed|skipped, url }) when this report follows it.
   // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213); 'server' when the
   // project's own machine was away (a check that only runs there).
-  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
+  // `fromTick`: made again by the tick (reportLost), so no report job follows to start the first retry after an outage.
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false, fromTick = false }) {
     let pr = await gh.getPr(prNumber);
     if (!pr) return log(`report: PR #${prNumber} no longer exists`);
     // A PR from a fork is never the factory's: none of the notes in its description is read, nothing is merged.
@@ -506,7 +507,7 @@ export function eventsPart(ctx) {
     }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
-    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
+    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient, { fromTick });
     // Any other result ends the outage: a later one starts a new schedule.
     if (readOutage(pr.body)) {
       pr = { ...pr, body: writeOutage(pr.body, null) };
@@ -620,12 +621,16 @@ export function eventsPart(ctx) {
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
   // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
   // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
-  async function onOutage(pr, nowMs, cause) {
+  // From the tick (`fromTick`), no report job follows: the first retry is left to the tick itself (retryOutages), due
+  // after the same short delay instead of the margin kept for a retry the report job would start.
+  async function onOutage(pr, nowMs, cause, { fromTick = false } = {}) {
     const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
     let st = step.state;
     const server = cause === 'server' || (cause === true && st.server);
     if (server) st = { ...st, server: true };
-    if (step.retryInMs) {
+    if (step.retryInMs && fromTick) {
+      st = { ...st, next: nowMs + step.retryInMs };
+    } else if (step.retryInMs) {
       st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };
       outputs.retryInMs = step.retryInMs;
     }

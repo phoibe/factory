@@ -338,7 +338,7 @@ export function watchPart(ctx) {
       // Never past the 3 hours: a replayed report must not block the card by itself, the usual path takes it then.
       const followed = readOutage(pr.body);
       const transient = checks.conclusion === 'failure' && followed?.sha === pr.head.sha && now() - followed.since < OUTAGE_GIVE_UP_MS;
-      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient });
+      await report({ result: checks.conclusion, pr: item.number, sha: pr.head.sha, transient, fromTick: true });
     }
   }
 
