@@ -44,6 +44,14 @@ IMAGE_RE = re.compile(r"attachments/chat/[\w-]+\.(?:png|jpe?g|gif|webp)", re.ASC
 WRITE_PROBES = (("PUT", "contents/.factory-write-probe"), ("POST", "issues"), ("POST", "pulls"))
 
 
+def writable_scopes(header):
+    """A classic token lists its scopes in x-oauth-scopes on every answer. delete_repo, workflow or admin:* do not show
+    in the probes, so any scope other than read:* or user:email is refused (same rule as the panel). A fine-grained
+    token sends no header: the probes decide alone."""
+    scopes = [s.strip() for s in (header or "").split(",") if s.strip()]
+    return any(not (s.startswith("read:") or s == "user:email") for s in scopes)
+
+
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -74,6 +82,14 @@ class GitHub:
             return None
         r.raise_for_status()
         return r.content if raw else r.json()
+
+    async def user(self):
+        """The token's account and, for a classic token, its scopes (None for a fine-grained token)."""
+        r = await self.client.get("/user")
+        if r.status_code == 404:
+            return None, None
+        r.raise_for_status()
+        return r.json(), r.headers.get("x-oauth-scopes")
 
     async def can_write(self):
         """True when the token may change the project's files, issues or pull requests."""
@@ -176,8 +192,9 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             return JSONResponse({"error": "Image inconnue."}, 400)
         gh = GitHub(token, repo if "/" in repo else "x/x", github_api, transport)
         try:
+            scopes = None
             try:
-                me = await gh.get("/user")
+                me, scopes = await gh.user()
             except httpx.HTTPStatusError as e:
                 r = e.response
                 if busy(r):
@@ -187,7 +204,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
                     return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
                 me = None
             refused = check_access(owner, (me or {}).get("login"), repo)
-            if not refused and await gh.can_write():
+            if not refused and (writable_scopes(scopes) or await gh.can_write()):
                 await gh.close()
                 return JSONResponse({"error": "Ce jeton peut modifier vos projets : la discussion n'accepte qu'un jeton de lecture.", "code": "writable"}, 403)
         except httpx.HTTPError:

@@ -60,7 +60,8 @@ class FakeGitHub:
                 raise self.user_error
             if self.user_status:
                 return httpx.Response(self.user_status, json={}, headers=self.user_headers)
-            return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"})
+            return httpx.Response(200, json={"login": "phoibe" if "good" in request.headers["authorization"] else "intrus"},
+                                  headers=self.user_headers)
         if method != "GET" and json.loads(request.content or b"null") == {}:
             # A write probe: GitHub refuses a read-only token before looking at the (empty) body; a writer gets a 422.
             auth = request.headers["authorization"]
@@ -169,6 +170,23 @@ class ServiceTest(unittest.TestCase):
         r, _ = self.post("goodissues", {"repo": "phoibe/habitudes", "message": "Salut"})
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
+
+    def test_a_classic_token_with_a_scope_beyond_reading_is_refused_even_when_the_probes_say_read_only(self):
+        # delete_repo, workflow, admin:* do not open contents, issues or pulls: only the token's scopes show them.
+        for scopes in ("delete_repo, workflow", "read:user, admin:repo_hook", "repo", "public_repo"):
+            self.gh.user_headers = {"x-oauth-scopes": scopes}
+            r, _ = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(r.status_code, 403, scopes)
+            self.assertEqual(r.json()["code"], "writable", scopes)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))  # the agent never ran
+
+    def test_a_read_only_classic_token_or_a_token_without_scopes_is_accepted(self):
+        # Fine-grained tokens send no x-oauth-scopes header (the default fake): the probes decide alone.
+        for scopes in ("", "read:user", "read:org, read:user", "user:email", "read:user,user:email"):
+            self.gh.user_headers = {"x-oauth-scopes": scopes}
+            r, events = self.post("good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(r.status_code, 200, scopes)
+            self.assertEqual(events[-1]["type"], "done", (scopes, events))
 
     def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
         self.gh.probe_limited = True
