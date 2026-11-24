@@ -135,3 +135,27 @@ test('finishesConversation: every card decided and at least one request created 
   assert.equal(finishesConversation([]), false);
   assert.equal(finishesConversation(), false);
 });
+
+// Review #556, finding 10: a request created on GitHub whose choice could not be recorded in the conversation must
+// stay « Créée », with its link, on this device: otherwise a reload shows the card pending and a second click makes a
+// second request.
+test('a request created but not yet recorded is remembered on this device with its link', async () => {
+  const { createdMarks } = await import('../panel/chat.mjs');
+  const saved = new Map();
+  const store = { get: (k) => saved.get(k) ?? null, set: (k, v) => saved.set(k, v), del: (k) => saved.delete(k) };
+  const marks = createdMarks(store, 'o/r');
+  assert.deepEqual([...marks.entries()], []);
+  marks.set('7:p1', 'https://github.com/o/r/issues/42');
+  assert.deepEqual([...saved.keys()], ['factory.chat.created.o/r']);
+  // After a reload: a new reader of the same store.
+  const again = createdMarks(store, 'o/r');
+  assert.deepEqual([...again.entries()], [['7:p1', { state: 'created', url: 'https://github.com/o/r/issues/42' }]]);
+  assert.deepEqual([...createdMarks(store, 'o/autre').entries()], [], 'one list per project');
+  again.delete('7:p1');
+  assert.equal(saved.size, 0, 'nothing left once recorded');
+  // Never a link outside GitHub, never a broken store.
+  store.set('factory.chat.created.o/r', JSON.stringify([['7:p2', 'https://evil.example/x'], ['x'], 'y']));
+  assert.deepEqual([...createdMarks(store, 'o/r').entries()], [['7:p2', { state: 'created', url: null }]]);
+  store.set('factory.chat.created.o/r', '{oops');
+  assert.deepEqual([...createdMarks(store, 'o/r').entries()], []);
+});

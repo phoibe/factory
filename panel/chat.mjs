@@ -331,6 +331,25 @@ function decisionsFrom(comments) {
   return out;
 }
 
+// A request created on GitHub whose choice is not recorded in the conversation yet (the record failed): kept on this
+// device, card key (`conversation:card`) → its link, so a reload shows it « Créée » and never creates it twice.
+// `store`: { get, set, del } over localStorage (review #556).
+export function createdMarks(store, repo) {
+  const key = `factory.chat.created.${repo}`;
+  const read = () => {
+    try {
+      const saved = JSON.parse(store.get(key) || '[]');
+      return new Map((Array.isArray(saved) ? saved : []).filter((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string'));
+    } catch { return new Map(); }
+  };
+  const save = (marks) => (marks.size ? store.set(key, JSON.stringify([...marks])) : store.del(key));
+  return {
+    entries: () => [...read()].map(([k, url]) => [k, { state: 'created', url: safeGithubUrl(url) || null }]),
+    set: (k, url) => { const marks = read(); marks.set(k, url); save(marks); },
+    delete: (k) => { const marks = read(); if (marks.delete(k)) save(marks); },
+  };
+}
+
 // Server mode: the card's state lives in the stored conversation. False when it was already decided or is unknown.
 export function decideProposal(conv, id, state, url) {
   const p = (conv?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);

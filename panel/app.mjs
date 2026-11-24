@@ -1,6 +1,6 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=26';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=26';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=4';
 import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=15';
@@ -2365,13 +2365,15 @@ function laterMarks(repo) {
   };
 }
 
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null) };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null), created: createdMarks(store, null), recording: false };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name) });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name), created: createdMarks(store, current.repo.full_name) });
+  // A request made here whose choice is not recorded yet shows « Créée » with its link (review #556).
+  chat.decided = new Map(chat.created.entries());
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2574,6 +2576,45 @@ async function refreshChat() {
     scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
     // In both modes (the instant one returns early above), issue #535.
     if (chat.repo === repo) finishWhenDone();
+    if (chat.repo === repo) recordCreated().catch(() => {});
+  }
+}
+
+// Review #556: a request created here whose choice could not be written in its conversation is written at a later
+// refresh. A card decided meanwhile (another device), or gone, only drops the mark: the request exists either way.
+async function recordCreated() {
+  const marks = chat.created, repo = chat.repo, server = chat.server;
+  const todo = marks.entries().filter(([key]) => !chat.deciding.has(key));
+  if (!todo.length || chat.recording) return;
+  chat.recording = true;
+  try {
+    for (const [key, { url }] of todo) {
+      const cut = key.lastIndexOf(':');
+      const open = key.slice(0, cut), id = key.slice(cut + 1);
+      try {
+        if (server) {
+          const path = `chats/${open}.json`;
+          const { data } = await chatFile(repo, path);
+          const card = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);
+          if (card?.state === 'pending') {
+            await writeChatFile(repo, path, (latest) => {
+              if (!latest || !decideProposal(latest, id, 'created', url)) throw new Error('not recorded');
+              return latest;
+            }, `chore(factory): chat ${open}`);
+          }
+        } else {
+          await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(id, 'created', url) }) });
+          // One more comment on the conversation: already seen, never a « new answer ».
+          if (chat.repo === repo && chat.seen[open] != null) {
+            chat.seen[open] += 1;
+            store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
+          }
+        }
+        marks.delete(key);
+      } catch { /* tried again at the next refresh */ }
+    }
+  } finally {
+    chat.recording = false;
   }
 }
 
@@ -2785,6 +2826,9 @@ async function decide(p, state) {
     }
     if (state === 'created') url = (await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(p)) })).html_url;
     decided.set(key, { state, ...(url ? { url } : {}) });
+    // Until the choice is in the conversation, this device remembers the request and its link (review #556).
+    const marks = chat.created;
+    if (url && !unsaved) marks.set(key, url);
     try {
       if (unsaved) decideProposal(unsaved, p.id, state, url);
       else if (server) {
@@ -2802,6 +2846,7 @@ async function decide(p, state) {
           store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
         }
       }
+      marks.delete(key);
       // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
       if (!unsaved && here()) {
         // An answer still on its way: the end waits for it (finishWhenDone, issue #521).
