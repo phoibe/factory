@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -71,6 +71,24 @@ test('when the push fails for another reason, it never blames branch protection'
   assert.match(out, /L'envoi des fichiers de la factory vers GitHub a échoué\. Rien n'a été modifié/);
   assert.match(out, /Détail technique : .*Permission/);
   assert.doesNotMatch(out, /protégée|Settings → Branches|C'est prêt/);
+});
+
+// Review #556 (D7): an empty repository has no default branch to clone.
+test('adopting an empty repository says so in French, with no raw git error, and leaves no temporary folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'factory-sh-tmp-'));
+  const err = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_EMPTY_REPO: '1', TMPDIR: tmp }).then(() => null, (e) => e);
+  assert.ok(err, 'the install must stop');
+  const out = err.stdout + err.stderr;
+  assert.match(out, /Le dépôt phoibe\/mon-appli est vide/);
+  assert.doesNotMatch(out, /fatal|Remote branch|C'est prêt/);
+  assert.deepEqual(readdirSync(tmp), [], 'the temporary folder is removed');
+});
+
+test('an adoption that stops on an error leaves no temporary folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'factory-sh-tmp-'));
+  const err = await run(['adopter', 'mon-appli'], ['', 'o', 'https://example.test/fire', 'tok', '', '', ''], { FAKE_CLONE_FAILS: '1', TMPDIR: tmp }).then(() => null, (e) => e);
+  assert.ok(err, 'the install must stop');
+  assert.deepEqual(readdirSync(tmp), []);
 });
 
 test('nouveau creates the repository from the template', async () => {

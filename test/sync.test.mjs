@@ -219,3 +219,18 @@ test('the documents PR is cut from the base with exact git commands, reused or r
   assert.match(docs, /fermée ou fusionnée/);
   assert.match(docs, /fusionnée entre-temps/, 'a docs PR merged meanwhile does not swallow the new commit');
 });
+
+// Review #556 (D3), guard: gate.mjs imports its helpers statically, so one missing script would switch the lock off
+// in every project. Every agent script is installed, and so is every script one of them imports.
+test('every agent script, and every script an installed one imports, is installed', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const out = join(dir, '.factory/scripts');
+  for (const f of readdirSync('agent/scripts').filter((x) => x.endsWith('.mjs'))) assert.ok(existsSync(join(out, f)), f);
+  for (const f of readdirSync(out).filter((x) => x.endsWith('.mjs'))) {
+    const src = readFileSync(join(out, f), 'utf8');
+    for (const m of src.matchAll(/(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      assert.ok(existsSync(join(out, m[1])), `${f} imports ${m[1]}`);
+    }
+  }
+});

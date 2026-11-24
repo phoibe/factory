@@ -6,9 +6,15 @@ case "$1 $2" in
   "api user") echo phoibe ;;
   "repo view")
     if [ "${3:-}" = phoibe/nouveau-projet ] && [ ! -f "$FAKE_GH_LOG.created" ]; then exit 1; fi
-    case " $* " in *defaultBranchRef*) echo main ;; esac ;;
+    # FAKE_EMPTY_REPO: a repository with no commit has no default branch (gh prints an empty line).
+    case " $* " in *defaultBranchRef*) [ -n "${FAKE_EMPTY_REPO:-}" ] && echo || echo main ;; esac ;;
   "repo create") touch "$FAKE_GH_LOG.created" ;;
-  "repo clone") mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE"
+  "repo clone")
+    # As git does when asked for a branch that does not exist.
+    case " $* " in *" --branch  "*|*" --branch ") echo "fatal: Remote branch  not found in upstream origin" >&2; exit 128 ;; esac
+    # FAKE_CLONE_FAILS: the download stops halfway (network), after git made the folder.
+    if [ -n "${FAKE_CLONE_FAILS:-}" ]; then mkdir -p "$4"; echo "fatal: early EOF" >&2; exit 128; fi
+    mkdir -p "$4" && git -C "$4" init -q -b main && printf '{}' > "$4/package.json" && git -C "$4" add -A && git -C "$4" -c user.name=t -c user.email=t@t commit -qm init && git -C "$4" remote add origin "$FAKE_REMOTE"
     # FAKE_ALREADY_INSTALLED: the repository already holds every factory file, as the template serves them.
     if [ -n "${FAKE_ALREADY_INSTALLED:-}" ]; then
       for f in .github/workflows/factory.yml .github/workflows/factory-sync.yml .github/ISSUE_TEMPLATE/feature.yml .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/project.yml .github/ISSUE_TEMPLATE/question.yml .github/ISSUE_TEMPLATE/config.yml; do

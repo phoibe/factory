@@ -54,7 +54,7 @@ test('the hook beats at most every ten minutes, and only for a factory run', () 
 
 test('the beat edits the « Dernier lancement » comment of the issue and of the PR, and survives a GitHub failure', () => {
   const calls = [];
-  const comments = { 7: [{ id: 1, body: 'hello' }, { id: 2, body: `${SESSION_MARKER}\nDernier lancement` }], 9: [] };
+  const comments = { 7: [{ id: 1, body: 'hello' }, { id: 2, body: `${SESSION_MARKER}\nDernier lancement`, user: { login: 'github-actions[bot]' } }], 9: [] };
   const gh = (args) => {
     calls.push(args);
     if (args[1].includes('/issues/9/')) throw new Error('boom');
@@ -67,4 +67,19 @@ test('the beat edits the « Dernier lancement » comment of the issue and of the
   assert.equal(aliveAt(patch[5]), Date.parse('2026-11-16T18:00:00.000Z'));
   assert.ok(patch[5].includes('Dernier lancement'));
   assert.equal(calls.filter((a) => a.includes('PATCH')).length, 1);
+});
+
+// Review #556 (D5): on a public project anyone can post the marker. Only the factory's comment gets the beat, as in
+// the relay (scripts/relay/state.mjs signOfLife).
+test("the beat edits the factory's comment, never a stranger's that carries the marker", () => {
+  const stranger = { id: 3, body: `${SESSION_MARKER}\nx`, user: { login: 'someone' }, author_association: 'NONE' };
+  const factory = { id: 4, body: `${SESSION_MARKER}\nDernier lancement`, user: { login: 'github-actions[bot]' }, author_association: 'NONE' };
+  const patched = (list) => {
+    const calls = [];
+    beat({ repo: 'phoibe/app', issue: 7, iso: '2026-11-16T18:00:00.000Z' }, (args) => { calls.push(args); return args.includes('PATCH') ? '{}' : JSON.stringify(list); });
+    return calls.filter((a) => a.includes('PATCH')).map((a) => a[3]);
+  };
+  assert.deepEqual(patched([stranger, factory]), ['repos/phoibe/app/issues/comments/4']);
+  assert.deepEqual(patched([stranger]), []);
+  assert.deepEqual(patched([{ ...stranger, user: { login: 'Phoibe' } }]), ['repos/phoibe/app/issues/comments/3'], 'the owner counts');
 });
