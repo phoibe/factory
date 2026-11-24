@@ -14,3 +14,6 @@
 {"t":"2026-11-24T13:47:23.136Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-24T13:47:50.201Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\na=…\nassert s.count(a)==1\ns=… les fiches ouvertes par le propriétaire, par une personne qui a les droits d'écriture sur le dépôt (propriétaire, membre ou collaborateur) ou par","ok":true,"id":"toolu_013BJKcwqMU2cW7mAvTc8giq"}
 {"t":"2026-11-24T13:48:10.175Z","kind":"skill","name":"requesting-code-review","id":"toolu_01EeREAj8BNFipqgGUsWBBEi"}
+{"t":"2026-11-24T13:48:22.361Z","kind":"agent","model":"fable","effort":"high","label":"Review code changes","id":"toolu_018vAVgrFLJmQ9AEJYkuxout"}
+{"t":"2026-11-24T13:50:42.794Z","kind":"test","cmd":"S=… mkdir -p $S/head && cd /home/user/factory && git archive f2962ac9509e467451af62ce5fb31f02012d938f | tar -x -C $S/head && cd $S/head && (node --test test/relay.test.mjs test/relay-launches.test.mjs","ok":true,"id":"toolu_011fK1XHnc7hG1NT1evqgCqx"}
+{"t":"2026-11-24T13:51:13.498Z","kind":"test","cmd":"S=… cd $S/head && cp scripts/relay/launches.mjs $S/launches.fixed.mjs && sed -i \"/\\.filter((i) => trustedAuthor(i, String(repo || '').split('\\/')\\[0\\]))/d\" scripts/relay/launches.mjs && grep -c \"trust","ok":false,"id":"toolu_01QfezhzswLNq6QKS7MNNz3E"}
