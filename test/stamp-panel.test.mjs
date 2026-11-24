@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { join, basename, relative, extname, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { SHARED, isBuild, stampModule, stampHtml, buildSite } from '../scripts/stamp-panel.mjs';
@@ -84,4 +84,65 @@ test('an empty build is refused and nothing is written', () => {
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
+});
+
+test('no hand-kept number in the sources', () => {
+  const sources = walk(PANEL)
+    .filter((f) => !f.startsWith('vendor/') && !f.startsWith('fonts/') && /\.(mjs|html|css)$/.test(f))
+    .map((f) => join(PANEL, f))
+    .concat(SHARED.filter((f) => f.endsWith('.mjs')).map((f) => join(ROOT, f)));
+  const found = [];
+  for (const file of sources) {
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      if (/\.\w+\?v=/.test(line)) found.push(`${relative(ROOT, file)}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(found, [], `hand-kept ?v= numbers left in:\n${found.join('\n')}`);
+});
+
+test('no published file escapes the stamp', () => {
+  const out = mkdtempSync(join(tmpdir(), 'site-'));
+  try {
+    buildSite({ out, build: B });
+    const site = new Set(walk(out));
+    // Checks written independently of the stamper's own patterns.
+    for (const file of [...site].filter((f) => f.endsWith('.mjs'))) {
+      const text = readFileSync(join(out, file), 'utf8');
+      for (const m of text.matchAll(/(['"`])(\.{1,2}\/[^'"`\s]*?\.m?js)(\?[^'"`]*)?\1/g)) {
+        assert.equal(m[3], `?v=${B}`, `${file}: ${m[0]} is not stamped`);
+        const target = posix.normalize(posix.join(posix.dirname(file), m[2]));
+        assert.ok(site.has(target), `${file}: ${m[2]} is not published`);
+      }
+    }
+    const html = readFileSync(join(out, 'index.html'), 'utf8');
+    let mjs = 0;
+    let css = 0;
+    for (const [, value] of html.matchAll(/\b(?:src|href)="([^"]*)"/g)) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith('#')) continue;
+      if (value.endsWith(`?v=${B}`)) {
+        if (value.includes('.mjs?')) mjs++;
+        if (value.includes('.css?')) css++;
+        continue;
+      }
+      assert.ok(['.svg', '.png'].includes(extname(value)), `index.html: ${value} is neither stamped nor an icon`);
+    }
+    assert.ok(mjs >= 1, 'index.html stamps a module');
+    assert.ok(css >= 1, 'index.html stamps a stylesheet');
+    for (const file of [...site].filter((f) => f.endsWith('.css'))) {
+      const text = readFileSync(join(out, file), 'utf8');
+      assert.ok(!text.includes('@import'), `${file}: @import is not stamped`);
+      for (const [, raw] of text.matchAll(/url\(([^)]*)\)/g)) {
+        const target = raw.trim().replace(/^['"]|['"]$/g, '').split(/[?#]/)[0];
+        assert.ok(['.woff2', '.svg', '.png'].includes(extname(target)), `${file}: url(${raw}) is not stamped`);
+      }
+    }
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('the run-time loads follow the build', () => {
+  const app = readFileSync(join(PANEL, 'app.mjs'), 'utf8');
+  for (const load of ["versioned('catalog.json', BUILD)", "versioned('factory.config.json', BUILD)", "versioned('vendor/qrcode.js', BUILD)",
+    "fetch('chat-server.json', { cache: 'no-store' })"]) assert.ok(app.includes(load), load);
 });

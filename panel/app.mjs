@@ -1,13 +1,13 @@
-import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
+import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView, isDeployed, versioned } from './lib.mjs';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=25';
-import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
-import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=3';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
-import { waitedFor } from './waits.mjs?v=2';
-import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, WRITE_PROBES, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs';
+import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs';
+import { waitedFor } from './waits.mjs';
+import { readRelaunch, relaunchLine } from './relaunch.mjs';
 import { trustNotes } from './trust.mjs';
-import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
+import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
 import { watchNumbers } from './numbers.mjs';
@@ -16,11 +16,11 @@ import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs?v=2';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=7';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -1743,12 +1743,12 @@ if ('ResizeObserver' in window) {
   for (const n of document.querySelectorAll('.top, .project-head, .tabs')) watch.observe(n);
 }
 
-// A new panel version is deployed (version.json, written by pages.yml) while this tab still runs the old one:
+// A new panel version is deployed (version.json, written by scripts/stamp-panel.mjs) while this tab still runs the old one:
 // reload by itself, as soon as nothing typed would be lost. Checked every minute and when the tab comes back.
 const BUILD = document.querySelector('meta[name="build"]')?.content || '';
 let toldBuild = null; // the new version the owner was already told about
 async function checkVersion() {
-  if (!/^[0-9a-f]{7,}$/.test(BUILD)) return; // local copy, not a deployed one
+  if (!isDeployed(BUILD)) return; // local copy, not a deployed one
   const live = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!live?.build || live.build === BUILD) return;
   // Nothing in flight is lost either: an answer still arriving, images waiting to be sent.
@@ -1774,7 +1774,7 @@ async function start() {
   try {
     if (!catalog) {
       let server;
-      [catalog, defaults, server] = await Promise.all([fetchJson('catalog.json'), fetchJson('factory.config.json'),
+      [catalog, defaults, server] = await Promise.all([fetchJson(versioned('catalog.json', BUILD)), fetchJson(versioned('factory.config.json', BUILD)),
         fetch('chat-server.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
       chat.server = chatServerUrl(server?.url);
     }
@@ -2163,7 +2163,7 @@ function loadScript(src) {
 
 async function openPhone() {
   const link = phoneLink(location.href, token, readToken);
-  if (!window.qrcode) await loadScript('vendor/qrcode.js');
+  if (!window.qrcode) await loadScript(versioned('vendor/qrcode.js', BUILD));
   const qr = window.qrcode(0, 'M');
   qr.addData(link);
   qr.make();
