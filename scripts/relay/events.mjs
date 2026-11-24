@@ -3,6 +3,7 @@
 import { decide, afterChecks } from '../lib/decide.mjs';
 import { L, closeReason, CLOSE_REASONS, AGENT_MARKER, CHECKS_FAILED_MARKER, CHECKS_RESET_MARKER, VISUAL_OK_MARKER, NOTHING_TO_TEST_MARKER, REVERT_MARKER } from '../lib/labels.mjs';
 import { isRateLimited } from '../lib/ratelimit.mjs';
+import { trustBodies } from '../lib/trust.mjs';
 import { CATCH_UP, FABRICATION_MARKER, parseJournal, smallChange, summarize, uiChanged } from '../lib/fabrication.mjs';
 import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD } from '../lib/outage.mjs';
 import { toJobOutput } from '../lib/job-output.mjs';
@@ -10,6 +11,8 @@ import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
 import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, checksTimeoutMs, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
+
+const CLOSED_TOLD = "Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle.";
 
 // Normalises a GitHub webhook payload into the shape decide() expects.
 export function eventFromPayload(eventName, p, now = Date.now()) {
@@ -35,12 +38,20 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return { ...base, kind: 'dispatch', payload, labels: [] };
   }
   if (eventName === 'schedule') return { ...base, kind: 'tick', number: null, labels: [], fromOwner: false };
+  // Issue #557: the request as GitHub sent it with the event, its notes taken out (an outsider's on a public project):
+  // a copy is made from this text, not from one its author could change before the relay reads it.
+  const snapshotOf = (issue) => {
+    if (!issue || issue.pull_request) return undefined;
+    const seen = p.repository?.private === true ? issue : trustBodies(issue, owner);
+    return { title: String(seen.title ?? ''), body: String(seen.body ?? '') };
+  };
   if (eventName === 'issues') {
     return {
       ...base, kind: 'issue', number: p.issue.number, labels: names(p.issue.labels),
-      fromAgent: (p.issue.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
+      // An outsider's agent note on a public project is not the agent's (issue #557).
+      fromAgent: ((p.repository?.private === true ? p.issue : trustBodies(p.issue, owner))?.body || '').includes(AGENT_MARKER), fromOwner: isOwnerOrApp(p.sender?.login),
       // An issue form with labels sends "opened" and "labeled" together: the "labeled" one must not start it twice.
-      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000,
+      openedRecently: now - Date.parse(p.issue.created_at || 0) < 60_000, snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'issue_comment') {
@@ -48,6 +59,8 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: p.issue.pull_request ? 'pr' : 'issue', number: p.issue.number, labels: names(p.issue.labels),
       text: body, commentId: p.comment?.id, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.comment?.user?.login === owner,
+      fromApp: p.comment?.user?.login === 'claude[bot]',
+      snapshot: snapshotOf(p.issue),
     };
   }
   if (eventName === 'pull_request_review') {
@@ -56,6 +69,7 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
     return {
       ...base, kind: 'pr', number: p.pull_request.number, labels: names(p.pull_request.labels),
       text: body, fromAgent: body.includes(AGENT_MARKER), fromOwner: p.review?.user?.login === owner,
+      fromApp: p.review?.user?.login === 'claude[bot]',
     };
   }
   if (eventName === 'pull_request') {
@@ -67,6 +81,10 @@ export function eventFromPayload(eventName, p, now = Date.now()) {
   return { ...base, kind: 'none', number: null, labels: [], fromOwner: false };
 }
 
+// A comment or review written by neither the owner nor the Claude app (the agent writes as one of them): on a public
+// project anyone can write one. It decides nothing (decide.mjs), so it takes neither the queue lock (relay.mjs) nor a
+// relay pass: the tick does the guard work. Its text is not looked at: the agent's marker can be copied.
+export const strangerMessage = (ev) => ['issue_comment', 'pull_request_review'].includes(ev?.event) && !ev.fromOwner && !ev.fromApp;
 
 export function eventsPart(ctx) {
   const { gh, repo, config, now, log, sleep, outputs } = ctx;
@@ -75,6 +93,7 @@ export function eventsPart(ctx) {
   const postedCaptures = (...a) => ctx.postedCaptures(...a);
   const inFlight = (...a) => ctx.inFlight(...a);
   const lockFresh = (...a) => ctx.lockFresh(...a);
+  const fromFork = (...a) => ctx.fromFork(...a);
   const launch = (...a) => ctx.launch(...a);
   const relaunchOnMessage = (...a) => ctx.relaunchOnMessage(...a);
   const fireOrBlock = (...a) => ctx.fireOrBlock(...a);
@@ -92,6 +111,7 @@ export function eventsPart(ctx) {
   const closeMerged = (...a) => ctx.closeMerged(...a);
   const deferredMessage = (...a) => ctx.deferredMessage(...a);
   const notifyWaiting = (...a) => ctx.notifyWaiting(...a);
+  const takeOver = (...a) => ctx.takeOver(...a);
 
   // The captures table, built from the images the agent pushed on the assets branch (latest folder of the PR) and
   // posted by the factory's own bot (issue #378): on #373 the agent's tool wrote a right table, yet its dark rows
@@ -223,6 +243,7 @@ export function eventsPart(ctx) {
   }
 
   async function handle(ev, { ownerLogin } = {}) {
+    if (strangerMessage(ev)) return { action: { type: 'ignore', reason: "message de quelqu'un d'autre que le propriétaire" }, outputs };
     if (!['dispatch', 'preview-check', 'prod-check'].includes(ev.kind)) await repairLabels().catch((e) => log(`labels: ${e.message}`));
     const result = await handleEvent(ev, { ownerLogin });
     // A PR in conflict with main gets no pull_request event at all, and GitHub's scheduled tick is too rare to
@@ -241,6 +262,8 @@ export function eventsPart(ctx) {
 
   async function handleEvent(ev, { ownerLogin } = {}) {
     if (ev.kind === 'dispatch') {
+      // A « Run workflow » with no payload: nothing to give the agent, so no agent job.
+      if (!ev.payload) return { action: { type: 'ignore', reason: 'rien à lancer' }, outputs };
       outputs.agent = 'true';
       outputs.payload = toJobOutput(ev.payload); // hex, see job-output.mjs
       return { action: { type: 'agent' }, outputs };
@@ -269,8 +292,11 @@ export function eventsPart(ctx) {
       const issue = await gh.getIssue(ev.number);
       ev = { ...ev, kind: issue?.pull_request ? 'pr' : 'issue' };
     }
+    // A request opened by an outsider on a public project (issue #557): the owner's word there starts a copy.
+    let outsider = false;
     if (ev.kind !== 'none' && ev.number) {
       const live = await gh.getIssue(ev.number);
+      outsider = ev.kind === 'issue' && live?.untrusted === true;
       ev = { ...ev, labels: names(live?.labels), closed: live?.state === 'closed', ...(live && ev.kind === 'pr' ? { open: live.state === 'open', merged: live.pull_request?.merged_at || null } : {}) }; // webhook labels can be stale
       ctx.lockFresh = await lockFresh(ev.number, ev.labels);
       ctx.inFlight = await inFlight(null, ev.kind === 'issue' ? ev.number : null);
@@ -298,6 +324,10 @@ export function eventsPart(ctx) {
     log(`decision: ${action.type}${action.stage ? ` ${action.stage}` : ''} (${action.reason || ''})`);
     const n = ev.number;
     let said = ev.text;
+    // The owner's own word or gesture (a message, a label, a request he opens): not the agent's end of run, whose
+    // unlabeled event also comes as the owner's.
+    const ownerGesture = (ev.event === 'issue_comment' && ev.action === 'created') || (ev.event === 'issues' && ['labeled', 'opened'].includes(ev.action));
+    let ownerSaid = Boolean(ev.fromOwner && !ev.fromAgent && ownerGesture);
     // A PR that was not waiting for the owner (checks, fix) goes with the resumed run: at its end, the PR is at no step
     // and its checks start again.
     let reopenedPr = null;
@@ -316,7 +346,17 @@ export function eventsPart(ctx) {
       const replayed = { ...ev, event: 'issue_comment', action: 'created', text, fromOwner: true, fromAgent: false, labels: await liveLabels(n) };
       action = decide(replayed, config, { ...ctx, lockFresh: false, inFlight: await inFlight() });
       said = text;
+      ownerSaid = true;
       log(`replayed decision: ${action.type}${action.stage ? ` ${action.stage}` : ''}`);
+    }
+    if (outsider && ownerSaid && ['fire', 'queue'].includes(action.type)) {
+      const taken = await takeOver(n, { message: said, ownerLogin, snapshot: ev.snapshot });
+      if (taken) return { action: taken, outputs };
+      // No copy (a closed request, one gone, or one with no kind of request): an outsider's request never starts
+      // anything itself, not even a question's answer.
+      log('outsider request not taken over: nothing is started');
+      if (ev.closed) await gh.comment(n, say(CLOSED_TOLD));
+      return { action: { type: 'ignore', reason: ev.closed ? "demande d'un inconnu fermée" : "demande d'un inconnu sans type de demande : pas de copie" }, outputs };
     }
     if (await relaunchOnMessage(ev, action, said)) return { action: { type: 'relaunch', reason: 'lancement en attente : relancé tout de suite' }, outputs };
     // A card blocked by a long outage: « réessaie » relaunches the checks, there is nothing for the agent to do.
@@ -333,7 +373,7 @@ export function eventsPart(ctx) {
     // would otherwise send a closed issue back to grilling.
     if (action.type === 'fire' && ev.kind === 'issue' && ev.closed && action.stage !== 'question') {
       log('closed issue: nothing is started');
-      await gh.comment(n, say("Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle."));
+      await gh.comment(n, say(CLOSED_TOLD));
       return { action: { type: 'ignore', reason: 'issue fermée' }, outputs };
     }
     // A PR closed by hand (GitHub's button keeps its labels): a later « ok » or remark must not merge it or start
@@ -467,9 +507,12 @@ export function eventsPart(ctx) {
   // `preview`: the result of the preview check ({ result: passed|failed|skipped, url }) when this report follows it.
   // `transient`: the checks failed on a passing outage (network, GitHub), not on the code (issue #213); 'server' when the
   // project's own machine was away (a check that only runs there).
-  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false }) {
+  // `fromTick`: made again by the tick (reportLost), so no report job follows to start the first retry after an outage.
+  async function report({ result, pr: prNumber, runId, sha, started = null, now: nowMs = now(), preview = null, transient = false, fromTick = false }) {
     let pr = await gh.getPr(prNumber);
     if (!pr) return log(`report: PR #${prNumber} no longer exists`);
+    // A PR from a fork is never the factory's: none of the notes in its description is read, nothing is merged.
+    if (fromFork(pr)) return log(`report: PR #${prNumber} comes from a fork, left alone`);
     if (sha && pr.head.sha !== sha) return log('stale report: the PR changed since these checks ran');
     // Same commit but cancelled: the checks hit their time limit (a hung test). Treat it as red, with its reason.
     if (result === 'cancelled' && !sha) return log('checks cancelled before they started: nothing to report');
@@ -494,7 +537,7 @@ export function eventsPart(ctx) {
     }
     const timedOut = result === 'cancelled';
     if (timedOut) result = 'failure';
-    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient);
+    if (result === 'failure' && transient && !timedOut) return onOutage(pr, nowMs, transient, { fromTick });
     // Any other result ends the outage: a later one starts a new schedule.
     if (readOutage(pr.body)) {
       pr = { ...pr, body: writeOutage(pr.body, null) };
@@ -608,12 +651,22 @@ export function eventsPart(ctx) {
   // Checks that failed on an outage: silent retries, then one sentence on the PR, then blocked after 3 hours. The agent
   // is never sent and no fix attempt is counted (no CHECKS_FAILED_MARKER). The first retry, about 2 minutes later, is
   // started by the report job itself once the lock is released (outputs.retryInMs); the next ones by the tick.
-  async function onOutage(pr, nowMs, cause) {
-    const step = outageStep(readOutage(pr.body), { sha: pr.head.sha, now: nowMs });
+  // From the tick (`fromTick`, a lost report made again), no report job follows, and the tick replays the same lost
+  // report at every pass until new checks run: it keeps the retry already planned for this commit (retryOutages starts
+  // it when due) instead of moving it forward each time, which used to delay every retry until the 3 hours had passed.
+  // With none planned yet, the first retry is left to the tick itself, due after the short delay with no margin.
+  async function onOutage(pr, nowMs, cause, { fromTick = false } = {}) {
+    const known = readOutage(pr.body);
+    const step = outageStep(known, { sha: pr.head.sha, now: nowMs });
     let st = step.state;
     const server = cause === 'server' || (cause === true && st.server);
     if (server) st = { ...st, server: true };
-    if (step.retryInMs) {
+    const planned = fromTick && known?.sha === pr.head.sha && !known.blocked && known.next ? known.next : null;
+    if (planned && step.action !== 'block') {
+      st = { ...st, next: planned };
+    } else if (step.retryInMs && fromTick) {
+      st = { ...st, next: nowMs + step.retryInMs };
+    } else if (step.retryInMs) {
       st = { ...st, tries: st.tries + 1, next: nowMs + step.retryInMs + OUTAGE_LOST_MS };
       outputs.retryInMs = step.retryInMs;
     }

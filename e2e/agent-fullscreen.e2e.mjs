@@ -162,3 +162,17 @@ test('passer en plein écran, rétrécir la fenêtre à la taille d\'un téléph
     assert.equal(await page.getByRole('tab', { name: 'Suivi' }).isVisible(), true);
   });
 });
+
+// Review #556, finding 3: the full-screen rule removes main's padding; the general page must not inherit it.
+test('ouvrir les Réglages généraux en plein écran quitte le plein écran et garde la marge', async () => {
+  await withPanel({ issues: [question], comments: thread, repos, viewport: desk }, async ({ page, url }) => {
+    await openAgent(page, url);
+    await full(page).click();
+    await normal(page).waitFor();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await page.evaluate(() => document.body.classList.contains('chat-fullscreen')), false);
+    const pad = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('main')); return [parseFloat(s.paddingLeft), parseFloat(s.paddingRight)]; });
+    assert.ok(pad.every((p) => p >= 16), `main padding ${pad.join(' / ')} px`);
+  });
+});

@@ -5,6 +5,7 @@ import os
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 
@@ -26,6 +27,16 @@ open(args[0] + ".args", "w").write(json.dumps(args[1:]))
 open(args[0] + ".env", "w").write(json.dumps(dict(os.environ)))
 if "LENT" in prompt:
     time.sleep(30)
+if "ATTENDS" in prompt:  # a long answer, logged next to git's commands
+    open(args[0] + ".log", "a").write("claude start\n")
+    time.sleep(1.5)
+    open(args[0] + ".log", "a").write("claude end\n")
+if "BAVARD" in prompt:  # more on stderr than the server buffers (2 x 16 MB) before the answer
+    sys.stderr.write("avertissement\n" * 3000000)
+    sys.stderr.flush()
+    if "PANNE" in prompt:
+        sys.stderr.write("la vraie erreur\n")
+        sys.exit(1)
 def out(o): print(json.dumps(o), flush=True)
 out({"type": "system", "subtype": "init"})
 out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Je regarde"}}})
@@ -186,6 +197,17 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "writable")
 
+    def test_a_classic_token_with_any_scope_is_refused_even_when_the_probes_say_read_only(self):
+        # delete_repo, workflow, admin:* do not show in every probe: GitHub giving the token scopes is enough to refuse it,
+        # the read-only ones too (issue #558: only fine-grained tokens are accepted).
+        for scopes in ("delete_repo, workflow", "read:user, admin:repo_hook", "repo", "public_repo", "read:user",
+                       "read:org, read:user", "user:email", "read:user,user:email"):
+            self.gh.user_headers = {"x-oauth-scopes": scopes}
+            r, _ = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+            self.assertEqual(r.status_code, 403, scopes)
+            self.assertEqual(r.json()["code"], "classic", scopes)
+        self.assertFalse(os.path.exists(self.claude + ".prompt"))  # the agent never ran
+
     def test_a_token_that_can_launch_automated_tasks_or_change_settings_is_refused(self):
         # Issue #558: each new probe alone is enough to refuse the token.
         sha = self.gh.head
@@ -266,6 +288,15 @@ class ServiceTest(unittest.TestCase):
         self.assertIn("[Toi] Non, pas encore.", open(self.claude + ".prompt").read())
         answer = next(e for e in events if e["type"] == "answer")
         self.assertEqual(answer["conversation"], {"id": cid, "title": "Début"})
+
+    def test_a_stored_conversation_without_a_title_still_gets_one(self):
+        cid = "20261113-101010-abcde"
+        for stored in ({"id": cid, "messages": [{"text": "Début"}]}, ["pas", "un", "objet"]):
+            self.gh.files[f"chats/{cid}.json"] = json.dumps(stored).encode()
+            r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "conversation": cid, "message": "Et en CSV ?"})
+            self.assertEqual(events[-1]["type"], "done", events[-2:])
+            answer = next(e for e in events if e["type"] == "answer")
+            self.assertEqual(answer["conversation"], {"id": cid, "title": "Et en CSV ?"}, stored)
 
     def test_a_very_long_conversation_still_gets_an_answer(self):
         cid = self.start_conversation()
@@ -415,6 +446,50 @@ class ServiceTest(unittest.TestCase):
         self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
         r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "LENT"})
         self.assertEqual(events[-1]["type"], "error", events)
+
+    # 42 MB of stderr against a 2 x 16 MB pipe buffer: without the fix the stream stalls for good, so a limit far
+    # above the second this takes still proves it, and leaves room on a slow, busy runner.
+    def test_a_lot_of_stderr_does_not_stall_the_answer(self):
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 10
+        self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "BAVARD"})
+        self.assertEqual(events[-1]["type"], "done", events[-2:])
+
+    def test_a_lot_of_stderr_before_a_crash_gives_the_real_error(self):
+        pause, service.CLAUDE_TIMEOUT = service.CLAUDE_TIMEOUT, 10
+        self.addCleanup(setattr, service, "CLAUDE_TIMEOUT", pause)
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "BAVARD PANNE"})
+        self.assertEqual(events[-1]["type"], "error", events[-2:])
+        self.assertIn("la vraie erreur", events[-1]["message"])
+
+    def test_the_copy_is_not_refreshed_while_an_answer_reads_it(self):
+        pause, service.FETCH_EVERY = service.FETCH_EVERY, 0  # every message would fetch, reset and clean the copy
+        self.addCleanup(setattr, service, "FETCH_EVERY", pause)
+        log = self.claude + ".log"
+        logged_git = os.path.join(self.tmp, "git-logged")
+        with open(logged_git, "w") as f:
+            f.write(f'#!/bin/sh\necho "git $1 $2 $3 $4 $5" >> "{log}"\nexec git "$@"\n')
+        os.chmod(logged_git, os.stat(logged_git).st_mode | stat.S_IEXEC)
+        src = os.path.join(self.tmp, "src")
+        app = create_app("phoibe", claude_bin=self.claude, repos_dir=os.path.join(self.tmp, "repos-shared"), git_url=src,
+                         git_bin=logged_git, transport=httpx.MockTransport(self.gh))
+        results = {}
+        with TestClient(app) as client:
+            def send(name, message):
+                r = client.post("/chat", json={"repo": "phoibe/habitudes", "message": message}, headers={"authorization": "Bearer github_pat_good"})
+                results[name] = [json.loads(l) for l in r.text.splitlines() if l.strip()]
+            first = threading.Thread(target=send, args=("first", "ATTENDS"))
+            first.start()
+            deadline = time.monotonic() + 10
+            while not (os.path.exists(log) and "claude start" in open(log).read()) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            send("second", "Deux")
+            first.join()
+        self.assertEqual(results["first"][-1]["type"], "done", results["first"][-2:])
+        self.assertEqual(results["second"][-1]["type"], "done", results["second"][-2:])
+        lines = open(log).read().splitlines()
+        during = lines[lines.index("claude start"):lines.index("claude end")]
+        self.assertFalse([l for l in during if " reset " in f" {l} " or " clean " in f" {l} "], lines)
 
     def test_the_owner_is_compared_ignoring_case(self):
         r, events = self.post("github_pat_good", {"repo": "Phoibe/habitudes", "message": "Salut"})

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withLock } from '../scripts/lib/lock.mjs';
+import { withLock, isLockTimeout } from '../scripts/lib/lock.mjs';
 import { createRelay } from '../scripts/relay.mjs';
 import { L } from '../scripts/lib/labels.mjs';
 
@@ -124,4 +124,15 @@ test('a takeover that changes nothing does not spin forever: the wait limit stil
   let takeOvers = 0; // a broken loop never yields to timers: it fails here instead of hanging the suite
   const store = { acquire: async () => false, ageMs: async () => 1001, takeOver: async () => { if (++takeOvers > 100) throw new Error('takeOver keeps spinning'); }, release: async () => {} };
   await assert.rejects(withLock(store, async () => {}, { ttlMs: 1000, waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }), /waited too long/);
+});
+
+// A run that waited its whole time for the lock did nothing wrong: it is marked so that the tick re-runs it.
+test('the « waited too long » error says so, and only it does', async () => {
+  let t = 0;
+  const store = { acquire: async () => false, ageMs: async () => 10, release: async () => {} };
+  const e = await withLock(store, async () => {}, { waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }).catch((x) => x);
+  assert.match(e.message, /waited too long/);
+  assert.equal(e.lockTimeout, true);
+  assert.equal(isLockTimeout(e), true);
+  assert.equal(isLockTimeout(new Error('boom')), false);
 });

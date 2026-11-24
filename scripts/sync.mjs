@@ -109,8 +109,8 @@ export function sync({ projectDir, factoryDir = FACTORY_DIR }) {
   for (const f of readdirSync(join(factoryDir, 'agent/stages'))) {
     writeFileSync(join(outDir, 'stages', f), render(readFileSync(join(factoryDir, 'agent/stages', f), 'utf8'), vars));
   }
-  cpSync(join(factoryDir, 'agent/scripts/shots.mjs'), join(outDir, 'scripts/shots.mjs'));
-  for (const f of ['journal.mjs', 'fabrication.mjs', 'journal-check.mjs', 'gate.mjs', 'run-root.mjs', 'transcript.mjs', 'specs.mjs', 'frozen-clock.mjs', 'alive.mjs', 'upstream.mjs']) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
+  // Every agent script: the hooks import each other statically, so a missing one would switch the lock off.
+  for (const f of readdirSync(join(factoryDir, 'agent/scripts')).filter((x) => x.endsWith('.mjs'))) cpSync(join(factoryDir, 'agent/scripts', f), join(outDir, 'scripts', f));
   const settingsPath = join(projectDir, '.claude/settings.json');
   writeFileSync(settingsPath, JSON.stringify(withJournalHook(readJson(settingsPath, {})), null, 2) + '\n');
   writeFileSync(donePath, JSON.stringify({ done: evaluated || done.length ? [...new Set([...done, ...MIGRATIONS.map((m) => m.id)])] : done }, null, 2) + '\n');

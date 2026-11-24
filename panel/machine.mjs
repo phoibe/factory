@@ -1,3 +1,20 @@
+import { fromBase64 } from './lib.mjs?v=28';
+
+// ---- The factory's runner files (settings.json, status.json on its factory-runners branch) ---------------------------
+// `api(url, init)` is the panel's GitHub call. Never from the browser's cache: GitHub lets it keep `contents` 60 s and
+// the PUT (no `?ref=`) does not invalidate this GET, so an old sha would fail the next save (review #556).
+// `unreadable` is true when the answer is anything but the file or a 404, or when the file is not valid JSON (the
+// general page must not overwrite it then).
+export async function readRunnersFile(api, path) {
+  try {
+    const f = await api(`/repos/phoibe/factory/contents/${path}?ref=factory-runners`, { cache: 'no-store' });
+    if (!f?.content) return { json: null, sha: null, unreadable: false };
+    try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha, unreadable: false }; } catch { return { json: null, sha: f.sha, unreadable: true }; }
+  } catch (e) {
+    return { json: null, sha: null, unreadable: e?.status !== 404 };
+  }
+}
+
 // The « Machine des tâches » line of the settings (issue #271), from the dev server check's status file.
 // `hash`: the project's key in that file (repoKey); `project`: its own setting, `default` follows `general`.
 // `created`: the repository's creation date; `now`: for tests (issue #504).

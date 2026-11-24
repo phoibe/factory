@@ -18,7 +18,7 @@ const STUB = `globalThis.fetch = async (url, init = {}) => {
   return json(200, []);
 };`;
 
-function runRelay(command, event) {
+function runRelay(command, event, eventName = 'schedule') {
   const dir = mkdtempSync(join(tmpdir(), 'relay-cli-'));
   writeFileSync(join(dir, 'stub.mjs'), STUB);
   writeFileSync(join(dir, 'event.json'), JSON.stringify(event));
@@ -26,7 +26,7 @@ function runRelay(command, event) {
   writeFileSync(out, '');
   const r = spawnSync(process.execPath, ['--import', join(dir, 'stub.mjs'), RELAY, command], {
     encoding: 'utf8', timeout: 60_000,
-    env: { PATH: process.env.PATH, GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o', GITHUB_TOKEN: 't', GITHUB_EVENT_NAME: 'schedule', GITHUB_EVENT_PATH: join(dir, 'event.json'), GITHUB_OUTPUT: out },
+    env: { PATH: process.env.PATH, GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o', GITHUB_TOKEN: 't', GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: join(dir, 'event.json'), GITHUB_OUTPUT: out },
   });
   try { return { ...r, outputs: readFileSync(out, 'utf8') }; } finally { rmSync(dir, { recursive: true, force: true }); }
 }
@@ -57,4 +57,29 @@ test('each relay run ends by printing its GitHub reads, free answers and reserve
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /GitHub usage: \d+ counted reads, \d+ free \(304\), \d+ writes, reserve/);
   assert.match(r.stdout, /\n {2}\d+ GET \/repos\/\{repo\}\//);
+});
+
+// A decide, release or report run that waited too long for the queue lock ends on the step the tick re-runs (it
+// writes the `ratelimited` output), instead of failing for good with its event lost.
+test('a run that waited too long for the queue lock is re-run by the tick, only for the commands that can be', async () => {
+  const { retriedLater } = await import('../scripts/relay.mjs');
+  const { withLock } = await import('../scripts/lib/lock.mjs');
+  let t = 0;
+  const store = { acquire: async () => false, ageMs: async () => 10, release: async () => {} };
+  const e = await withLock(store, async () => {}, { waitMs: 5000, pollMs: 1000, sleep: async (ms) => { t += ms; }, now: () => t }).catch((x) => x);
+  for (const command of ['decide', 'release', 'report']) assert.equal(retriedLater(command, e), true, command);
+  assert.equal(retriedLater('prod-report', e), false);
+  assert.equal(retriedLater('decide', new Error('a bug')), false);
+});
+
+// On a public project anyone can comment: a stranger's comment takes neither the queue lock nor a relay pass.
+test('a stranger\'s comment ends at once: no lock, no write, nothing to start', () => {
+  const comment = (login) => ({ action: 'created', repository: { owner: { login: 'o' } }, issue: { number: 5, labels: [] }, comment: { id: 1, body: 'hello', user: { login } } });
+  const stranger = runRelay('decide', comment('someone'), 'issue_comment');
+  assert.equal(stranger.status, 0, stranger.stderr);
+  assert.match(stranger.stdout, /GitHub usage: \d+ counted reads, \d+ free \(304\), 0 writes/);
+  assert.match(stranger.outputs, /agent<<\S+\nfalse\n/);
+  const owner = runRelay('decide', comment('o'), 'issue_comment');
+  assert.equal(owner.status, 0, owner.stderr);
+  assert.doesNotMatch(owner.stdout, /GitHub usage: \d+ counted reads, \d+ free \(304\), 0 writes/, 'the owner\'s comment still takes the lock');
 });

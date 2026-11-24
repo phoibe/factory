@@ -205,6 +205,9 @@ const bugMaker = (run) => {
   return found ? { model: found.a.model, role: found.role } : null;
 };
 const UNCHECKED = "l'outil n'a pas pu vérifier quel modèle les a faites";
+// How the « unproved » step starts: the lock gives that refusal once per run (gate.mjs), since the agent may not
+// be able to fix it.
+export const UNPROVED_HOW = "questions et fiche : la fiche publiée n'a pas de preuve valable";
 
 export function upstreamCheck(runs) {
   const lines = [];
@@ -234,7 +237,7 @@ export function upstreamCheck(runs) {
       lines.push(by.length ? `**${label}** : faites par ${by.map(madeBy).join(', ')}` : `**${label}** : non mesuré (${UNCHECKED})`);
     } else if (entry.status === 'unproved') missing.push({
       alert: `${label} : ${UNCHECKED} (la dernière version publiée ne porte pas la preuve).`,
-      how: `questions et fiche : la fiche publiée n'a pas de preuve valable : la ligne de preuve manque, ou le texte ne correspond plus à ce que le sous-agent de réflexion a écrit. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
+      how: `${UNPROVED_HOW} : la ligne de preuve manque, ou le texte ne correspond plus à ce que le sous-agent de réflexion a écrit. Fais-la réécrire par un sous-agent du rôle \`plan\` (description \`[role:plan:amont]\`) à partir du fil de la demande, sans rien changer à ce qui est décidé ni redemander de validation, publie-la comme nouvelle version terminée par la ligne de \`node .factory/scripts/upstream.mjs ${run.issue} <fichier>\`, puis relance \`node .factory/scripts/journal-check.mjs\` ; si \`upstream.mjs\` refuse encore, ne republie rien (aucune nouvelle version pour le propriétaire) et continue : le bilan le signalera`,
     });
     else if (entry.status === 'old') lines.push(`**${label}** : publiées avant la mise en place de cette preuve (non mesuré)`);
     else if (entry.status === 'unread') lines.push(`**${label}** : non mesuré (${UNCHECKED} : la demande n'a pas pu être relue)`);

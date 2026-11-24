@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { UNPROVED_HOW } from './fabrication.mjs';
 import { branchFiles, GATED, problems } from './journal-check.mjs';
 import { sessionRoot } from './run-root.mjs';
 import { brokenShotRows } from './shots.mjs';
@@ -84,6 +85,13 @@ export function realCheckRefusal(tool, input, io) {
 
 const entries = (text) => String(text || '').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 
+// Review #556: the « unproved » upstream step may be out of the agent's reach (its instruction even says to go on).
+// Once a refusal was caused by that line alone (recorded as cause « upstream »), the line is no longer asked for in
+// this run. Every refusal that showed it still counts toward the MAX_DENIALS: one when it came alone, more when it
+// first came with other missing steps (no cause is recorded then, so it is asked again). The PR alert still reports it.
+const isUpstream = (line) => line.startsWith(UNPROVED_HOW);
+const UPSTREAM = 'upstream';
+
 // The hook's answer for one input, or null to let it through. `env` gives the files, the journal and config.
 export function decide(input, { files, read, stages, sessionText, readFile, cwd }) {
   const ev = input.hook_event_name;
@@ -92,11 +100,14 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
   const denials = entries(sessionText).filter((e) => e.kind === 'gate').length;
   if (denials >= MAX_DENIALS) return null;
   const opts = { stage: runEntry.stage, current: sessionText };
+  const upstreamGiven = entries(sessionText).some((e) => e.kind === 'gate' && e.cause === UPSTREAM);
+  const missing = () => problems(files, read, stages, opts).filter((l) => !(upstreamGiven && isUpstream(l)));
+  const cause = (list, other) => (!other && list.length && list.every(isUpstream) ? { cause: UPSTREAM } : {});
   if (ev === 'PreToolUse') {
     const shots = shotsRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd });
     if (shots) return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: shots } } };
     if (!handsOver(input.tool_name, input.tool_input)) return null;
-    const list = problems(files, read, stages, opts);
+    const list = missing();
     const real = GATED.includes(runEntry.stage) ? realCheckRefusal(input.tool_name, input.tool_input, { readFile, cwd: input.cwd || cwd }) : null;
     if (!list.length) {
       return real ? { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: real } } } : null;
@@ -104,16 +115,16 @@ export function decide(input, { files, read, stages, sessionText, readFile, cwd 
     // Everything at once: each refusal spends one of the run's MAX_DENIALS.
     const reason = ['Verrou de la factory : la PR ne peut pas avancer, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
       'Fais-les (avec l\'outil Skill), commit, puis réessaie.', ...(real ? ['', real] : [])].join('\n');
-    return { gate: true, out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } };
+    return { gate: true, ...cause(list, real), out: { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } };
   }
   if (ev === 'Stop') {
     if (input.stop_hook_active) return null;
     if (!files.some((f) => !f.startsWith('.factory/journal/'))) return null; // nothing built yet (a question, a block)
-    const list = problems(files, read, stages, opts);
+    const list = missing();
     if (!list.length) return null;
     const reason = ['Verrou de la factory : avant de t\'arrêter, ces étapes manquent dans le journal :', ...list.map((l) => `- ${l}`),
       "Fais-les, puis termine le run comme prévu. Si tu t'arrêtes exprès (question au propriétaire, blocage expliqué sur l'issue), arrête-toi simplement."].join('\n');
-    return { gate: true, out: { decision: 'block', reason } };
+    return { gate: true, ...cause(list), out: { decision: 'block', reason } };
   }
   return null;
 }
@@ -135,7 +146,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const counted = id && read(`.factory/journal/${session}.jsonl`).includes(`"id":${JSON.stringify(id)}`);
       if (res) {
         // Each clone's settings carry the hook: the same refusal reached twice counts once.
-        if (!counted) appendFileSync(sessionPath, JSON.stringify({ t: new Date().toISOString(), kind: 'gate', event: input.hook_event_name, ...(id ? { id } : {}) }) + '\n');
+        if (!counted) appendFileSync(sessionPath, JSON.stringify({ t: new Date().toISOString(), kind: 'gate', event: input.hook_event_name, ...(id ? { id } : {}), ...(res.cause ? { cause: res.cause } : {}) }) + '\n');
         process.stdout.write(JSON.stringify(res.out));
       }
     }

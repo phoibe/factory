@@ -1,26 +1,26 @@
 import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, toggleSkill, setPath, toBase64, fromBase64, tokenFromHash, readTokenFromHash, phoneLink, previewFrom, focusComment, issuesUrl, openIssueCount, issuesLinkText, projectCandidates, sessionFrom, chatServerUrl, mergeConfig, tabTitle, ideaItems, ideasToShow, deliveredIssue, releaseButton, releaseOutcome, releaseList, siteLink, sessionKeys, stableView } from './lib.mjs?v=28';
 import { answerForPr } from './answer.mjs';
-import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation } from './chat.mjs?v=27';
+import { LABEL as CHAT_LABEL, ASK, ATTACHMENTS_BRANCH, CHAT_BRANCH, chatMessages, chatStatus, titleFrom, markdown, conversations, unread, serverUnread, safeGithubUrl, imagePath, imageBlock, ndjson, serverMessages, serverList, READ_TOKEN_KEY, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, WRITE_PROBES, NO_SHA, probeUrl, fineGrained, hasScopes, probeSaysWritable, readTokenProblem, newConversation, addExchange, upsertIndex, issueRequest, conversationId, defaultConversation, githubBusy, wantedIssues, elapsed, waitingSince, quoteParts, decideProposal, decisionComment, cardTag, openRequests, finishesConversation, createdMarks } from './chat.mjs?v=28';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs?v=5';
-import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=3';
-import { yoursList, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=14';
+import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs?v=4';
+import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs?v=15';
 import { waitedFor } from './waits.mjs?v=2';
 import { readRelaunch, relaunchLine } from './relaunch.mjs?v=1';
-import { trustNotes } from './trust.mjs';
+import { trustNotes, trustRead } from './trust.mjs?v=1';
 import { gapView, deploymentState, isLiveEnv, tagged } from './production.mjs?v=3';
 import { resolveConfig, parseRawConfig, effectiveProduction, MAX_EXTRA_CHECKS } from './config-core.mjs';
 import { rateLimitDelay, MAX_PAUSE_MS } from './ratelimit.mjs';
-import { watchNumbers } from './numbers.mjs';
+import { watchNumbers } from './numbers.mjs?v=2';
 import { setupTabs } from './tabs.mjs';
 import { httpError, errorText, emptyOn404, saidError } from './errors.mjs';
 import { parisMidnight, runsToday, runsText } from './runs.mjs';
 import { parseStack, inlineParts, stackDate, frenchSpaces, deliveryOf, STACK_FILE } from './stack.mjs';
 import { CHANGELOG_PATHS, readChangelog, versionProblem, versionLine } from './changelog.mjs';
-import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP } from './machine.mjs?v=2';
+import { machineLine, repoKey, forgottenProjects, runnerAlertText, RUNNER_KEYS_URL, RUNNER_KEYS_HELP, readRunnersFile } from './machine.mjs?v=4';
 import { TRIGGER_FILE, upgradeTrigger, knownTrigger, wakeErrorText, TRIGGER_REFUSED } from './trigger.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { advancedSummary, effectiveMachine, ADVANCED_KEY } from './settings.mjs';
-import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=7';
+import { sortProjects, projectDot, blockedNumbers, othersDot, nextDots, dotsDelay, dotsWake, DOT_LABELS, configCheck, readProjectsCache, writeProjectsCache, tokenTag } from './projects.mjs?v=8';
 
 const API = 'https://api.github.com';
 const TOKEN_KEY = 'factory.token';
@@ -115,7 +115,7 @@ function resetSession({ forget = false } = {}) {
   token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
-  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null }); closeGeneral();
+  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null }); closeGeneral();
 }
 
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
@@ -126,6 +126,10 @@ function sessionExpired() {
   show('login');
 }
 
+// Issue #557: on a public project, an outsider's issue or PR loses its factory notes before anything reads it. A
+// project the panel does not know counts as public.
+const guardRead = (path, data) => trustRead(path, data, (full) => projects.find((p) => p.repo.full_name === full)?.repo.private === true);
+
 async function api(path, init = {}) {
   const res = await fetch(path.startsWith('http') ? path : API + path, {
     ...init,
@@ -134,7 +138,7 @@ async function api(path, init = {}) {
   if (res.status === 404 && emptyOn404(init)) return null; // a refused write fails: never shown as done (issue #398)
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message, init.method);
-  return res.status === 204 ? null : res.json();
+  return res.status === 204 ? null : guardRead(path, await res.json());
 }
 
 // A phone screen (the same width as the CSS's phone rules).
@@ -310,6 +314,8 @@ function renderProjectList() {
 
 function pickProject(fullName) {
   if ($('projects-dialog').open) $('projects-dialog').close();
+  // Like « ← Retour au projet »: the general page closes (its unsaved choices stay in memory, review #556).
+  closeGeneral();
   if (current && current.repo.full_name === fullName) return;
   openProject(fullName).catch((err) => { toast(`Ce projet ne s'ouvre pas. ${errorText(err)}`); renderProjectList(); });
 }
@@ -517,7 +523,7 @@ async function cachedGet(path, cache = etags) {
   if (res.status === 304 && hit) return { data: hit.data, changed: false };
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  const data = await res.json();
+  const data = guardRead(path, await res.json());
   const etag = res.headers.get('etag');
   if (etag) cache.set(path, { etag, data });
   return { data, changed: true };
@@ -1276,33 +1282,30 @@ function checkbox(id, checked, onchange) {
 // The general setting and the dev server check live on a branch of the factory (written by scripts/runners.mjs).
 const RUNNERS_BRANCH = 'factory-runners';
 const MACHINE_CHOICES = [['dev-server', 'Serveur de dev'], ['github', 'Machines GitHub']];
-const machine = { settings: null, sha: null, general: 'dev-server', savedGeneral: 'dev-server', status: null, hash: null, repo: null };
+// `held`: a status read while the focus was in « Paramètres », shown when it leaves; `shown`: the line on screen.
+const machine = { settings: null, sha: null, general: 'dev-server', status: null, hash: null, repo: null, held: null, shown: null };
 
-async function runnersFile(path) {
-  const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`).catch(() => null);
-  if (!f?.content) return { json: null, sha: null };
-  try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha }; } catch { return { json: null, sha: f.sha }; }
-}
-
-// Like runnersFile, but a failed read is told apart from a file never created: `unreadable` is true when the answer is
-// anything but the file or a 404, or when the file is not valid JSON (the general page must not overwrite it then).
-async function readRunnersFile(path) {
-  try {
-    const f = await api(`/repos/${FACTORY_REPO}/contents/${path}?ref=${RUNNERS_BRANCH}`);
-    if (!f?.content) return { json: null, sha: null, unreadable: false };
-    try { return { json: JSON.parse(fromBase64(f.content)), sha: f.sha, unreadable: false }; } catch { return { json: null, sha: f.sha, unreadable: true }; }
-  } catch (e) {
-    return { json: null, sha: null, unreadable: e?.status !== 404 };
-  }
+// One read of the runner files, past the browser cache (review #556): see machine.mjs.
+const runnersFile = (path) => readRunnersFile(api, path);
+// Both files for the settings line and the banner: a read already on its way is shared, never sent twice.
+let runnersReading = null;
+function runnersFiles() {
+  if (runnersReading?.session === token) return runnersReading.files;
+  const read = { session: token, files: Promise.all([runnersFile('settings.json'), runnersFile('status.json')]) };
+  runnersReading = read;
+  read.files.finally(() => { if (runnersReading === read) runnersReading = null; });
+  return read.files;
 }
 
 async function loadMachine(project) {
-  // Never the previous project's state while this one loads (or if it cannot be read).
-  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name });
-  const [settings, status, hash] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json'), repoKey(String(project.repo.id))]);
+  // Never the previous project's state while this one loads (or if it cannot be read), nor a status held for it.
+  Object.assign(machine, { status: null, hash: null, repo: project.repo.full_name, held: null });
+  await boardGate; // the board's cards first (review #556)
+  if (current !== project) return;
+  const [[settings, status], hash] = await Promise.all([runnersFiles(), repoKey(String(project.repo.id))]);
   if (current !== project) return;
   const general = settings.json?.machine === 'github' ? 'github' : 'dev-server';
-  Object.assign(machine, { settings: settings.json, sha: settings.sha, general, savedGeneral: general, status: status.json, hash, repo: project.repo.full_name });
+  Object.assign(machine, { settings: settings.json, sha: settings.sha, general, status: status.json, hash, repo: project.repo.full_name, held: null });
   renderRules();
 }
 
@@ -1312,6 +1315,14 @@ const machineRadios = (name, choices, value, onpick, disabled = false) => choice
 
 // The « Machine des tâches » line for this project, with the dev server's state for it.
 const currentMachineLine = () => machineLine({ status: machine.status, hash: machine.hash, isPrivate: current.repo.private, general: machine.general, project: current.config.machine || 'default', created: current.repo.created_at || null });
+
+// A fresh status file: « Paramètres » is rebuilt when the line it shows changes (the time of the check counts, the
+// line depends on it), never when only the file does (review #556).
+function showMachineStatus(status) {
+  machine.held = null;
+  machine.status = status;
+  if (JSON.stringify(currentMachineLine()) !== machine.shown) renderRules();
+}
 
 // The button to the owner's GitHub tokens, with the one sentence that says what to do there (issue #504).
 // Message, then the step, then the button (design pass): the same orange box in the banner and in the settings.
@@ -1327,7 +1338,9 @@ async function refreshRunnerAlert() {
   runnerTimer = setTimeout(() => refreshRunnerAlert().catch(() => {}), 15 * 60_000);
   if (!token || !projects.length) return;
   const session = token, round = ++runnerRound;
-  const [settings, status] = await Promise.all([runnersFile('settings.json'), runnersFile('status.json')]);
+  await boardGate; // the board's cards first (review #556)
+  if (token !== session || round !== runnerRound) return;
+  const [settings, status] = await runnersFiles();
   const list = await Promise.all(projects.map(async (p) => {
     let own = 'default';
     try { own = JSON.parse(fromBase64(p.file?.content || '')).machine || 'default'; } catch { /* unreadable rules: the general setting */ }
@@ -1337,9 +1350,10 @@ async function refreshRunnerAlert() {
   const names = forgottenProjects({ status: status.json, general: settings.json?.machine === 'github' ? 'github' : 'dev-server', projects: list });
   // The settings line follows the same fresh status (it was read when the project opened).
   if (current && status.json && machine.repo === current.repo.full_name && machine.hash) {
-    const fresh = JSON.stringify(status.json) !== JSON.stringify(machine.status);
-    machine.status = status.json;
-    if (fresh && !$('rules-panel').hidden) renderRules();
+    // Never under the owner's fingers: a field being typed in keeps its text and the focus (review #556). The new
+    // status waits until the focus leaves the form (focusout below), then shows at once.
+    if ($('rules').contains(document.activeElement)) machine.held = status.json;
+    else showMachineStatus(status.json);
   }
   // Rebuilt only when the names change: a screen reader does not hear it again, a focused link keeps the focus.
   if (names.join('\n') === [...forgotten].join('\n')) return;
@@ -1386,38 +1400,61 @@ async function writeGeneral({ machine: choice, models }) {
   });
   machine.settings = JSON.parse(body);
   machine.sha = res?.content?.sha || null;
-  machine.general = machine.savedGeneral = choice;
+  machine.general = choice;
 }
 
 // ---- « Réglages généraux » (issue #544): a page of its own, for every project ----------------------------------------
 // `saved` is what the factory's branch holds, as text, to know when something changed.
-const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null };
+// `read`: the read on its way, with the session and the project it was started for.
+const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null, read: null, shown: null };
 const generalValue = () => JSON.stringify({ machine: general.machine, models: general.models });
 const generalDirty = () => !general.unreadable && general.saved !== '' && generalValue() !== general.saved;
 const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 'dev-server', models: Object.fromEntries(MODEL_ROLES.map((r) => [r.id, roleModel(raw, r.id)])) });
 
-// `from` is the element to give the focus back to on closing (the top button, or the Paramètres link).
+// `from` is the element to give the focus back to on closing (the top button, or the Paramètres link). The page opens
+// at once, with « Chargement… » inside it while the settings are read (review #556): on a phone the top button lives in
+// « Plus », which closes on the tap.
 async function openGeneral(from = $('general-open')) {
   const open = !$('general-view').hidden;
   if (!open) general.from = from;
+  const session = token, project = current;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
-  if (!generalDirty() || general.unreadable) {
-    const settings = await readRunnersFile('settings.json');
-    Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
-    general.saved = generalValue();
-  }
+  const clean = !generalDirty() || general.unreadable;
+  const read = clean && general.read?.session === session && general.read.project === project ? general.read : null;
+  const mine = clean && !read ? { session, project } : null;
+  general.shown = { session, project };
+  // The full screen removes the page's side margins: the general page never opens in it (review #556).
+  if (document.body.classList.contains('chat-fullscreen')) setChatFull(false);
   $('project-view').classList.add('on-general');
   $('general-view').hidden = false;
   $('general-open').setAttribute('aria-pressed', 'true');
-  renderGeneral();
+  if (read || mine) {
+    $('general').setAttribute('aria-busy', 'true');
+    $('general').replaceChildren(el('p', { class: 'muted' }, 'Chargement…'));
+  } else renderGeneral();
   $('general-title').focus();
   window.scrollTo(0, 0);
+  if (!mine) return; // nothing to read, or a read already on its way fills the page
+  general.read = mine;
+  let settings;
+  try { settings = await runnersFile('settings.json'); } finally { if (general.read === mine) general.read = null; }
+  // Logged out, or another screen or project meanwhile: the late answer is dropped, and a page still shown for that
+  // session or project is closed (review #556).
+  if (token !== session || current !== project || $('project-view').hidden) {
+    if (general.shown?.session !== token || general.shown?.project !== current || $('project-view').hidden) closeGeneral();
+    return;
+  }
+  Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
+  general.saved = generalValue();
+  if (!$('general-view').hidden) renderGeneral();
 }
 function closeGeneral(giveFocusBack = false) {
   const wasOpen = !$('general-view').hidden;
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
   $('general-open').setAttribute('aria-pressed', 'false');
+  // Back on « Agent »: the answer is on screen now, its badge and « Nouvelle réponse » go at once (review #556).
+  if (wasOpen && !$('chat').hidden && !$('project-view').hidden && current && chat.repo) refreshChat();
   if (wasOpen && giveFocusBack) {
     let target = general.from?.isConnected ? general.from : $('general-open');
     // On a phone the top button sits inside the closed « Plus » menu: its summary takes the focus instead.
@@ -1428,6 +1465,7 @@ function closeGeneral(giveFocusBack = false) {
 }
 
 function renderGeneral() {
+  $('general').removeAttribute('aria-busy');
   const modelRows = MODEL_ROLES.map((r) => el('div', { class: 'row model-row' }, el('div', {},
     el('label', { for: `model-${r.id}` }, r.name),
     el('p', { id: `model-${r.id}-help` }, r.help),
@@ -1463,6 +1501,8 @@ async function saveGeneral(e) {
 
 function renderRules() {
   const c = current.config;
+  // Rebuilt anyway: a dev server status held back while the owner typed shows now.
+  if (machine.held && machine.hash && machine.repo === current.repo.full_name) { machine.status = machine.held; machine.held = null; }
   const update = (next) => { current.config = next; renderRules(); };
   const form = $('rules');
   const site = el('fieldset', {}, el('legend', {}, 'Site en ligne'),
@@ -1525,26 +1565,28 @@ function renderRules() {
             toast('Entre 5 et 180 minutes.');
           } }))));
   const extras = extraChecksFieldset(c, update);
-  const packs = catalog.packs.map((p) => {
-    const pc = c.skills[p.id];
-    const on = p.skills.filter((s) => pc.skills[s.id]).length;
-    return el('fieldset', {}, el('legend', {}, `Savoir-faire : ${p.name}`),
-      el('div', { class: 'row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
-        el('div', {}, el('label', { for: `pack-${p.id}` }, 'Activé'), el('p', {}, `${on} sur ${p.skills.length}`))),
-      el('details', { open: p.skills.length <= 3 }, el('summary', {}, 'Choisir les skills'),
-        el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
-          p.skills.map((s) => el('div', { class: 'row' },
-            checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
-            el('label', { for: `skill-${s.id}` }, s.id))))));
-  });
+  // One « Savoir-faire » block, one row per pack: its switch, its name, how many of its skills are on, and the fold to pick them.
+  const packs = el('fieldset', {}, el('legend', {}, 'Savoir-faire'),
+    catalog.packs.map((p) => {
+      const pc = c.skills[p.id];
+      const on = p.skills.filter((s) => pc.skills[s.id]).length;
+      return el('div', { class: 'row pack-row' }, checkbox(`pack-${p.id}`, pc.enabled, (v) => update(setPath(c, `skills.${p.id}.enabled`, v))),
+        el('div', { class: 'pack-main' }, el('label', { for: `pack-${p.id}` }, p.name), el('p', {}, `${on} sur ${p.skills.length}`),
+          el('details', { open: p.skills.length <= 3, 'data-pack': p.id }, el('summary', {}, 'Choisir les savoir-faire'),
+            el('div', { class: 'pack-skills', 'aria-disabled': String(!pc.enabled) },
+              p.skills.map((s) => el('div', { class: 'row' },
+                checkbox(`skill-${s.id}`, pc.skills[s.id], (v) => update(toggleSkill(c, p.id, s.id, v))),
+                el('label', { for: `skill-${s.id}` }, s.id)))))));
+    }));
   const dirty = JSON.stringify(c) !== current.saved;
   const bar = el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty }, 'Enregistrer'),
     el('span', { class: 'muted' }, dirty ? 'Modifications non enregistrées' : 'Tout est enregistré'));
-  const open = new Set([...form.querySelectorAll('fieldset > details[open]')].map((d) => d.parentElement.querySelector('legend')?.textContent));
+  const open = new Set([...form.querySelectorAll('details[data-pack][open]')].map((d) => d.dataset.pack));
   const name = current.repo.name;
   // Issue #342: the everyday choices stay in view, everything technical folds under « Avancé » (remembered per device).
   const line = currentMachineLine();
+  machine.shown = JSON.stringify(line);
   const alert = line.keys ? [runnerAlertBox(line.text, { role: 'status' })]
     : line.tone === 'warn' ? [el('p', { class: 'machine-status machine-alert warn', role: 'status' }, line.text)] : [];
   const summary = advancedSummary({
@@ -1559,11 +1601,11 @@ function renderRules() {
     el('summary', {}, el('span', { class: 'advanced-title' }, 'Avancé'), el('span', { class: 'advanced-summary' }, summary)),
     machineFieldset(update, line),
     el('p', { class: 'rules-more' }, el('button', { type: 'button', class: 'link-button', onclick: (e) => openGeneral(e.currentTarget).catch((err) => toast(errorText(err))) }, 'Changer le réglage de tous les projets')),
-    engine, checks, extras, ...packs);
+    engine, checks, extras, packs);
   form.replaceChildren(
     rulesSection('rules-project', `Ce projet : ${name}`, [production, site, stages, parallel, ...alert, advanced]),
     bar);
-  for (const d of form.querySelectorAll('fieldset > details')) if (open.has(d.parentElement.querySelector('legend')?.textContent)) d.open = true;
+  for (const d of form.querySelectorAll('details[data-pack]')) if (open.has(d.dataset.pack)) d.open = true;
 }
 
 let savingRules = false;
@@ -2349,13 +2391,15 @@ function laterMarks(repo) {
   };
 }
 
-const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null) };
+const chat = { error: false, repo: null, list: null, open: null, issue: null, comments: [], etags: new Map(), timer: null, busy: false, pending: null, seen: {}, files: [], images: new Map(), server: null, conv: null, live: null, warmed: 0, badge: null, run: null, decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(null), created: createdMarks(store, null), recording: false };
 const MAX_IMAGES = 4;
 
 function resetChat() {
   clearTimeout(chat.timer);
   // A send still running belongs to the project the owner just left: it finishes without touching the screen.
-  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], decided: new Map(), deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name) });
+  Object.assign(chat, { error: false, repo: current.repo.full_name, list: null, open: null, issue: null, comments: [], etags: new Map(), pending: null, conv: null, live: null, badge: null, run: null, sending: false, files: [], deciding: new Set(), refused: new Map(), later: laterMarks(current.repo.full_name), created: createdMarks(store, current.repo.full_name) });
+  // A request made here whose choice is not recorded yet shows « Créée » with its link (review #556).
+  chat.decided = new Map(chat.created.entries());
   $('chat-send').disabled = false;
   // A draft belongs to the project it was written for.
   $('chat-input').value = '';
@@ -2381,7 +2425,9 @@ function markServerSeen(id, updated) {
 }
 
 // The open conversation is on screen: the Agent tab is shown and, on a phone, the thread rather than the list.
-const threadShown = () => !$('chat').hidden && (!matchMedia('(max-width: 700px)').matches || $('chat').classList.contains('viewing'));
+// The general page hides the tabs with CSS only: while it is open, the chat is not on screen (review #556).
+const chatAway = () => $('chat').hidden || $('project-view').classList.contains('on-general');
+const threadShown = () => !chatAway() && (!matchMedia('(max-width: 700px)').matches || $('chat').classList.contains('viewing'));
 
 const isUnread = (c) => (chat.server ? serverUnread(c, chat.seen) : unread(c, chat.seen));
 
@@ -2394,7 +2440,7 @@ async function chatGet(path) {
   if (res.status === 304 && hit) return hit.data;
   if (res.status === 401) sessionExpired();
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
-  const data = await res.json();
+  const data = guardRead(path, await res.json());
   const etag = res.headers.get('etag');
   if (etag) chat.etags.set(path, { etag, data });
   return data;
@@ -2590,14 +2636,64 @@ async function refreshChat() {
     scheduleChat(chat.repo !== repo || chat.clicks !== clicks ? 0 : undefined);
     // In both modes (the instant one returns early above), issue #535.
     if (chat.repo === repo) finishWhenDone();
+    if (chat.repo === repo) recordCreated().catch(() => {});
   }
+}
+
+// Review #556: a request created here whose choice could not be written in its conversation is written at a later
+// refresh. A card decided meanwhile (another device), or gone, only drops the mark: the request exists either way.
+async function recordCreated() {
+  const marks = chat.created, repo = chat.repo, server = chat.server, later = chat.later;
+  const todo = marks.pending().filter(([key]) => !chat.deciding.has(key) && !decidingAnywhere.has(flightKey(repo, key)));
+  if (!todo.length || chat.recording) return;
+  chat.recording = true;
+  let recorded = false;
+  try {
+    for (const [key, { url }] of todo) {
+      const cut = key.lastIndexOf(':');
+      const open = key.slice(0, cut), id = key.slice(cut + 1);
+      try {
+        let wrote = !server;
+        if (server) {
+          const path = `chats/${open}.json`;
+          const { data } = await chatFile(repo, path);
+          const card = (data?.messages || []).flatMap((m) => m.proposals || []).find((x) => x.id === id);
+          if (card?.state === 'pending') {
+            wrote = true;
+            await writeChatFile(repo, path, (latest) => {
+              if (!latest || !decideProposal(latest, id, 'created', url)) throw new Error('not recorded');
+              return latest;
+            }, `chore(factory): chat ${open}`);
+          }
+        } else {
+          await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(id, 'created', url) }) });
+          // One more comment on the conversation: already seen, never a « new answer ».
+          if (chat.repo === repo && chat.seen[open] != null) {
+            chat.seen[open] += 1;
+            store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
+          }
+        }
+        marks.delete(key);
+        // Recorded now: the conversation is put away once its agent is done, as after a click (finishWhenDone).
+        if (wrote) { later.set(server ? open : Number(open), FINISHED_SAID); recorded = true; }
+      } catch (e) {
+        // Gone, or locked: it will never pass. The request exists either way, so the mark is kept: the card stays
+        // « Créée » and is never offered again, it is only no longer retried (review #556, round 3).
+        if (e?.status === 404 || e?.status === 410 || (e?.status === 403 && /locked/i.test(e.githubMessage || ''))) marks.keep(key);
+        /* otherwise tried again at the next refresh */
+      }
+    }
+  } finally {
+    chat.recording = false;
+  }
+  if (recorded && chat.repo === repo) await finishWhenDone();
 }
 
 // Every 4 s while an answer is awaited; otherwise every 15 s on « Agent », 30 s from the other tabs.
 function scheduleChat(delay) {
   clearTimeout(chat.timer);
   if (!current || !chat.repo) return;
-  const away = $('chat').hidden;
+  const away = chatAway();
   if (delay == null && chat.server) delay = 30_000; // only picks up other devices' messages
   if (delay == null) {
     const waiting = chat.pending || (chat.issue && chatStatus(chat.issue, chatMessages(chat.issue, chat.comments)) === 'thinking')
@@ -2747,11 +2843,15 @@ setInterval(() => {
 // ---- Requests the agent proposes (issue #492) ----------------------------------------------------
 // Nothing is created until the owner clicks « Créer cette demande » on the card under the answer.
 const cardKey = (p) => `${chat.open}:${p.id}`;
+// A card being decided, by project: it outlives a project switch (resetChat), so coming back during the creation
+// never offers a second one, and recordCreated never writes a choice decide is still writing (review #556).
+const decidingAnywhere = new Set();
+const flightKey = (repo, key) => `${repo}\n${key}`;
 
 function proposalCard(p) {
   const key = cardKey(p);
   const s = { ...p, ...chat.decided.get(key) };
-  const busy = chat.deciding.has(key);
+  const busy = chat.deciding.has(key) || decidingAnywhere.has(flightKey(chat.repo, key));
   const kind = s.kind === 'bug' ? 'Bug' : 'Fonctionnalité';
   const outcome = s.state === 'created'
     ? el('p', { class: 'proposal-done created' }, el('span', { class: 'proposal-check', 'aria-hidden': 'true' }, '✓'), el('strong', {}, 'Créée'),
@@ -2772,13 +2872,17 @@ function proposalCard(p) {
 // the stored conversation is read again first (another device may have decided already).
 async function decide(p, state) {
   const key = cardKey(p);
-  if (chat.deciding.has(key) || chat.decided.has(key)) return;
+  if (chat.deciding.has(key) || chat.decided.has(key) || decidingAnywhere.has(flightKey(chat.repo, key))) return;
+  // Made from another tab of this browser and not recorded yet.
+  if (chat.created.entries().some(([k]) => k === key)) return;
   const repo = chat.repo, open = chat.open, server = chat.server;
   // Only leaving the project ends what this click may show (resetChat makes new maps); sending a message does not.
-  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later;
+  // The marks too: a request made here is remembered for this project, whatever is on screen when it is made.
+  const decided = chat.decided, deciding = chat.deciding, refused = chat.refused, later = chat.later, marks = chat.created;
   const gone = () => chat.decided !== decided;
   const here = () => !gone() && chat.open === open;
   deciding.add(key);
+  decidingAnywhere.add(flightKey(repo, key));
   refused.delete(key);
   drawChat();
   let url, finish = false, earlier = false;
@@ -2801,6 +2905,8 @@ async function decide(p, state) {
     }
     if (state === 'created') url = (await api(`/repos/${repo}/issues`, { method: 'POST', body: JSON.stringify(issueRequest(p)) })).html_url;
     decided.set(key, { state, ...(url ? { url } : {}) });
+    // Until the choice is in the conversation, this device remembers the request and its link (review #556).
+    if (url && !unsaved) marks.set(key, url);
     try {
       if (unsaved) decideProposal(unsaved, p.id, state, url);
       else if (server) {
@@ -2813,11 +2919,12 @@ async function decide(p, state) {
       } else {
         await api(`/repos/${repo}/issues/${open}/comments`, { method: 'POST', body: JSON.stringify({ body: decisionComment(p.id, state, url) }) });
         // The choice is one more comment on the conversation: already seen, never a « new answer ».
-        if (!gone() && chat.seen[open] != null) {
+        if (chat.repo === repo && chat.seen[open] != null) {
           chat.seen[open] += 1;
           store.set(`${SEEN_KEY}.${repo}`, JSON.stringify(chat.seen));
         }
       }
+      marks.delete(key);
       // Never while an answer is on its way (it may bring new cards), nor while another card of it is being decided.
       if (!unsaved && here()) {
         // An answer still on its way: the end waits for it (finishWhenDone, issue #521).
@@ -2839,7 +2946,10 @@ async function decide(p, state) {
     refused.set(key, state); // said on the card itself, next to the button to try again
   } finally {
     deciding.delete(key);
-    if (!gone()) drawChat();
+    decidingAnywhere.delete(flightKey(repo, key));
+    // Back on this project during the click: the screen's maps are new ones, they learn the request here.
+    if (gone() && url && chat.repo === repo) chat.decided.set(key, { state: 'created', url });
+    if (!gone() || chat.repo === repo) drawChat();
     if (url) renderBoard().catch(() => {});
   }
   if (finish) await closeConversation({ stay: true, said: state === 'created' || earlier ? FINISHED_SAID : undefined });
@@ -3433,6 +3543,11 @@ $('tab-rules').addEventListener('click', () => selectTab('rules'));
 $('general-open').addEventListener('click', () => openGeneral($('general-open')).catch((err) => toast(errorText(err))));
 $('general-back').addEventListener('click', () => closeGeneral(true));
 $('general').addEventListener('submit', (e) => saveGeneral(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
+// The focus left « Paramètres » (after the browser moved it): a dev server status held back meanwhile shows now.
+$('rules').addEventListener('focusout', () => setTimeout(() => {
+  if (!machine.held || !machine.hash || !current || machine.repo !== current.repo.full_name || $('rules').contains(document.activeElement)) return;
+  showMachineStatus(machine.held);
+}));
 $('rules').addEventListener('submit', (e) => saveRules(e).catch((err) => toast(`Échec de l'enregistrement. ${errorText(err)}`)));
 start().catch((err) => toast(errorText(err)));
 

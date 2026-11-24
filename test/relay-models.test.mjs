@@ -8,7 +8,7 @@ const routinePayload = (body) => JSON.parse(JSON.parse(body).text.split('\n\n').
 const b64 = (o) => ({ content: Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64') });
 
 // `settings`: what the request answers (a function to throw).
-function setup(runner, settings) {
+function setup(runner, settings, log = quiet) {
   const dispatched = [];
   const requests = [];
   const gh = {
@@ -22,7 +22,7 @@ function setup(runner, settings) {
   const sent = [];
   const fetchImpl = async (url, init) => { sent.push(init); return { ok: true, status: 200, text: async () => '', json: async () => ({}) }; };
   const config = { runner, maxParallel: 2, stages: {}, review: { maxLoops: 3 } };
-  const part = launchesPart({ gh, repo: 'phoibe/app', config, env, fetchImpl, now: () => 0, log: quiet, sleep: async () => {}, outputs: {}, woken: new Set(), commentCache: new Map() });
+  const part = launchesPart({ gh, repo: 'phoibe/app', config, env, fetchImpl, now: () => 0, log, sleep: async () => {}, outputs: {}, woken: new Set(), commentCache: new Map() });
   const payload = () => (runner === 'github-actions' ? JSON.parse(dispatched[0].payload) : routinePayload(sent[0].body));
   return { fire: (extra) => part.fireAgent({ stage: 'build', issue: 1, pr: null, ...(extra ? { extra } : {}) }), payload, requests };
 }
@@ -46,9 +46,32 @@ for (const runner of ['github-actions', 'claude-cloud']) {
     });
   }
 
+  test(`${runner}: no settings file yet is not a problem: nothing logged, the default models`, async () => {
+    const logs = [];
+    const t = setup(runner, null, (m) => logs.push(m));
+    await t.fire();
+    assert.deepEqual(logs.filter((m) => /models settings/.test(m)), []);
+    assert.deepEqual(t.payload().models.code, { model: 'opus', effort: 'medium' });
+  });
+
+  test(`${runner}: a settings file that cannot be read is logged once, and the default models are used`, async () => {
+    const logs = [];
+    const t = setup(runner, b64('{nope'), (m) => logs.push(m));
+    await t.fire();
+    assert.equal(logs.filter((m) => /models settings not read/.test(m)).length, 1);
+    assert.deepEqual(t.payload().models.code, { model: 'opus', effort: 'medium' });
+  });
+
   test(`${runner}: extra can override the models`, async () => {
     const t = setup(runner, b64({ models: { code: 'sonnet' } }));
     await t.fire({ models: { code: { model: 'haiku', effort: 'low' } } });
     assert.equal(t.payload().models.code.model, 'haiku');
   });
 }
+
+test('the factory repository is named once in the launches', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../scripts/relay/launches.mjs', import.meta.url), 'utf8');
+  assert.equal(src.split("'phoibe/factory'").length - 1, 1);
+  assert.match(src, /export const FACTORY_REPO = 'phoibe\/factory';/);
+});
