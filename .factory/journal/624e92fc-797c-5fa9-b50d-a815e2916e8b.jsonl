@@ -5,3 +5,6 @@
 {"t":"2026-11-24T09:59:34.610Z","kind":"skill","name":"test-driven-development","id":"toolu_012tC3kMWX1sneSE89qt1zAY"}
 {"t":"2026-11-24T09:59:45.695Z","kind":"test","cmd":"cat > test/models.test.mjs <<'EOF'\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { MODEL_FAMILIES, MODEL_ROLES, resolveModels, familyLabel, roleModel } from '../scr","ok":false,"id":"toolu_01LGquYfSenKyAsmiK8nrjwM"}
 {"t":"2026-11-24T09:59:54.818Z","kind":"test","cmd":"cat > scripts/lib/models.mjs <<'EOF'\n// The models of the factory's agents (issue #544): one family per role, chosen once for every project in the\n// « Réglages généraux » of the panel and saved in se","ok":true,"id":"toolu_0169oWXB2LcBBDV2PRfN9tDV"}
+{"t":"2026-11-24T10:00:53.776Z","kind":"agent","model":"sonnet","effort":"medium","label":"Task A relay models","copy":true,"id":"toolu_018kPKoF6wKFZQT2jGnbCqqJ"}
+{"t":"2026-11-24T10:00:56.382Z","kind":"agent","model":"sonnet","effort":"medium","label":"Task B agent instructions","copy":true,"id":"toolu_01QcwThkHYpUU5mHAFJWs6x7"}
+{"t":"2026-11-24T10:00:58.930Z","kind":"agent","model":"sonnet","effort":"medium","label":"Task C general settings page","copy":true,"id":"toolu_01RkK7WzgJXcXdLm6f2AZppV"}
