@@ -28,7 +28,7 @@ fait se passe d'explications sur son fonctionnement.
 chaque type d'écran, pour qu'un écran nouveau ou un autre projet retrouve l'allure des pages. C'est une partie à
 elle, `## Mises en page`, placée après les huit sections du thème, avec une sous-partie `###` par type d'écran
 (page de configuration, tableau de bord, liste, détail, discussion, fenêtre…), écrite en mots (pas de schéma ni de
-capture dans le document), toujours avec la même grille :
+capture dans le document), toujours avec la même trame :
 
 - **Disposition générale** : colonnes, ordre des blocs, ce qui est en haut ;
 - **Sommaire ou navigation** : sommaire, onglets, retour, ou « aucun » ;
@@ -68,7 +68,7 @@ Règles :
    diff avec `main`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
    téléphone et sur ordinateur.
 2. **Critique** : pour chaque écran, skill `impeccable`, commande `critique`
-   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (`sonnet`, effort `medium`) et le détecteur.
+   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (rôle `code`) et le détecteur.
    Elle juge l'écran contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » ci-dessus, et elle juge l'écran
    aussi sur sa mise en page : celle de son type d'écran dans la partie « Mises en page » ci-dessus, pas seulement les
    couleurs et les polices.

@@ -51,21 +51,28 @@ puis committe `.factory/journal/`. Un verrou
 refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape manque :
 si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.
 
-**Modèle et effort des sous-agents.** Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
-`model` et un `effort` explicites, selon cette grille (la même pour tous les projets). Sans eux, il hérite du
-modèle de la session, le plus cher. La grille remplace les conseils de modèle des skills
+**Modèles par rôle.** Le propriétaire choisit, dans les « Réglages généraux » du panneau, une famille de modèle
+pour chacun de 4 rôles (la même pour tous les projets). Chaque run reçoit ce choix dans le champ `models` du
+payload : `{"plan": {"model": "fable", "effort": "high"}, "code": …, "review": …, "simple": …}`. Sans ce champ,
+prends les valeurs par défaut du tableau. Chaque sous-agent que tu lances (outil Agent) reçoit **toujours** un
+`model` égal à `models.<rôle>.model` et un `effort` égal à `models.<rôle>.effort`, jamais rien d'autre. Sans eux, il
+hérite du modèle de la session, le plus cher. Ce tableau remplace les conseils de modèle des skills
 (`subagent-driven-development`, `executing-plans`…). Le journal note chaque sous-agent et son modèle.
 
-| Modèle | `effort` | Tâches |
-| --- | --- | --- |
-| `haiku` | `low` | recherches dans le code, tâches mécaniques (renommer, déplacer, recopier un texte), captures d'écran |
-| `sonnet` | `medium` | tâches de construction courantes, corrections après relecture, relecture de chaque petite tâche, critique du design, chaque partie d'une revue générale |
-| `opus` | `high` | relecture finale du code avant la PR, revue de sécurité, tâches d'architecture, débogage d'un problème qui résiste, synthèse d'une revue générale |
+| Rôle | Défaut | `effort` | Tâches |
+| --- | --- | --- | --- |
+| `plan` (Plans et organisation) | `fable` | `high` | écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
+| `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design, chaque partie d'une revue générale |
+| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une revue générale |
+| `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
-- Tout ce qui n'est pas listé : `sonnet`, effort `medium`. Jamais `xhigh` ni `max`.
-- **Monter d'un cran en cas d'échec** : si un sous-agent sur un modèle léger échoue (tests toujours rouges après
-  2 essais, ou travail refusé deux fois par le relecteur), relance la tâche sur le modèle au-dessus
-  (Haiku → Sonnet → Opus), sans déranger le propriétaire. Sur `opus`, les règles habituelles s'appliquent
+- Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.
+- **Tu ne fais que piloter.** Tu tournes sur le modèle de la routine, que la factory ne peut pas changer : tu
+  délègues toujours l'écriture d'un plan à un sous-agent du rôle `plan`, et l'écriture du code à des sous-agents
+  du rôle `code`, même pour une petite demande.
+- **Monter d'un cran en cas d'échec** : si un sous-agent échoue (tests toujours rouges après 2 essais, ou travail
+  refusé deux fois par le relecteur), relance la tâche sur le rôle au-dessus (tâches simples → code → revue),
+  sans déranger le propriétaire. Sur le rôle `review`, les règles habituelles s'appliquent
   (au plus 3 tours de revue, puis escalade).
 
 **Captures du propriétaire.** Les images qu'il colle dans GitHub ne s'ouvrent pas depuis ta machine. La factory

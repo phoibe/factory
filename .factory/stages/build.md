@@ -19,17 +19,19 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    départ les scripts npm `typecheck`, `lint`, `test`, `build`, `test:a11y` (Playwright + axe-core sur les
    pages principales) et `test:e2e` (voir l'étape 4 bis). Ces scripts sont ceux que lancent les contrôles automatiques.
 3. **Parcours selon la taille** (ton estimation de l'étape 0). Pas de validation humaine du plan. Dans tous les cas,
-   une relecture finale (étape 5, avec ses tours après correction) par un sous-agent `opus` effort `high`, et les mêmes tests, contrôles,
+   une relecture finale (étape 5, avec ses tours après correction) par un sous-agent du rôle `review`, et les mêmes tests, contrôles,
    passe design et captures :
-   - **petite** : pas de plan écrit, code-la toi-même d'une traite. Si elle touche finalement plus de 3 fichiers de
-     code, elle devient moyenne : écris le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
+   - **petite** : pas de plan écrit ; un sous-agent du rôle `code` l'écrit d'une traite (tu ne codes plus toi-même,
+     voir « Modèles par rôle » dans AGENT.md). Si elle touche finalement plus de 3 fichiers de
+     code, elle devient moyenne : fais écrire le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
      `size=medium` (même format), sans déranger le propriétaire ;
-   - **moyenne** (si l'étape plan est active) : skill `writing-plans`, plan court enregistré dans
-     `docs/plans/issue-<n>.md`, puis exécute-le **toi-même, d'une traite** (skill `executing-plans`), sans confier
-     chaque tâche à un sous-agent ni la faire relire séparément ;
-   - **grande** (si l'étape plan est active) : skill `writing-plans`, plan dans `docs/plans/issue-<n>.md`, puis
-     `subagent-driven-development` : chaque tâche confiée à un sous-agent sur `sonnet` effort `medium` (ou `opus`
-     effort `high` pour une tâche d'architecture : grille « Modèle et effort des sous-agents » d'AGENT.md) et relue.
+   - **moyenne** (si l'étape plan est active) : un sous-agent du rôle `plan` écrit le plan (skill `writing-plans`),
+     court, enregistré dans `docs/plans/issue-<n>.md` ; puis **un seul** sous-agent du rôle `code` l'exécute
+     **d'une traite** (skill `executing-plans`), sans confier chaque tâche à un sous-agent ni la faire relire
+     séparément ;
+   - **grande** (si l'étape plan est active) : un sous-agent du rôle `plan` écrit le plan (skill `writing-plans`)
+     dans `docs/plans/issue-<n>.md`, puis `subagent-driven-development` : chaque tâche confiée à un sous-agent du
+     rôle `code` (rôle `plan` pour une tâche d'architecture) et relue.
      **Tâches parallélisables** : dans le plan, marque chaque tâche « parallélisable » (elle n'attend aucune autre
      tâche et ne touche ni les mêmes fichiers ni les mêmes tests que les autres tâches encore à faire) ou
      « séquentielle (après la tâche N) ». Puis, avec le skill `dispatching-parallel-agents` :
@@ -52,12 +54,12 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
        en cause après l'autre, de façon séquentielle. Ne dérange jamais le propriétaire pour ça ;
      - après la dernière fusion, relance toute la suite de tests sur l'ensemble ; un test rouge se corrige (cause
        trouvée) avant la relecture finale ;
-     - plan sans tâche parallélisable : tout s'enchaîne l'une après l'autre, comme avant. Grille des modèles et
-       montée d'un cran inchangées. Petites et moyennes demandes : jamais de parallèle.
-   Si l'étape plan est désactivée, une demande moyenne ou grande se code aussi d'une traite, sans plan écrit.
+     - plan sans tâche parallélisable : tout s'enchaîne l'une après l'autre, comme avant. Modèles par rôle
+       et montée d'un cran inchangés (voir « Modèles par rôle »). Petites et moyennes demandes : jamais de parallèle.
+   Si l'étape plan est désactivée, le code s'écrit d'une traite par un seul sous-agent `code`, sans plan écrit.
    Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
-4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
-   lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD).
+4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord.
+   Mets dans la consigne de chaque sous-agent `code` : il charge lui-même le skill `test-driven-development` (outil Skill), lance le test qui échoue avec la commande de test du projet et le voit échouer avant d'écrire le code (c'est la preuve TDD).
 4 bis. **Parcours rejoués à chaque livraison** : chaque critère d'acceptation de la spec que l'on peut vérifier
    dans un navigateur devient un test de parcours Playwright dans `e2e/` (un fichier par feature, un test par
    critère, nommé en français avec les mots du critère : « je vois le créneau commun quand tout le monde est libre »).
@@ -69,14 +71,14 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    montrer au propriétaire, puis sur le site en ligne après la mise en ligne. Skill `webapp-testing` s'il est
    installé, pour piloter le navigateur.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
-   puis lance comme il l'explique un **sous-agent** (`opus`, effort `high` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
+   puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
    relit le diff contre la spec et les standards du dépôt. Corrige ce
    qu'il trouve (skill `receiving-code-review`), puis relance une revue neuve. Au plus 3 tours.
    S'il reste un problème bloquant après le dernier tour : ouvre quand même la PR en brouillon, explique le
    blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
 5 bis. **Revue de sécurité**, seulement si la spec est **sensible** (connexion, codes, comptes, données
    personnelles, argent, partage, suppression de données : mêmes critères que `spec.md`) : skill
-   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (`opus`, effort `high`) relit le diff uniquement
+   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (rôle `review`) relit le diff uniquement
    sous l'angle sécurité (accès sans droit, données d'un autre visibles, injection, secrets, force brute).
    Corrige ce qu'il trouve avec un test qui échoue d'abord, et ajoute une ligne « Sécurité » au résumé de la PR.
 6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`

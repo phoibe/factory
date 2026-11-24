@@ -18,7 +18,7 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
    `factory-estimate`). Si tu dépasses le haut de ta fourchette, publie une nouvelle estimation.
 4. **Tours de critique, 3 au plus.** Chaque tour :
    - **critique complète** de tous les écrans de la liste : skill `impeccable`, commande `critique`
-     (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (`sonnet`, effort `medium`)
+     (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (rôle `code`)
      et le détecteur, contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » de
      `.factory/stages/design-pass.md` (rappelle-la à chaque appel). Tu travailles seul : saute les questions de
      fin de critique (« Questions skipped: run autonome de la factory ») ;
@@ -43,7 +43,7 @@ qu'il a trouvé. Pas de questions, pas de spec à valider : il valide directemen
 6. **Vérifie** localement (`typecheck`, `lint`, `test`, `build`, `test:a11y`, `test:e2e` : une correction visuelle peut
    casser un parcours ou l'accessibilité), puis `node .factory/scripts/journal-check.mjs` : il doit dire que rien ne
    manque.
-7. **Relecture** : un sous-agent neuf (`sonnet`, effort `medium`) relit le diff pour vérifier qu'aucune correction
+7. **Relecture** : un sous-agent neuf (rôle `code`) relit le diff pour vérifier qu'aucune correction
    n'a cassé un comportement (bouton qui ne fait plus rien, texte utile perdu, écran inaccessible). Corrige ce qu'il
    trouve.
 8. **PR** (API REST, voir AGENT.md) : en tête, un résumé en français pour le propriétaire (« Amélioration UI : ce qui
