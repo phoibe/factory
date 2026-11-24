@@ -92,6 +92,10 @@ _À éviter_ : menu déroulant, sélecteur
 Le seul point de couleur affiché à côté d'un projet : rouge si une demande est bloquée et attend la réponse du propriétaire, sinon bleu si une carte attend dans « À vous de jouer », sinon gris si une demande est en cours ou en file d'attente ; aucun point sinon.
 _À éviter_ : badge, pastille, notification
 
+**Bandeau de nouvelle version** :
+La ligne discrète affichée sous la barre du haut quand une version plus récente du tableau de bord est en ligne, avec le bouton « Recharger » ; elle reste jusqu'à ce que le propriétaire recharge la page, qui ne se recharge jamais d'elle-même.
+_À éviter_ : alerte de mise à jour, notification de version, message de mise à jour
+
 ## Réglages généraux
 
 **Réglages généraux** :
