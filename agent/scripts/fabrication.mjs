@@ -86,8 +86,8 @@ export function missingSkills(runs, { stages = {}, ui = false, small = false } =
   return out;
 }
 
-// Sub-agents: which model each one ran on (the grid « Modèle et effort des sous-agents » of AGENT.md).
-const FAMILIES = ['Haiku', 'Sonnet', 'Opus'];
+// Sub-agents: which model each one ran on (the table « Modèles par rôle » of AGENT.md; any family of the catalog is valid).
+const FAMILIES = ['Haiku', 'Sonnet', 'Opus', 'Fable'];
 export function modelFamily(model) {
   if (!model) return null;
   return FAMILIES.find((f) => String(model).toLowerCase().includes(f.toLowerCase())) || String(model);

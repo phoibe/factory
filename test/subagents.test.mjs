@@ -26,7 +26,8 @@ test('model ids are grouped by family', () => {
   assert.equal(modelFamily('claude-sonnet-5-5'), 'Sonnet');
   assert.equal(modelFamily('opus[1m]'), 'Opus');
   assert.equal(modelFamily('haiku'), 'Haiku');
-  assert.equal(modelFamily('fable'), 'fable');
+  assert.equal(modelFamily('fable'), 'Fable');
+  assert.equal(modelFamily('gpt-x'), 'gpt-x');
   assert.equal(modelFamily(null), null);
 });
 

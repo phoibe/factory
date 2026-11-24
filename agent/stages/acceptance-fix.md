@@ -12,7 +12,7 @@ Le propriétaire a testé la preview et signale un problème.
    livré : modifie la règle concernée à sa place, sans historique des versions, en gardant les lignes d'en-tête.
    Puis lance `node .factory/scripts/specs.mjs index` pour remettre le sommaire à jour. Si la spec a été republiée en
    commentaire, relance plutôt `node .factory/scripts/specs.mjs save <n>`.
-3. Corrige (TDD si actif), revue par un sous-agent neuf (`sonnet`, effort `medium`), passe design (`design-pass.md`) si l'interface
+3. Corrige (TDD si actif), revue par un sous-agent neuf (rôle `code`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 4. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a
    changé et que les captures sont actives, refais les captures (voir `screenshots.md`) ; dans tous les cas mets
