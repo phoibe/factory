@@ -375,3 +375,29 @@ test('content pushed down by a fraction of a pixel is not framed, the block that
     for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
   }
 });
+
+test('when the frames code cannot be loaded, the images are published without frames and one line says so', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture, compose } = await import('../agent/scripts/shots.mjs');
+  const a = await serveMovingPage();
+  const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const out = mkdtempSync(join(tmpdir(), 'o-'));
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    const lines = [];
+    const { framed } = await compose({ before, after, out, loadFrames: () => Promise.reject(new Error('boom')), log: (l) => lines.push(l) });
+    assert.deepEqual(framed, []);
+    assert.deepEqual(readdirSync(out).sort(), readdirSync(after).sort());
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /cadres rouges/);
+    assert.match(lines[0], /boom/);
+  } finally {
+    a.server.close(); b.server.close();
+    for (const d of [before, after, out]) rmSync(d, { recursive: true, force: true });
+  }
+});

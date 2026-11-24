@@ -183,10 +183,15 @@ export function framesFor(beforeFile, afterFile, lib, log = console.error) {
 }
 
 // Writes one side-by-side image (before left, after right) per screenshot of `after` into `out`; returns the files
-// whose image carries at least one red frame.
-export async function compose({ before, after, out, only = null }) {
+// whose image carries at least one red frame. Frames code that cannot be loaded leaves the images without frames.
+export async function compose({ before, after, out, only = null, loadFrames = () => import('./shot-frames.mjs'), log = console.error }) {
   const { chromium } = loadPlaywright();
-  const lib = await import('./shot-frames.mjs');
+  let lib = null;
+  try {
+    lib = await loadFrames();
+  } catch (e) {
+    log(`cadres rouges non calculés : ${e.message}`);
+  }
   mkdirSync(out, { recursive: true });
   const framed = [];
   const browser = await chromium.launch(launchOptions());
@@ -195,7 +200,7 @@ export async function compose({ before, after, out, only = null }) {
     for (const f of readdirSync(after).filter((x) => x.endsWith('.png') && (!only || only.includes(x)))) {
       const b = before && join(before, f);
       const has = b && existsSync(b);
-      const frames = framesFor(has ? b : null, join(after, f), lib);
+      const frames = lib && framesFor(has ? b : null, join(after, f), lib, log);
       if (frames && (frames.before.length || frames.after.length)) framed.push(f);
       const html = sideBySideHtml({ beforeUri: has ? dataUri(b) : null, afterUri: dataUri(join(after, f)), frames });
       await page.setContent(html, { waitUntil: 'load' });
