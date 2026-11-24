@@ -193,7 +193,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 ## Mises en page
 
 ### Projet (en-tête commun aux onglets)
-- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite : « Outils Mac », « Sur mon téléphone », « Réglages généraux », « Se déconnecter » en dernier), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
+- **Disposition générale** : barre du haut (logo « Factory » à gauche, boutons discrets à droite : « Outils Mac », « Déclarer stable » (visible seulement quand de vraies modifications attendent d'être déclarées stables, leur nombre entre parenthèses en mono), « Sur mon téléphone », « Réglages généraux », « Se déconnecter » en dernier), puis le nom du projet en grand titre, une ligne grise d'état (privé ou public, demandes en parallèle), une ligne de liens discrets séparés par « · » (site en ligne, demandes sur GitHub, agents du jour), la rangée de boutons d'action (« Nouvelle fonctionnalité » en premier, détaché des autres), puis les onglets « Suivi », « Agent », « Paramètres ».
 - **Sommaire ou navigation** : les onglets soulignés en encre ; la liste des projets, colonne de 240 px collée au bord droit, sert à changer de projet.
 - **Largeur** : contenu de 1100 px au plus, aligné à gauche de l'espace laissé par la liste des projets.
 - **Libellés et explications** : aucun texte d'explication ; seuls les titres, les libellés des boutons et la ligne d'état.
