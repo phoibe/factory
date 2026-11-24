@@ -135,8 +135,8 @@ test('un réglage qui ne se lit pas n\'est pas remplacé par les valeurs par dé
       await openPage(page, url);
       await page.getByText('Impossible de lire les réglages actuels. Réessayez dans un instant.').waitFor();
       assert.equal(await page.getByRole('button', { name: 'Enregistrer' }).isDisabled(), true);
-      await page.getByRole('combobox', { name: 'Revue' }).selectOption('haiku');
-      assert.equal(await page.getByRole('button', { name: 'Enregistrer' }).isDisabled(), true);
+      for (const r of roles) assert.equal(await page.getByRole('combobox', { name: r }).isDisabled(), true, `${r} disabled`);
+      for (const radio of await page.locator('#general input[type=radio]').all()) assert.equal(await radio.isDisabled(), true);
     });
   }
 });
@@ -160,5 +160,18 @@ test('le focus va sur le titre à l\'ouverture et revient au bouton du haut à l
     await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
     await page.getByRole('button', { name: '← Retour au projet' }).click();
     assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Changer le réglage de tous les projets');
+  });
+});
+
+test('sur téléphone le focus revient sur « Plus » quand le bouton du haut est caché', async () => {
+  await withPanel({ viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
+    await page.goto(url);
+    assert.equal(await page.locator('#general-open').getAttribute('aria-pressed'), 'false', 'in the markup');
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.getByText('Plus', { exact: true }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    await page.getByRole('button', { name: '← Retour au projet' }).click();
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName + ':' + document.activeElement?.parentElement?.id), 'SUMMARY:more');
   });
 });

@@ -58,10 +58,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
        et montée d'un cran inchangés (voir « Modèles par rôle »). Petites et moyennes demandes : jamais de parallèle.
    Si l'étape plan est désactivée, le code s'écrit d'une traite par un seul sous-agent `code`, sans plan écrit.
    Le journal de la PR indique ce parcours tout seul (« Parcours : petite demande… »).
-4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord :
-   lance-le avec la commande de test du projet et vois-le échouer avant d'écrire le code (c'est la preuve TDD). Dis au pilote de le mettre dans la consigne
-   du sous-agent `code` : il charge lui-même `test-driven-development` avec l'outil Skill, et lance le test qui échoue
-   avec la commande de test du projet avant d'écrire le code.
+4. **Code en TDD** (si l'étape tdd est active) : skill `test-driven-development`, test qui échoue d'abord.
+   Mets dans la consigne de chaque sous-agent `code` : il charge lui-même le skill `test-driven-development` (outil Skill), lance le test qui échoue avec la commande de test du projet et le voit échouer avant d'écrire le code (c'est la preuve TDD).
 4 bis. **Parcours rejoués à chaque livraison** : chaque critère d'acceptation de la spec que l'on peut vérifier
    dans un navigateur devient un test de parcours Playwright dans `e2e/` (un fichier par feature, un test par
    critère, nommé en français avec les mots du critère : « je vois le créneau commun quand tout le monde est libre »).

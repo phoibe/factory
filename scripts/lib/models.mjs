@@ -51,11 +51,14 @@ export function compareVersions(a, b) {
 // Legacy ids (claude-3-5-sonnet-20241022, claude-3-opus) have the digit first and are ignored, as are the products
 // that share the prefix (claude-code-2, claude-instant-1...).
 const NOT_FAMILIES = new Set(['code', 'instant', 'agent', 'sdk', 'api', 'app', 'desktop', 'ai', 'cli', 'docs']);
+const KNOWN = new Set(MODEL_FAMILIES.map((f) => f.id));
 export function parseModelIds(text) {
   const latest = new Map();
-  for (const m of String(text).matchAll(/(?<![A-Za-z0-9])claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?/g)) {
-    const [, id, major, minor] = m;
+  for (const m of String(text).matchAll(/(?<![A-Za-z0-9])claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?(-\d{8})?/g)) {
+    const [, id, major, minor, date] = m;
     if (NOT_FAMILIES.has(id)) continue;
+    // A family we do not know yet is only believed from a minor version or a date (claude-max-5 is not a model).
+    if (!KNOWN.has(id) && minor === undefined && !date) continue;
     const version = minor === undefined ? major : `${major}.${minor}`;
     if (!latest.has(id) || compareVersions(version, latest.get(id)) > 0) latest.set(id, version);
   }

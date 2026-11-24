@@ -115,6 +115,7 @@ function resetSession({ forget = false } = {}) {
   token = null; readToken = null; projects = []; current = null; dots = new Map(); known = new Map(); accountTag = null; etags.clear(); boards.clear(); for (const m of [gap.at, gap.busy, gap.again, gap.views]) m.clear(); clearTimeout(dotsTimer); dotsLast = 0; dotsPausedUntil = 0; forgotten = new Set(); clearTimeout(runnerTimer); $('runner-alert').hidden = true;
   clearTimeout(chat.timer); clearTimeout(live.timer); clearInterval(live.tick); live.tick = null;
   Object.assign(live, { repo: null, issues: null, drawn: false, busy: null });
+  Object.assign(general, { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null }); closeGeneral();
 }
 
 // A refused token (expired, revoked) sends the owner back to the login page instead of leaving a frozen panel.
@@ -1305,8 +1306,8 @@ async function loadMachine(project) {
   renderRules();
 }
 
-const machineRadios = (name, choices, value, onpick) => choices.map(([v, t]) => el('div', { class: 'row' },
-  el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, onchange: () => onpick(v) }),
+const machineRadios = (name, choices, value, onpick, disabled = false) => choices.map(([v, t]) => el('div', { class: 'row' },
+  el('input', { type: 'radio', name, id: `${name}-${v}`, checked: value === v, disabled, onchange: () => onpick(v) }),
   el('label', { for: `${name}-${v}` }, t)));
 
 // The « Machine des tâches » line for this project, with the dev server's state for it.
@@ -1392,7 +1393,7 @@ async function writeGeneral({ machine: choice, models }) {
 // `saved` is what the factory's branch holds, as text, to know when something changed.
 const general = { machine: 'dev-server', models: {}, saved: '', unreadable: false, from: null };
 const generalValue = () => JSON.stringify({ machine: general.machine, models: general.models });
-const generalDirty = () => general.saved !== '' && generalValue() !== general.saved;
+const generalDirty = () => !general.unreadable && general.saved !== '' && generalValue() !== general.saved;
 const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 'dev-server', models: Object.fromEntries(MODEL_ROLES.map((r) => [r.id, roleModel(raw, r.id)])) });
 
 // `from` is the element to give the focus back to on closing (the top button, or the Paramètres link).
@@ -1417,19 +1418,25 @@ function closeGeneral(giveFocusBack = false) {
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
   $('general-open').setAttribute('aria-pressed', 'false');
-  if (wasOpen && giveFocusBack) (general.from?.isConnected ? general.from : $('general-open')).focus();
+  if (wasOpen && giveFocusBack) {
+    let target = general.from?.isConnected ? general.from : $('general-open');
+    // On a phone the top button sits inside the closed « Plus » menu: its summary takes the focus instead.
+    const menu = target.closest('details');
+    if (menu && !menu.open) target = menu.querySelector('summary');
+    target.focus();
+  }
 }
 
 function renderGeneral() {
   const modelRows = MODEL_ROLES.map((r) => el('div', { class: 'row model-row' }, el('div', {},
     el('label', { for: `model-${r.id}` }, r.name),
     el('p', { id: `model-${r.id}-help` }, r.help),
-    el('select', { id: `model-${r.id}`, 'aria-describedby': `model-${r.id}-help`, onchange: (e) => { general.models[r.id] = e.target.value; renderGeneral(); } },
+    el('select', { id: `model-${r.id}`, disabled: general.unreadable, 'aria-describedby': `model-${r.id}-help`, onchange: (e) => { general.models[r.id] = e.target.value; renderGeneral(); } },
       ...MODEL_FAMILIES.map((f) => el('option', { value: f.id, selected: general.models[r.id] === f.id }, familyLabel(f)))))));
   const models = el('fieldset', {}, el('legend', {}, 'Modèles'), ...modelRows,
     el('p', { class: 'models-note' }, 'L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude.ai : la factory ne peut pas le changer, choisissez-le dans la routine. Il confie toujours le plan et l’écriture du code aux rôles ci-dessus, même pour une petite retouche.'));
   const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
-    ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }));
+    ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }, general.unreadable));
   const dirty = generalDirty();
   const failed = general.unreadable ? [el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.')] : [];
   $('general').replaceChildren(...failed, models, tasks, el('div', { class: 'savebar' },
