@@ -12,7 +12,7 @@ const openPage = async (page, url) => {
   await page.locator('#general:not([aria-busy])').waitFor(); // opened at once, filled when the settings are read
 };
 const labelOf = (id) => familyLabel(MODEL_FAMILIES.find((f) => f.id === id));
-const roles = ['Plans et organisation', 'Écriture du code', 'Revue', 'Tâches simples'];
+const roles = ['Plans et organisation', 'Écriture du code', 'Revue', 'Relectures d’une review générale', 'Tâches simples'];
 const chosen = (page) => Promise.all(roles.map((r) => page.getByRole('combobox', { name: r }).evaluate((s) => s.selectedOptions[0].textContent)));
 
 test('la barre du haut montre Réglages généraux avant Se déconnecter et le retour ramène au projet', async () => {
@@ -34,10 +34,10 @@ test('la barre du haut montre Réglages généraux avant Se déconnecter et le r
   });
 });
 
-test('la page montre Fable, Opus, Fable, Sonnet par défaut avec leur version et la machine des tâches', async () => {
+test('la page montre Fable, Opus, Fable, Opus, Sonnet par défaut avec leur version et la machine des tâches', async () => {
   await withPanel({}, async ({ page, url }) => {
     await openPage(page, url);
-    assert.deepEqual(await chosen(page), ['fable', 'opus', 'fable', 'sonnet'].map(labelOf));
+    assert.deepEqual(await chosen(page), ['fable', 'opus', 'fable', 'opus', 'sonnet'].map(labelOf));
     assert.equal(await page.getByRole('combobox', { name: 'Écriture du code' }).locator('option').count(), MODEL_FAMILIES.length);
     await page.getByText('Prépare les questions et la fiche de chaque demande, écrit les plans et organise le développement.').waitFor();
     await page.getByText(/L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude\.ai/).waitFor();
@@ -76,9 +76,9 @@ test('un modèle seul changé n\'attend pas le contrôle des machines', async ()
 });
 
 test('les choix enregistrés s\'affichent au retour sur la page', async () => {
-  await withPanel({ factoryFiles: { 'settings.json': { machine: 'github', models: { plan: 'opus', code: 'haiku', review: 'sonnet', simple: 'fable' } } } }, async ({ page, url }) => {
+  await withPanel({ factoryFiles: { 'settings.json': { machine: 'github', models: { plan: 'opus', code: 'haiku', review: 'sonnet', audit: 'haiku', simple: 'fable' } } } }, async ({ page, url }) => {
     await openPage(page, url);
-    const saved = ['opus', 'haiku', 'sonnet', 'fable'].map(labelOf);
+    const saved = ['opus', 'haiku', 'sonnet', 'haiku', 'fable'].map(labelOf);
     assert.deepEqual(await chosen(page), saved);
     assert.equal(await page.getByRole('radio', { name: 'Machines GitHub' }).isChecked(), true);
     await page.getByRole('button', { name: '← Retour au projet' }).click();
@@ -111,7 +111,7 @@ test('sur téléphone la page tient sur une colonne', async () => {
     const m = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
       selects: [...document.querySelectorAll('#general-view select')].map((s) => Math.round(s.getBoundingClientRect().right)) }));
     assert.ok(m.scroll <= m.width, `horizontal scroll: ${m.scroll} > ${m.width}`);
-    assert.ok(m.selects.length === 4 && m.selects.every((r) => r <= m.width), JSON.stringify(m));
+    assert.ok(m.selects.length === 5 && m.selects.every((r) => r <= m.width), JSON.stringify(m));
   });
 });
 
@@ -192,24 +192,63 @@ test('sur téléphone le focus revient sur « Plus » quand le bouton du haut es
   });
 });
 
+// settings.json on the factory-runners branch, kept between reads and saves (with the sha GitHub would check).
+async function statefulSettings(page, initial) {
+  const file = { text: JSON.stringify(initial), n: 1 };
+  const puts = [];
+  await page.route('https://api.github.com/repos/phoibe/factory/contents/settings.json**', async (route) => {
+    const req = route.request();
+    const headers = { 'cache-control': 'private, max-age=60, s-maxage=60' };
+    if (req.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ content: Buffer.from(file.text).toString('base64'), encoding: 'base64', sha: `v${file.n}` }) });
+    const body = req.postDataJSON();
+    puts.push(body.sha);
+    if (body.sha !== `v${file.n}`) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'sha mismatch' }) });
+    file.text = Buffer.from(body.content, 'base64').toString('utf8');
+    file.n += 1;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: `v${file.n}` } }) });
+  });
+  return { file, puts };
+}
+
+// Issue #570: the part-by-part reviewers of a general review have their own row.
+test('la ligne Relectures d\'une review générale est juste sous Revue, sur Opus, avec les mêmes moteurs', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openPage(page, url);
+    assert.deepEqual((await page.getByRole('group', { name: 'Modèles' }).locator('label').allTextContents()).map((t) => t.trim()), roles);
+    const row = page.getByRole('combobox', { name: 'Relectures d’une review générale' });
+    assert.equal(await row.inputValue(), 'opus');
+    const options = (s) => s.locator('option').allTextContents();
+    assert.deepEqual(await options(row), MODEL_FAMILIES.map(familyLabel));
+    assert.deepEqual(await options(row), await options(page.getByRole('combobox', { name: 'Revue', exact: true })));
+    await page.getByText('Relit le code de chaque partie de l’appli pendant une review générale. La synthèse reste faite par « Revue ».').waitFor();
+    assert.equal(await page.locator('#model-audit').getAttribute('aria-describedby'), 'model-audit-help');
+  });
+});
+
+test('Fable choisi pour les relectures est enregistré seul, gardé après rechargement, et les autres lignes ne bougent pas', async () => {
+  await withPanel({}, async ({ page, url, writes }) => {
+    const { file } = await statefulSettings(page, { machine: 'dev-server', models: { code: 'sonnet' } });
+    await openPage(page, url);
+    await page.getByRole('combobox', { name: 'Relectures d’une review générale' }).selectOption('fable');
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.getByText('Réglages généraux enregistrés', { exact: false }).waitFor({ timeout: 5000 });
+    assert.deepEqual(JSON.parse(file.text), { machine: 'dev-server', models: { code: 'sonnet', audit: 'fable' } });
+    assert.ok(!writes.some((w) => w.path.endsWith('/runners.yml/dispatches')));
+    await openPage(page, url);
+    assert.deepEqual(await chosen(page), ['fable', 'sonnet', 'fable', 'fable', 'sonnet'].map(labelOf));
+    await page.getByRole('combobox', { name: 'Relectures d’une review générale' }).selectOption('opus');
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
+    await page.waitForFunction(() => document.querySelector('#general')?.textContent.includes('Tout est enregistré'), null, { timeout: 5000 });
+    assert.deepEqual(JSON.parse(file.text).models, { code: 'sonnet' });
+  });
+});
+
 // Review #556, finding 1: GitHub lets the browser keep the settings 60 s; the second save must send the sha the first
 // one left, and the reopened page must show what was saved. (Playwright's routing bypasses the HTTP cache: the unit
 // test in test/panel-machine.test.mjs pins the no-store read; this one guards the journey.)
 test('deux enregistrements de suite passent et la page rouverte montre le dernier', async () => {
   await withPanel({}, async ({ page, url }) => {
-    const file = { text: JSON.stringify({ machine: 'dev-server' }), n: 1 };
-    const puts = [];
-    await page.route('https://api.github.com/repos/phoibe/factory/contents/settings.json**', async (route) => {
-      const req = route.request();
-      const headers = { 'cache-control': 'private, max-age=60, s-maxage=60' };
-      if (req.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ content: Buffer.from(file.text).toString('base64'), encoding: 'base64', sha: `v${file.n}` }) });
-      const body = req.postDataJSON();
-      puts.push(body.sha);
-      if (body.sha !== `v${file.n}`) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'sha mismatch' }) });
-      file.text = Buffer.from(body.content, 'base64').toString('utf8');
-      file.n += 1;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: `v${file.n}` } }) });
-    });
+    const { puts } = await statefulSettings(page, { machine: 'dev-server' });
     await openPage(page, url);
     await page.getByRole('combobox', { name: 'Revue' }).selectOption('opus');
     await page.getByRole('button', { name: 'Enregistrer' }).click();
