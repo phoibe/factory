@@ -88,3 +88,32 @@ test('the same undo PR from this repository is still merged by the tick once its
   await relayOn(gh).relay.handle(tick);
   assert.ok(gh.calls.some((c) => c[0] === 'merge' && c[1] === 99));
 });
+
+// ---- Issues opened by someone else than the owner ----
+const bugBy = (login, association) => ({ number: 77, state: 'open', title: 'Bug : x', body: 'Do X.', created_at: '2026-11-24T11:00:00Z',
+  user: { login }, author_association: association, labels: [L.bug] });
+const autoCfg = { ...config, autoPick: true };
+const opened = { kind: 'issue', event: 'issues', action: 'opened', number: 77, labels: [L.bug], fromOwner: false, fromAgent: false, text: '' };
+
+test('auto-pick never starts an agent on an issue opened by a stranger, at its opening nor at the tick', async () => {
+  const issue = bugBy('stranger', 'NONE');
+  const gh = fakeGh({ issues: [issue] });
+  const { relay, fired } = relayOn(gh, autoCfg);
+  await relay.handle(opened, { ownerLogin: 'phoibe' });
+  await relay.handle(tick);
+  assert.equal(fired.length, 0);
+  assert.deepEqual(issue.labels, [L.bug]);
+  assert.ok(!gh.calls.some((c) => c[0] === 'comment' && c[1] === 77));
+});
+
+test('auto-pick still starts the issues of the owner and of the factory\'s bot', async () => {
+  for (const [login, association] of [['phoibe', 'OWNER'], ['github-actions[bot]', 'NONE']]) {
+    const issue = bugBy(login, association);
+    const gh = fakeGh({ issues: [issue] });
+    const { relay, fired } = relayOn(gh, autoCfg);
+    await relay.handle(tick);
+    assert.equal(fired.length, 1, login);
+    assert.match(JSON.parse(fired[0].body).text, /"stage":"bugfix"/, login);
+    assert.ok(issue.labels.includes(L.autoPicked), login);
+  }
+});

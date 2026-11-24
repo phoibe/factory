@@ -790,8 +790,8 @@ test('any event unsticks a PR opened in conflict, without waiting for the rare s
 test('a « go » that ends the questions of a picked feature lets the next feature start in the same run', async () => {
   // yoldmewhen2, 2026-11-06: #39 left its questions, 4 places were free, and #40 waited hours for the scheduled tick.
   const gh = fakeGh({ issues: [
-    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], created_at: '2026-01-01T00:00:00Z' },
-    { number: 40, labels: [L.feature], created_at: '2026-01-02T00:00:00Z' },
+    { number: 39, labels: [L.feature, L.autoPicked, L.specReview], user: { login: 'phoibe' }, created_at: '2026-01-01T00:00:00Z' },
+    { number: 40, labels: [L.feature], user: { login: 'phoibe' }, created_at: '2026-01-02T00:00:00Z' },
   ], prs: [] });
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, maxParallel: 5, autoPick: true, maxQuestions: 1 }, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -817,7 +817,7 @@ test('a tick checks the queue once, not twice', async () => {
 
 test('a factory label typed wrong by an agent is put back, so the card can be picked', async () => {
   // yoldmewhen2 #55, 2026-11-06: « une semaine à la fois:factory:feature » hid the feature from the factory.
-  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], created_at: '2026-01-01T00:00:00Z' }], prs: [] };
+  const state = { issues: [{ number: 55, labels: ['une semaine à la fois:factory:feature'], user: { login: 'phoibe' }, created_at: '2026-01-01T00:00:00Z' }], prs: [] };
   const gh = { ...fakeGh(state), listOpenIssues: async () => state.issues.map((i) => ({ ...i, labels: i.labels.map((name) => ({ name })) })) };
   const sent = [];
   const relay = createRelay({ gh, repo: 'phoibe/app', config: { ...config, autoPick: true, maxQuestions: 2 }, env, fetchImpl: fetchOk(sent), log: quiet });
@@ -851,7 +851,8 @@ async function runPick(issues, cfg = pickConfig) {
   const started = sent.map((s) => payloadOf(s.init.body));
   return { gh, started };
 }
-const fi = (number, ...labels) => ({ number, labels, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
+// Opened by the owner: auto-pick never takes a stranger's issue.
+const fi = (number, ...labels) => ({ number, labels, user: { login: 'phoibe' }, created_at: `2026-01-${String(number).padStart(2, '0')}T00:00:00Z` });
 
 test('autoPick off: a free slot and an open issue start nothing', async () => {
   const { started } = await runPick([fi(1, L.feature)], { ...pickConfig, autoPick: false });
