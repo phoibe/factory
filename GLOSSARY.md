@@ -63,8 +63,16 @@ _À éviter_ : idée rejetée, abandon
 ## Projets publics
 
 **Inconnu** :
-Sur un projet public, toute personne qui n'est ni le propriétaire, ni quelqu'un à qui il a donné le droit d'écrire dans le projet, ni un robot de la factory. Il peut ouvrir une demande, proposer une modification ou écrire un message, mais rien de ce qu'il écrit ne dirige la factory.
+Sur un projet public, toute personne qui n'est ni le propriétaire, ni quelqu'un à qui il a donné le droit d'écrire dans le projet, ni un robot de la factory, ni un robot branché. Il peut ouvrir une demande, proposer une modification ou écrire un message, mais rien de ce qu'il écrit ne dirige la factory.
 _À éviter_ : tiers, contributeur extérieur, étranger
+
+**Message laissé de côté** :
+Le message qu'un inconnu a écrit dans une demande, une modification ou une conversation du propriétaire : son texte n'est jamais remis à l'agent, qui sait seulement qu'un message se trouvait là. Il reste affiché tel quel pour les personnes.
+_À éviter_ : message filtré, message masqué, message ignoré
+
+**Robot branché** :
+Un robot que le propriétaire a installé sur un projet et qui y écrit des messages, comme son hébergeur qui donne le lien de l'aperçu. Ce n'est ni un inconnu ni un robot de la factory : l'agent lit ses messages comme une information, jamais comme une consigne.
+_À éviter_ : bot, intégration, application
 
 **Note de la factory** :
 Une indication invisible à l'écran que la factory laisse dans une demande, une modification ou un message pour se souvenir d'où elle en est (une étape passée, une relance prévue, une estimation). Elle ne compte que dans un texte écrit par le propriétaire, par quelqu'un à qui il a donné le droit d'écrire dans le projet, ou par la factory ; celle d'un inconnu est ignorée.
