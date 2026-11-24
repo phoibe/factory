@@ -217,6 +217,17 @@ export function mergeConfig(base, mine, theirs) {
   return out;
 }
 
+// What keeps the « Recharger » button of the new-version banner from reloading (issue #572), as the short message
+// it shows instead; null when nothing typed or in flight would be lost. Settings first, then the message, then the answer,
+// then the unsent messages (issue #580: kept in memory only, a reload would lose them).
+export function reloadBlocker({ settings, message, answering, unsent }) {
+  if (settings) return 'Enregistrez d\'abord vos réglages, puis rechargez.';
+  if (message) return 'Envoyez ou effacez d\'abord votre message, puis rechargez.';
+  if (answering) return 'Attendez la fin de la réponse de l\'agent, puis rechargez.';
+  if (unsent) return 'Renvoyez ou modifiez d\'abord vos messages non envoyés, puis rechargez.';
+  return null;
+}
+
 // The browser tab title: « (2) Factory » while cards wait for the owner, plain « Factory » otherwise.
 export function tabTitle(count) {
   return count > 0 ? `(${count}) Factory` : 'Factory';

@@ -68,7 +68,10 @@
 5. `node .factory/scripts/shots.mjs publish --pr <numéro> --before /tmp/shots/before --after /tmp/shots/after > /tmp/shots.md`
    (sans `--before` s'il n'y en a pas ; avec `--set-aside <fichier>` si tu as écarté des écrans à l'étape 4 bis).
    Le script fabrique **une seule image par écran, taille et thème** (avant à gauche,
-   après à droite), la pousse sur `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
+   après à droite). Chaque image avant/après porte des cadres rouges autour de ce qui a changé (aucun autour du
+   contenu décalé, ni sur un nouvel écran ; quand presque tout diffère, la mention « tout l'écran a changé » les
+   remplace) : tu n'as rien à faire, et les captures elles-mêmes restent sans cadre. Le script pousse ces images sur
+   `claude/factory-assets` et écrit un tableau qui ne sert qu'à vérifier : les lignes sombres
    (« accueil · desktop · sombre ») suivent les lignes claires.
    **Tu ne publies jamais ce tableau toi-même** : la factory le publie avec son propre robot, à partir des images
    poussées, dès que tu poses `factory:checks` sur la PR (un tableau envoyé depuis ta session peut arriver abîmé sur

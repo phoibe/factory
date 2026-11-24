@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SHOTS_META, shotsMeta, sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml } from '../agent/scripts/shots.mjs';
+import { SHOTS_META, shotsMeta, sameScreens, slug, markdownTable, NO_CHANGE_MARKER, NO_CHANGE_SENTENCE, screensToShow, parseArgs, darkToggle, cookiesFor, differs, orderFiles, sideBySideHtml, framesFor, FRAMES_SENTENCE } from '../agent/scripts/shots.mjs';
 
 test('slug names routes', () => {
   assert.equal(slug('/'), 'accueil');
@@ -230,4 +230,227 @@ test('brokenShotRows refuses a table with no image row, or a row with a missing 
   const { brokenShotRows } = await import('../agent/scripts/shots.mjs');
   const md = '<!-- shots: claude/factory-assets -->\n| Écran | Avant (gauche) · Après (droite) |\n| --- | --- |\n| a · desktop | ![avant · après]() |';
   assert.equal(brokenShotRows(md).length, 1);
+});
+
+const SIZES = { red: 8, white: 2, text: 46 };
+
+test('red frames are drawn over each side, outline only', () => {
+  const html = sideBySideHtml({
+    beforeUri: 'data:b', afterUri: 'data:a',
+    frames: { before: [{ x: 10, y: 20, w: 100, h: 50 }], after: [{ x: 10, y: 60, w: 100, h: 50 }, { x: 0, y: 200, w: 40, h: 40 }], whole: false, sizes: SIZES },
+  });
+  assert.equal(html.match(/class="f"/g).length, 3);
+  const at = html.indexOf('left:12px;top:22px;width:96px;height:46px;border-width:8px;outline-width:2px');
+  assert.ok(at > 0 && at < html.indexOf('data:a'));
+  assert.match(html, /#f00/);
+  assert.match(html, /#fff/);
+  assert.doesNotMatch(html.match(/\.f\{[^}]*\}/)[0], /background/);
+  assert.doesNotMatch(html, /tout l'écran a changé/);
+});
+
+test('when the whole screen changed, a mention replaces the frames', () => {
+  const html = sideBySideHtml({ beforeUri: 'data:b', afterUri: 'data:a', frames: { before: [], after: [], whole: true, sizes: SIZES } });
+  assert.doesNotMatch(html, /class="f"/);
+  const at = html.lastIndexOf("tout l'écran a changé");
+  assert.ok(at > html.indexOf('Après') && at < html.indexOf('data:a'));
+  assert.match(html.slice(html.indexOf('Après'), at), /font-size:46px/);
+});
+
+test('without frames the image is as before: a new screen has none', () => {
+  const html = sideBySideHtml({ beforeUri: null, afterUri: 'data:a' });
+  assert.doesNotMatch(html, /class="f"/);
+  assert.doesNotMatch(html, /tout l'écran a changé/);
+});
+
+test('publish records the images that carry frames', () => {
+  assert.deepEqual(JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: [], framed: ['a--desktop.png'] })).framed, ['a--desktop.png']);
+  assert.ok(!('framed' in JSON.parse(shotsMeta({ files: ['a--desktop.png'], unchanged: [] }))));
+  assert.equal(FRAMES_SENTENCE, 'Les cadres rouges entourent ce qui a changé.');
+});
+
+test('the published image carries red frames, the captures stay untouched, a new screen has none', async () => {
+  const { mkdtempSync, readdirSync, readFileSync, copyFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture, compose } = await import('../agent/scripts/shots.mjs');
+  const { decodePng } = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveMovingPage();
+  const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const out = mkdtempSync(join(tmpdir(), 'o-'));
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    copyFileSync(join(after, 'accueil--desktop.png'), join(after, 'nouveau--desktop.png'));
+    const bytes = (dir) => Object.fromEntries(readdirSync(dir).map((f) => [f, readFileSync(join(dir, f))]));
+    const kept = { before: bytes(before), after: bytes(after) };
+    const { framed } = await compose({ before, after, out });
+    assert.deepEqual(framed.sort(), readdirSync(after).filter((f) => f !== 'nouveau--desktop.png').sort());
+    assert.deepEqual(bytes(before), kept.before);
+    assert.deepEqual(bytes(after), kept.after);
+    const hasRed = (file) => {
+      const { data } = decodePng(readFileSync(join(out, file)));
+      for (let i = 0; i < data.length; i += 4) if (data[i] === 255 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 255) return true;
+      return false;
+    };
+    assert.ok(hasRed('accueil--desktop.png'));
+    assert.ok(!hasRed('nouveau--desktop.png'));
+  } finally {
+    a.server.close(); b.server.close();
+    for (const d of [before, after, out]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('a capture that cannot be read is published without frames', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'x-'));
+  try {
+    writeFileSync(join(dir, 'b.png'), Buffer.from('x'));
+    writeFileSync(join(dir, 'a.png'), Buffer.from('y'));
+    const lines = [];
+    assert.equal(framesFor(join(dir, 'b.png'), join(dir, 'a.png'), lib, (l) => lines.push(l)), null);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /cadres rouges non calculés/);
+    assert.equal(framesFor(null, join(dir, 'a.png'), lib, (l) => lines.push(l)), null);
+    assert.equal(lines.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A page whose rows of text are not a whole number of pixels high (17px/1.5), with soft shadows and an inline svg.
+async function serveFractionalPage(extra = '', title = 'Bonjour') {
+  const { createServer } = await import('node:http');
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+body{margin:0;font:17px/1.5 system-ui,sans-serif;color:#222;background:#fafafa}header{background:#234;color:#fff;padding:12px 24px;display:flex;justify-content:space-between}
+main{max-width:900px;margin:0 auto;padding:24px}.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+svg{display:block;margin:12px 0}</style><header><b>Tableau de bord</b><span>Compte</span></header><main><h1>${title}</h1>
+<p>Un premier paragraphe de texte assez long pour passer à la ligne sur un téléphone, avec des mots.</p>${extra}
+<div class="card"><h2>Carte une</h2><p>Du contenu dans la carte, sur plusieurs lignes peut-être. Lorem ipsum dolor sit amet consectetur.</p><button>Exporter</button></div>
+<svg width="200" height="60"><circle cx="30" cy="30" r="25" fill="#c33"/><path d="M70 50 L120 10 L190 45" stroke="#36c" stroke-width="3" fill="none"/></svg>
+<div class="card"><h2>Carte deux</h2><p>Autre contenu. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p><ul><li>un</li><li>deux</li><li>trois</li></ul></div>
+<div class="card"><h2>Carte trois</h2><p>Encore. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip.</p></div></main>`;
+  const server = createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(html); });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  return { server, url: `http://127.0.0.1:${server.address().port}` };
+}
+
+test('content pushed down by a fraction of a pixel is not framed, the block that pushed it is', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createRequire } = await import('node:module');
+  const { capture, VIEWPORTS, launchOptions } = await import('../agent/scripts/shots.mjs');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveFractionalPage();
+  const b = await serveFractionalPage('<p id="added" style="width:fit-content;height:25.5px;margin:13.3px 0">Un bloc ajouté de hauteur fractionnaire.</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const browser = await createRequire(import.meta.url)('playwright').chromium.launch(launchOptions());
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      const page = await browser.newPage({ viewport });
+      await page.goto(b.url);
+      const p = await page.locator('#added').boundingBox();
+      await page.close();
+      const f = `accueil--${name}.png`;
+      const frames = framesFor(join(before, f), join(after, f), lib);
+      const { min, red, white, pad } = frames.sizes;
+      const reach = min / 2 + red + white + pad + 2;
+      assert.deepEqual(frames.before, [], f);
+      assert.equal(frames.after.length, 1, `${f}: ${JSON.stringify(frames.after)}`);
+      const [box] = frames.after;
+      assert.ok(box.y <= p.y && box.y + box.h >= p.y + p.height && box.x <= p.x && box.x + box.w >= p.x + p.width, `${f}: the added block is framed`);
+      assert.ok(box.y + box.h <= p.y + p.height + reach && box.x + box.w <= p.x + p.width + reach, `${f}: only the added block is framed, ${JSON.stringify(box)} for ${JSON.stringify(p)}`);
+    }
+  } finally {
+    await browser.close();
+    a.server.close(); b.server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// Captures two versions of the fractional page; for each viewport, gives the frames and the bounding boxes of the
+// selectors in the after version.
+async function captureBoth(beforeArgs, afterArgs, selectors) {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createRequire } = await import('node:module');
+  const { capture, VIEWPORTS, launchOptions } = await import('../agent/scripts/shots.mjs');
+  const lib = await import('../agent/scripts/shot-frames.mjs');
+  const a = await serveFractionalPage(...beforeArgs);
+  const b = await serveFractionalPage(...afterArgs);
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const browser = await createRequire(import.meta.url)('playwright').chromium.launch(launchOptions());
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    const out = [];
+    for (const [name, viewport] of Object.entries(VIEWPORTS)) {
+      const page = await browser.newPage({ viewport });
+      await page.goto(b.url);
+      const boxes = [];
+      for (const s of selectors) boxes.push(await page.locator(s).boundingBox());
+      await page.close();
+      const f = `accueil--${name}.png`;
+      out.push({ f, frames: framesFor(join(before, f), join(after, f), lib), boxes });
+    }
+    return out;
+  } finally {
+    await browser.close();
+    a.server.close(); b.server.close();
+    for (const d of [before, after]) rmSync(d, { recursive: true, force: true });
+  }
+}
+
+const framedBy = (boxes, p) => boxes.some((f) => f.x <= p.x && f.y <= p.y && f.x + f.w >= p.x + p.width && f.y + f.h >= p.y + p.height);
+
+test('a plain bar added is framed in a real capture, even when the title changed too', async () => {
+  const bar = '<div id="bar" style="height:4px;background:#36c;margin:8px 0"></div>';
+  for (const { f, frames, boxes: [title, added] } of await captureBoth([], [bar, 'Bonsoir'], ['h1', '#bar'])) {
+    assert.ok(framedBy(frames.after, added), `${f}: the bar is framed, ${JSON.stringify(frames.after)} for ${JSON.stringify(added)}`);
+    assert.ok(frames.after.some((b) => b.y < title.y + title.height && b.y + b.h > title.y), `${f}: the title is framed`);
+  }
+});
+
+test('a taller margin is framed in a real capture, even when the title changed too', async () => {
+  const spacer = '<div id="gap" style="height:30px"></div>';
+  for (const { f, frames, boxes: [title, gap] } of await captureBoth([], [spacer, 'Bonsoir'], ['h1', '#gap'])) {
+    assert.ok(frames.after.some((b) => b.y < title.y + title.height && b.y + b.h > title.y), `${f}: the title is framed`);
+    assert.ok(frames.after.some((b) => b.y < gap.y + gap.height && b.y + b.h > gap.y && b.w >= gap.width), `${f}: the margin is framed, ${JSON.stringify(frames.after)} for ${JSON.stringify(gap)}`);
+  }
+});
+
+test('when the frames code cannot be loaded, the images are published without frames and one line says so', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { capture, compose } = await import('../agent/scripts/shots.mjs');
+  const a = await serveMovingPage();
+  const b = await serveMovingPage('<p>,</p>');
+  const before = mkdtempSync(join(tmpdir(), 'b-'));
+  const after = mkdtempSync(join(tmpdir(), 'a-'));
+  const out = mkdtempSync(join(tmpdir(), 'o-'));
+  try {
+    await capture({ baseUrl: a.url, routes: ['/'], out: before, toggle: null });
+    await capture({ baseUrl: b.url, routes: ['/'], out: after, toggle: null });
+    const lines = [];
+    const { framed } = await compose({ before, after, out, loadFrames: () => Promise.reject(new Error('boom')), log: (l) => lines.push(l) });
+    assert.deepEqual(framed, []);
+    assert.deepEqual(readdirSync(out).sort(), readdirSync(after).sort());
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /cadres rouges/);
+    assert.match(lines[0], /boom/);
+  } finally {
+    a.server.close(); b.server.close();
+    for (const d of [before, after, out]) rmSync(d, { recursive: true, force: true });
+  }
 });

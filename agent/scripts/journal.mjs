@@ -56,7 +56,7 @@ export function runFromPrompt(prompt = '') {
 
 // A sub-agent dispatch (tool Agent, called Task by older Claude Code): which model and effort it ran on, and whether
 // it worked in its own copy. No model means it inherited the session's.
-const ROLE_TAG = /^\s*\[\s*role\s*:\s*(plan|code|review|simple)\s*(?::\s*(amont)\s*)?\]/i;
+const ROLE_TAG = /^\s*\[\s*role\s*:\s*(plan|code|review|audit|simple)\s*(?::\s*(amont)\s*)?\]/i;
 export function agentEntry(input) {
   if (!['Agent', 'Task'].includes(input?.tool_name)) return null;
   const i = input.tool_input || {};

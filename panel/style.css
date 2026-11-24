@@ -78,6 +78,23 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 6px; paddin
    app.mjs measures the composer and sets --toast-bottom (issue #580); the fixed offset is the fallback. */
 body:has(#chat:not([hidden])) #toast { bottom: var(--toast-bottom, calc(96px + env(safe-area-inset-bottom))); }
 @media (max-width: 600px) { .top { flex-wrap: wrap; } nav { width: 100%; } }
+/* The new-version banner (issue #572): a neutral strip under the top bar, inside it so it stays on every screen. */
+.top:has(.new-version:not([hidden])) { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+.new-version { flex: 1 0 100%; display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 12px -16px 0; padding: 6px 16px; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-size: .8125rem; }
+.new-version > span { flex: 1 1 0; min-width: 0; }
+/* Hidden, the strip stays rendered as an empty, invisible status region, so screen readers announce the sentence put
+   in it when it shows (a region that appears with its text already in is often not read). The one exception to the
+   [hidden] rule above, hence its !important. */
+.new-version[hidden] { display: block !important; position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.new-version[hidden] > button { display: none; }
+/* Borderless in the strip, the 44 px hit area and the global ink focus ring kept. */
+.new-version .small-btn { flex: none; border-color: transparent; background: transparent; color: var(--text); }
+/* Hover only where a pointer hovers: on a phone a tap would leave the button a white box. */
+@media (hover: hover) { .new-version .small-btn:hover { border-color: transparent; background: var(--surface); } }
+/* « Recharger » clicked again while still refused: the same sentence flashes briefly, so the click is seen (app.mjs). */
+.new-version > span.again { animation: new-version-again .15s ease-out; }
+@keyframes new-version-again { from { opacity: .3; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .new-version > span.again { animation: none; } }
 
 ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 
@@ -360,6 +377,13 @@ html { touch-action: manipulation; }
   .chat-tools #chat-feature { flex: 0 1 auto; min-width: 0; }
   .messages { padding: 16px 12px; }
   .composer { padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  /* The new-version strip (issue #572) stays above an open conversation: it leaves the bar for the top of the screen,
+     and the conversation starts under it (--new-version-h, measured by fitBanner in app.mjs). The bar must not stay
+     sticky: a sticky bar is a stacking context the conversation would cover, strip included. */
+  body:has(#chat.viewing:not([hidden])):has(.new-version:not([hidden])) .top { position: static; }
+  body:has(#chat.viewing:not([hidden])) .new-version:not([hidden]) { position: fixed; top: 0; left: 0; right: 0; z-index: 6; margin: 0; padding-top: max(6px, env(safe-area-inset-top)); }
+  body:has(#chat.viewing:not([hidden])):has(.new-version:not([hidden])) #chat.viewing .chat-thread { top: var(--new-version-h, 0px); height: calc(100dvh - var(--new-version-h, 0px)); }
+  body:has(#chat.viewing:not([hidden])):has(.new-version:not([hidden])) .chat-head { padding-top: 10px; }
 }
 /* Images in the chat */
 .shots { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -437,6 +461,11 @@ button.go:disabled { opacity: .6; cursor: default; }
 @media (max-width: 600px) { .you-card { padding: 16px; margin-bottom: 32px; } }
 @media (max-width: 600px) {
   .top { position: static; }
+  /* The new-version strip (issue #572) is the bar's last row: the bar scrolls away with the page, the strip stays at
+     the top of the screen (--top-h and --new-version-h, measured by fitBanner in app.mjs). */
+  body:not(:has(#chat.viewing:not([hidden]))):has(.new-version:not([hidden])) .top { position: sticky; top: calc(var(--new-version-h, 0px) - var(--top-h, 0px)); }
+  /* Keyboard focus never lands under the stuck strip. */
+  html:not(:has(#chat.viewing:not([hidden]))):has(.new-version:not([hidden])) { scroll-padding-top: var(--new-version-h, 0px); }
   .actions .button { flex: 1 1 calc(50% - 8px); }
   .actions #new-feature { flex-basis: 100%; }
 }

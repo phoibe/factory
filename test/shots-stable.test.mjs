@@ -186,3 +186,12 @@ test('the screenshots stage waits for the app, changes folder explicitly and dat
   assert.match(s, /curl -sf --retry 60 --retry-delay 5 --retry-connrefused http:\/\/localhost:3000/);
   assert.match(s, /compte de démonstration[^.]*run/);
 });
+
+test('the screenshots stage tells the agent about the red frames', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = readFileSync(new URL('../agent/stages/screenshots.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.match(s, /cadres rouges/);
+  assert.match(s, /contenu décalé/);
+  assert.match(s, /tout l'écran a changé/);
+  assert.match(s, /Le script pousse ces images sur `claude\/factory-assets`/);
+});

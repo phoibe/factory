@@ -9,7 +9,7 @@ import { readOutage, writeOutage, outageStep, isRetry, OUTAGE_TOLD, SERVER_TOLD 
 import { toJobOutput } from '../lib/job-output.mjs';
 import { readWatch, writeWatch } from '../lib/watch.mjs';
 import { forwardedAnswer } from '../lib/answer.mjs';
-import { markdownTable, brokenShotRows, NO_CHANGE_MARKER } from '../../agent/scripts/shots.mjs';
+import { markdownTable, brokenShotRows, NO_CHANGE_MARKER, FRAMES_SENTENCE } from '../../agent/scripts/shots.mjs';
 import { SKILLS_FIX_MARKER, STEP_NAMES, SHOTS_BRANCH, checksTimeoutMs, PROJECT_WORKFLOW, OUTAGE_LOST_MS, branchIssue, prIssue, say, names, linkedIssue, vercelPreview } from './shared.mjs';
 
 const CLOSED_TOLD = "Cette demande est déjà terminée et en ligne, donc je ne relance rien ici. Si votre message demande un changement, ouvrez une nouvelle demande depuis le tableau : elle partira de la version actuelle.";
@@ -184,14 +184,17 @@ export function eventsPart(ctx) {
     const meta = await soft(gh.getContent(`${dir}/shots.json`, SHOTS_BRANCH));
     let unchanged = [];
     let setAside = [];
+    let framed = false;
     try {
       const parsed = JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8'));
       unchanged = parsed.unchanged || [];
       // Changed screens the agent set aside, each with its reason (issue #422): named so that the owner can claim one.
       setAside = (parsed.setAside || []).filter((s) => s && typeof s.file === 'string' && typeof s.reason === 'string' && !files.includes(s.file));
+      // At least one published image carries red frames (issue #578): say what they are.
+      framed = Array.isArray(parsed.framed) && parsed.framed.some((f) => files.includes(f));
     } catch { /* an older tool wrote no list: the identical screens are just not named */ }
     const table = markdownTable({ repo, dir, files, unchanged: unchanged.filter((f) => !files.includes(f)), setAside });
-    await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${table}`));
+    await gh.comment(n, say(`${mark}\nLes captures de l'agent (avant à gauche, après à droite), en clair puis en sombre :\n\n${framed ? `${FRAMES_SENTENCE}\n\n` : ''}${table}`));
     log(`captures of #${n} posted from ${dir}`);
     return 'posted';
   }

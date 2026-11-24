@@ -251,9 +251,10 @@ test("the webhook's payload does not take an outsider's agent note for the agent
 // --- Task 3: every read of the panel goes through the rule ---
 import { readFileSync } from 'node:fs';
 import { readRelaunch as panelReadRelaunch, relaunchLine } from '../panel/relaunch.mjs';
+import { all } from './panel-source.mjs';
 
 test("the panel's three GitHub readers clean every answer, and no other read of issues or PRs skips them", () => {
-  const src = readFileSync(new URL('../panel/app.mjs', import.meta.url), 'utf8');
+  const src = all;
   const bodyOf = (head) => {
     const start = src.indexOf(head);
     assert.ok(start >= 0, head);
