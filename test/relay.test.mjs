@@ -3368,6 +3368,23 @@ test('the screens the agent set aside are named with their reason under the capt
   assert.match(body, /Écrans sans changement visible, non montrés : screener · mobile \(seule l'heure diffère\)/);
 });
 
+test('the captures message explains the red frames when a published image has some (#578)', async () => {
+  const gh = shotsGh({ meta: { unchanged: [], framed: ['ecran--desktop.png'] } });
+  await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+  const body = gh.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+  assert.ok(body.includes("en clair puis en sombre :\n\nLes cadres rouges entourent ce qui a changé.\n\n<!-- shots: claude/factory-assets -->"), body);
+});
+
+test('no word about red frames when no published image has any (#578)', async () => {
+  for (const meta of [{ unchanged: [] }, null, { unchanged: [], framed: ['autre--mobile.png'] }, { unchanged: [], framed: 'oui' }]) {
+    const gh = shotsGh({ meta });
+    await createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet }).handle(labeledChecks);
+    const body = gh.calls.find((c) => c[0] === 'comment' && c[1] === 7)[2];
+    assert.doesNotMatch(body, /cadres rouges/, JSON.stringify(meta));
+    assert.ok(body.includes('| ecran · desktop |'), body);
+  }
+});
+
 test('the same captures are never posted twice, and nothing is posted outside the captures step (#378)', async () => {
   const relayFor = (gh) => createRelay({ gh, repo: 'phoibe/factory', config: { ...config, stages: { ...config.stages, checks: true } }, env, log: quiet });
   const first = shotsGh();
