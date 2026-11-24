@@ -226,3 +226,39 @@ test('choisir un autre projet dans la liste ferme la page et montre son Suivi', 
     assert.equal(await page.getByRole('heading', { level: 1, name: 'autre' }).count(), 1);
   });
 });
+
+// Review #556, finding 5: the read can take seconds on a phone; nothing showed it, and it applied after a logout.
+const slowSettings = { slowReads: [[/\/repos\/phoibe\/factory\/contents\/settings\.json/, 2500]], viewport: { width: 1280, height: 800 } };
+test('le bouton Réglages généraux montre tout de suite qu\'il charge', async () => {
+  await withPanel(slowSettings, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    const button = page.locator('#general-open');
+    await button.click();
+    assert.equal(await button.getAttribute('aria-busy'), 'true');
+    assert.equal(await button.isDisabled(), true);
+    await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).waitFor();
+    assert.equal(await button.getAttribute('aria-busy'), null);
+    assert.equal(await button.isDisabled(), false);
+    assert.equal(await button.textContent(), 'Réglages généraux');
+  });
+});
+
+test('se déconnecter pendant la lecture garde la connexion, et la connexion suivante ouvre le Suivi', async () => {
+  await withPanel(slowSettings, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.locator('#general-open').click();
+    await page.getByRole('button', { name: 'Se déconnecter' }).click();
+    const login = page.getByRole('heading', { name: 'Connectez le panneau à GitHub' });
+    await login.waitFor();
+    await page.waitForTimeout(3000); // the late answer arrives
+    assert.equal(await login.isVisible(), true);
+    await page.locator('#token').fill('test');
+    await page.getByRole('button', { name: 'Se connecter' }).click();
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByRole('heading', { name: 'Réglages généraux', level: 1 }).isVisible(), false);
+    assert.equal(await page.getByRole('tab', { name: 'Suivi' }).getAttribute('aria-selected'), 'true');
+  });
+});

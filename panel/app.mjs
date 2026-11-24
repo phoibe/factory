@@ -1389,7 +1389,20 @@ async function openGeneral(from = $('general-open')) {
   if (!open) general.from = from;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
   if (!generalDirty() || general.unreadable) {
-    const settings = await runnersFile('settings.json');
+    const button = $('general-open');
+    if (button.getAttribute('aria-busy')) return; // already reading
+    const session = token, project = current;
+    button.setAttribute('aria-busy', 'true');
+    button.disabled = true;
+    button.textContent = 'Chargement…';
+    let settings;
+    try { settings = await runnersFile('settings.json'); } finally {
+      button.removeAttribute('aria-busy');
+      button.disabled = false;
+      button.textContent = 'Réglages généraux';
+    }
+    // Logged out, or another screen or project meanwhile: the late answer is dropped (review #556).
+    if (token !== session || current !== project || $('project-view').hidden) return;
     Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
     general.saved = generalValue();
   }
