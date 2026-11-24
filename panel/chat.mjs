@@ -293,6 +293,8 @@ export const WRITABLE_TOKEN = 'Ce jeton peut modifier vos projets : créez-en un
 // Only a fine-grained token can be limited to reading: any other type (classic `ghp_`, OAuth...) is refused (issue #558).
 export const CLASSIC_TOKEN = 'Ce type de jeton n\'est pas accepté : créez-en un avec le bouton ci-dessus.';
 export const fineGrained = (value) => String(value).startsWith('github_pat_');
+// Only a classic token has scopes: GitHub sends an empty X-OAuth-Scopes to a fine-grained one.
+export const hasScopes = (headers) => Boolean(headers?.get('x-oauth-scopes')?.trim());
 // Writes with an empty body: GitHub refuses a read-only token (403/404) before reading the body; a token that may write
 // gets a 422 (invalid body). Nothing is ever written. Exactly the server's list (server/chat/service.py, compared by a
 // test). A path is under /repos/{repo}/ unless it starts with « / ». Never a write that acts with an empty body

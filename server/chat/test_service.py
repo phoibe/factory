@@ -217,6 +217,13 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(r.json()["code"], "classic")
         self.assertFalse(os.path.exists(self.claude + ".prompt"))
 
+    def test_an_empty_scopes_header_is_not_a_classic_token(self):
+        # GitHub sends « X-OAuth-Scopes: » with no value to a fine-grained token.
+        self.gh.user_headers = {"x-oauth-scopes": "  "}
+        r, events = self.post("github_pat_good", {"repo": "phoibe/habitudes", "message": "Salut"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(events[-1]["type"], "done", events)
+
     def test_a_rate_limited_write_probe_is_github_down_not_a_read_only_token(self):
         self.gh.probe_limited = True
         r, _ = self.post("github_pat_goodwriter", {"repo": "phoibe/habitudes", "message": "Salut"})

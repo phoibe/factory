@@ -218,7 +218,7 @@ def create_app(owner, github_api="https://api.github.com", claude_bin="claude", 
             if r.status_code == 401:
                 await gh.close()
                 return JSONResponse({"error": "Jeton refusé par GitHub."}, 401)
-            if "x-oauth-scopes" in r.headers:  # only a classic (or OAuth) token has scopes
+            if r.headers.get("x-oauth-scopes", "").strip():  # only a classic token has scopes (a fine-grained one: empty)
                 await gh.close()
                 return JSONResponse({"error": CLASSIC, "code": "classic"}, 403)
             me = r.json() if r.status_code == 200 else None

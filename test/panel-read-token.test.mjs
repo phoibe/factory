@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenFromHash, readTokenFromHash, phoneLink } from '../panel/lib.mjs';
-import { newConversation, addExchange, upsertIndex, issueRequest, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, fineGrained, probeUrl } from '../panel/chat.mjs';
+import { newConversation, addExchange, upsertIndex, issueRequest, readTokenProblem, probeSaysWritable, WRITE_PROBES, READ_TOKEN_URL, WRITABLE_TOKEN, CLASSIC_TOKEN, fineGrained, probeUrl, hasScopes } from '../panel/chat.mjs';
 
 test('le lien du téléphone emporte les deux jetons', () => {
   const link = phoneLink('https://phoibe.github.io/factory/#old', 'github_pat_FULL_1', 'github_pat_READ_2');
@@ -124,6 +124,11 @@ test('seul un jeton du nouveau type (github_pat_) est accepté, les autres sont 
   const ok = { same: false, status: 200, login: 'Phoibe', owner: 'phoibe', readable: true, writable: false };
   assert.equal(readTokenProblem({ ...ok, classic: true }), CLASSIC_TOKEN);
   assert.equal(readTokenProblem({ ...ok, classic: true, writable: true }), CLASSIC_TOKEN);
+  // Only a classic token has scopes: GitHub sends an empty X-OAuth-Scopes to a fine-grained one.
+  assert.equal(hasScopes(new Headers({ 'x-oauth-scopes': 'repo, workflow' })), true);
+  assert.equal(hasScopes(new Headers({ 'x-oauth-scopes': '' })), false);
+  assert.equal(hasScopes(new Headers({ 'x-oauth-scopes': '  ' })), false);
+  assert.equal(hasScopes(new Headers({})), false);
   // My full token pasted here keeps its own message, whatever its type.
   assert.equal(readTokenProblem({ same: true, classic: true }), WRITABLE_TOKEN);
 });

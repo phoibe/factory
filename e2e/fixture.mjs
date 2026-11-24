@@ -99,6 +99,8 @@ export async function withPanel({ issues = [], token = true, files = {}, fileDat
       if (path === '/user') {
         const login = { 'Bearer test': 'o', 'Bearer github_pat_lecture': 'o', 'Bearer github_pat_ecriture': 'o', 'Bearer github_pat_actions': 'o', 'Bearer github_pat_scopes': 'o', 'Bearer github_pat_autre': 'x' }[auth];
         if (auth === 'Bearer github_pat_scopes') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': 'repo', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
+        // As the real GitHub: a fine-grained token gets an empty X-OAuth-Scopes.
+        if (auth === 'Bearer github_pat_lecture') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-oauth-scopes': '', 'access-control-expose-headers': 'X-OAuth-Scopes' }, body: JSON.stringify({ login }) });
         return login ? json({ login }) : json({ message: 'Bad credentials' }, 401);
       }
       // The last commit of the project, as GitHub gives it with the `sha` media type (the commit-status probe uses it).
