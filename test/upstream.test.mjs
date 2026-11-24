@@ -705,6 +705,25 @@ test('bugProof ignores the red test the analyst ran itself to reproduce the bug'
   assert.equal(bugProof(ownOnly, recordsOf({ a: r.slice(1) })), null, 'a red test the analyst did not run, during its analysis');
 });
 
+test('bugProof: the analyst\'s own red test is matched by its tool-call id, not by the same command', () => {
+  const a = agent('fable', { role: 'plan', up: true, id: 'a' });
+  const call = { type: 'assistant', timestamp: t(), message: { model: 'claude-fable-5-2', content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'npm test' } }] } };
+  const own = { ...red(), id: 'b1' };
+  const fix = { ...red(), id: 'c9' };
+  const r = [call, ...rec()];
+  assert.deepEqual(bugProof(runOf(runE('bugfix'), a, own, green()), recordsOf({ a: r }))?.by, [{ model: 'fable', role: 'plan' }]);
+  assert.equal(bugProof(runOf(runE('bugfix'), a, own, fix, green()), recordsOf({ a: r })), null,
+    'a background analyst still at work when the fix ran the same command: that red test is not its own');
+});
+
+test('bugProof: the record ends at its latest timestamp, not at its last line', () => {
+  const a = agent('fable', { role: 'plan', up: true, id: 'a' });
+  const early = { type: 'user', timestamp: t(), message: { content: 'x' } };
+  const fix = red();
+  const r = [...rec(), early];
+  assert.equal(bugProof(runOf(runE('bugfix'), a, fix, green()), recordsOf({ a: r })), null, 'the analysis was handed back after the red test');
+});
+
 test('a mixed journal (agents with and without the role key) keeps the old bug rule', () => {
   const run = runOf(runE('bugfix'), agent('fable'), agent('fable', { role: null }), red(), green());
   assert.deepEqual(upstreamCheck([run]).lines, ['**Analyse du bug** : faite par Fable (rôle « Plans et organisation »)']);

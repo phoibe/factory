@@ -158,12 +158,17 @@ export function bugProof(run, record) {
     let lines = null;
     try { lines = record(a); } catch { /* unreadable: no record */ }
     const model = run.models?.[a.role];
-    const end = (lines || []).map((l) => l?.timestamp).filter(Boolean).at(-1);
-    // Its own: run during its span, after the same test command appears among its calls (tests are journaled
-    // without who ran them; a red test of the fix begun while the analysis still ran is not its own).
+    // Its end: the latest time in its record (its lines are not always in time order).
+    const times = (lines || []).map((l) => Date.parse(l?.timestamp)).filter((n) => !Number.isNaN(n));
+    const end = times.length ? new Date(Math.max(...times)).toISOString() : null;
+    // Its own: the journal keeps the id of the tool call that ran the test, the one of a Bash call in its record.
+    // An older entry without id: run during its span, after the same test command appears among its calls (a red
+    // test of the fix begun while the analysis still ran is not its own).
+    const bash = toolUses(lines).filter((b) => b.name === 'Bash');
     const ran = (x) => (lines || []).some((l) => Date.parse(l?.timestamp) <= Date.parse(x.t)
       && toolUses([l]).some((b) => b.name === 'Bash' && shownCommand(String(b.input?.command || '')) === x.cmd));
-    const own = (x) => end && Date.parse(x.t) >= Date.parse(a.t) && Date.parse(x.t) <= Date.parse(end) && ran(x);
+    const own = (x) => (x.id ? bash.some((b) => b.id === x.id)
+      : end && Date.parse(x.t) >= Date.parse(a.t) && Date.parse(x.t) <= Date.parse(end) && ran(x));
     const red = reds.filter((x) => !own(x)).at(-1);
     const before = (t) => !red || Date.parse(t) < Date.parse(red.t);
     if (!before(a.t)) continue;

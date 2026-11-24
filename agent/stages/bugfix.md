@@ -11,7 +11,8 @@ Un bug signalé dans l'issue. Pas de grilling.
    cause probable, les fichiers concernés et le test qui reproduira le bug. Dès qu'il te l'a rendue, lance
    `node .factory/scripts/journal-check.mjs` depuis le dossier du projet : il note tout de suite dans le journal la
    preuve de cette analyse (si la correction reprend sur une autre machine, le relevé du sous-agent n'y sera plus) ;
-   les étapes qu'il dit manquantes à ce moment se font dans la suite, rien de plus à faire ici.
+   les étapes qu'il dit manquantes à ce moment se font dans la suite, rien de plus à faire ici. S'il te dit de
+   committer `.factory/journal/`, ne committe rien à ce moment : le journal partira avec la branche de l'étape 2.
    S'il rend une question : pose-la (**une** question simple) sur l'issue, mets `factory:blocked` et termine.
 2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Un sous-agent du rôle `code` (description `[role:code]`)
    part de cette analyse : skill `systematic-debugging`, reproduis le bug par un test qui échoue,
