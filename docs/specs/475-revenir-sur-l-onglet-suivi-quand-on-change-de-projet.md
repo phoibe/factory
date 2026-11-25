@@ -1,6 +1,8 @@
 # 475 · Revenir sur l'onglet « Suivi » quand on change de projet
 
 > Demande [#475](https://github.com/phoibe/factory/issues/475) · 2026-11-18
+>
+> Modifiée par la demande n° [#590](https://github.com/phoibe/factory/issues/590)
 
 **En une phrase** : quand vous changez de projet dans le tableau de suivi, il s'ouvre toujours sur l'onglet « Suivi » du nouveau projet.
 
