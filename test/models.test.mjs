@@ -52,3 +52,7 @@ test('a family no longer in the list falls back to the role default', () => {
 test('the help of the plan role names the questions and the sheet of each request (issue #550)', () => {
   assert.match(MODEL_ROLES.find((r) => r.id === 'plan').help, /questions et la fiche de chaque demande/);
 });
+
+test('the help of the review role names the scope check (issue #606)', () => {
+  assert.equal(MODEL_ROLES.find((r) => r.id === 'review').help, 'Relecture finale du code avant chaque PR, vérification de portée, revue de sécurité, synthèse d’une review générale.');
+});

@@ -1,0 +1,2 @@
+{"t":"2026-11-25T09:43:34.671Z","kind":"run","stage":"update-branch","issue":606,"pr":612,"repo":"phoibe/factory","models":{"plan":"fable","review":"opus"}}
+{"t":"2026-11-25T09:44:56.407Z","kind":"test","cmd":"git diff HEAD docs/specs/README.md; git add -A agent/AGENT.md scripts/lib/models.mjs docs/specs/README.md && npm run typecheck 2>&1 | tail -3 && npm run lint 2>&1 | tail -3 && npm test 2>&1 | grep -E ","ok":true,"id":"toolu_01VGBPkJnvt439vBHXiiNg68"}

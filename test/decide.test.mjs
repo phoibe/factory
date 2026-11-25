@@ -255,6 +255,23 @@ test('an agent run that leaves an open PR at no step sends it back to the checks
   assert.equal(decide(end({ labels: [], open: false }), config, ctx).type, 'ignore');
 });
 
+// Issue #606: a PR that waits for the owner's « ok » after an unproved scope check. These are the relay rules the
+// wording of build.md, acceptance-fix.md and resume.md relies on: nothing sends such a PR to the checks by itself.
+test('a PR waiting for the owner after an unproved scope check is not sent to the checks by itself', () => {
+  const type = (e) => decide(e, config, ctx).type;
+  assert.equal(type(pr({ event: 'pull_request', action: 'opened', labels: [] })), 'ignore'); // build, bugfix: opened without factory:checks
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.running, L.blocked] })), 'ignore'); // recette: blocked before the push
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.running, L.acceptance] })), 'checks'); // why factory:acceptance goes first
+  // acceptance-fix is also reached from feedback at factory:checks or factory:visual-review: the step label must go too.
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.checks, L.blocked] })), 'checks');
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.blocked] })), 'ignore');
+  assert.equal(type(pr({ event: 'pull_request', action: 'unlabeled', removedLabel: L.running, open: true, labels: [L.blocked] })), 'ignore');
+  assert.equal(type(pr({ event: 'pull_request', action: 'unlabeled', removedLabel: L.running, open: true, labels: [] })), 'checks'); // why factory:blocked is put back before the run ends
+  for (const e of [pr({ labels: [L.blocked], text: 'ok' }), ev({ labels: [L.feature, L.building, L.blocked], text: 'ok' }), ev({ labels: [L.bug, L.building, L.blocked], text: 'regardez aussi la tâche de nuit' })]) {
+    assert.deepEqual([decide(e, config, ctx).type, decide(e, config, ctx).stage], ['fire', 'resume']);
+  }
+});
+
 test('a blocked card coming back queues when the limit is reached, and resumes when a place is free', () => {
   const e = ev({ labels: [L.feature, L.building, L.blocked], text: 'voici la clé' });
   const full = decide(e, config, { ...ctx, inFlight: 2 });
