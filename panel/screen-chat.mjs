@@ -251,6 +251,7 @@ async function branchJson(path) {
   });
   if (res.status === 304 && hit) return JSON.parse(hit.text);
   if (res.status === 404) { cache.delete(url); return null; }
+  if (res.status === 401) sessionExpired(); // issue #592: back to the login page, as every other read
   if (!res.ok) throw httpError(res.status, (await res.json().catch(() => ({}))).message);
   const text = await res.text();
   const data = JSON.parse(text);
@@ -318,6 +319,7 @@ async function refreshChat() {
     }
     drawChat();
   } catch (err) {
+    if (!app.token) return; // the token was refused: the login page is shown, nothing to retry (issue #592)
     if (!chat.list) { chat.error = true; if (shown().tab === 'chat') drawChatList(); }
     else if (shown().tab === 'chat') toast('GitHub ne répond pas. Nouvel essai dans quelques secondes.');
   } finally {
@@ -491,7 +493,10 @@ function chatImage(path) {
   if (!chat.images.has(path)) {
     chat.images.set(path, fetch(`${API}/repos/${chat.repo}/contents/${path}?ref=${ATTACHMENTS_BRANCH}`, {
       headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' },
-    }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status)))).then((b) => URL.createObjectURL(b))
+    }).then((r) => {
+      if (r.status === 401) sessionExpired(); // issue #592
+      return r.ok ? r.blob() : Promise.reject(new Error(r.status));
+    }).then((b) => URL.createObjectURL(b))
       .catch(() => { chat.images.delete(path); return null; }));
   }
   chat.images.get(path).then((url) => { if (url) show(url); else link.classList.add('broken'); });
@@ -1237,6 +1242,7 @@ async function chatFile(repo, path) {
   if (!meta) return { data: null, sha: null };
   if (meta.content) return { data: JSON.parse(fromBase64(meta.content)), sha: meta.sha };
   const res = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${CHAT_BRANCH}`, { cache: 'no-store', headers: { authorization: `Bearer ${app.token}`, accept: 'application/vnd.github.raw' } });
+  if (res.status === 401) sessionExpired(); // issue #592
   if (!res.ok) throw new Error(`${res.status}`);
   return { data: await res.json(), sha: meta.sha };
 }
