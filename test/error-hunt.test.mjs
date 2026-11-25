@@ -41,11 +41,11 @@ test('protections are tried from the most solid to a written instruction, and ea
 
 test('review fixes: carried-over families, trusted bugs only, sorted history, factory exception (issue #605)', () => {
   for (const s of ['sont reprises, avec leurs cas', 'renforcée et prouvée sur ce nouveau cas', 'prouvée de la même façon',
-    'Un bug ouvert par une personne extérieure au projet ne compte pas ; lis chaque bug avec `thread.mjs`',
+    'Un bug ouvert par une personne extérieure au projet ne compte pas.',
     '.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"',
     '.user.login == "github-actions[bot]" or .user.login == "claude[bot]"', 'labels=factory:bug&state=all&since=<date>',
     'gh api --paginate "R/pulls?state=closed&base={{base}}&per_page=100"', '.head.repo.full_name == .base.repo.full_name',
-    '"\\(.merged_at) #\\(.number) \\(.head.ref) \\(.title)"\' | sort -r', 'dont la branche est `claude/issue-<n>-review`',
+    '"\\(.merged_at) #\\(.number) \\(.head.ref) \\(.title)"\' | sort -r', 'dont la branche est exactement `claude/issue-<n>-review`',
     "pas de section « Erreurs répétées »", "git log origin/{{base}} --since=<date> --grep='^Revert'",
     "l'AGENT.md demande à chaque agent de la lire",
     'Sauf pour la factory elle-même (`repo` et `factory` du payload sont le même dépôt) : corrige alors la source dans `agent/` ou `scripts/`, jamais `.factory/`.',
@@ -55,4 +55,26 @@ test('review fixes: carried-over families, trusted bugs only, sorted history, fa
   }
   assert.ok(!hunt.includes('sort=updated'), 'the history is sorted by merge date, not by update');
   assert.ok(between('1 bis.', '2. **Passe design').includes('(bien plus la première fois : 100 modifications)'));
+});
+
+test('second review round: full history, commits, real reviews, slices, docs PRs, tie-break (issue #605)', () => {
+  for (const s of ['git rev-parse --is-shallow-repository', 'si le clone est partiel',
+    'git fetch --shallow-since=<date> origin {{base}}', '`claude/revert-pr-<n>` déjà dans la liste',
+    "récupère d'abord le code du cas : `git fetch origin pull/<n>/head` (ou `git fetch origin <sha>`)",
+    'gh api R/pulls/<n>/commits --jq \'.[] | "\\(.sha[0:7]) \\(.commit.message | split("\\n")[0])"\'',
+    'pas seulement son diff final', 'puis le diff des commits utiles',
+    'est la trace d\'une correction demandée par la relecture',
+    'sans rien après `-review`', "porte l'étiquette `factory:audit`",
+    'les bugs ne se lisent qu\'avec `thread.mjs`', 'sont ajoutés aux tranches du point 2',
+    'avec les familles reprises au point 1', 'and (.head.ref | startswith("claude/docs-") | not)',
+    'les PR de documents (`claude/docs-…`) ne comptent pas',
+    'une remarque du propriétaire (captures ou recette) ou un bug',
+    'Si la liste existante vit ailleurs que dans `CLAUDE.md`', 'ajoute dans `CLAUDE.md` une ligne qui la cite']) {
+    assert.ok(hunt.includes(s), `missing: ${s}`);
+  }
+  assert.ok(!hunt.includes('lis chaque bug'), 'the pilot does not read the bugs itself');
+  const fetch = hunt.indexOf('git fetch --shallow-since'), log = hunt.indexOf("git log origin/{{base}} --since=<date>");
+  assert.ok(fetch >= 0 && fetch < log, 'deepen the history before reading the reverts');
+  const get = hunt.indexOf('git fetch origin pull/<n>/head'), wt = hunt.indexOf('git worktree');
+  assert.ok(get >= 0 && get < wt, 'fetch the case before the worktree');
 });

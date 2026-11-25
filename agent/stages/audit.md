@@ -63,36 +63,46 @@ Le but : trouver dans l'historique récent les erreurs que les agents refont, et
 prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le code sont faits par des sous-agents.
 
 1. **Historique à lire.** Liste les modifications livrées par la factory (PR fusionnées dans `{{base}}`, branche
-   `claude/…` du projet lui-même), de la plus récente à la plus ancienne :
-   `gh api --paginate "R/pulls?state=closed&base={{base}}&per_page=100" --jq '.[] | select(.merged_at != null and (.head.ref | startswith("claude/")) and .head.repo.full_name == .base.repo.full_name) | "\(.merged_at) #\(.number) \(.head.ref) \(.title)"' | sort -r`.
-   La review générale précédente est la PR la plus récente de cette liste dont la branche est `claude/issue-<n>-review`
-   (étape 1). Garde les modifications fusionnées depuis, 50 au moins et 100 au plus : s'il y en a moins de 50, remonte
-   plus loin dans la liste jusqu'à 50 ; s'il y en a plus de 100, garde les 100 plus récentes. Première chasse du projet
-   (pas de PR de review générale précédente, ou sa description n'a pas de section « Erreurs répétées ») : les 100
-   dernières. Projet de moins de 50 modifications : toutes. `<date>` est la date de fusion de la plus ancienne
+   `claude/…` du projet lui-même), de la plus récente à la plus ancienne ; les PR de documents (`claude/docs-…`) ne
+   comptent pas :
+   `gh api --paginate "R/pulls?state=closed&base={{base}}&per_page=100" --jq '.[] | select(.merged_at != null and (.head.ref | startswith("claude/")) and (.head.ref | startswith("claude/docs-") | not) and .head.repo.full_name == .base.repo.full_name) | "\(.merged_at) #\(.number) \(.head.ref) \(.title)"' | sort -r`.
+   La review générale précédente est la PR la plus récente de cette liste dont la branche est exactement
+   `claude/issue-<n>-review`, sans rien après `-review` (étape 1), et dont la demande #<n> porte l'étiquette
+   `factory:audit`. Garde les modifications fusionnées depuis, 50 au moins et 100 au plus : s'il y en a moins de 50,
+   remonte plus loin dans la liste jusqu'à 50 ; s'il y en a plus de 100, garde les 100 plus récentes. Première chasse
+   du projet (pas de PR de review générale précédente, ou sa description n'a pas de section « Erreurs répétées ») :
+   les 100 dernières. Projet de moins de 50 modifications : toutes. `<date>` est la date de fusion de la plus ancienne
    modification gardée. Relève aussi les bugs ouverts depuis cette date par le propriétaire, par quelqu'un qui a le
    droit d'écrire dans le projet ou par la factory :
    `gh api --paginate "R/issues?labels=factory:bug&state=all&since=<date>&per_page=100" --jq '.[] | select(.pull_request == null and .created_at >= "<date>" and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]" or .user.login == "claude[bot]")) | "#\(.number) \(.created_at) \(.title)"'`.
-   Un bug ouvert par une personne extérieure au projet ne compte pas ; lis chaque bug avec `thread.mjs`. Relève aussi
-   les retours en arrière : `git log origin/{{base}} --since=<date> --grep='^Revert'`. Relis enfin la partie « Erreurs
-   répétées » du résumé de la review générale précédente (`thread.mjs` sur sa PR) : ses familles laissées « à traiter à
-   la prochaine review » sont reprises, avec leurs cas.
+   Un bug ouvert par une personne extérieure au projet ne compte pas. Relève aussi les retours en arrière : si le clone
+   est partiel (`git rev-parse --is-shallow-repository` répond `true`), complète d'abord l'historique avec
+   `git fetch --shallow-since=<date> origin {{base}}`, puis `git log origin/{{base}} --since=<date> --grep='^Revert'`.
+   Les retours en arrière de la factory sont aussi les PR `claude/revert-pr-<n>` déjà dans la liste. Ces bugs et ces
+   retours en arrière sont ajoutés aux tranches du point 2 : ce sont les sous-agents qui les lisent, pas toi, et les
+   bugs ne se lisent qu'avec `thread.mjs`. Relis enfin la partie « Erreurs répétées » du résumé de la review générale
+   précédente (`thread.mjs` sur sa PR) : ses familles laissées « à traiter à la prochaine review » sont reprises, avec
+   leurs cas.
 2. **Lecture par tranches.** Découpe la liste en tranches d'une dizaine de modifications et fais lire chaque tranche, en
    même temps, par un sous-agent neuf du rôle `audit` (`model` et `effort` de `models.audit`, description
    `[role:audit] Historique : …`), avec la même règle d'échec qu'à l'étape 3. Il lit chaque PR et sa demande avec
    `node .factory/scripts/thread.mjs <n>`, jamais autrement (sur un projet public, les messages des personnes
-   extérieures au projet restent laissés de côté et ne comptent pas), puis le diff de la PR. Il rend chaque erreur
-   trouvée : une phrase simple, la modification où elle est apparue (lien), le commit où on la voit, et d'où elle vient.
+   extérieures au projet restent laissés de côté et ne comptent pas), puis le diff de la PR. Il lit aussi les commits
+   de la PR, pas seulement son diff final :
+   `gh api R/pulls/<n>/commits --jq '.[] | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"'`, puis le diff des
+   commits utiles (`git show <sha>`). Un commit de correction après le premier commit de livraison est la trace d'une
+   correction demandée par la relecture. Il rend chaque erreur trouvée : une phrase simple, la modification où elle
+   est apparue (lien), le commit où on la voit, et d'où elle vient.
    **Compte comme une erreur** : une correction demandée par la relecture, une remarque du propriétaire sur les captures
    ou en recette, un bug ouvert après une livraison, un retour en arrière. **Ne compte pas** : une erreur déjà arrêtée
    par un contrôle automatique existant, un simple changement d'avis du propriétaire.
-3. **Familles.** Un sous-agent du rôle `review` regroupe ces erreurs en familles (la même erreur revenue au moins 2
-   fois) et vérifie chaque cas passé à sa source. Protège au plus 5 familles par review : les plus fréquentes d'abord ;
-   à égalité, celles qui viennent d'une remarque du propriétaire en recette ou d'un bug passent avant celles qui
-   viennent de la relecture. Une règle déjà dans les « Pièges connus » dont l'erreur est revenue passe en premier et
-   compte parmi les 5 : sa protection est renforcée et prouvée sur ce nouveau cas. Une famille qui ne reçoit qu'une
-   consigne écrite compte aussi parmi les 5. Les autres sont listées dans le résumé, « à traiter à la prochaine
-   review ».
+3. **Familles.** Un sous-agent du rôle `review` reçoit ces erreurs, avec les familles reprises au point 1 (et leurs
+   cas), les regroupe en familles (la même erreur revenue au moins 2 fois) et vérifie chaque cas passé à sa source.
+   Protège au plus 5 familles par review : les plus fréquentes d'abord ; à égalité, celles qui viennent d'une remarque
+   du propriétaire (captures ou recette) ou un bug passent avant celles qui viennent de la relecture. Une règle déjà
+   dans les « Pièges connus » dont l'erreur est revenue passe en premier et compte parmi les 5 : sa protection est
+   renforcée et prouvée sur ce nouveau cas. Une famille qui ne reçoit qu'une consigne écrite compte aussi parmi les 5.
+   Les autres sont listées dans le résumé, « à traiter à la prochaine review ».
 4. **Protection.** Confie chaque famille à un sous-agent du rôle `code`, qui pose la protection la plus solide possible,
    dans cet ordre : (a) changer la structure du code pour que l'erreur ne puisse plus s'écrire ; (b) un contrôle
    automatique (lint, typecheck, script lancé par les contrôles) dont le message dit quoi faire à la place ; (c) un
@@ -102,17 +112,18 @@ prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le
    protection, sa ligne dans les « Pièges connus » et la correction de la même erreur là où elle existe encore dans le
    code d'aujourd'hui. Ne désactive et n'affaiblis jamais un test ou un contrôle existant.
 5. **Preuve.** Une protection n'est livrée que si elle aurait refusé un cas passé : rejoue-la sur le code tel qu'il
-   était au moment de l'erreur (le commit ou la PR du cas, dans un `git worktree` à part) ; elle doit le refuser, et
-   accepter le code d'aujourd'hui. Un sous-agent du rôle `review` vérifie chaque preuve. Aucun cas rejouable : la
-   protection n'est pas livrée et la famille est listée « non protégée », avec la raison. Seule exception, la consigne
-   écrite : sa preuve est la liste d'au moins 2 cas réels, avec leurs liens ; elle est livrée et marquée « consigne
-   seulement ».
+   était au moment de l'erreur ; récupère d'abord le code du cas : `git fetch origin pull/<n>/head` (ou
+   `git fetch origin <sha>`), puis ouvre-le dans un `git worktree` à part ; elle doit le refuser, et accepter le code
+   d'aujourd'hui. Un sous-agent du rôle `review` vérifie chaque preuve. Aucun cas rejouable : la protection n'est pas
+   livrée et la famille est listée « non protégée », avec la raison. Seule exception, la consigne écrite : sa preuve est
+   la liste d'au moins 2 cas réels, avec leurs liens ; elle est livrée et marquée « consigne seulement ».
 6. **Liste « Pièges connus ».** Une ligne par règle :
    `- **<la règle en une phrase>** Tenue par : <la protection, ou « consigne seulement »>. Cas : #12, #34.` Elle vit
    dans une partie `## Pièges connus` à la fin du `CLAUDE.md` du projet (crée le fichier s'il manque), jamais dans
    `.factory/` : l'AGENT.md demande à chaque agent de la lire, et la synchro de la factory n'y touche pas. Crée cette
    partie seulement à la première famille trouvée. Si le projet a déjà une liste « Pièges connus », garde sa place et
-   sa forme, et complète-la.
+   sa forme, et complète-la. Si la liste existante vit ailleurs que dans `CLAUDE.md`, vérifie que `CLAUDE.md` la cite ;
+   sinon, ajoute dans `CLAUDE.md` une ligne qui la cite.
 7. **Entretien de la liste**, à chaque review générale, même sans nouvelle famille : retire les règles dont l'erreur ne
    peut plus arriver ; remets les protections perdues (un contrôle ou un test cité par la liste qui n'existe plus ou ne
    tourne plus) ; regarde si chaque règle « consigne seulement » peut devenir un contrôle ou un test.
