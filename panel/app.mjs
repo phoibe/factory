@@ -22,7 +22,8 @@ async function openProject(fullName) {
   // A broken settings file opens with the default settings: it must never lock the panel on that project.
   const { raw, warning } = parseRawConfig(next.file?.content ? fromBase64(next.file.content) : null);
   if (warning) toast('Les paramètres de ce projet sont illisibles : les paramètres par défaut sont affichés.');
-  const switched = app.current && app.current.repo.full_name !== next.repo.full_name;
+  // No open project (first open, or back from the login page: issue #590) counts as a switch.
+  const switched = !app.current || app.current.repo.full_name !== next.repo.full_name;
   app.current = next;
   // Never the old project's cards under the new name (issue #319): its late answers are dropped. The new one shows
   // at once from this tab's memory, or from what the project list knows, otherwise grey cards (issue #327).

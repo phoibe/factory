@@ -45,3 +45,11 @@ test('la remise à zéro vit dans la partie commune ; chaque écran y déclare l
   const declaring = Object.keys(files).filter((f) => /^onReset\(\(\) => \{$/m.test(files[f])).sort();
   assert.deepEqual(declaring, ['github.mjs', 'screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-projects.mjs', 'screen-rules.mjs']);
 });
+
+test('après un retour à la connexion, le projet qui s\'ouvre montre toujours « Suivi » (issue #590)', () => {
+  // resetSession forgets the open project: the next open is a first open, which counts as a switch.
+  assert.match(fn('resetSession'), /app\.current = null/);
+  const open = fn('openProject');
+  assert.match(open, /const switched = !app\.current \|\| app\.current\.repo\.full_name !== next\.repo\.full_name;/);
+  assert.match(open, /if \(switched\) selectTab\('board'\);/);
+});
