@@ -1,0 +1,4 @@
+{"t":"2026-11-25T08:39:56.587Z","kind":"run","stage":"grilling","issue":606,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"opus"}}
+{"t":"2026-11-25T08:40:14.831Z","kind":"agent","model":"fable","effort":"high","role":"plan","up":true,"label":"Spec issue 606","id":"toolu_01565CqLJj64rQHAFectKWtC"}
+{"t":"2026-11-25T08:40:25.076Z","kind":"skill","name":"grilling","id":"toolu_01TmijgoHSCPLYw6mj9hLVzD"}
+{"t":"2026-11-25T08:40:25.157Z","kind":"skill","name":"domain-modeling","id":"toolu_01Eq2y5kpeehLzWkAY15c6A7"}
