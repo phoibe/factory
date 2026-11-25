@@ -1,0 +1,8 @@
+{"t":"2026-11-25T06:38:41.998Z","kind":"run","stage":"build","issue":591,"pr":null,"repo":"phoibe/factory","models":{"plan":"opus","review":"opus"}}
+{"t":"2026-11-25T06:39:08.341Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Issue 591 login error toast","id":"toolu_01FH9viFGawxaa2UZrZftW6u"}
+{"t":"2026-11-25T06:39:09.290Z","kind":"skill","name":"test-driven-development","id":"toolu_016zDH7ba6JjoPGFevKuAMYt"}
+{"t":"2026-11-25T06:40:38.843Z","kind":"test","cmd":"cd /home/user/factory; npm test -- --test-name-pattern=\"issue #591\" 2>&1 | tail -40","ok":false,"id":"toolu_01PcYNHHLHdzhUnbM6HozB21"}
+{"t":"2026-11-25T06:40:48.431Z","kind":"test","cmd":"cd /home/user/factory; node --test test/panel-login.test.mjs 2>&1 | grep -v \"^ *at \" | head -40","ok":false,"id":"toolu_014bUCyZjT6H3disjn4rnbbB"}
+{"t":"2026-11-25T06:41:00.108Z","kind":"test","cmd":"cd /home/user/factory; cat > panel/screen-login.mjs <<'EOF'\nimport { errorText } from './errors.mjs';\nimport { TOKEN_KEY, $, store, app, toast, resetSession, show, call } from './common.mjs';\n\n$('logi","ok":true,"id":"toolu_015YSB7Kct27ozvKp5jEHVXf"}
+{"t":"2026-11-25T06:41:15.929Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-25T06:42:10.605Z","kind":"test","cmd":"cd /home/user/factory; npm test 2>&1 | grep -E \"^not ok|^# (tests|pass|fail)\"; npm run lint 2>&1 | tail -3; echo \"lint=$?\"; npm run typecheck 2>&1 | tail -3; npm run build 2>&1 | tail -3","ok":true,"id":"toolu_018UAZDS4xqDF11UfjGm49Zh"}
