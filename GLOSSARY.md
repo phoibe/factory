@@ -68,6 +68,10 @@ _À éviter_ : documentation, docs
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
 
+**Sujet sensible** :
+L'un des sujets pour lesquels une demande reçoit une revue de sécurité et une vérification de portée : la connexion, les codes, les comptes, les données personnelles, l'argent, le partage et la suppression de données. Un changement du design ou de la vision du produit n'en est pas un, même s'il fait valider la fiche par le propriétaire.
+_À éviter_ : sujet à risque, sujet critique
+
 ## Relecture du code
 
 **Problème bloquant** :
@@ -85,6 +89,24 @@ _À éviter_ : suggestion, avertissement, problème mineur
 **Tour de relecture** :
 Une relecture du code qui a trouvé au moins un problème bloquant, confirmé puis corrigé, après quoi un relecteur neuf repart. Il y en a 3 au plus ; s'il reste alors un problème bloquant, la demande est remontée au propriétaire.
 _À éviter_ : aller-retour, itération, boucle
+
+## Vérification de portée
+
+**Vérification de portée** :
+La recherche, avant la relecture finale, de ce qu'un changement peut casser en dehors de ce qu'il modifie : les autres endroits qui se servent du code touché, les fichiers et données partagés, les écrans qui affichent la même information, les tâches planifiées qui lisent ce qui a changé. Elle est faite par un agent neuf, qui n'a pas écrit le code, et seulement quand le changement touche à un sujet sensible ou aux ordres de bourse.
+_À éviter_ : blast radius, analyse d'impact, revue de sécurité (qui cherche les failles, pas les casses)
+
+**Toucher aux ordres de bourse** :
+Modifier ce qui envoie, modifie ou annule un ordre de bourse, ou ce qui décide de ce qui est envoyé : les quantités, les prix, le moment, les positions, et les données que ces calculs lisent. Cela se juge sur ce que le changement modifie réellement, pas sur le titre de la demande ; une retouche d'affichage ou de texte n'y touche pas.
+_À éviter_ : trading, exécution, passage d'ordres
+
+**Portée vérifiée** :
+La ligne du résumé d'une modification qui dit, en français simple, ce qui a été vérifié autour du changement : le fait précis qui le rend sûr, prouvé en faisant tourner le vrai code ou un test, et les autres endroits regardés. Si une casse a été trouvée et corrigée, elle le dit.
+_À éviter_ : impact vérifié, périmètre vérifié
+
+**Portée non prouvée** :
+La ligne qui remplace « Portée vérifiée » quand le fait qui rend le changement sûr ne peut pas être prouvé sans toucher à du réel (il faudrait, par exemple, envoyer un vrai ordre) : elle dit ce qui reste à regarder, et la modification attend alors l'accord du propriétaire avant de partir vers les contrôles.
+_À éviter_ : portée partielle, pas vérifié en vrai (la ligne de l'essai en conditions réelles)
 
 ## Erreurs répétées
 
