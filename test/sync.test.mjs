@@ -235,3 +235,15 @@ test('every agent script, and every script an installed one imports, is installe
     }
   }
 });
+
+test('a sync keeps the project CLAUDE.md and its « Pièges connus », and the instructions point to it (issue #605)', () => {
+  const dir = project();
+  const claude = '# Mon projet\n\n## Pièges connus\n\n- **Jamais de date en dur dans un test.** Tenue par : contrôle `lint`. Cas : #12, #34.\n';
+  writeFileSync(join(dir, 'CLAUDE.md'), claude);
+  sync({ projectDir: dir });
+  sync({ projectDir: dir });
+  assert.equal(readFileSync(join(dir, 'CLAUDE.md'), 'utf8'), claude);
+  const flat = (f) => readFileSync(join(dir, f), 'utf8').replace(/\s+/g, ' ');
+  assert.match(flat('.factory/AGENT.md'), /\*\*Pièges connus\.\*\* Si le `CLAUDE\.md` du projet a une partie « Pièges connus »/);
+  assert.ok(flat('.factory/stages/audit.md').includes('partie `## Pièges connus` à la fin du `CLAUDE.md` du projet'));
+});

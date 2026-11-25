@@ -61,6 +61,10 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
 
+**Pièges connus.** Si le `CLAUDE.md` du projet a une partie « Pièges connus », ce sont les erreurs que les agents ont
+déjà faites plusieurs fois ici : respecte chaque règle et rappelle aux sous-agents celles qui touchent leur tâche. Seule
+une review générale modifie cette liste (`stages/audit.md`).
+
 **Journal de fabrication.** L'outil note tout seul, dans `.factory/journal/`, les skills que tu charges et
 les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été
 suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
@@ -87,8 +91,8 @@ et son modèle.
 | --- | --- | --- | --- |
 | `plan` (Plans et organisation) | `fable` | `high` | phase amont d'une demande (analyse, questions, alertes, spec), cadrage d'un projet, analyse d'un bug, écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
 | `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design |
-| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections |
-| `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc ; rien d'autre |
+| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections, familles d'erreurs et vérification des preuves de sa chasse aux erreurs répétées |
+| `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc, et lecture de l'historique tranche par tranche pendant sa chasse aux erreurs répétées ; rien d'autre |
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
 - Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.
