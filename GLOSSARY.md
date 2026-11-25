@@ -68,6 +68,24 @@ _À éviter_ : documentation, docs
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
 
+## Relecture du code
+
+**Problème bloquant** :
+Un défaut signalé par le relecteur du code qui doit être corrigé avant que la modification soit proposée au propriétaire : soit il est démontré par une preuve, soit c'est l'un des trois cas qui se constatent à la lecture (un risque de sécurité ou de perte de données dont le scénario est expliqué précisément, un écart avec la spec, une règle écrite du projet ou de la factory qui n'est pas respectée).
+_À éviter_ : bug bloquant, point critique, constat
+
+**Preuve d'un problème** :
+La commande que le relecteur a lancée et qui fait voir le défaut : un test qui échoue, un petit script qui le reproduit, ou une commande qui affiche le mauvais comportement, donnée avec ce qu'elle a affiché et ce qu'elle aurait dû afficher. Montrer un morceau de code n'en est pas une.
+_À éviter_ : démonstration, reproduction, justification
+
+**Simple remarque** :
+Ce que le relecteur signale sans preuve, hors des trois cas qui se constatent à la lecture. Elle ne bloque pas, ne compte pas dans les tours de relecture et n'est jamais remontée au propriétaire.
+_À éviter_ : suggestion, avertissement, problème mineur
+
+**Tour de relecture** :
+Une relecture du code qui a trouvé au moins un problème bloquant, confirmé puis corrigé, après quoi un relecteur neuf repart. Il y en a 3 au plus ; s'il reste alors un problème bloquant, la demande est remontée au propriétaire.
+_À éviter_ : aller-retour, itération, boucle
+
 ## Captures avant/après
 
 **Image avant/après** :
