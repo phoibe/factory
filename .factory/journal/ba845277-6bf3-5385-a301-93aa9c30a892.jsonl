@@ -1,0 +1,4 @@
+{"t":"2026-11-25T06:36:12.064Z","kind":"run","stage":"grilling","issue":591,"pr":null,"repo":"phoibe/factory","models":{"plan":"opus","review":"opus"}}
+{"t":"2026-11-25T06:36:30.180Z","kind":"agent","model":"opus","effort":"high","role":"plan","up":true,"label":"Questions issue 591","id":"toolu_01T5rttNWP3CqnrVFAnKnDFy"}
+{"t":"2026-11-25T06:36:36.653Z","kind":"skill","name":"grilling","id":"toolu_01QbXpbqcuNhy9yw8XENYtwY"}
+{"t":"2026-11-25T06:36:36.890Z","kind":"skill","name":"domain-modeling","id":"toolu_0128KpmYagc1ogEv6Funvaxd"}
