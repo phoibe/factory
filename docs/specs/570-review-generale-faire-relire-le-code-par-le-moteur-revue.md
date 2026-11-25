@@ -1,6 +1,8 @@
 # 570 · Review générale : faire relire le code par le moteur « Revue »
 
 > Demande [#570](https://github.com/phoibe/factory/issues/570) · 2026-11-24
+>
+> Modifiée par la demande n° [#605](https://github.com/phoibe/factory/issues/605)
 
 **En une phrase** : une cinquième ligne dans les Réglages généraux, « Relectures d'une review générale », vous laisse choisir le moteur qui relit le code partie par partie pendant une review générale, sans toucher au moteur qui écrit le code ; elle est sur Opus au départ.
 
