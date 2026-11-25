@@ -56,7 +56,8 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
   nouveauté à la mode ; réutilise les briques complètes existantes (base gérée, authentification toute prête,
   bibliothèques reconnues) plutôt que de reconstruire.
 - Étapes actives : {{stages}}
-- Revue de code : au plus {{maxLoops}} allers-retours entre le développeur et le relecteur, ensuite escalade.
+- Revue de code : un problème ne bloque que s'il est prouvé (`stages/code-review.md`) ; au plus {{maxLoops}} tours
+  entre le développeur et le relecteur, ensuite escalade.
 - Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : {{skills}}
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
