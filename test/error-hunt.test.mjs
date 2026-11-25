@@ -25,7 +25,7 @@ test('the hunt section says what to read, what counts, how to protect, prove and
     'un contrôle automatique existant', "changement d'avis", 'au moins 2 fois', 'au plus 5 familles',
     '« à traiter à la prochaine review »', 'Une famille par commit', "n'affaiblis jamais", "accepter le code d'aujourd'hui",
     '« non protégée »', 'au moins 2 cas réels', '« consigne seulement »', '`## Pièges connus`', '`CLAUDE.md`',
-    'jamais dans `.factory/`', 'garde sa place et sa forme', 'seulement à la première famille trouvée', 'retire les règles',
+    'jamais dans `.factory/`', 'garde sa place et sa forme', 'seulement à la première règle posée', 'retire les règles',
     'remets les protections perdues', 'review générale de la factory elle-même', "rien n'est créé"]) {
     assert.ok(hunt.includes(s), `missing: ${s}`);
   }
@@ -61,7 +61,6 @@ test('second review round: full history, commits, real reviews, slices, docs PRs
   for (const s of ['git rev-parse --is-shallow-repository', 'si le clone est partiel',
     'git fetch --shallow-since=<date> origin {{base}}', '`claude/revert-pr-<n>` déjà dans la liste',
     "récupère d'abord le code du cas : `git fetch origin pull/<n>/head` (ou `git fetch origin <sha>`)",
-    'gh api R/pulls/<n>/commits --jq \'.[] | "\\(.sha[0:7]) \\(.commit.message | split("\\n")[0])"\'',
     'pas seulement son diff final', 'puis le diff des commits utiles',
     'est la trace d\'une correction demandée par la relecture',
     'sans rien après `-review`', "porte l'étiquette `factory:audit`",
@@ -77,4 +76,15 @@ test('second review round: full history, commits, real reviews, slices, docs PRs
   assert.ok(fetch >= 0 && fetch < log, 'deepen the history before reading the reverts');
   const get = hunt.indexOf('git fetch origin pull/<n>/head'), wt = hunt.indexOf('git worktree');
   assert.ok(get >= 0 && get < wt, 'fetch the case before the worktree');
+});
+
+test('final review fixes: paginated commits, commit diffs via the API, known traps, worktree cleanup (issue #605)', () => {
+  for (const s of ['gh api --paginate "R/pulls/<n>/commits?per_page=100" --jq \'.[] | "\\(.sha[0:7]) \\(.commit.message | split("\\n")[0])"\'',
+    'gh api R/commits/<sha> -H "Accept: application/vnd.github.diff"',
+    'et la liste « Pièges connus » actuelle (pour repérer une règle dont l\'erreur est revenue)',
+    'git worktree remove', 'dans un commit à part']) {
+    assert.ok(hunt.includes(s), `missing: ${s}`);
+  }
+  assert.ok(!hunt.includes('git show <sha>'), 'PR commits are not in the base history after a squash merge');
+  assert.ok(!hunt.includes('gh api R/pulls/<n>/commits --jq'), 'the commit list is paginated');
 });

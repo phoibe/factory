@@ -87,22 +87,24 @@ prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le
    même temps, par un sous-agent neuf du rôle `audit` (`model` et `effort` de `models.audit`, description
    `[role:audit] Historique : …`), avec la même règle d'échec qu'à l'étape 3. Il lit chaque PR et sa demande avec
    `node .factory/scripts/thread.mjs <n>`, jamais autrement (sur un projet public, les messages des personnes
-   extérieures au projet restent laissés de côté et ne comptent pas), puis le diff de la PR. Il lit aussi les commits
-   de la PR, pas seulement son diff final :
-   `gh api R/pulls/<n>/commits --jq '.[] | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"'`, puis le diff des
-   commits utiles (`git show <sha>`). Un commit de correction après le premier commit de livraison est la trace d'une
-   correction demandée par la relecture. Il rend chaque erreur trouvée : une phrase simple, la modification où elle
-   est apparue (lien), le commit où on la voit, et d'où elle vient.
-   **Compte comme une erreur** : une correction demandée par la relecture, une remarque du propriétaire sur les captures
-   ou en recette, un bug ouvert après une livraison, un retour en arrière. **Ne compte pas** : une erreur déjà arrêtée
-   par un contrôle automatique existant, un simple changement d'avis du propriétaire.
-3. **Familles.** Un sous-agent du rôle `review` reçoit ces erreurs, avec les familles reprises au point 1 (et leurs
-   cas), les regroupe en familles (la même erreur revenue au moins 2 fois) et vérifie chaque cas passé à sa source.
-   Protège au plus 5 familles par review : les plus fréquentes d'abord ; à égalité, celles qui viennent d'une remarque
-   du propriétaire (captures ou recette) ou un bug passent avant celles qui viennent de la relecture. Une règle déjà
-   dans les « Pièges connus » dont l'erreur est revenue passe en premier et compte parmi les 5 : sa protection est
-   renforcée et prouvée sur ce nouveau cas. Une famille qui ne reçoit qu'une consigne écrite compte aussi parmi les 5.
-   Les autres sont listées dans le résumé, « à traiter à la prochaine review ».
+   extérieures au projet restent laissés de côté et ne comptent pas), puis le diff de la PR. Il lit aussi
+   les commits de la PR, pas seulement son diff final (`--paginate`, sinon GitHub n'en rend que 30) :
+   `gh api --paginate "R/pulls/<n>/commits?per_page=100" --jq '.[] | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"'`,
+   puis le diff des commits utiles, par l'API car ils ne sont pas dans l'historique de `{{base}}` après une fusion en un
+   seul commit : `gh api R/commits/<sha> -H "Accept: application/vnd.github.diff"`. Un commit de correction après le
+   premier commit de livraison est la trace d'une correction demandée par la relecture. Il rend chaque erreur trouvée :
+   une phrase simple, la modification où elle est apparue (lien), le commit où on la voit, et d'où elle vient. **Compte
+   comme une erreur** : une correction demandée par la relecture, une remarque du propriétaire sur les captures ou en
+   recette, un bug ouvert après une livraison, un retour en arrière. **Ne compte pas** : une erreur déjà arrêtée par un
+   contrôle automatique existant, un simple changement d'avis du propriétaire.
+3. **Familles.** Un sous-agent du rôle `review` reçoit ces erreurs, avec les familles reprises au point 1 (et leurs cas)
+   et la liste « Pièges connus » actuelle (pour repérer une règle dont l'erreur est revenue), les regroupe en familles
+   (la même erreur revenue au moins 2 fois) et vérifie chaque cas passé à sa source. Protège au plus 5 familles par
+   review : les plus fréquentes d'abord ; à égalité, celles qui viennent d'une remarque du propriétaire (captures ou
+   recette) ou un bug passent avant celles qui viennent de la relecture. Une règle déjà dans les « Pièges connus » dont
+   l'erreur est revenue passe en premier et compte parmi les 5 : sa protection est renforcée et prouvée sur ce nouveau
+   cas. Une famille qui ne reçoit qu'une consigne écrite compte aussi parmi les 5. Les autres sont listées dans le
+   résumé, « à traiter à la prochaine review ».
 4. **Protection.** Confie chaque famille à un sous-agent du rôle `code`, qui pose la protection la plus solide possible,
    dans cet ordre : (a) changer la structure du code pour que l'erreur ne puisse plus s'écrire ; (b) un contrôle
    automatique (lint, typecheck, script lancé par les contrôles) dont le message dit quoi faire à la place ; (c) un
@@ -114,19 +116,21 @@ prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le
 5. **Preuve.** Une protection n'est livrée que si elle aurait refusé un cas passé : rejoue-la sur le code tel qu'il
    était au moment de l'erreur ; récupère d'abord le code du cas : `git fetch origin pull/<n>/head` (ou
    `git fetch origin <sha>`), puis ouvre-le dans un `git worktree` à part ; elle doit le refuser, et accepter le code
-   d'aujourd'hui. Un sous-agent du rôle `review` vérifie chaque preuve. Aucun cas rejouable : la protection n'est pas
-   livrée et la famille est listée « non protégée », avec la raison. Seule exception, la consigne écrite : sa preuve est
-   la liste d'au moins 2 cas réels, avec leurs liens ; elle est livrée et marquée « consigne seulement ».
+   d'aujourd'hui. Preuve faite, supprime ce worktree (`git worktree remove`). Un sous-agent du rôle `review` vérifie
+   chaque preuve. Aucun cas rejouable : la protection n'est pas livrée et la famille est listée « non protégée », avec
+   la raison. Seule exception, la consigne écrite : sa preuve est la liste d'au moins 2 cas réels, avec leurs liens ;
+   elle est livrée et marquée « consigne seulement ».
 6. **Liste « Pièges connus ».** Une ligne par règle :
    `- **<la règle en une phrase>** Tenue par : <la protection, ou « consigne seulement »>. Cas : #12, #34.` Elle vit
    dans une partie `## Pièges connus` à la fin du `CLAUDE.md` du projet (crée le fichier s'il manque), jamais dans
    `.factory/` : l'AGENT.md demande à chaque agent de la lire, et la synchro de la factory n'y touche pas. Crée cette
-   partie seulement à la première famille trouvée. Si le projet a déjà une liste « Pièges connus », garde sa place et
+   partie seulement à la première règle posée. Si le projet a déjà une liste « Pièges connus », garde sa place et
    sa forme, et complète-la. Si la liste existante vit ailleurs que dans `CLAUDE.md`, vérifie que `CLAUDE.md` la cite ;
    sinon, ajoute dans `CLAUDE.md` une ligne qui la cite.
 7. **Entretien de la liste**, à chaque review générale, même sans nouvelle famille : retire les règles dont l'erreur ne
    peut plus arriver ; remets les protections perdues (un contrôle ou un test cité par la liste qui n'existe plus ou ne
-   tourne plus) ; regarde si chaque règle « consigne seulement » peut devenir un contrôle ou un test.
+   tourne plus) ; regarde si chaque règle « consigne seulement » peut devenir un contrôle ou un test. Ce que
+   l'entretien retire ou remet va dans un commit à part.
 8. **Erreurs venues de la factory.** Une famille dont la cause est dans les consignes ou les outils de la factory
    (`.factory/`, skills installés) ne se corrige pas ici : ne touche pas à ces fichiers, signale-la dans le résumé ;
    elle sera traitée par une review générale de la factory elle-même. Sauf pour la factory elle-même (`repo` et
