@@ -91,7 +91,7 @@ et son modèle.
 | --- | --- | --- | --- |
 | `plan` (Plans et organisation) | `fable` | `high` | phase amont d'une demande (analyse, questions, alertes, spec), cadrage d'un projet, analyse d'un bug, écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
 | `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design |
-| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections, familles d'erreurs et vérification des preuves de sa chasse aux erreurs répétées |
+| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, vérification de portée, revue de sécurité, synthèse d'une review générale et relecture de ses corrections, familles d'erreurs et vérification des preuves de sa chasse aux erreurs répétées |
 | `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc, et lecture de l'historique tranche par tranche pendant sa chasse aux erreurs répétées ; rien d'autre |
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
