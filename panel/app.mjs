@@ -49,7 +49,8 @@ async function openProject(fullName) {
   $('issues-link').textContent = issuesLinkText(null);
   // Everything under the name starts over at once, before any request (issue #319); the board's grey cards come with renderBoard.
   show('project-view');
-  // Another project always opens on « Suivi » (issue #475); a redraw of the same project keeps the tab.
+  // Another project always opens on « Suivi » (issue #475), and so does the first open after a return to the login page
+  // (issue #590); a redraw of the same project keeps the tab.
   if (switched) selectTab('board');
   resetChat();
   renderRules();

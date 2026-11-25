@@ -42,10 +42,15 @@ test('jeton refusé depuis « Paramètres », puis nouveau jeton collé : le mê
     await page.goto(url);
     await page.locator('.ticket', { hasText: 'Carte du projet r' }).waitFor();
     await page.getByRole('tab', { name: 'Paramètres', exact: true }).click();
-    // GitHub now refuses the token: the next read sends the owner back to the login page.
+    await page.getByText('Avancé', { exact: true }).click();
+    const field = page.getByLabel('Durée maximale des contrôles (minutes)');
+    await field.fill('90');
+    await field.press('Tab');
+    // GitHub now refuses the token: « Enregistrer » reads the settings file first, and that refused read sends the
+    // owner back to the login page at once (no waiting on a background check).
     const refuse = (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'Bad credentials' }) });
     await page.route('https://api.github.com/**', refuse);
-    await page.locator('#projects .project-item', { hasText: 'r' }).click();
+    await page.getByRole('button', { name: 'Enregistrer' }).click();
     await page.locator('#login').waitFor({ state: 'visible' });
     assert.match(await page.locator('#login-error').textContent(), /refusé/);
     await page.unroute('https://api.github.com/**', refuse);
