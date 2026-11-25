@@ -85,7 +85,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
      tâches planifiées qui lisent ce qui a changé ;
    - dire le **fait précis** qui rend le changement sûr (par exemple « aucun autre endroit ne donne une valeur vide à
      ce calcul ») et le **prouver** par une commande qui fait tourner le vrai code ou un test : montrer un morceau de
-     code ou affirmer ne prouve rien. Un test qui sert de preuve reste dans le projet, avec les autres tests ;
+     code ou affirmer ne prouve rien. Un test qui sert de preuve reste dans le projet, avec les autres tests (tu le
+    commites avec le reste) ;
    - ne toucher à **rien de réel** : aucun ordre envoyé, aucune vraie donnée modifiée, jamais l'appli lancée avec les
      réglages de production ;
    - te rendre le fait, la commande lancée et son résultat, les endroits regardés, et chaque casse trouvée avec la
@@ -105,11 +106,9 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    captures de l'étape 9), puis arrête-toi : ne mets pas `factory:checks` sur la PR. Écris sur l'issue ce qui n'a pas
    pu être prouvé et pourquoi, avec le lien de la PR, et termine par « Répondez « ok » ici pour que la modification
    parte vers les contrôles automatiques, ou dites-moi ce qu'il faut regarder ou changer. » ; mets `factory:blocked`
-   sur l'issue (pas sur la PR) et termine. Rien ne part vers les contrôles ni vers l'intégration sans son « ok » ; la
-   suite est dans `resume.md`.
-   Pas de vérification de portée ailleurs que dans `build.md`, `bugfix.md` et `acceptance-fix.md` : ni après une
-   retouche des captures, ni après une correction des contrôles automatiques, ni pendant une review générale, une
-   amélioration UI ou le socle d'un projet. Aucun contrôle automatique ne réclame ces lignes.
+   sur l'issue (pas sur la PR) et termine : sa réponse doit être écrite sur l'issue (sur la PR, sans label, elle serait
+   ignorée), et le message de l'étape 10 n'est pas posté : cette question le remplace. Rien ne part vers les contrôles
+   ni vers l'intégration sans son « ok » ; la suite est dans `resume.md`.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
    puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
    relit le diff contre la spec et les standards du dépôt. Corrige ce

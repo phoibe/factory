@@ -32,6 +32,7 @@ test('build: a fresh review sub-agent looks outside the modified files and prove
   has(step, [`${AGENT}, qui n'a pas écrit le code`, 'en dehors des fichiers modifiés', 'les autres endroits qui se servent du code touché',
     'les fichiers et données partagés', 'les écrans qui affichent la même information', 'les tâches planifiées qui lisent ce qui a changé',
     'fait précis', 'une commande qui fait tourner le vrai code ou un test', 'affirmer ne prouve rien', 'reste dans le projet',
+    'tu le commites avec le reste',
     'rien de réel', 'aucun ordre envoyé, aucune vraie donnée modifiée', 'réglages de production',
     "test qui échoue d'abord, avant la relecture finale", "ne se fait qu'une fois"]);
 });
@@ -43,7 +44,8 @@ test('build: the PR summary says « Portée vérifiée », the technical part gi
 
 test('build: a fact that cannot be proved opens the PR, asks the owner and never sends it to the checks', () => {
   has(step, ['« Portée non prouvée : … »', 'ce qui reste à regarder', 'ne mets pas `factory:checks` sur la PR', 'Répondez « ok » ici',
-    "`factory:blocked` sur l'issue (pas sur la PR)", '`resume.md`']);
+    "`factory:blocked` sur l'issue (pas sur la PR)", '`resume.md`', "sa réponse doit être écrite sur l'issue (sur la PR, sans label, elle serait ignorée)",
+    "le message de l'étape 10 n'est pas posté : cette question le remplace"]);
   assert.match(between(build, '9. Captures', "10. L'issue garde"), /Portée non prouvée \(étape 4 ter\) : pas de `factory:checks`/);
 });
 
@@ -61,24 +63,25 @@ test('acceptance fix: the check is redone on a fix that changes code, before pus
   const s = between(fix, '2 bis. Vérification de portée', '3. Corrige (TDD si actif)');
   has(s, ['modifie du code', '« Portée vérifiée » ou « Portée non prouvée »', 'étape 4 ter de `build.md`', 'sous-agent neuf du rôle `review`, description `[role:review] Vérification de portée`', 'avant de pousser',
     'mets à jour la ligne « Portée vérifiée : … » de la description de la PR', 'sans toucher au reste de la description',
-    'retire `factory:acceptance` de la PR et mets-y `factory:blocked`', '« Portée non prouvée : … »', 'ne mets pas `factory:checks`']);
+    "une fois l'étape 3 finie (revue par un sous-agent neuf, passe design si besoin, vérifications locales)",
+    "mets d'abord `factory:blocked` sur la PR, puis retire son label d'étape (`factory:acceptance`, `factory:checks` ou `factory:visual-review`)",
+    '« Portée non prouvée : … »', 'ne mets pas `factory:checks`']);
 });
 
 test('resume: « ok » sends the waiting PR to the checks, anything else keeps it blocked', () => {
   const s = between(flat('stages/resume.md'), 'Portée non prouvée (ton message de blocage', 'Si le blocage venait des contrôles automatiques');
   assert.match(s, /il répond « ok » : mets `factory:checks` sur la PR/);
-  has(s, ['vérification de portée refaite sur ce changement', "remets `factory:blocked` là où il était (l'issue, ou la PR si la question y était), toujours sans `factory:checks`"]);
+  has(s, ["question posée pendant une correction en recette (`acceptance-fix.md`) : refais plutôt son étape 4 (captures si l'apparence a changé, puis `factory:checks`)",
+    'vérification de portée refaite sur ce changement', "remets `factory:blocked` là où il était (l'issue, ou la PR si la question y était), toujours sans `factory:checks`"]);
 });
 
-test('nowhere else: no other stage does the scope check, and no script asks for the line', () => {
+test('nowhere else: no other stage mentions the scope check, and no script asks for the line', () => {
   const stages = readdirSync(new URL('../agent/stages/', import.meta.url));
   assert.ok(stages.length > 15);
   for (const f of stages.filter((n) => !['build.md', 'bugfix.md', 'acceptance-fix.md', 'resume.md'].includes(n))) {
     assert.doesNotMatch(read(`stages/${f}`), /vérification de portée|Portée (vérifiée|non prouvée)/i, f);
   }
   for (const f of readdirSync(new URL('../agent/scripts/', import.meta.url))) assert.doesNotMatch(read(`scripts/${f}`), /Portée/, f);
-  has(step, ['ni après une retouche des captures, ni après une correction des contrôles automatiques, ni pendant une review générale, une amélioration UI ou le socle',
-    'Aucun contrôle automatique ne réclame ces lignes']);
 });
 
 test('AGENT.md: the review role lists the scope check', () => {

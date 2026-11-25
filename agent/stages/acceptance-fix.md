@@ -19,10 +19,12 @@ Le propriétaire a testé la preview et signale un problème.
    l'étape 4 ter de `build.md` (sous-agent neuf du rôle `review`, description `[role:review] Vérification de portée`),
    puis mets à jour la ligne « Portée vérifiée : … » de la description de la PR et, tout en bas, le fait prouvé, la
    commande et son résultat, sans toucher au reste de la description.
-   **Fait impossible à prouver sans toucher à du réel** : avant de pousser, retire `factory:acceptance` de la PR et
-   mets-y `factory:blocked` (sinon la factory relance d'elle-même les contrôles dès que du code arrive pendant la
-   recette). Pousse, remplace la ligne par « Portée non prouvée : … », demande son accord sur la PR (même message qu'à
-   l'étape 4 ter de `build.md`), ne mets pas `factory:checks` et termine : l'étape 4 ne s'applique pas.
+   **Fait impossible à prouver sans toucher à du réel** : une fois l'étape 3 finie (revue par un sous-agent neuf,
+   passe design si besoin, vérifications locales), et avant de pousser, mets d'abord `factory:blocked` sur la PR, puis
+   retire son label d'étape (`factory:acceptance`, `factory:checks` ou `factory:visual-review`) : sinon la factory
+   relance d'elle-même les contrôles dès que du code arrive. Pousse, remplace la ligne par « Portée non prouvée : … »,
+   demande son accord sur la PR (même message qu'à l'étape 4 ter de `build.md`), ne mets pas `factory:checks` et
+   termine : l'étape 4 ne s'applique pas.
 3. Corrige (TDD si actif), revue par un sous-agent neuf (rôle `code`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 4. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a

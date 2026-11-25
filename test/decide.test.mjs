@@ -262,6 +262,9 @@ test('a PR waiting for the owner after an unproved scope check is not sent to th
   assert.equal(type(pr({ event: 'pull_request', action: 'opened', labels: [] })), 'ignore'); // build, bugfix: opened without factory:checks
   assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.running, L.blocked] })), 'ignore'); // recette: blocked before the push
   assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.running, L.acceptance] })), 'checks'); // why factory:acceptance goes first
+  // acceptance-fix is also reached from feedback at factory:checks or factory:visual-review: the step label must go too.
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.checks, L.blocked] })), 'checks');
+  assert.equal(type(pr({ event: 'pull_request', action: 'synchronize', labels: [L.blocked] })), 'ignore');
   assert.equal(type(pr({ event: 'pull_request', action: 'unlabeled', removedLabel: L.running, open: true, labels: [L.blocked] })), 'ignore');
   assert.equal(type(pr({ event: 'pull_request', action: 'unlabeled', removedLabel: L.running, open: true, labels: [] })), 'checks'); // why factory:blocked is put back before the run ends
   for (const e of [pr({ labels: [L.blocked], text: 'ok' }), ev({ labels: [L.feature, L.building, L.blocked], text: 'ok' }), ev({ labels: [L.bug, L.building, L.blocked], text: 'regardez aussi la tâche de nuit' })]) {
