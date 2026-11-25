@@ -70,6 +70,46 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    `e2e/smoke-routes.txt` (un chemin par ligne) : la factory ouvre ces écrans sur la preview avant de la
    montrer au propriétaire, puis sur le site en ligne après la mise en ligne. Skill `webapp-testing` s'il est
    installé, pour piloter le navigateur.
+4 ter. **Vérification de portée**, seulement si le changement touche à un **sujet sensible** (connexion, codes, comptes,
+   données personnelles, argent, partage, suppression de données : la liste de l'étape 5 bis) ou aux **ordres de
+   bourse** : il modifie ce qui envoie, modifie ou annule un ordre, ou ce qui décide de ce qui est envoyé (quantités,
+   prix, moment, positions, et les données que ces calculs lisent). Juges-en d'après la spec et d'après ce que le diff
+   modifie réellement, pas d'après le titre de la demande : une demande d'affichage qui finit par modifier un calcul
+   d'ordre est concernée ; une retouche d'affichage ou de texte ne l'est pas, ni une spec validée seulement parce
+   qu'elle change le design ou la vision. Aucun réglage par projet. Demande non concernée : saute cette étape, sans
+   rien ajouter au résumé.
+   Une fois le code et ses tests écrits, avant la relecture finale (étape 5), lance un **sous-agent neuf** du rôle
+   `review` (description `[role:review] Vérification de portée`), qui n'a pas écrit le code. Sa consigne :
+   - chercher ce que le changement peut casser **en dehors des fichiers modifiés** : les autres endroits qui se
+     servent du code touché, les fichiers et données partagés, les écrans qui affichent la même information, les
+     tâches planifiées qui lisent ce qui a changé ;
+   - dire le **fait précis** qui rend le changement sûr (par exemple « aucun autre endroit ne donne une valeur vide à
+     ce calcul ») et le **prouver** par une commande qui fait tourner le vrai code ou un test : montrer un morceau de
+     code ou affirmer ne prouve rien. Un test qui sert de preuve reste dans le projet, avec les autres tests ;
+   - ne toucher à **rien de réel** : aucun ordre envoyé, aucune vraie donnée modifiée, jamais l'appli lancée avec les
+     réglages de production ;
+   - te rendre le fait, la commande lancée et son résultat, les endroits regardés, et chaque casse trouvée avec la
+     commande qui la montre. Il ne corrige rien lui-même.
+   **Casse trouvée** : fais-la corriger par un sous-agent du rôle `code`, avec un test qui échoue d'abord, avant la
+   relecture finale. La vérification ne se fait qu'une fois : c'est la relecture finale qui relit cette correction.
+   **Résumé de la PR** (étape 8) : une ligne en français simple **« Portée vérifiée : … »**, qui dit ce qui a été
+   regardé autour du changement et le fait prouvé (ex. « Portée vérifiée : les trois autres endroits qui utilisent le
+   calcul de quantité lui donnent toujours un nombre positif (prouvé par un test) ; l'écran Historique et la tâche de
+   nuit lisent la même donnée et l'affichent encore correctement. »). Une casse trouvée et corrigée : la ligne le dit.
+   Rien d'autre dans le projet ne se sert de ce qui a changé : elle le dit en une phrase. Dans la partie technique, tout
+   en bas : le fait prouvé, la commande lancée et son résultat. Les lignes « Essayé en vrai » et « Pas vérifié en
+   vrai » ne changent pas.
+   **Fait impossible à prouver sans toucher à du réel** (il faudrait, par exemple, envoyer un vrai ordre) : le
+   sous-agent va aussi loin que possible sans rien toucher de réel, et la ligne du résumé devient **« Portée non
+   prouvée : … »**, avec ce qui reste à regarder. Fais la suite normalement jusqu'à la PR ouverte (étapes 5 à 8, et les
+   captures de l'étape 9), puis arrête-toi : ne mets pas `factory:checks` sur la PR. Écris sur l'issue ce qui n'a pas
+   pu être prouvé et pourquoi, avec le lien de la PR, et termine par « Répondez « ok » ici pour que la modification
+   parte vers les contrôles automatiques, ou dites-moi ce qu'il faut regarder ou changer. » ; mets `factory:blocked`
+   sur l'issue (pas sur la PR) et termine. Rien ne part vers les contrôles ni vers l'intégration sans son « ok » ; la
+   suite est dans `resume.md`.
+   Pas de vérification de portée ailleurs que dans `build.md`, `bugfix.md` et `acceptance-fix.md` : ni après une
+   retouche des captures, ni après une correction des contrôles automatiques, ni pendant une review générale, une
+   amélioration UI ou le socle d'un projet. Aucun contrôle automatique ne réclame ces lignes.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
    puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
    relit le diff contre la spec et les standards du dépôt. Corrige ce
@@ -141,5 +181,6 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    et met elle-même la carte en « Captures à valider » (issue #455 ; les contrôles tournent pendant que le propriétaire
    regarde les captures, son « ok » vaut recette). Ne pose jamais `factory:visual-review` toi-même.
    Sinon, mets directement `factory:checks` sur la PR.
+   **Portée non prouvée** (étape 4 ter) : pas de `factory:checks`, arrête-toi comme elle le dit.
 10. L'issue garde `factory:building`. Poste sur l'issue un court message avec le lien de la PR et, s'il y a eu une passe design, la ligne
    « Score design : … » (étape 7 de `design-pass.md`).

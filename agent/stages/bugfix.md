@@ -22,6 +22,15 @@ Un bug signalé dans l'issue. Pas de grilling.
    ligne ne marchait plus après une mise en ligne, et la factory l'a retirée. Suis la description : reprends les
    changements indiqués, trouve pourquoi ils cassaient le site en ligne (souvent une variable d'environnement, une
    migration de base, une page qui plante sans données), corrige, et ajoute l'écran concerné à `e2e/smoke-routes.txt`.
+2 bis. **Vérification de portée**, seulement si la correction touche à un sujet sensible ou aux ordres de bourse
+   (critères de l'étape 4 ter de `build.md`). Un bug n'a pas de fiche : juges-en d'après l'analyse de l'étape 1 et
+   d'après ce que la correction modifie réellement. Après la correction et son test, avant la revue de l'étape 3, suis
+   l'étape 4 ter de `build.md` : sous-agent neuf du rôle `review` (description `[role:review] Vérification de portée`),
+   fait prouvé par une commande, rien de réel touché, casse corrigée avec un test qui échoue d'abord, une seule fois.
+   Le résumé de la PR contient la ligne « Portée vérifiée : … » et, tout en bas, le fait prouvé, la commande et son
+   résultat. Fait impossible à prouver : « Portée non prouvée : … », PR ouverte sans `factory:checks`, question sur
+   l'issue et `factory:blocked`, comme à l'étape 4 ter : une correction de bug est fusionnée sans recette, elle ne part
+   donc jamais sans son « ok ». Les autres corrections de bugs ne changent pas.
 3. Revue par un sous-agent neuf (rôle `review` ; skill `requesting-code-review`, comme dans `build.md`, au plus {{maxLoops}} tours). Si l'interface change :
    passe design (`design-pass.md`). Puis vérifications locales.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
@@ -42,3 +51,4 @@ Un bug signalé dans l'issue. Pas de grilling.
    (`screenshots.md`) puis `factory:checks` (la factory publie les captures et pose elle-même `factory:visual-review`) ;
    sinon `factory:checks`. La factory fusionne seule quand
    les contrôles passent : pas de recette pour un bug.
+   **Portée non prouvée** (étape 2 bis) : pas de `factory:checks`.
