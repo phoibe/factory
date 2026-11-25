@@ -1,7 +1,6 @@
 {
   "machine": "dev-server",
   "models": {
-    "plan": "opus",
     "review": "opus"
   }
 }
