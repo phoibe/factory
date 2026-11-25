@@ -311,6 +311,8 @@ export function github({ token, repo, api = 'https://api.github.com', fetchImpl 
     createTagObject: (tag, message, sha) => request('POST', '/repos/{repo}/git/tags', { tag, message, object: sha, type: 'commit' }),
     createTagRef: (tag, sha) => request('POST', '/repos/{repo}/git/refs', { ref: `refs/tags/${tag}`, sha }),
     createRelease: (tag, name, body) => request('POST', '/repos/{repo}/releases', { tag_name: tag, name, body }),
+    // The latest published release, or null when there is none (GitHub answers 404). Issue #615: the sync waits for it.
+    latestRelease: () => request('GET', '/repos/{repo}/releases/latest'),
     // The merged PRs that wait for the owner's « Mise en production » (issue #294).
     listAwaiting: () => paginate('/repos/{repo}/issues?state=closed&labels=factory%3Aawaiting-production&per_page=100'),
     // A branch with no history, holding only `files` ({path: text}).

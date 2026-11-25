@@ -4014,3 +4014,58 @@ test('an « ok » on a PR merged days ago does not start its delivery again', as
   assert.ok(!gh.calls.some((c) => c[0] === 'comment' && /fusionné ✅/.test(c[2])));
   assert.ok(!gh.calls.some((c) => c[0] === 'close'));
 });
+
+// ---- Issue #615: the factory's own update must not land on main right after a numbered version ----
+// pulsarwheel, 2026-11-25: v0.20.0 tagged at 10:13:07 UTC on « Mise en production : #549, #550 » (31db394), then
+// « chore(factory): sync skills and agent instructions » (adde823) pushed on main at 10:13:54 by the sync the very
+// same relay run had started. The project only puts online a version that is the tip of main: it refused.
+const behind = { content: Buffer.from(JSON.stringify({ fingerprint: 'old' })).toString('base64') };
+const syncStarted = (gh) => gh.calls.some((c) => c[0] === 'dispatch' && c[1] === 'factory-sync.yml');
+function releasedGh(t0) {
+  const made = versionGh();
+  const { gh } = made;
+  const content = gh.getContent;
+  gh.getContent = async (path, ref) => (path === '.factory/synced.json' ? behind : content(path, ref));
+  const merge = gh.mergeBranches;
+  gh.mergeBranches = async (base, ...rest) => { const res = await merge(base, ...rest); gh.branches[base] = res.sha; return res; };
+  // What GitHub answers once the factory has tagged and published the version.
+  gh.createRelease = async (tag) => { gh.calls.push(['release', tag]); gh.released = { tag_name: tag, published_at: new Date(t0).toISOString() }; };
+  gh.latestRelease = async () => gh.released || null;
+  gh.resolveCommit = async (ref) => (ref === gh.released?.tag_name ? { sha: 'm2' } : null);
+  const stored = {};
+  gh.getState = async (name) => stored[name] || null;
+  gh.setState = async (name, value) => { if (value) stored[name] = value; else delete stored[name]; };
+  const at = (t) => createRelay({ gh, repo: 'r', config: { ...config, production: 'approval' }, env, fetchImpl: fetchOk([]), now: () => t, log: quiet, sleep: async () => {} });
+  return { gh, at, stored };
+}
+const T615 = Date.parse('2026-11-25T10:13:00Z');
+const tick615 = { kind: 'tick', event: 'schedule', labels: [], fromOwner: false };
+const releaseAt = (at, t) => at(t).handle({ kind: 'issue', event: 'issues', action: 'opened', number: 50, labels: [L.production], fromOwner: true });
+
+test('a numbered « Mise en production » on a project behind the factory does not start the sync: the version stays the tip of main (#615)', async () => {
+  const { gh, at, stored } = releasedGh(T615);
+  await releaseAt(at, T615);
+  assert.deepEqual(gh.calls.find((c) => c[0] === 'tag'), ['tag', 'v0.18.0', 'm2']);
+  assert.equal(syncStarted(gh), false, 'no commit of the factory on main right after the tag');
+  assert.equal(stored.sync, undefined, 'a held update is not a failed one: no retry counted, no alert later');
+});
+
+test('the held sync starts once main has moved past the version, or after the hold, never before (#615)', async () => {
+  const H = 3600_000;
+  for (const [what, after, move, expected] of [['one hour later, the version still the tip of main', H, false, false], ['main moved on (a release, a setting saved from the panel)', H, true, true], ['the hold is over', 6 * H + 60_000, false, true]]) {
+    const { gh, at } = releasedGh(T615);
+    await releaseAt(at, T615);
+    gh.calls.length = 0;
+    if (move) gh.branches.main = 'm3';
+    await at(T615 + after).handle(tick615);
+    assert.equal(syncStarted(gh), expected, what);
+  }
+});
+
+test('a « Mise en production » without a version number holds nothing: the sync starts as before (#615)', async () => {
+  const made = versionGh({ body: 'Demandé depuis le tableau de bord.' });
+  made.gh.getContent = async (path) => (path === '.factory/synced.json' ? behind : null);
+  made.gh.latestRelease = async () => null;
+  await askRelease(made.relay);
+  assert.equal(syncStarted(made.gh), true);
+});

@@ -14,6 +14,8 @@ import { ROOT, PROJECT_WORKFLOW, MAX_BRANCH_UPDATES, updateMark, branchUpdates, 
 // A decision whose job stopped while getting ready (GitHub down: the factory's code or Node not downloaded) never
 // read its event: re-run like a rate limit (issue #490). A failure of the relay step itself is the code's: not re-run.
 const SETUP_STEP = /^(Set up job|Run actions\/(checkout|setup-node)@)/;
+// How long a fresh numbered version holds the sync while it is the tip of main: the project's deploy window (#615).
+const RELEASE_HOLD_MS = 6 * 3600_000;
 
 export function watchPart(ctx) {
   const { gh, repo, env, fetchImpl, now, log } = ctx;
@@ -286,6 +288,21 @@ export function watchPart(ctx) {
   // The project's agent instructions come from its last sync, which only ran on a config change or weekly: a fix to
   // the agent's rules (« never close, add factory:close ») reached the relay at once but the agent a week later.
   // When the project's synced fingerprint differs from this factory version's, the sync is started now.
+  // Issue #615: a numbered version is put online by the project only while its tag is the tip of main (for 6 hours).
+  // The sync commits on main: started right after « Mise en production », it buried the version 47 seconds later.
+  // While the latest release, published less than RELEASE_HOLD_MS ago, is still the tip of the default branch, the
+  // sync waits; it starts as soon as main moves on or the hold is over.
+  async function versionWaiting() {
+    if (!gh.latestRelease || !gh.resolveCommit || !gh.getBranch) return false;
+    const rel = await gh.latestRelease().catch(() => null);
+    const at = Date.parse(rel?.published_at || '');
+    if (!rel?.tag_name || !(now() - at < RELEASE_HOLD_MS)) return false;
+    const def = (await gh.getRepo().catch(() => null))?.default_branch || 'main';
+    const head = (await gh.getBranch(def).catch(() => null))?.object?.sha;
+    const tagged = (await gh.resolveCommit(rel.tag_name).catch(() => null))?.sha;
+    return Boolean(head && tagged && head === tagged);
+  }
+
   async function syncIfBehind() {
     if (!gh.getContent) return;
     let mine;
@@ -293,6 +310,8 @@ export function watchPart(ctx) {
     const file = await gh.getContent('.factory/synced.json').catch(() => null);
     let theirs = null;
     try { theirs = file?.content ? JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')).fingerprint : null; } catch { /* resync */ }
+    // A held sync is not a failed one: it returns before the retry state, so it counts no try and raises no alert.
+    if (theirs !== mine && await versionWaiting()) { log('sync held: the latest version is still the tip of main (issue #615)'); return; }
     // A sync that cannot be pushed used to be started again every 5 minutes forever: the retries are spaced out and
     // the owner gets one alert after a day for the same version (issue #213). The state lives in a ref, see github.mjs.
     const state = gh.getState ? await gh.getState('sync').catch(() => null) : null;
@@ -498,5 +517,5 @@ export function watchPart(ctx) {
   }
 
 
-  return { unstickConflicts, dropCard, closeAsked, reopenCard, heal, retryRateLimited, releaseOver, noteWatch, retryLostChecks, retryOutages, syncIfBehind, outageBlockedPr, reportLost, KNOWN, meant, repairLabels, closeMerged, relaunchIdle, releaseStaleLocks, deferredMessage, notifyWaiting };
+  return { unstickConflicts, dropCard, closeAsked, reopenCard, heal, retryRateLimited, releaseOver, noteWatch, retryLostChecks, retryOutages, syncIfBehind, versionWaiting, outageBlockedPr, reportLost, KNOWN, meant, repairLabels, closeMerged, relaunchIdle, releaseStaleLocks, deferredMessage, notifyWaiting };
 }
