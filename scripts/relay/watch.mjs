@@ -297,7 +297,7 @@ export function watchPart(ctx) {
     const rel = await gh.latestRelease().catch(() => null);
     const at = Date.parse(rel?.published_at || '');
     if (!rel?.tag_name || !(now() - at < RELEASE_HOLD_MS)) return false;
-    const def = (await gh.getRepo())?.default_branch || 'main';
+    const def = (await gh.getRepo().catch(() => null))?.default_branch || 'main';
     const head = (await gh.getBranch(def).catch(() => null))?.object?.sha;
     const tagged = (await gh.resolveCommit(rel.tag_name).catch(() => null))?.sha;
     return Boolean(head && tagged && head === tagged);
