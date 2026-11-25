@@ -1,0 +1,10 @@
+# À la relecture du code, un problème ne bloque que s'il est prouvé
+
+Le relecteur du code pouvait signaler un problème sans le démontrer : on perdait des tours de correction, et le propriétaire recevait parfois des problèmes qui n'existaient pas. Décidé avec lui (#604) : dans les quatre relectures qui ont des tours (avant la PR d'une feature ou du socle d'un nouveau projet, avant celle d'une correction de bug, au rattrapage des étapes sautées, et sur les corrections d'une review générale), un problème n'est bloquant que si le relecteur en donne la preuve, c'est-à-dire une commande qu'il a lancée, avec ce qu'elle a affiché et ce qu'elle aurait dû afficher ; l'agent qui corrige la relance avant de toucher au code. Trois cas restent bloquants sans commande, parce qu'ils se constatent à la lecture : un risque de sécurité ou de perte de données dont le scénario est expliqué précisément, un écart avec la spec, et une règle écrite du projet ou de la factory qui n'est pas respectée. Tout le reste est une simple remarque, qui ne bloque pas et ne compte pas dans les tours.
+
+Choix faits en connaissance de cause :
+
+- Les simples remarques ne sont pas jetées : celles qui sont simples et que l'agent a vérifiées lui-même sont corrigées tout de suite, sans tour ni nouvelle relecture. Ne jamais toucher au code pour une remarque a été écarté, parce que la qualité baisserait d'une demande à l'autre jusqu'à la review générale suivante. Limite acceptée : ces petites corrections ne sont couvertes que par les tests.
+- La règle reste une consigne donnée au relecteur et à l'agent qui corrige : aucun contrôle automatique ne vérifie qu'elle est suivie.
+- Elle ne s'applique pas à la première lecture de tout le code d'une review générale (elle cherche aussi des améliorations qu'aucune commande ne démontre), ni à la revue de sécurité des demandes sensibles (tout ce qu'elle trouve reste corrigé), ni aux relectures légères, qui n'ont pas de tours.
+- L'idée vient de la méthode « interrogate » de pstack ; pstack lui-même n'est pas installé.
