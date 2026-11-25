@@ -72,10 +72,13 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    installé, pour piloter le navigateur.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
    puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
-   relit le diff contre la spec et les standards du dépôt. Corrige ce
-   qu'il trouve (skill `receiving-code-review`), puis relance une revue neuve. Au plus {{maxLoops}} tours.
-   S'il reste un problème bloquant après le dernier tour : ouvre quand même la PR en brouillon, explique le
-   blocage au propriétaire en langage simple sur l'issue, mets `factory:blocked` et termine.
+   relit le diff contre la spec et les standards du dépôt, en suivant `.factory/stages/code-review.md` (mets-le dans
+   sa consigne) : un problème ne bloque que s'il est prouvé, le reste est une simple remarque. Fais vérifier puis
+   corriger les problèmes bloquants confirmés (skill `receiving-code-review`, même guide dans la consigne), puis
+   relance une revue neuve. Au plus {{maxLoops}} tours, comptés comme le dit le guide.
+   S'il reste un problème bloquant confirmé après le dernier tour : ouvre quand même la PR en brouillon, explique le
+   blocage au propriétaire en langage simple sur l'issue, en disant comment le problème a été démontré, mets
+   `factory:blocked` et termine.
 5 bis. **Revue de sécurité**, seulement si la spec est **sensible** (connexion, codes, comptes, données
    personnelles, argent, partage, suppression de données : mêmes critères que `spec.md`) : skill
    `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (rôle `review`) relit le diff uniquement
