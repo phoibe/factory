@@ -1,0 +1,3 @@
+{"t":"2026-11-25T08:32:19.901Z","kind":"run","stage":"build","issue":604,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"opus"}}
+{"t":"2026-11-25T08:32:55.336Z","kind":"agent","model":"fable","effort":"high","role":"plan","label":"Plan issue 604","id":"toolu_01Vec7Y5ipZPmTkw3PXfQaHS"}
+{"t":"2026-11-25T08:32:56.403Z","kind":"skill","name":"writing-plans","id":"toolu_01YQ9MatCA5nfDrFYQ7UNhZ1"}
