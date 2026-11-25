@@ -53,7 +53,7 @@ Une tâche du plan d'une grande demande qui ne dépend d'aucune autre tâche enc
 _À éviter_ : tâche indépendante, tâche concurrente
 
 **Review générale** :
-La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections.
+La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections, puis la chasse aux erreurs répétées.
 _À éviter_ : audit, revue complète
 
 **Relecture partie par partie** :
@@ -67,6 +67,72 @@ _À éviter_ : documentation, docs
 **Refus noté** :
 Une idée ou un choix que le propriétaire a clairement refusé (il a dit non, ou a abandonné l'idée en disant pourquoi), écrit en une phrase dans le registre des décisions pour ne plus le lui reproposer. Une demande abandonnée sans explication n'en est pas un.
 _À éviter_ : idée rejetée, abandon
+
+**Sujet sensible** :
+L'un des sujets pour lesquels une demande reçoit une revue de sécurité et une vérification de portée : la connexion, les codes, les comptes, les données personnelles, l'argent, le partage et la suppression de données. Un changement du design ou de la vision du produit n'en est pas un, même s'il fait valider la fiche par le propriétaire.
+_À éviter_ : sujet à risque, sujet critique
+
+## Relecture du code
+
+**Problème bloquant** :
+Un défaut signalé par le relecteur du code qui doit être corrigé avant que la modification soit proposée au propriétaire : soit il est démontré par une preuve, soit c'est l'un des trois cas qui se constatent à la lecture (un risque de sécurité ou de perte de données dont le scénario est expliqué précisément, un écart avec la spec, une règle écrite du projet ou de la factory qui n'est pas respectée).
+_À éviter_ : bug bloquant, point critique, constat
+
+**Preuve d'un problème** :
+La commande que le relecteur a lancée et qui fait voir le défaut : un test qui échoue, un petit script qui le reproduit, ou une commande qui affiche le mauvais comportement, donnée avec ce qu'elle a affiché et ce qu'elle aurait dû afficher. Montrer un morceau de code n'en est pas une.
+_À éviter_ : démonstration, reproduction, justification
+
+**Simple remarque** :
+Ce que le relecteur signale sans preuve, hors des trois cas qui se constatent à la lecture. Elle ne bloque pas, ne compte pas dans les tours de relecture et n'est jamais remontée au propriétaire.
+_À éviter_ : suggestion, avertissement, problème mineur
+
+**Tour de relecture** :
+Une relecture du code qui a trouvé au moins un problème bloquant, confirmé puis corrigé, après quoi un relecteur neuf repart. Il y en a 3 au plus ; s'il reste alors un problème bloquant, la demande est remontée au propriétaire.
+_À éviter_ : aller-retour, itération, boucle
+
+## Vérification de portée
+
+**Vérification de portée** :
+La recherche, avant la relecture finale, de ce qu'un changement peut casser en dehors de ce qu'il modifie : les autres endroits qui se servent du code touché, les fichiers et données partagés, les écrans qui affichent la même information, les tâches planifiées qui lisent ce qui a changé. Elle est faite par un agent neuf, qui n'a pas écrit le code, et seulement quand le changement touche à un sujet sensible ou aux ordres de bourse.
+_À éviter_ : blast radius, analyse d'impact, revue de sécurité (qui cherche les failles, pas les casses)
+
+**Toucher aux ordres de bourse** :
+Modifier ce qui envoie, modifie ou annule un ordre de bourse, ou ce qui décide de ce qui est envoyé : les quantités, les prix, le moment, les positions, et les données que ces calculs lisent. Cela se juge sur ce que le changement modifie réellement, pas sur le titre de la demande ; une retouche d'affichage ou de texte n'y touche pas.
+_À éviter_ : trading, exécution, passage d'ordres
+
+**Portée vérifiée** :
+La ligne du résumé d'une modification qui dit, en français simple, ce qui a été vérifié autour du changement : le fait précis qui le rend sûr, prouvé en faisant tourner le vrai code ou un test, et les autres endroits regardés. Si une casse a été trouvée et corrigée, elle le dit.
+_À éviter_ : impact vérifié, périmètre vérifié
+
+**Portée non prouvée** :
+La ligne qui remplace « Portée vérifiée » quand le fait qui rend le changement sûr ne peut pas être prouvé sans toucher à du réel (il faudrait, par exemple, envoyer un vrai ordre) : elle dit ce qui reste à regarder, et la modification attend alors l'accord du propriétaire avant de partir vers les contrôles.
+_À éviter_ : portée partielle, pas vérifié en vrai (la ligne de l'essai en conditions réelles)
+
+## Erreurs répétées
+
+**Chasse aux erreurs répétées** :
+La partie d'une review générale qui relit l'historique récent du projet pour y trouver les erreurs que les agents refont, et pose pour chacune une protection au lieu de simplement la noter.
+_À éviter_ : rétrospective, post-mortem, bilan
+
+**Famille d'erreurs** :
+Une même erreur des agents revenue au moins deux fois dans l'historique récent d'un projet : une correction demandée par la relecture, une remarque du propriétaire sur les captures ou en recette, un bug ouvert après une livraison ou un retour en arrière. Un changement d'avis du propriétaire n'en fait pas partie.
+_À éviter_ : catégorie, récidive, pattern
+
+**Cas passé** :
+Une modification réelle du projet dans laquelle une erreur d'une famille est apparue ; c'est sur lui qu'une protection est rejouée pour être prouvée.
+_À éviter_ : exemple, incident
+
+**Protection** :
+Ce qui empêche une famille d'erreurs de revenir, de la plus solide à la moins solide : une structure du code où l'erreur ne peut plus s'écrire, un contrôle automatique dont le message dit quoi faire à la place, un test, et en dernier recours une consigne écrite. Elle n'est livrée que si elle aurait refusé au moins un cas passé.
+_À éviter_ : garde-fou, règle (la règle dit ce qu'il faut respecter, la protection la fait respecter)
+
+**Consigne seulement** :
+La mention d'une règle des Pièges connus qui n'est tenue que par une consigne écrite, parce qu'elle relève du jugement ; sa preuve est la liste des cas passés qu'elle vise, et chaque review générale regarde si elle peut devenir un contrôle ou un test.
+_À éviter_ : règle molle, simple rappel
+
+**Pièges connus** :
+La liste courte qu'un projet tient avec les consignes lues par tous les agents : une ligne par règle, avec ce qui la fait respecter et les cas passés qui l'ont fait naître. Une règle en sort quand son erreur ne peut plus arriver.
+_À éviter_ : leçons apprises, liste des règles, bonnes pratiques
 
 ## Captures avant/après
 
@@ -125,7 +191,7 @@ La page à part du tableau de bord, ouverte par le bouton du même nom dans la b
 _À éviter_ : paramètres globaux, configuration générale
 
 **Rôle de modèle** :
-L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures partie par partie d'une review générale, et les tâches simples de lecture et d'écriture.
+L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures d'une review générale (son code partie par partie et l'historique du projet), et les tâches simples de lecture et d'écriture.
 _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 
 **Famille de modèles** :
