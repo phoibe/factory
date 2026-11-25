@@ -292,6 +292,11 @@ test('a version tag naming a commit GitHub does not know resolves to null (404 o
   await assert.rejects(client([answer(403)]).resolveCommit('abc1234'));
 });
 
+test('the latest release is read from GitHub, and a project without one gives null (#615)', async () => {
+  assert.deepEqual(await client([answer(200, { tag_name: 'v0.20.0', published_at: '2026-11-25T10:13:07Z' })]).latestRelease(), { tag_name: 'v0.20.0', published_at: '2026-11-25T10:13:07Z' });
+  assert.equal(await client([answer(404)]).latestRelease(), null);
+});
+
 // A connection that never answers must not eat the whole job (15 min) and lose the owner's message with it.
 test('a GitHub request that never answers is abandoned after the time limit: a read is tried again, then fails', async () => {
   let calls = 0;
