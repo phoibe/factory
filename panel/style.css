@@ -717,7 +717,7 @@ details.advanced fieldset > legend { font-weight: 600; }
 #general { padding-bottom: 8px; }
 .model-row > div { flex: 1 1 auto; min-width: 0; }
 .model-row label { padding-bottom: 0; }
-.model-row p { margin: 0 0 8px; }
+.model-row p { margin: 0 0 8px; max-width: 44ch; text-wrap: pretty; } /* DESIGN.md « Body »: 65 characters a line */
 .model-row select { width: 100%; max-width: 420px; }
 .models-note { margin: 12px 0 0; color: var(--muted); font-size: .8125rem; max-width: 65ch; }
 .rules-more { margin: 0 0 16px; }

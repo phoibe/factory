@@ -24,6 +24,8 @@ test('AGENT.md holds one table: the model and effort of each of the 5 roles', ()
   assert.ok(grid.indexOf('| `review`') < grid.indexOf('| `audit`') && grid.indexOf('| `audit`') < grid.indexOf('| `simple`'));
   assert.ok(!/générale/.test(line('code')), 'the code role no longer reviews the parts of a general review');
   assert.match(line('review'), /synthèse d'une review générale et relecture de ses corrections/);
+  assert.match(line('audit'), /lecture de l'historique[^\n]*chasse aux erreurs répétées/);
+  assert.match(line('review'), /familles d'erreurs et vérification des preuves/);
   assert.match(grid, /tâches simples → code → revue ; `audit` → revue/);
   assert.match(grid.replace(/\s+/g, ' '), /Sans ce champ, ou si un rôle y manque, prends les valeurs par défaut du tableau/);
 });

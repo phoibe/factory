@@ -18,7 +18,8 @@ provide('productionModeChanged', productionModeChanged);
 
 const REVIEW_BODY = ['Review générale demandée depuis le tableau.', '',
   '1. Passe design : critique impeccable de tous les écrans, puis correction de tout ce qu\'elle trouve.',
-  '2. Revue de code générale de toute l\'appli, puis correction.', '',
+  '2. Revue de code générale de toute l\'appli, puis correction.',
+  '3. Chasse aux erreurs répétées : relecture de l\'historique récent, puis une protection prouvée pour chaque erreur revenue au moins deux fois.', '',
   'Ce qui demande une vraie nouvelle feature devient une issue à part.'].join('\n');
 const UI_POLISH_BODY = ['Amélioration UI demandée depuis le tableau.', '',
   'Jusqu\'à 3 tours de critique design de tous les écrans (états vide, erreur, chargement et téléphone compris), chacun suivi de la correction de tout ce qu\'il a trouvé.', '',

@@ -23,7 +23,7 @@ test('five roles in order: plans, code, review, general-review reviews, simple t
 
 test('the general-review role: Opus and high effort by default, its own saved engine, Opus when it is gone (issue #570)', () => {
   const role = MODEL_ROLES.find((r) => r.id === 'audit');
-  assert.equal(role.help, 'Relit le code de chaque partie de l’appli pendant une review générale. La synthèse reste faite par « Revue ».');
+  assert.equal(role.help, 'Relit le code de chaque partie de l’appli et l’historique du projet pendant une review générale. La synthèse reste faite par « Revue ».');
   assert.deepEqual(resolveModels({ models: { code: 'sonnet' } }).audit, { model: 'opus', effort: 'high' }, 'does not follow the code role');
   assert.deepEqual(resolveModels({ models: { review: 'haiku' } }).audit, { model: 'opus', effort: 'high' }, 'does not follow the review role');
   const r = resolveModels({ models: { audit: 'fable' } });
