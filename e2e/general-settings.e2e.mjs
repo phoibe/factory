@@ -115,6 +115,27 @@ test('sur téléphone la page tient sur une colonne', async () => {
   });
 });
 
+// DESIGN.md « Body »: 65 characters a line at most. The longest help (« Relectures d’une review générale »,
+// issue #605) ran on one 135-character line on a computer.
+test('sur ordinateur les phrases d\'aide des rôles gardent 65 caractères par ligne au plus', async () => {
+  await withPanel({ viewport: { width: 1280, height: 900 } }, async ({ page, url }) => {
+    await openPage(page, url);
+    const lines = await page.evaluate(() => [...document.querySelectorAll('.model-row p')].flatMap((p) => {
+      const t = p.firstChild; const range = document.createRange(); const out = []; let top = null; let line = '';
+      for (let i = 0; i < t.length; i++) {
+        range.setStart(t, i); range.setEnd(t, i + 1);
+        const r = range.getClientRects()[0];
+        if (r && top !== null && Math.abs(r.top - top) > 4) { out.push(line.trim()); line = ''; }
+        if (r) top = r.top;
+        line += t.data[i];
+      }
+      return [...out, line.trim()];
+    }));
+    const long = lines.filter((l) => l.length > 65);
+    assert.deepEqual(long, [], 'help lines over 65 characters');
+  });
+});
+
 test('un choix non enregistré reste là quand je reviens sur la page', async () => {
   await withPanel({}, async ({ page, url }) => {
     await openPage(page, url);
@@ -220,7 +241,7 @@ test('la ligne Relectures d\'une review générale est juste sous Revue, sur Opu
     const options = (s) => s.locator('option').allTextContents();
     assert.deepEqual(await options(row), MODEL_FAMILIES.map(familyLabel));
     assert.deepEqual(await options(row), await options(page.getByRole('combobox', { name: 'Revue', exact: true })));
-    await page.getByText('Relit le code de chaque partie de l’appli pendant une review générale. La synthèse reste faite par « Revue ».').waitFor();
+    await page.getByText('Relit le code de chaque partie de l’appli et l’historique du projet pendant une review générale. La synthèse reste faite par « Revue ».').waitFor();
     assert.equal(await page.locator('#model-audit').getAttribute('aria-describedby'), 'model-audit-help');
   });
 });

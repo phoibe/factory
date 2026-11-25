@@ -20,6 +20,9 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
    `docs/specs/` garde la spec validée de chaque feature déjà livrée (sommaire dans `docs/specs/README.md`) :
    consulte-le pour savoir ce qui a été décidé.
+   Lis aussi la partie « Pièges connus » du `CLAUDE.md` du projet (ou le fichier qu'il cite pour cette liste) s'il en
+   a une : ce sont les erreurs que les agents ont déjà faites plusieurs fois ici ; respecte chaque règle et rappelle
+   aux sous-agents celles qui touchent leur tâche. Seule une review générale modifie cette liste (`stages/audit.md`).
 3. Lis l'issue et son fil (et ceux de la PR si `pr` est renseigné) avec `node .factory/scripts/thread.mjs <n>`, lancé depuis le dossier du projet :
    description, messages, relectures et remarques sur une ligne, dans l'ordre. Chaque ligne écrite par quelqu'un y commence par `│ ` ;
    les autres (en-têtes, lignes « laissé de côté ») viennent du script. C'est le seul chemin (un verrou refuse
@@ -88,8 +91,8 @@ et son modèle.
 | --- | --- | --- | --- |
 | `plan` (Plans et organisation) | `fable` | `high` | phase amont d'une demande (analyse, questions, alertes, spec), cadrage d'un projet, analyse d'un bug, écrire les plans, tâches d'architecture, débogage d'un problème qui résiste |
 | `code` (Écriture du code) | `opus` | `medium` | construction (toute écriture de code), corrections après relecture, relecture de chaque petite tâche, critique du design |
-| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections |
-| `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc ; rien d'autre |
+| `review` (Revue) | `fable` | `high` | relecture finale du code avant la PR, revue de sécurité, synthèse d'une review générale et relecture de ses corrections, familles d'erreurs et vérification des preuves de sa chasse aux erreurs répétées |
+| `audit` (Relectures d'une review générale) | `opus` | `high` | relectures partie par partie d'une review générale (étape 3 de `stages/audit.md`), même quand une petite appli est relue d'un seul bloc, et lecture de l'historique tranche par tranche pendant sa chasse aux erreurs répétées ; rien d'autre |
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
 - Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.

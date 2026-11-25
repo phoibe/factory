@@ -233,7 +233,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Chargement** : la page s'ouvre aussitôt ; pendant la lecture des réglages, les blocs sont remplacés par le seul mot gris « Chargement… », sans autre texte. Le bouton du haut garde son libellé et sa largeur.
 - **Sommaire ou navigation** : le lien de retour ramène au projet tel qu'on l'a laissé (même onglet) ; aucun autre sommaire. Tant que la page est ouverte, le bouton « Réglages généraux » de la barre du haut paraît enfoncé (fond surface, filet encre, trait intérieur en bas ; jamais en gras, la barre ne bouge pas).
 - **Largeur** : celle du contenu du projet ; les listes de choix de 420 px au plus.
-- **Libellés et explications** : le nom du rôle en gras, sa phrase d'aide en gris dessous, puis la liste ; sous les cinq rôles, un court paragraphe gris dit que le modèle de l'agent qui pilote se règle sur claude.ai.
+- **Libellés et explications** : le nom du rôle en gras, sa phrase d'aide en gris dessous (65 caractères par ligne au plus, moins large que la liste), puis la liste ; sous les cinq rôles, un court paragraphe gris dit que le modèle de l'agent qui pilote se règle sur claude.ai.
 - **Volets repliables** : aucun.
 - **Sur téléphone** : une seule colonne, blocs et listes de choix pleine largeur ; le bouton d'ouverture se range dans « Plus » avec les autres.
 - **Écrans concernés** : Réglages généraux.
