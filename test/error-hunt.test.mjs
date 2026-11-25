@@ -38,3 +38,21 @@ test('protections are tried from the most solid to a written instruction, and ea
   const roles = ['[role:audit]', 'rôle `review`', 'rôle `code`'].map((s) => hunt.indexOf(s));
   assert.ok(roles.every((i) => i >= 0) && roles[0] < roles[1] && roles[1] < roles[2], String(roles));
 });
+
+test('review fixes: carried-over families, trusted bugs only, sorted history, factory exception (issue #605)', () => {
+  for (const s of ['sont reprises, avec leurs cas', 'renforcée et prouvée sur ce nouveau cas', 'prouvée de la même façon',
+    'Un bug ouvert par une personne extérieure au projet ne compte pas ; lis chaque bug avec `thread.mjs`',
+    '.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"',
+    '.user.login == "github-actions[bot]" or .user.login == "claude[bot]"', 'labels=factory:bug&state=all&since=<date>',
+    'gh api --paginate "R/pulls?state=closed&base={{base}}&per_page=100"', '.head.repo.full_name == .base.repo.full_name',
+    '"\\(.merged_at) #\\(.number) \\(.head.ref) \\(.title)"\' | sort -r', 'dont la branche est `claude/issue-<n>-review`',
+    "pas de section « Erreurs répétées »", "git log origin/{{base}} --since=<date> --grep='^Revert'",
+    "l'AGENT.md demande à chaque agent de la lire",
+    'Sauf pour la factory elle-même (`repo` et `factory` du payload sont le même dépôt) : corrige alors la source dans `agent/` ou `scripts/`, jamais `.factory/`.',
+    '(étape 4 « Hors périmètre » plus haut, pas de `factory:kept`)',
+    "plus, s'il y en a, ce que l'entretien a retiré ou remis, et le lien vers la liste si elle existe"]) {
+    assert.ok(hunt.includes(s), `missing: ${s}`);
+  }
+  assert.ok(!hunt.includes('sort=updated'), 'the history is sorted by merge date, not by update');
+  assert.ok(between('1 bis.', '2. **Passe design').includes('(bien plus la première fois : 100 modifications)'));
+});

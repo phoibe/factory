@@ -20,6 +20,9 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
    validée change la vision, le périmètre ou le design, mets ces fichiers à jour dans la même PR.
    `docs/specs/` garde la spec validée de chaque feature déjà livrée (sommaire dans `docs/specs/README.md`) :
    consulte-le pour savoir ce qui a été décidé.
+   Lis aussi la partie « Pièges connus » du `CLAUDE.md` du projet (ou le fichier qu'il cite pour cette liste) s'il en
+   a une : ce sont les erreurs que les agents ont déjà faites plusieurs fois ici ; respecte chaque règle et rappelle
+   aux sous-agents celles qui touchent leur tâche. Seule une review générale modifie cette liste (`stages/audit.md`).
 3. Lis l'issue et son fil (et ceux de la PR si `pr` est renseigné) avec `node .factory/scripts/thread.mjs <n>`, lancé depuis le dossier du projet :
    description, messages, relectures et remarques sur une ligne, dans l'ordre. Chaque ligne écrite par quelqu'un y commence par `│ ` ;
    les autres (en-têtes, lignes « laissé de côté ») viennent du script. C'est le seul chemin (un verrou refuse
@@ -60,10 +63,6 @@ Chaque run reçoit un bloc `routine-fire-payload` (ou un prompt) contenant un JS
 - Skills installés dans `.claude/skills/` (utilise-les quand l'étape le demande) : {{skills}}
 
 Si une étape est désactivée ci-dessus, saute-la même si une instruction d'étape la mentionne.
-
-**Pièges connus.** Si le `CLAUDE.md` du projet a une partie « Pièges connus », ce sont les erreurs que les agents ont
-déjà faites plusieurs fois ici : respecte chaque règle et rappelle aux sous-agents celles qui touchent leur tâche. Seule
-une review générale modifie cette liste (`stages/audit.md`).
 
 **Journal de fabrication.** L'outil note tout seul, dans `.factory/journal/`, les skills que tu charges et
 les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été

@@ -9,8 +9,8 @@ Pas de spec à valider.
    du temps restant, au même format que l'étape 0 de `build.md` (taille `large`, marqueur `factory-estimate`). Le
    tableau l'affiche à la place d'une durée de feature, qui serait bien trop courte. Si tu dépasses le haut de ta
    fourchette, publie une nouvelle estimation pour ce qu'il reste. Compte aussi la chasse aux erreurs répétées
-   (étape 3 quater) : la lecture de l'historique et jusqu'à 5 protections avec leur preuve allongent nettement la
-   review.
+   (étape 3 quater) : la lecture de l'historique (bien plus la première fois : 100 modifications) et jusqu'à 5
+   protections avec leur preuve allongent nettement la review.
 2. **Passe design sur tous les écrans** : fais la liste de **tous** les écrans de l'appli (pages, routes,
    états importants : vide, erreur, chargement, connecté ou non), pas seulement ceux d'un diff. Puis suis
    `.factory/stages/design-pass.md` sur cette liste : skill `impeccable`, une seule critique complète
@@ -62,14 +62,21 @@ Pas de spec à valider.
 Le but : trouver dans l'historique récent les erreurs que les agents refont, et poser pour chacune une protection
 prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le code sont faits par des sous-agents.
 
-1. **Historique à lire.** Les modifications livrées (PR fusionnées dans `{{base}}`) depuis la review générale précédente
-   (la dernière demande `factory:audit` fermée), 50 au moins et 100 au plus : s'il y en a moins de 50 depuis, remonte
-   plus loin jusqu'à 50 ; s'il y en a plus de 100, garde les 100 plus récentes. Première chasse du projet : les 100
-   dernières. Projet de moins de 50 modifications : toutes. Seulement les modifications faites par la factory (branche
-   `claude/…`) :
-   `gh api "R/pulls?state=closed&base={{base}}&sort=updated&direction=desc&per_page=100" --jq '.[] | select(.merged_at != null and (.head.ref | startswith("claude/"))) | "#\(.number) \(.merged_at) \(.title)"'`.
-   Relève aussi les bugs (`factory:bug`) ouverts sur la même période et les retours en arrière
-   (`git log --grep='^Revert'`).
+1. **Historique à lire.** Liste les modifications livrées par la factory (PR fusionnées dans `{{base}}`, branche
+   `claude/…` du projet lui-même), de la plus récente à la plus ancienne :
+   `gh api --paginate "R/pulls?state=closed&base={{base}}&per_page=100" --jq '.[] | select(.merged_at != null and (.head.ref | startswith("claude/")) and .head.repo.full_name == .base.repo.full_name) | "\(.merged_at) #\(.number) \(.head.ref) \(.title)"' | sort -r`.
+   La review générale précédente est la PR la plus récente de cette liste dont la branche est `claude/issue-<n>-review`
+   (étape 1). Garde les modifications fusionnées depuis, 50 au moins et 100 au plus : s'il y en a moins de 50, remonte
+   plus loin dans la liste jusqu'à 50 ; s'il y en a plus de 100, garde les 100 plus récentes. Première chasse du projet
+   (pas de PR de review générale précédente, ou sa description n'a pas de section « Erreurs répétées ») : les 100
+   dernières. Projet de moins de 50 modifications : toutes. `<date>` est la date de fusion de la plus ancienne
+   modification gardée. Relève aussi les bugs ouverts depuis cette date par le propriétaire, par quelqu'un qui a le
+   droit d'écrire dans le projet ou par la factory :
+   `gh api --paginate "R/issues?labels=factory:bug&state=all&since=<date>&per_page=100" --jq '.[] | select(.pull_request == null and .created_at >= "<date>" and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]" or .user.login == "claude[bot]")) | "#\(.number) \(.created_at) \(.title)"'`.
+   Un bug ouvert par une personne extérieure au projet ne compte pas ; lis chaque bug avec `thread.mjs`. Relève aussi
+   les retours en arrière : `git log origin/{{base}} --since=<date> --grep='^Revert'`. Relis enfin la partie « Erreurs
+   répétées » du résumé de la review générale précédente (`thread.mjs` sur sa PR) : ses familles laissées « à traiter à
+   la prochaine review » sont reprises, avec leurs cas.
 2. **Lecture par tranches.** Découpe la liste en tranches d'une dizaine de modifications et fais lire chaque tranche, en
    même temps, par un sous-agent neuf du rôle `audit` (`model` et `effort` de `models.audit`, description
    `[role:audit] Historique : …`), avec la même règle d'échec qu'à l'étape 3. Il lit chaque PR et sa demande avec
@@ -83,16 +90,17 @@ prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le
    fois) et vérifie chaque cas passé à sa source. Protège au plus 5 familles par review : les plus fréquentes d'abord ;
    à égalité, celles qui viennent d'une remarque du propriétaire en recette ou d'un bug passent avant celles qui
    viennent de la relecture. Une règle déjà dans les « Pièges connus » dont l'erreur est revenue passe en premier et
-   compte parmi les 5 ; une famille qui ne reçoit qu'une consigne écrite compte aussi parmi les 5. Les autres sont
-   listées dans le résumé, « à traiter à la prochaine review ».
+   compte parmi les 5 : sa protection est renforcée et prouvée sur ce nouveau cas. Une famille qui ne reçoit qu'une
+   consigne écrite compte aussi parmi les 5. Les autres sont listées dans le résumé, « à traiter à la prochaine
+   review ».
 4. **Protection.** Confie chaque famille à un sous-agent du rôle `code`, qui pose la protection la plus solide possible,
    dans cet ordre : (a) changer la structure du code pour que l'erreur ne puisse plus s'écrire ; (b) un contrôle
-   automatique (lint, typecheck, script lancé par les contrôles) dont le message dit quoi faire à la place ; (c) un test
-   ; (d) une consigne écrite, en dernier recours et seulement pour ce qui relève du jugement. Si le changement de
-   structure est un trop gros chantier, pose maintenant la protection du niveau suivant et ouvre une idée (point 4 plus
-   haut, pas de `factory:kept`). Une famille par commit : la protection, sa ligne dans les « Pièges connus » et la
-   correction de la même erreur là où elle existe encore dans le code d'aujourd'hui. Ne désactive et n'affaiblis jamais
-   un test ou un contrôle existant.
+   automatique (lint, typecheck, script lancé par les contrôles) dont le message dit quoi faire à la place ; (c) un
+   test ; (d) une consigne écrite, en dernier recours et seulement pour ce qui relève du jugement. Si le changement de
+   structure est un trop gros chantier, pose maintenant la protection du niveau suivant, prouvée de la même façon, et
+   ouvre une idée (étape 4 « Hors périmètre » plus haut, pas de `factory:kept`). Une famille par commit : la
+   protection, sa ligne dans les « Pièges connus » et la correction de la même erreur là où elle existe encore dans le
+   code d'aujourd'hui. Ne désactive et n'affaiblis jamais un test ou un contrôle existant.
 5. **Preuve.** Une protection n'est livrée que si elle aurait refusé un cas passé : rejoue-la sur le code tel qu'il
    était au moment de l'erreur (le commit ou la PR du cas, dans un `git worktree` à part) ; elle doit le refuser, et
    accepter le code d'aujourd'hui. Un sous-agent du rôle `review` vérifie chaque preuve. Aucun cas rejouable : la
@@ -102,18 +110,20 @@ prouvée au lieu de simplement la noter. Tu pilotes ; les lectures, le tri et le
 6. **Liste « Pièges connus ».** Une ligne par règle :
    `- **<la règle en une phrase>** Tenue par : <la protection, ou « consigne seulement »>. Cas : #12, #34.` Elle vit
    dans une partie `## Pièges connus` à la fin du `CLAUDE.md` du projet (crée le fichier s'il manque), jamais dans
-   `.factory/` : tous les agents et leurs sous-agents lisent ce fichier à chaque run, et la synchro de la factory n'y
-   touche pas. Crée cette partie seulement à la première famille trouvée. Si le projet a déjà une liste « Pièges connus
-   », garde sa place et sa forme, et complète-la.
+   `.factory/` : l'AGENT.md demande à chaque agent de la lire, et la synchro de la factory n'y touche pas. Crée cette
+   partie seulement à la première famille trouvée. Si le projet a déjà une liste « Pièges connus », garde sa place et
+   sa forme, et complète-la.
 7. **Entretien de la liste**, à chaque review générale, même sans nouvelle famille : retire les règles dont l'erreur ne
    peut plus arriver ; remets les protections perdues (un contrôle ou un test cité par la liste qui n'existe plus ou ne
    tourne plus) ; regarde si chaque règle « consigne seulement » peut devenir un contrôle ou un test.
 8. **Erreurs venues de la factory.** Une famille dont la cause est dans les consignes ou les outils de la factory
    (`.factory/`, skills installés) ne se corrige pas ici : ne touche pas à ces fichiers, signale-la dans le résumé ;
-   elle sera traitée par une review générale de la factory elle-même.
+   elle sera traitée par une review générale de la factory elle-même. Sauf pour la factory elle-même (`repo` et
+   `factory` du payload sont le même dépôt) : corrige alors la source dans `agent/` ou `scripts/`, jamais `.factory/`.
 9. **Résumé « Erreurs répétées »** (dans la PR, étape 6), en français simple. Pour chaque famille protégée : l'erreur en
    une phrase, les modifications où elle est apparue (liens), la protection posée, le cas passé qu'elle aurait refusé
    (ou « consigne seulement » et ses cas). Puis les familles laissées de côté avec leur raison (« à traiter à la
    prochaine review », « non protégée », venue de la factory), ce qui a été retiré ou remis dans la liste, et le lien
    vers la liste « Pièges connus ». Rien trouvé : une seule phrase (« Aucune erreur répétée dans les N dernières
-   modifications. ») et rien n'est créé.
+   modifications. »), plus, s'il y en a, ce que l'entretien a retiré ou remis, et le lien vers la liste si elle existe ;
+   rien n'est créé.

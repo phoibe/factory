@@ -244,6 +244,10 @@ test('a sync keeps the project CLAUDE.md and its « Pièges connus », and the i
   sync({ projectDir: dir });
   assert.equal(readFileSync(join(dir, 'CLAUDE.md'), 'utf8'), claude);
   const flat = (f) => readFileSync(join(dir, f), 'utf8').replace(/\s+/g, ' ');
-  assert.match(flat('.factory/AGENT.md'), /\*\*Pièges connus\.\*\* Si le `CLAUDE\.md` du projet a une partie « Pièges connus »/);
+  const agent = flat('.factory/AGENT.md');
+  const startup = agent.slice(agent.indexOf('## Comment tu es lancé'), agent.indexOf('## Règles de la factory'));
+  assert.match(startup, /Lis aussi la partie « Pièges connus » du `CLAUDE\.md` du projet \(ou le fichier qu'il cite pour cette liste\) s'il en a une/);
+  assert.match(startup, /respecte chaque règle et rappelle aux sous-agents celles qui touchent leur tâche/);
+  assert.equal(agent.split('rappelle aux sous-agents celles qui touchent leur tâche').length, 2, 'the rule is written once');
   assert.ok(flat('.factory/stages/audit.md').includes('partie `## Pièges connus` à la fin du `CLAUDE.md` du projet'));
 });
