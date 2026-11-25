@@ -352,3 +352,12 @@ test('se déconnecter pendant la lecture garde la connexion, et la connexion sui
     assert.equal(await page.getByRole('tab', { name: 'Suivi' }).getAttribute('aria-selected'), 'true');
   });
 });
+
+// Issue #606: the « Revue » role also does the scope check (the only on-screen change of that request).
+test('sous le rôle Revue, je lis qu\'il fait aussi la vérification de portée', async () => {
+  await withPanel({}, async ({ page, url }) => {
+    await openPage(page, url);
+    assert.equal((await page.locator('#model-review-help').textContent()).trim(), 'Relecture finale du code avant chaque PR, vérification de portée, revue de sécurité, synthèse d’une review générale.');
+    assert.equal(await page.locator('#model-review').getAttribute('aria-describedby'), 'model-review-help');
+  });
+});
