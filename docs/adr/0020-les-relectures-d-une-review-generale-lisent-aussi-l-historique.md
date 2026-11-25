@@ -1,0 +1,3 @@
+# Les relectures d'une review générale lisent aussi l'historique du projet
+
+Décidé avec le propriétaire (#605), en complément de 0017 : le réglage « Relectures d'une review générale », réservé jusque-là à la relecture du code partie par partie, sert aussi à la lecture de l'historique du projet, tranche par tranche, pendant la chasse aux erreurs répétées. Un sixième réglage dans les réglages généraux a été écarté : c'est le même partage que pour le reste de la review (plusieurs lectures en même temps, puis une synthèse par « Revue »), et cela évite une ligne de plus. Le regroupement en familles d'erreurs et la vérification des preuves restent au rôle « Revue », l'écriture des protections au rôle « Écriture du code ».

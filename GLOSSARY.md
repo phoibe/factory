@@ -53,7 +53,7 @@ Une tâche du plan d'une grande demande qui ne dépend d'aucune autre tâche enc
 _À éviter_ : tâche indépendante, tâche concurrente
 
 **Review générale** :
-La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections.
+La remise à niveau de toute l'appli d'un projet, que le propriétaire lance à la main depuis le tableau de bord : une passe design sur tous les écrans, puis une relecture de tout le code, chacune suivie de ses corrections, puis la chasse aux erreurs répétées.
 _À éviter_ : audit, revue complète
 
 **Relecture partie par partie** :
@@ -85,6 +85,32 @@ _À éviter_ : suggestion, avertissement, problème mineur
 **Tour de relecture** :
 Une relecture du code qui a trouvé au moins un problème bloquant, confirmé puis corrigé, après quoi un relecteur neuf repart. Il y en a 3 au plus ; s'il reste alors un problème bloquant, la demande est remontée au propriétaire.
 _À éviter_ : aller-retour, itération, boucle
+
+## Erreurs répétées
+
+**Chasse aux erreurs répétées** :
+La partie d'une review générale qui relit l'historique récent du projet pour y trouver les erreurs que les agents refont, et pose pour chacune une protection au lieu de simplement la noter.
+_À éviter_ : rétrospective, post-mortem, bilan
+
+**Famille d'erreurs** :
+Une même erreur des agents revenue au moins deux fois dans l'historique récent d'un projet : une correction demandée par la relecture, une remarque du propriétaire sur les captures ou en recette, un bug ouvert après une livraison ou un retour en arrière. Un changement d'avis du propriétaire n'en fait pas partie.
+_À éviter_ : catégorie, récidive, pattern
+
+**Cas passé** :
+Une modification réelle du projet dans laquelle une erreur d'une famille est apparue ; c'est sur lui qu'une protection est rejouée pour être prouvée.
+_À éviter_ : exemple, incident
+
+**Protection** :
+Ce qui empêche une famille d'erreurs de revenir, de la plus solide à la moins solide : une structure du code où l'erreur ne peut plus s'écrire, un contrôle automatique dont le message dit quoi faire à la place, un test, et en dernier recours une consigne écrite. Elle n'est livrée que si elle aurait refusé au moins un cas passé.
+_À éviter_ : garde-fou, règle (la règle dit ce qu'il faut respecter, la protection la fait respecter)
+
+**Consigne seulement** :
+La mention d'une règle des Pièges connus qui n'est tenue que par une consigne écrite, parce qu'elle relève du jugement ; sa preuve est la liste des cas passés qu'elle vise, et chaque review générale regarde si elle peut devenir un contrôle ou un test.
+_À éviter_ : règle molle, simple rappel
+
+**Pièges connus** :
+La liste courte qu'un projet tient avec les consignes lues par tous les agents : une ligne par règle, avec ce qui la fait respecter et les cas passés qui l'ont fait naître. Une règle en sort quand son erreur ne peut plus arriver.
+_À éviter_ : leçons apprises, liste des règles, bonnes pratiques
 
 ## Captures avant/après
 
@@ -143,7 +169,7 @@ La page à part du tableau de bord, ouverte par le bouton du même nom dans la b
 _À éviter_ : paramètres globaux, configuration générale
 
 **Rôle de modèle** :
-L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures partie par partie d'une review générale, et les tâches simples de lecture et d'écriture.
+L'un des cinq types de travail auxquels la factory attribue un modèle : les plans et l'organisation (dont toute la phase amont d'une demande : son analyse, les questions, les alertes et la fiche, ainsi que le cadrage d'un projet et l'analyse d'un bug), l'écriture du code, la revue, les relectures d'une review générale (son code partie par partie et l'historique du projet), et les tâches simples de lecture et d'écriture.
 _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 
 **Famille de modèles** :
