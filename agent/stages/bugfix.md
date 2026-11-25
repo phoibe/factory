@@ -38,7 +38,8 @@ Un bug signalé dans l'issue. Pas de grilling.
    une phrase **« Pourquoi ça n'avait pas été vu : … »** (ce que les tests de la livraison ne regardaient pas, en
    langage simple), et un test qui aurait attrapé le problème dès la première livraison (le test qui reproduit
    le bug, nourri autant que possible de données réelles relevées pendant l'essai), cité dans le résumé.
-4. PR avec résumé en français et `Closes #<n>`. Si l'interface change : captures
+4. PR avec résumé en français et `Closes #<n>`, sa partie technique avec la section `Code review` décrite dans
+   `code-review.md`. Si l'interface change : captures
    (`screenshots.md`) puis `factory:checks` (la factory publie les captures et pose elle-même `factory:visual-review`) ;
    sinon `factory:checks`. La factory fusionne seule quand
    les contrôles passent : pas de recette pour un bug.

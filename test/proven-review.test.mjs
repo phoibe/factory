@@ -59,6 +59,12 @@ test('the technical part of the PR lists the proven problems with their command,
   assert.match(flat(read('stages/skills-fix.md')), /4\. [^]*section `Code review`/);
 });
 
+test('the PR steps of build.md and bugfix.md point to the `Code review` section of the guide', () => {
+  for (const s of [between('build.md', ' 8. **PR**', ' 9. '), between('bugfix.md', ' 4. PR', 'pas de recette')]) {
+    assert.match(s, /section `Code review` décrite dans `code-review\.md`/);
+  }
+});
+
 for (const [file, step] of Object.entries(STEPS)) {
   test(`${file}: the review step follows the guide and no longer fixes everything the reviewer finds`, () => {
     const s = step();

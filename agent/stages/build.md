@@ -134,7 +134,8 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    ligne elle-même) : le propriétaire sait ainsi quoi regarder pendant la recette. Rien à essayer (outillage pur) :
    « Pas vérifié en vrai : rien à essayer, … » en une phrase. Le verrou refuse d'ouvrir une PR sans l'une de ces lignes.
 8. **PR** (via l'API REST, voir AGENT.md) avec en tête un résumé en français pour le propriétaire (ce qui change pour
-   lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais.
+   lui, et la phrase du glossaire / des décisions si la spec en contient une), puis `Closes #<n>`, puis les détails techniques en anglais
+   (avec la section `Code review` décrite dans `code-review.md`).
    **Rien à tester pour lui ?** Si la PR ne change rien à l'écran ni dans l'usage de l'appli (tests, robustesse,
    nettoyage du code, outillage), mets `<!-- factory-nothing-to-test -->` sur une ligne de la description et dis-le
    dans le résumé (« Rien ne change pour vous »). La factory la mettra en ligne dès que les contrôles sont verts,
