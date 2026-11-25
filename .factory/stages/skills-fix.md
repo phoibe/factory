@@ -4,8 +4,9 @@ Le journal de la PR montre qu'une étape obligatoire n'a pas été faite. Le pay
 des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil Skill (sinon rien n'est noté).
 
 1. **`requesting-code-review`** : fais relire le diff de la PR par un **sous-agent** neuf (rôle `review` : c'est la relecture finale) (skill
-   `requesting-code-review`), contre la spec et les standards du dépôt. Corrige ce qu'il trouve (skill
-   `receiving-code-review`), puis une revue neuve. Au plus 3 tours.
+   `requesting-code-review`), contre la spec et les standards du dépôt, en suivant `.factory/stages/code-review.md`
+   (mets-le dans sa consigne) : un problème ne bloque que s'il est prouvé. Fais vérifier puis corriger les problèmes
+   bloquants confirmés (skill `receiving-code-review`, même guide), puis une revue neuve. Au plus 3 tours.
 2. **`impeccable`** : suis `.factory/stages/design-pass.md` sur les écrans créés ou modifiés par la PR,
    règle « Textes à l'écran » comprise.
    **`screenshots`** : la PR change l'apparence mais aucune capture n'a été montrée au propriétaire. Ne la
@@ -15,7 +16,7 @@ des skills manquants. Fais-les maintenant, sur la branche de la PR, avec l'outil
    `node .factory/scripts/journal-check.mjs` : il doit dire que rien ne manque. Commit (avec
    `.factory/journal`), push.
 4. Ajoute à la description de la PR ce que la revue et la passe design ont changé (section « Design » de
-   `design-pass.md`, une ligne par correction de revue).
+   `design-pass.md` ; pour la revue, la section `Code review` du guide, dans la partie technique).
 5. Labels de la PR : retire `factory:fixing`, puis :
    - **Captures à refaire** (`screenshots` est dans `missing`, ou la revue ou la passe design a changé l'apparence, et
      l'étape screenshots est active) : refais les captures en suivant **tout** `screenshots.md`, y compris le commentaire.

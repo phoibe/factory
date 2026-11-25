@@ -26,7 +26,9 @@ toute l'appli. Deux passes, dans cet ordre, chacune suivie de ses corrections. P
    rapport inutilisable deux fois) repart sur le rôle `review` (description `[role:review] …`). Puis un sous-agent du rôle `review` fait la synthèse de
    leurs rapports (doublons, priorités, ce qui manque). Fais corriger chaque point par des sous-agents du rôle
    `code` (skill `receiving-code-review`) ; pour un bug, le test qui échoue s'écrit d'abord. Puis une revue
-   neuve des corrections par un sous-agent du rôle `review`, au plus 3 tours.
+   neuve des corrections par un sous-agent du rôle `review`, au plus 3 tours, en suivant
+   `.factory/stages/code-review.md` : un problème ne bloque que s'il est prouvé (cette revue des corrections
+   seulement, pas les relectures partie par partie ni leur synthèse).
 3 bis. **Architecture** : skill `improve-codebase-architecture` (s'il est installé), en autonomie : repère les
    endroits où le code s'est alourdi au fil des features (modules trop bavards, logique dupliquée, parties
    difficiles à tester). Simplifie ici ce qui est petit et sans risque, tests à l'appui ; pour un vrai chantier,
