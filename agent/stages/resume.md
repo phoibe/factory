@@ -24,11 +24,12 @@ referme pas seul une seconde fois.
 sans `factory:checks`) :
 - il répond « ok » : mets `factory:checks` sur la PR et finis l'étape interrompue (le message de l'étape 10 de
   `build.md` pour une feature). Pour une question posée pendant une correction en recette (`acceptance-fix.md`) : refais
-  plutôt son étape 4 (captures si l'apparence a changé, puis `factory:checks`). Ne refais ni la vérification ni les
+  plutôt son étape 4, même sans nouveau push (captures si l'apparence a changé, puis `factory:checks`). Ne refais ni la vérification ni les
   relectures : le code n'a pas changé.
 - sinon, il dit quoi regarder ou changer : fais-le. Si le code change : test qui échoue d'abord, vérification de portée
   refaite sur ce changement, relecture, push, ligne du résumé mise à jour. Le fait est maintenant prouvé (la ligne
-  redevient « Portée vérifiée : … ») : mets `factory:checks` sur la PR. Toujours pas : redemande son accord et, avant
+  redevient « Portée vérifiée : … ») : refais les captures si l'apparence a changé (comme à l'étape 9 de `build.md`
+  ou à l'étape 4 de `acceptance-fix.md`), puis mets `factory:checks` sur la PR. Toujours pas : redemande son accord et, avant
   de terminer, remets `factory:blocked` là où il était (l'issue, ou la PR si la question y était), toujours sans
   `factory:checks`.
 

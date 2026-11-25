@@ -45,7 +45,8 @@ test('build: the PR summary says « Portée vérifiée », the technical part gi
 test('build: a fact that cannot be proved opens the PR, asks the owner and never sends it to the checks', () => {
   has(step, ['« Portée non prouvée : … »', 'ce qui reste à regarder', 'ne mets pas `factory:checks` sur la PR', 'Répondez « ok » ici',
     "`factory:blocked` sur l'issue (pas sur la PR)", '`resume.md`', "sa réponse doit être écrite sur l'issue (sur la PR, sans label, elle serait ignorée)",
-    "le message de l'étape 10 n'est pas posté : cette question le remplace"]);
+    "le message de l'étape 10 n'est pas posté : cette question le remplace",
+    "Pour une correction de bug, ajoute : « Votre « ok » la met aussi en ligne directement dès que les contrôles sont verts, sans passer par la recette. »"]);
   assert.match(between(build, '9. Captures', "10. L'issue garde"), /Portée non prouvée \(étape 4 ter\) : pas de `factory:checks`/);
 });
 
@@ -62,16 +63,18 @@ test('acceptance fix: the check is redone on a fix that changes code, before pus
   const fix = flat('stages/acceptance-fix.md');
   const s = between(fix, '2 bis. Vérification de portée', '3. Corrige (TDD si actif)');
   has(s, ['modifie du code', '« Portée vérifiée » ou « Portée non prouvée »', 'étape 4 ter de `build.md`', 'sous-agent neuf du rôle `review`, description `[role:review] Vérification de portée`', 'avant de pousser',
-    'mets à jour la ligne « Portée vérifiée : … » de la description de la PR', 'sans toucher au reste de la description',
+    'ajoute ou mets à jour la ligne « Portée vérifiée : … » de la description de la PR', 'sans toucher au reste de la description',
     "une fois l'étape 3 finie (revue par un sous-agent neuf, passe design si besoin, vérifications locales)",
-    "mets d'abord `factory:blocked` sur la PR, puis retire son label d'étape (`factory:acceptance`, `factory:checks` ou `factory:visual-review`)",
-    '« Portée non prouvée : … »', 'ne mets pas `factory:checks`']);
+    "mets d'abord `factory:blocked` sur la PR, puis retire tous ses labels d'étape présents (`factory:acceptance`, `factory:checks`, `factory:visual-review`)",
+    '« Portée non prouvée : … »', 'ne mets pas `factory:checks`', 'son message est posté sur la PR', '« Répondez « ok » ici, sur la PR,']);
+  assert.doesNotMatch(s, /retire son label d'étape/);
 });
 
 test('resume: « ok » sends the waiting PR to the checks, anything else keeps it blocked', () => {
   const s = between(flat('stages/resume.md'), 'Portée non prouvée (ton message de blocage', 'Si le blocage venait des contrôles automatiques');
   assert.match(s, /il répond « ok » : mets `factory:checks` sur la PR/);
-  has(s, ["question posée pendant une correction en recette (`acceptance-fix.md`) : refais plutôt son étape 4 (captures si l'apparence a changé, puis `factory:checks`)",
+  has(s, ["question posée pendant une correction en recette (`acceptance-fix.md`) : refais plutôt son étape 4, même sans nouveau push (captures si l'apparence a changé, puis `factory:checks`)",
+    "Le fait est maintenant prouvé (la ligne redevient « Portée vérifiée : … ») : refais les captures si l'apparence a changé (comme à l'étape 9 de `build.md` ou à l'étape 4 de `acceptance-fix.md`), puis mets `factory:checks` sur la PR",
     'vérification de portée refaite sur ce changement', "remets `factory:blocked` là où il était (l'issue, ou la PR si la question y était), toujours sans `factory:checks`"]);
 });
 

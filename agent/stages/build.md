@@ -86,7 +86,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    - dire le **fait précis** qui rend le changement sûr (par exemple « aucun autre endroit ne donne une valeur vide à
      ce calcul ») et le **prouver** par une commande qui fait tourner le vrai code ou un test : montrer un morceau de
      code ou affirmer ne prouve rien. Un test qui sert de preuve reste dans le projet, avec les autres tests (tu le
-    commites avec le reste) ;
+     commites avec le reste) ;
    - ne toucher à **rien de réel** : aucun ordre envoyé, aucune vraie donnée modifiée, jamais l'appli lancée avec les
      réglages de production ;
    - te rendre le fait, la commande lancée et son résultat, les endroits regardés, et chaque casse trouvée avec la
@@ -105,7 +105,9 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    prouvée : … »**, avec ce qui reste à regarder. Fais la suite normalement jusqu'à la PR ouverte (étapes 5 à 8, et les
    captures de l'étape 9), puis arrête-toi : ne mets pas `factory:checks` sur la PR. Écris sur l'issue ce qui n'a pas
    pu être prouvé et pourquoi, avec le lien de la PR, et termine par « Répondez « ok » ici pour que la modification
-   parte vers les contrôles automatiques, ou dites-moi ce qu'il faut regarder ou changer. » ; mets `factory:blocked`
+   parte vers les contrôles automatiques, ou dites-moi ce qu'il faut regarder ou changer. » Pour une correction de
+   bug, ajoute : « Votre « ok » la met aussi en ligne directement dès que les contrôles sont verts, sans passer par la
+   recette. » Mets `factory:blocked`
    sur l'issue (pas sur la PR) et termine : sa réponse doit être écrite sur l'issue (sur la PR, sans label, elle serait
    ignorée), et le message de l'étape 10 n'est pas posté : cette question le remplace. Rien ne part vers les contrôles
    ni vers l'intégration sans son « ok » ; la suite est dans `resume.md`.
