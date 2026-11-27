@@ -341,3 +341,126 @@ test('après un redessin du tableau, défiler un peu puis toucher un « go » re
     assert.deepEqual(sentOn(writes, 30), ['go']);
   });
 });
+
+test('une nouvelle question ouverte de l\'agent dont la lecture échoue n\'hérite pas du « Oui pour tout » de la série d\'avant', async () => {
+  const q = questions();
+  const thread = [round];
+  let fail = false;
+  await withPanel({ issues: [q], comments: { 20: thread }, viewport: { width: 390, height: 844 }, device: { hasTouch: true, isMobile: true } }, async ({ page, url, writes }) => {
+    await page.route('https://api.github.com/repos/o/r/issues/20/comments**', (route) => (fail && route.request().method() === 'GET' ? route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }) : route.fallback()));
+    await page.goto(url);
+    await card(page).locator('button.go').waitFor();
+    // Between two reads: the owner answers in writing, the agent asks an open question; reading it fails.
+    thread.push(comment(2, '1 non, plusieurs comptes'), comment(3, `${AGENT}\nCombien de comptes au maximum par appareil ?`));
+    Object.assign(q, { comments: 3, updated_at: new Date(Date.now() + 1000).toISOString() });
+    fail = true;
+    await page.waitForTimeout(10000); // one refresh (8 s)
+    assert.deepEqual((await buttons(page)).map((t) => t.trim()), ['Répondre']);
+    assert.deepEqual(sentOn(writes, 20), []);
+  });
+});
+
+test('un projet ouvert depuis la liste alors que GitHub ne répond pas montre « Répondre » sur sa carte de questions', async () => {
+  for (const mode of ['500', 'limited']) {
+    const q = issue(20, 'Ajouter un compte', ['factory:feature', 'factory:grilling'], { comments: 1, html_url: 'https://github.com/o/alpha/issues/20' });
+    const repoComments = { 'o/alpha': { 20: [{ ...comment(1, `${AGENT}\nQuel nom pour le bouton ?`), html_url: 'https://github.com/o/alpha/issues/20#issuecomment-1' }] } };
+    let down = false;
+    await withPanel({ repos: ['o/r', 'o/alpha'], issues: [issue(1, 'Carte du projet r', ['factory:feature', 'factory:queued'])], repoIssues: { 'o/alpha': [q] }, repoComments, etag: true }, async ({ page, url, reads }) => {
+      await page.route('https://api.github.com/repos/o/alpha/issues**', (route) => {
+        if (!down || route.request().method() !== 'GET') return route.fallback();
+        return mode === 'limited'
+          ? route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 1800), 'access-control-expose-headers': 'X-RateLimit-Remaining, X-RateLimit-Reset' }, body: JSON.stringify({ message: 'API rate limit exceeded' }) })
+          : route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      });
+      await page.addInitScript(() => localStorage.setItem('factory.project', 'o/r'));
+      await page.goto(url);
+      await page.locator('.ticket[data-number="1"]').waitFor();
+      await waitFor(() => reads.includes('/repos/o/alpha/issues'), page); // the project list reads it for its dot
+      await page.waitForTimeout(1500);
+      down = true;
+      await page.locator('#projects .project-item', { hasText: 'alpha' }).click();
+      await card(page).waitFor({ timeout: 15000 });
+      await page.waitForTimeout(3000); // the first refresh failed
+      assert.deepEqual((await buttons(page)).map((t) => t.trim()), ['Répondre'], mode);
+    });
+  }
+});
+
+test('sur un téléphone étroit, le « go » touché juste après la première mise à jour part (la ligne « En direct » qui passe à la ligne ne le bloque pas)', async () => {
+  const spec = issue(30, 'Exporter en PDF', ['factory:feature', 'factory:spec-review'], { comments: 1 });
+  const done = new Date().toISOString();
+  const closed = [{ ...issue(5, 'Ancienne demande', ['factory:feature']), state: 'closed', closed_at: done, pull_request: { url: 'x', merged_at: done } }];
+  for (const width of [352, 360, 368]) {
+    await withPanel({ issues: [spec], closed, comments: { 30: [comment(1, `${AGENT}\n<!-- factory-spec -->\nLa spec.`)] }, slowReads: [[/\/issues\/30\/comments/, 1200]], viewport: { width, height: 800 }, device: { hasTouch: true, isMobile: true } }, async ({ page, url, writes }) => {
+      await page.goto(url);
+      const go = page.locator('button.go[data-go="30"]');
+      await go.waitFor();
+      await page.waitForFunction(() => /· à jour/.test(document.querySelector('.live-text')?.textContent || ''), null, { timeout: 20000, polling: 'raf' });
+      await page.waitForTimeout(300);
+      await go.tap();
+      await page.waitForTimeout(1200);
+      assert.equal(await go.textContent(), 'Envoyé ✓', `${width}px`);
+      assert.deepEqual(sentOn(writes, 30), ['go'], `${width}px`);
+    });
+  }
+});
+
+test('une demande retouchée sur GitHub sans nouveau message garde ses boutons et le focus clavier pendant la relecture', async () => {
+  const q = questions();
+  const slowReads = [];
+  await withPanel({ issues: [q], comments: { 20: [round] }, slowReads }, async ({ page, url, reads }) => {
+    await page.goto(url);
+    const go = card(page).locator('button.go');
+    await go.waitFor();
+    await page.waitForTimeout(500);
+    await go.focus();
+    await page.evaluate(() => {
+      window.__seen = []; let last = null;
+      const look = () => {
+        const c = document.querySelector('.ticket[data-number="20"]');
+        const s = JSON.stringify([[...(c?.querySelectorAll('.card-actions a.button, .card-actions button') || [])].map((b) => b.textContent.trim()), document.activeElement?.dataset?.key || null]);
+        if (s !== last) { last = s; window.__seen.push(JSON.parse(s)); }
+        requestAnimationFrame(look);
+      };
+      look();
+    });
+    slowReads.push([/\/issues\/20\/comments/, 1500]);
+    const readsOf20 = () => reads.filter((r) => r.endsWith('/issues/20/comments')).length;
+    const before = readsOf20();
+    Object.assign(q, { labels: [...q.labels, { name: 'priority' }], updated_at: new Date(Date.now() + 1000).toISOString() }); // a label: no new message
+    await waitFor(() => readsOf20() > before, page);
+    await page.waitForTimeout(2500); // the slow read is over
+    const seen = await page.evaluate(() => window.__seen);
+    assert.deepEqual(seen, [[['Oui pour tout', 'Répondre'], 'go-20']], `buttons and focus seen in order: ${JSON.stringify(seen)}`);
+  });
+});
+
+test('ouvrir le titre d\'une carte de questions dont les messages se lisent encore ne la met pas en attente', async () => {
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, slowReads: [[/\/issues\/20\/comments/, 2500]] }, async ({ page, url }) => {
+    await page.goto(url);
+    await card(page).waitFor();
+    assert.deepEqual(await buttons(page), []);
+    await card(page).locator('h3 a.main').click({ modifiers: ['ControlOrMeta'] });
+    await page.locator('button.go[data-go="20"]').waitFor();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('.ticket.pending[data-number="20"]').count(), 0);
+    assert.deepEqual((await buttons(page)).map((t) => t.trim()), ['Oui pour tout', 'Répondre']);
+  });
+});
+
+test('une carte de questions en attente, rechargée, ne saute pas quand ses boutons arrivent', async () => {
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, slowReads: [[/\/issues\/20\/comments/, 2500]], viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
+    await page.addInitScript(() => { const now = Date.now(); localStorage.setItem('factory.pending.o/r', JSON.stringify({ 20: { column: 'grilling', clickedAt: now, backAt: now, sent: true } })); });
+    await page.goto(url);
+    const held = page.locator('.ticket.pending[data-number="20"]');
+    await held.waitFor();
+    assert.equal(await held.locator('.card-actions > *').count(), 0, 'no button before the read');
+    const top = () => held.locator('.step').evaluate((n) => n.getBoundingClientRect().top - n.closest('.ticket').getBoundingClientRect().top);
+    const before = await top();
+    await held.locator('button.go').waitFor();
+    await page.waitForTimeout(500);
+    const after = await top();
+    assert.ok(Math.abs(after - before) < 1, `step bar from ${before} to ${after} px below the top of the card`);
+  });
+});

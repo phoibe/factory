@@ -18,12 +18,12 @@ provide('stopLive', stopLive);
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), answering: new Set(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'yesToAll', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'unreadable', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'yesToAll', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'unreadable', 'answering', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), answering: new Set(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -159,8 +159,7 @@ async function refresh() {
       // draw it then. Its messages are read again at the next refresh.
       const wasUnread = unread(c, 'yours');
       if (!res || !before) {
-        live.unreadable.set(c.number, cardSig(c));
-        if (wasUnread) previewsChanged = true;
+        if (cannotRead(c)) previewsChanged = true;
         return;
       }
       if (wasUnread) previewsChanged = true;
@@ -235,6 +234,12 @@ async function refresh() {
   } catch (err) {
     // A failure of a project left meanwhile says nothing about the one on screen.
     if (!same()) return;
+    // The questions cards whose current messages were not read show « Répondre » alone while GitHub fails.
+    if (live.issues) {
+      let redraw = false;
+      for (const c of boardItems(live.issues)) if (c.column === 'grilling' && live.read.get(c.number) !== cardSig(c)) redraw = cannotRead(c) || redraw;
+      if (redraw && live.drawn) drawBoard();
+    }
     // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
     if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
@@ -299,12 +304,25 @@ const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), clas
 // Before the messages of its current state are read, a questions card in « À vous de jouer » does not know yet whether
 // « Oui pour tout » belongs first: it keeps its row of buttons empty rather than show a « Répondre » whose place a blue
 // button would take a moment later (issue #620). Messages it could not read show « Répondre » alone, as before.
+// A card already drawn here with its buttons, whose request changed without a new message (a label: `updated_at` moves,
+// not the number of messages), keeps them while it is read again: its round cannot have changed.
 // (A card on hold, which carries no button to answer, only waits for the first read.)
+const sameMessages = (c) => (live.read.get(c.number) ?? live.unreadable.get(c.number))?.split('|')[1] === String(c.comments || 0);
 const unread = (c, lane) => {
   if (c.column !== 'grilling') return false;
   const n = c.number;
-  return lane === 'yours' ? live.read.get(n) !== cardSig(c) && live.unreadable.get(n) !== cardSig(c) : !live.read.has(n) && !live.unreadable.has(n);
+  if (lane !== 'yours') return !live.read.has(n) && !live.unreadable.has(n);
+  return live.read.get(n) !== cardSig(c) && live.unreadable.get(n) !== cardSig(c) && !(live.answering.has(n) && sameMessages(c));
 };
+// The messages of the card's current state could not be read: it shows « Répondre » alone. A round of questions read
+// for an older state is forgotten (the agent may have asked something else since). True when the card must be redrawn.
+function cannotRead(c) {
+  const n = c.number, sig = cardSig(c);
+  const changed = unread(c, 'yours') || (live.read.get(n) !== sig && live.yesToAll.has(n));
+  live.unreadable.set(n, sig);
+  if (live.read.get(n) !== sig) live.yesToAll.delete(n);
+  return changed;
+}
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -466,14 +484,15 @@ function actionLayout(root) {
   return { go, all };
 }
 const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-// A blue button moved by more than half its height (a card nudged by a few pixels keeps it under the finger), or a new
-// one standing where another button stood, is marked for a moment after the re-layout.
+// A blue button that left its former spot altogether (a card nudged by a line of text keeps it partly under the
+// finger, which still lands on it), or a new one standing where another button stood, is marked for a moment after
+// the re-layout.
 function noteLayout(before, after) {
   const now = Date.now(), until = now + (reduced() ? 0 : 350) + SETTLE_MS;
   for (const [n, t] of slid) if (t <= now) slid.delete(n);
   for (const [n, b] of after.go) {
     const a = before.go.get(n);
-    const moved = a ? Math.abs(a.top - b.top) > b.height / 2 || Math.abs(a.left - b.left) > b.height / 2 : before.all.some((r) => overlaps(r, b));
+    const moved = a ? !overlaps(a, b) : before.all.some((r) => overlaps(r, b));
     if (moved) slid.set(n, Math.max(slid.get(n) || 0, until));
   }
 }
@@ -576,8 +595,9 @@ for (const type of ['click', 'auxclick']) {
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
     // Reading a plate answered by a button (« go », « Ok », « Oui pour tout ») is not answering it: looking at the captures,
     // the preview, the recette or the questions keeps it in « À vous de jouer »; only the button (or a written answer
-    // seen on GitHub) sends it to « En attente de GitHub ».
-    if (li.querySelector('button.go')) return;
+    // seen on GitHub) sends it to « En attente de GitHub ». A questions card whose messages are still being read may be
+    // one of these: reading it is not answering it either.
+    if (li.querySelector('button.go, .card-actions[aria-hidden]')) return;
     const c = live.issues && boardItems(live.issues).find((x) => x.number === Number(li.dataset.number));
     if (c) savePending(noteClick(pendingState(), c, Date.now()));
   });
@@ -759,6 +779,7 @@ function drawBoard() {
   const yoursSig = JSON.stringify([held.pending.map((c) => [c.number, c.title]), ...yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')])]);
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
+  live.answering = new Set([...holder.querySelectorAll('.lane-yours .ticket[data-number] > .card-actions:not([aria-hidden])')].map((r) => Number(r.parentNode.dataset.number)));
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
   const prevSigs = live.sigs;
   live.sigs = new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig]));
