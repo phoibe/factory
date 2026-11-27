@@ -11,3 +11,11 @@
 {"t":"2026-11-27T16:28:01.515Z","kind":"gate","event":"Stop"}
 {"t":"2026-11-27T16:28:04.538Z","kind":"test","cmd":"cd /home/user/factory; python3 - <<'EOF'\np=…; s=…\nold=…\"   « 5. Publish the tickets to the configured tracker » (publication) : c'est toi qui ouvres les issues, comme suit. Cette issue garde la premiè","ok":true,"id":"toolu_018vh1oP79Da7vXFEQb1CxaS"}
 {"t":"2026-11-27T16:28:25.498Z","kind":"skill","name":"requesting-code-review","id":"toolu_01RFE3bLFgxypoaNGngjT9jU"}
+{"t":"2026-11-27T16:28:40.741Z","kind":"agent","model":"fable","effort":"high","role":"review","label":"Revue du correctif #622","id":"toolu_01PJHWhXEjwL5tPmePjPcioA"}
+{"t":"2026-11-27T16:29:50.119Z","kind":"test","cmd":"(npm test 2>&1 | tail -25)","ok":true,"id":"toolu_01BhY1eavWvV1YfZFFFL932G"}
+{"t":"2026-11-27T16:30:34.595Z","kind":"test","cmd":"S=… mkdir -p $S/base && cd /home/user/factory && git archive 2c28981 | tar -x -C $S/base && git show 92c0723:test/sync.test.mjs > $S/base/test/sync.test.mjs && cd $S/base && node --test --test-name-pa","ok":false,"id":"toolu_01MyBcjMpfGxEQ994jKt6Mtr"}
+{"t":"2026-11-27T16:32:32.343Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"Remarques revue #622","id":"toolu_01W77yi4DjdfHwfEUw6uJR5q"}
+{"t":"2026-11-27T16:32:36.448Z","kind":"skill","name":"receiving-code-review","id":"toolu_01HubWWffyn95rDke1am8bh3"}
+{"t":"2026-11-27T16:33:33.080Z","kind":"test","cmd":"python3 - <<'EOF'\np=…\ns=…\nold=…\"  const flat = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8').replace(/\\\\s+/g, ' ');\n  for (const [stage, id, part] of [\n    ['audit.md', 'improve-codebas","ok":true,"id":"toolu_01VqXLDGgboDqhECUKbb4WgG"}
+{"t":"2026-11-27T16:34:42.645Z","kind":"test","cmd":"sed -i.bak 's/« 3. Grilling loop »/« 3. Grilling loops »/' agent/stages/audit.md && node --test --test-name-pattern=\"hand-only guides\" test/sync.test.mjs 2>&1 | grep -m3 \"Grilling\\|fail\"; mv agent/sta","ok":false,"id":"toolu_014jp555RymCMNaAoDBKSpyb"}
+{"t":"2026-11-27T16:36:05.688Z","kind":"test","cmd":"git fetch -q origin main && git merge -q origin/main 2>&1 | tail -2; npm test 2>&1 | grep -E \"^# (tests|pass|fail)\"; node .factory/scripts/journal-check.mjs 2>&1 | grep -v \"Not a valid\"","ok":true,"id":"toolu_01AAVj8bw8zdEwpePDP6ucca"}

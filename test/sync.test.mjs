@@ -192,14 +192,30 @@ test('the hand-only guides are read from their file, never loaded with the Skill
   const dir = project();
   sync({ projectDir: dir });
   const flat = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8').replace(/\s+/g, ' ');
-  for (const [stage, id, part] of [
-    ['audit.md', 'improve-codebase-architecture', '### 1. Explore'],
-    ['spec.md', 'to-spec', '## Process'],
-    ['spec.md', 'to-tickets', '### 3. Draft vertical slices'],
+  // The numbered step of a rendered stage, from its first line up to the next numbered step.
+  const stepOf = (f, step) => {
+    const lines = readFileSync(join(dir, '.factory/stages', f), 'utf8').split('\n');
+    const start = lines.findIndex((l) => l.startsWith(`${step}. `));
+    assert.ok(start >= 0, `${f} still has a step ${step}`);
+    const end = lines.findIndex((l, i) => i > start && /^\d+( bis| ter)?\. /.test(l));
+    return lines.slice(start, end < 0 ? undefined : end).join(' ').replace(/\s+/g, ' ');
+  };
+  for (const [stage, id, part, step] of [
+    ['audit.md', 'improve-codebase-architecture', '### 1. Explore', '3 bis'],
+    ['spec.md', 'to-spec', '## Process', '2'],
+    ['spec.md', 'to-tickets', '### 3. Draft vertical slices', '4 bis'],
   ]) {
     const skill = readFileSync(join(dir, '.claude/skills', id, 'SKILL.md'), 'utf8');
     assert.match(skill, /^disable-model-invocation:\s*true\s*$/m, `${id} is still hand-only`);
     assert.ok(skill.includes(part), `${id} still has the part the stage points to`);
+    const own = stepOf(stage, step);
+    assert.ok(own.includes(`.claude/skills/${id}/SKILL.md`), `${stage} step ${step} reads the file of ${id}`);
+    assert.match(own, /jamais avec l'outil Skill/, `${stage} step ${step} says never to load ${id} with the Skill tool`);
+    assert.match(own, /refuserait/, `${stage} step ${step} says the Skill tool would refuse ${id}`);
+    const headings = new Set(skill.split('\n').filter((l) => /^#+ /.test(l)).map((l) => l.replace(/^#+ /, '').trim()));
+    for (const [, name] of own.matchAll(/« (\d+\. [^»]+?) »/g)) {
+      assert.ok(headings.has(name), `« ${name} », cited by ${stage} step ${step}, is a heading of ${id}`);
+    }
     const text = flat(stage);
     assert.ok(text.includes(`.claude/skills/${id}/SKILL.md`), `${stage} must point to the file of ${id}`);
     assert.doesNotMatch(text, new RegExp(`skill \`${id}\``), `${stage} must not ask to load ${id}`);
