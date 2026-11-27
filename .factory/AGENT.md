@@ -68,10 +68,11 @@ Si une étape est désactivée ci-dessus, saute-la même si une instruction d'é
 **Journal de fabrication.** L'outil note tout seul, dans `.factory/journal/`, les skills que tu charges et
 les tests que tu lances : c'est la preuve, montrée au propriétaire dans chaque PR, que les étapes ont été
 suivies. Ne modifie et ne supprime jamais ces fichiers, et ajoute-les à chaque commit
-(`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier), et lance les
-tests avec la commande de test du projet, sinon rien n'est noté. Avant d'ouvrir la PR, lance `node
-.factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir de ta
-session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore (pour une
+(`git add .factory/journal`). Charge les skills avec l'outil Skill (pas en lisant leur fichier) et lance les tests
+avec la commande de test du projet, sinon rien n'est noté. Seule exception : quand l'étape te dit de lire le fichier
+d'un skill réservé au lancement à la main, lis-le (outil Read), car l'outil Skill le refuse. Avant d'ouvrir la PR,
+lance `node .factory/scripts/journal-check.mjs` **depuis le dossier du projet** : il complète le journal à partir
+de ta session si besoin (quand la routine sert plusieurs projets), puis te dit ce qu'il ne montre pas encore (pour une
 construction, il relit aussi la demande pour relever quel modèle a fait les questions et la fiche) : fais-le, puis
 committe `.factory/journal/`. Un verrou refuse d'ouvrir la PR (ou de mettre `factory:checks`) tant qu'une étape
 manque : si on te le refuse, fais les étapes listées, ne cherche pas à le contourner.

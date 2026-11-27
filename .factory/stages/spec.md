@@ -9,7 +9,12 @@ qu'il n'écrit rien sur GitHub (commentaire, label, issue, PR) et ne pousse rien
 terminé par la ligne de `node .factory/scripts/upstream.mjs <n> <fichier>`, et tu poses les labels.
 
 1. Relis l'issue, tout le grilling et ses remarques éventuelles sur une version précédente de la spec.
-2. Charge le skill `to-spec` s'il est installé et rédige la spec **en français**, orientée utilisateur :
+2. Si `to-spec` est installé (le dossier `.claude/skills/to-spec/` existe), lis `.claude/skills/to-spec/SKILL.md`
+   (outil Read ; ne le charge jamais avec l'outil Skill : il est réservé au lancement à la main et l'outil te le
+   refuserait, issue #622) et suis sa méthode : aucune nouvelle question, une synthèse de ce qui est déjà connu, avec
+   les mots du glossaire et sans contredire les décisions notées. Laisse de côté ce qu'il dit de vérifier avec
+   l'utilisateur, de publier dans un tracker et de poser un label : la forme et la publication sont celles décrites
+   ici. Rédige la spec **en français**, orientée utilisateur :
    - ce que la feature permet, en une phrase, sur une ligne qui commence par `**En une phrase** :` (le sommaire des
      specs rangées la reprend) ;
    - si le grilling a laissé des évidences sans les poser en questions (étapes 0 ter et 3 ter de `grilling.md`), une
@@ -44,9 +49,13 @@ terminé par la ligne de `node .factory/scripts/upstream.mjs <n> <fichier>`, et 
    - **Pas à valider** : termine par « Je lance la construction sans attendre votre validation (réglage du
      projet). Si quelque chose ne va pas, écrivez-le ici : j'en tiendrai compte. »
 4 bis. **Feature trop grosse pour une seule construction ?** (plusieurs écrans indépendants, ou plus d'une demi-journée
-   de travail selon toi) : découpe-la avec le skill `to-tickets` s'il est installé, en tranches qui se livrent et se
-   testent chacune seule. Cette issue garde la première tranche (la spec ne décrit qu'elle, avec une ligne « Ensuite : »
-   qui liste les autres). Ouvre une issue par autre tranche, titre et texte en français, même si un skill de
+   de travail selon toi) : découpe-la en tranches qui se livrent et se testent chacune seule. Si `to-tickets` est
+   installé (le dossier `.claude/skills/to-tickets/` existe), lis `.claude/skills/to-tickets/SKILL.md` (outil Read ;
+   ne le charge jamais avec l'outil Skill : il est réservé au lancement à la main et l'outil te le refuserait,
+   issue #622) et suis sa partie « 3. Draft vertical slices » ; saute ses parties « 4. Quiz the user » (questions) et
+   « 5. Publish the tickets to the configured tracker » (publication) : les issues s'ouvrent comme décrit ici.
+   Cette issue garde la première tranche (la spec ne décrit qu'elle, avec une ligne « Ensuite : » qui liste les
+   autres). Ouvre une issue par autre tranche, titre et texte en français, même si un skill de
    découpage propose des titres ou rubriques en anglais (voir « Ouvrir une issue » dans AGENT.md, avec
    `factory:kept` : elles viennent de sa demande), dont la description contient sa partie de la spec,
    `Découpée de #<n>.` et le marqueur `<!-- factory-split -->` ; elles partiront en parallèle quand une place se

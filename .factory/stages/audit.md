@@ -32,10 +32,16 @@ Pas de spec à valider.
    neuve des corrections par un sous-agent du rôle `review`, au plus 3 tours, en suivant
    `.factory/stages/code-review.md` : un problème ne bloque que s'il est prouvé (cette revue des corrections
    seulement, pas les relectures partie par partie ni leur synthèse).
-3 bis. **Architecture** : skill `improve-codebase-architecture` (s'il est installé), en autonomie : repère les
-   endroits où le code s'est alourdi au fil des features (modules trop bavards, logique dupliquée, parties
-   difficiles à tester). Simplifie ici ce qui est petit et sans risque, tests à l'appui ; pour un vrai chantier,
-   ouvre une idée (point 4). Saute ses questions et son rapport HTML : tu travailles seul.
+3 bis. **Architecture** : si `improve-codebase-architecture` est installé (le dossier
+   `.claude/skills/improve-codebase-architecture/` existe), lis `.claude/skills/improve-codebase-architecture/SKILL.md`
+   (outil Read) et suis sa partie « 1. Explore », en autonomie. Ne le charge jamais avec l'outil Skill : il est
+   réservé au lancement à la main et l'outil te le refuserait (issue #622). Son appel à `codebase-design` en tête :
+   charge ce skill (outil Skill) seulement s'il est installé, sinon ignore cet appel. Le sous-agent que « 1. Explore »
+   fait lancer part sur le rôle `plan` comme tout sous-agent (description `[role:plan] Architecture`, `model` et
+   `effort` de `models.plan`). Repère les endroits où le code s'est alourdi au fil des features (modules trop
+   bavards, logique dupliquée, parties difficiles à tester). Simplifie ici ce qui est petit et sans risque, tests à
+   l'appui ; pour un vrai chantier, ouvre une idée (point 4). Saute ses parties « 2. Present candidates as an HTML
+   report » et « 3. Grilling loop » (rapport HTML, questions) : tu travailles seul.
 3 ter. **Parcours** : si le projet n'a pas encore `test:e2e`, ajoute-le (voir l'étape 4 bis de `build.md`) avec
    un parcours par feature déjà en ligne, d'après les critères d'acceptation des specs validées, et remplis
    `e2e/smoke-routes.txt`.
