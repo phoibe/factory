@@ -22,8 +22,8 @@ const live = { repo: null, issues: null, events: [], eventsDeep: false, previews
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'yesToAll', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'yesToAll', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'unreadable', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -60,6 +60,7 @@ export function enterBoard(repo) {
   // `last` comes with the board (when it was read), `failures` starts over: the line under « À vous de jouer » never
   // shows the left project's lost connection or « à jour à l'instant » (issue #397).
   Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false, failures: 0 });
+  slid.clear(); // card numbers repeat from one project to the next
 }
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
@@ -151,13 +152,20 @@ async function refresh() {
       if (!same()) return; // left meanwhile: no more requests for this project
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(quiet) : { data: [] };
-      if (!res || !same()) return;
       // The agent's estimate may sit on the page before the last one on a long thread.
-      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
-      if (!before || !same()) return;
-      // A questions card shows its answer buttons only once its messages were read (see `unread`): draw it then.
-      if (!live.read.has(c.number) && c.column === 'grilling') previewsChanged = true;
+      const before = res && page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
+      if (!same()) return;
+      // A questions card shows its answer buttons only once its messages were read, or could not be (see `unread`):
+      // draw it then. Its messages are read again at the next refresh.
+      const wasUnread = unread(c, 'yours');
+      if (!res || !before) {
+        live.unreadable.set(c.number, cardSig(c));
+        if (wasUnread) previewsChanged = true;
+        return;
+      }
+      if (wasUnread) previewsChanged = true;
       live.read.set(c.number, cardSig(c));
+      live.unreadable.delete(c.number);
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
       // Only the owner's and the factory's own invisible notes count (issue #339).
@@ -287,10 +295,16 @@ const isSent = (c) => sentGo.has(goKey(c)) || (holdsAfterSend(c) && pendingState
 // A pointer press on a blue button that a re-layout of the board just slid under the finger is not aimed at it (on a
 // phone, the next card's button takes the place of the one just touched): dropped. The keyboard always answers.
 const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: c.reply === 'all' ? 'go all' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c),
-  onclick: (e) => { if (!(e.detail > 0 && justSlid(c.number, e.clientX, e.clientY))) answerGo(c, e.currentTarget); } }, goState(c).text);
-// Before its messages are read, a questions card does not know yet whether « Oui pour tout » belongs first: it draws
-// no answer button rather than a « Répondre » whose place a blue button would take a moment later (issue #620).
-const unread = (c) => c.column === 'grilling' && !live.read.has(c.number);
+  onclick: (e) => { if (!(e.detail !== 0 && justSlid(c.number))) answerGo(c, e.currentTarget); } }, goState(c).text);
+// Before the messages of its current state are read, a questions card in « À vous de jouer » does not know yet whether
+// « Oui pour tout » belongs first: it keeps its row of buttons empty rather than show a « Répondre » whose place a blue
+// button would take a moment later (issue #620). Messages it could not read show « Répondre » alone, as before.
+// (A card on hold, which carries no button to answer, only waits for the first read.)
+const unread = (c, lane) => {
+  if (c.column !== 'grilling') return false;
+  const n = c.number;
+  return lane === 'yours' ? live.read.get(n) !== cardSig(c) && live.unreadable.get(n) !== cardSig(c) : !live.read.has(n) && !live.unreadable.has(n);
+};
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -415,7 +429,9 @@ function card(c, lane, minutes, now, moved) {
     testIt && preview && !asks ? null : status,
     c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    c.column === 'release' || unread(c) ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    // A questions card whose messages are being read keeps the row empty, at the buttons' height (no jump when they come).
+    c.column === 'release' ? null : asks && unread(c, lane) ? el('div', { class: 'card-actions', 'aria-hidden': 'true' })
+      : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     c.column === 'release' ? null : stepTrack(c),
     // No agent works on a card whose launch waits: no estimate of its work until it starts.
     c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
@@ -434,27 +450,34 @@ const EASE = 'cubic-bezier(.16, 1, .3, 1)';
 const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]:not(.leaving)')].map((n) => [Number(n.dataset.number), n]));
 const onScreen = (r) => r.bottom > 0 && r.top < innerHeight;
 
-// The board's recent re-layouts, each with where its blue buttons were just before it, to tell a press aimed at a
-// button from one that lands on a button the re-layout slid under the finger (see goButton).
+// The blue buttons a re-layout of the board just slid under the finger, to tell a press aimed at a button from one
+// that lands on a button that was not there a moment ago (see goButton): card number → until when a press is dropped.
 const SETTLE_MS = 600;
-let layouts = []; // [{ until, rects: Map(number → DOMRect) }]
-const goRects = (root) => new Map([...root.querySelectorAll('button.go[data-go]')].map((b) => [b.dataset.go, b.getBoundingClientRect()]));
-function noteLayout(rects) {
-  const now = Date.now();
-  layouts = [...layouts.filter((l) => l.until > now), { until: now + (reduced() ? 0 : 350) + SETTLE_MS, rects }];
+const slid = new Map();
+// Where each blue button and each other button of the cards' rows stand, in page coordinates (scrolling moves none).
+function actionLayout(root) {
+  const go = new Map(), all = [];
+  for (const b of root.querySelectorAll('.ticket[data-number] .card-actions > *')) {
+    const r = b.getBoundingClientRect();
+    const box = { left: r.left + scrollX, top: r.top + scrollY, right: r.right + scrollX, bottom: r.bottom + scrollY, height: r.height };
+    if (b.matches('button.go[data-go]')) go.set(b.dataset.go, box);
+    all.push(box);
+  }
+  return { go, all };
 }
-// True for a press at (x, y) on card n's button when, a moment ago, that button was elsewhere: farther than half its
-// height from there (a card nudged by a few pixels keeps its button under the finger; a newly drawn button was nowhere,
-// it did not slide in).
-function justSlid(n, x, y) {
-  const now = Date.now();
-  return layouts.some((l) => {
-    const r = l.until > now && l.rects.get(String(n));
-    if (!r) return false;
-    const m = r.height / 2;
-    return !(x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m);
-  });
+const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+// A blue button moved by more than half its height (a card nudged by a few pixels keeps it under the finger), or a new
+// one standing where another button stood, is marked for a moment after the re-layout.
+function noteLayout(before, after) {
+  const now = Date.now(), until = now + (reduced() ? 0 : 350) + SETTLE_MS;
+  for (const [n, t] of slid) if (t <= now) slid.delete(n);
+  for (const [n, b] of after.go) {
+    const a = before.go.get(n);
+    const moved = a ? Math.abs(a.top - b.top) > b.height / 2 || Math.abs(a.left - b.left) > b.height / 2 : before.all.some((r) => overlaps(r, b));
+    if (moved) slid.set(n, Math.max(slid.get(n) || 0, until));
+  }
 }
+const justSlid = (n) => (slid.get(String(n)) || 0) > Date.now();
 // FLIP: slide each card from where it was to where it is now (fade in place when either spot is off-screen).
 function flip(before) {
   if (reduced()) return;
@@ -713,7 +736,7 @@ function drawBoard() {
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
-  const goBefore = goRects(board);
+  const goBefore = actionLayout(board);
   const fresh = [
     youCard(yours, headline, sub, minutes, now, movedSet),
     pendingZone(held.pending, minutes, now),
@@ -773,16 +796,16 @@ function drawBoard() {
     live.ideasSig = ideasSig;
     board.replaceChildren(...holder.childNodes);
     announceIdea.clear();
+    noteLayout(goBefore, actionLayout(board)); // measured before the slides start
     flip(before);
-    noteLayout(goBefore);
     if (!reduced() && !live.instant) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
     for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
     if (leaving.length) setTimeout(() => {
-      const mid = rectsOf(board), goMid = goRects(board);
+      const mid = rectsOf(board), goMid = actionLayout(board);
       for (const node of leaving) node.remove();
       for (const { grid, empty } of restore) if (!grid.children.length && grid.isConnected) grid.replaceWith(empty);
+      noteLayout(goMid, actionLayout(board));
       flip(mid);
-      noteLayout(goMid);
     }, 300);
   }
   if (focusKey) board.querySelector(`[data-key="${focusKey}"]`)?.focus();

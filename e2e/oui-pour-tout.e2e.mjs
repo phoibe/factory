@@ -232,3 +232,112 @@ test('une nouvelle série de questions a un « Oui pour tout » neuf', async () 
     assert.deepEqual(sentOn(writes, 20), ['oui à tout', 'oui à tout']);
   });
 });
+
+// Every distinct list of answer buttons card n shows in « À vous de jouer », in order (watched at each frame).
+const watchButtons = (page, n) => page.evaluate((num) => {
+  window.__seen = []; let last = null;
+  const look = () => {
+    const c = document.querySelector(`.ticket.yours[data-number="${num}"]`);
+    if (c) {
+      const s = JSON.stringify([...c.querySelectorAll('.card-actions a.button, .card-actions button')].map((b) => b.textContent.trim()));
+      if (s !== last) { last = s; window.__seen.push(JSON.parse(s)); }
+    }
+    requestAnimationFrame(look);
+  };
+  look();
+}, n);
+
+test('une carte qui passe de « Les agents travaillent » à « À vous de jouer » n\'a aucun bouton avant la lecture de ses nouvelles questions', async () => {
+  const thread = [comment(1, `${AGENT}\nJe lis le projet avant de poser mes questions.`)];
+  const q = questions(20, ['factory:feature', 'factory:grilling', 'factory:running']);
+  await withPanel({ issues: [q], comments: { 20: thread }, slowReads: [[/\/issues\/20\/comments/, 1200]], viewport: { width: 390, height: 844 }, device: { hasTouch: true, isMobile: true } }, async ({ page, url, reads }) => {
+    await page.goto(url);
+    await page.locator('.ticket.working[data-number="20"]').waitFor();
+    const readsOf20 = () => reads.filter((r) => r.endsWith('/issues/20/comments')).length;
+    await waitFor(() => readsOf20() > 0, page); // its messages were read once, while the agent works
+    await page.waitForTimeout(1500);
+    await watchButtons(page, 20);
+    // The agent posts its round of questions and stops.
+    thread.push(comment(2, ROUND));
+    Object.assign(q, { labels: q.labels.filter((l) => l.name !== 'factory:running'), comments: 2, updated_at: new Date(Date.now() + 1000).toISOString() });
+    await page.locator('.ticket.yours[data-number="20"] button.go').waitFor({ timeout: 20000 });
+    const seen = await page.evaluate(() => window.__seen);
+    assert.deepEqual(seen.filter((b) => b.length), [['Oui pour tout', 'Répondre']], `buttons seen in order: ${JSON.stringify(seen)}`);
+  });
+});
+
+test('quand les messages ne se lisent pas, la carte de questions montre « Répondre » seul', async () => {
+  for (const mode of ['500', 'limited']) {
+    await withPanel({ issues: [questions()], comments: { 20: [round] } }, async ({ page, url }) => {
+      await page.route('https://api.github.com/repos/o/r/issues/20/comments**', (route) => (mode === 'limited'
+        ? route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 1800), 'access-control-expose-headers': 'X-RateLimit-Remaining, X-RateLimit-Reset' }, body: JSON.stringify({ message: 'API rate limit exceeded' }) })
+        : route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Server Error' }) })));
+      await page.goto(url);
+      await card(page).locator('a.button.secondary').waitFor({ timeout: 5000 });
+      assert.deepEqual((await buttons(page)).map((t) => t.trim()), ['Répondre'], mode);
+    });
+  }
+});
+
+test('un « Oui pour tout » qui arrive après un échec de lecture ne prend pas le toucher destiné à « Répondre »', async () => {
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, viewport: { width: 390, height: 844 }, device: { hasTouch: true, isMobile: true } }, async ({ page, url, writes, context }) => {
+    let fail = true;
+    await page.route('https://api.github.com/repos/o/r/issues/20/comments**', (route) => (fail ? route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }) : route.fallback()));
+    let popups = 0;
+    context.on('page', () => { popups++; });
+    await page.goto(url);
+    const reply = card(page).locator('a.button.secondary');
+    await reply.waitFor({ timeout: 5000 });
+    const box = await reply.boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    fail = false; // the next refresh reads the round
+    await page.locator('button.go[data-go="20"]').waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button.go')?.dataset.go, [x, y]), '20', 'the blue button now stands where « Répondre » was');
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(1000);
+    assert.deepEqual(sentOn(writes, 20), [], 'a touch aimed at « Répondre » does not send « oui à tout »');
+    // A deliberate touch, once it has settled, answers.
+    await page.touchscreen.tap(x, y);
+    await waitFor(() => sentOn(writes, 20).length, page);
+    assert.deepEqual(sentOn(writes, 20), ['oui à tout']);
+    assert.equal(popups, 0);
+  });
+});
+
+test('la barre d\'étapes de la carte de questions ne saute pas quand ses boutons arrivent', async () => {
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, slowReads: [[/\/issues\/20\/comments/, 2500]], viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
+    await page.goto(url);
+    await card(page).waitFor();
+    assert.deepEqual(await buttons(page), []);
+    const top = () => card(page).locator('.step').evaluate((n) => n.getBoundingClientRect().top - n.closest('.ticket').getBoundingClientRect().top);
+    const before = await top();
+    await page.locator('button.go[data-go="20"]').waitFor();
+    await page.waitForTimeout(500);
+    const after = await top();
+    assert.ok(Math.abs(after - before) < 1, `step bar from ${before} to ${after} px below the top of the card`);
+  });
+});
+
+test('après un redessin du tableau, défiler un peu puis toucher un « go » resté en place l\'envoie', async () => {
+  const spec = issue(30, 'Exporter en PDF', ['factory:feature', 'factory:spec-review']);
+  const queued = (n) => issue(n, `Demande ${n}`, ['factory:feature', 'factory:queued']);
+  const done = new Date().toISOString();
+  const closed = [{ ...issue(5, 'Ancienne demande', ['factory:feature']), state: 'closed', closed_at: done, pull_request: { url: 'x', merged_at: done }, merged_at: done }];
+  await withPanel({ issues: [spec, queued(40), queued(41), queued(42), queued(43)], closed, slowReads: [[/state=closed/, 2000]], viewport: { width: 1280, height: 500 } }, async ({ page, url, writes }) => {
+    await page.goto(url);
+    const go = page.locator('button.go[data-go="30"]');
+    await go.waitFor();
+    const top0 = await go.evaluate((n) => n.getBoundingClientRect().top + scrollY);
+    await page.locator('.lane-done .count').waitFor({ timeout: 20000 }); // « Terminé » arrives: the board redraws
+    await page.mouse.move(640, 250);
+    await page.mouse.wheel(0, 60);
+    await page.waitForFunction(() => scrollY >= 60);
+    await page.waitForTimeout(300);
+    const top1 = await go.evaluate((n) => n.getBoundingClientRect().top + scrollY);
+    assert.ok(Math.abs(top1 - top0) < 10, `« go » stayed in place on the board (${top1 - top0} px)`);
+    const box = await go.boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await waitFor(() => sentOn(writes, 30).length, page);
+    assert.deepEqual(sentOn(writes, 30), ['go']);
+  });
+});
