@@ -188,6 +188,70 @@ test('the documents step loads grilling and domain-modeling directly, never gril
   assert.match(docs, /refus/);
 });
 
+test('the hand-only guides are read from their file, never loaded with the Skill tool (issue #622)', () => {
+  const dir = project();
+  sync({ projectDir: dir });
+  const flat = (f) => readFileSync(join(dir, '.factory/stages', f), 'utf8').replace(/\s+/g, ' ');
+  // The numbered step of a rendered stage, from its first line up to the next numbered step.
+  const stepOf = (f, step) => {
+    const lines = readFileSync(join(dir, '.factory/stages', f), 'utf8').split('\n');
+    const start = lines.findIndex((l) => l.startsWith(`${step}. `));
+    assert.ok(start >= 0, `${f} still has a step ${step}`);
+    const end = lines.findIndex((l, i) => i > start && /^\d+( bis| ter)?\. /.test(l));
+    return lines.slice(start, end < 0 ? undefined : end).join(' ').replace(/\s+/g, ' ');
+  };
+  for (const [stage, id, part, step] of [
+    ['audit.md', 'improve-codebase-architecture', '### 1. Explore', '3 bis'],
+    ['spec.md', 'to-spec', '## Process', '2'],
+    ['spec.md', 'to-tickets', '### 3. Draft vertical slices', '4 bis'],
+  ]) {
+    const skill = readFileSync(join(dir, '.claude/skills', id, 'SKILL.md'), 'utf8');
+    assert.match(skill, /^disable-model-invocation:\s*true\s*$/m, `${id} is still hand-only`);
+    assert.ok(skill.includes(part), `${id} still has the part the stage points to`);
+    const own = stepOf(stage, step);
+    assert.ok(own.includes(`.claude/skills/${id}/SKILL.md`), `${stage} step ${step} reads the file of ${id}`);
+    assert.match(own, /jamais avec l'outil Skill/, `${stage} step ${step} says never to load ${id} with the Skill tool`);
+    assert.match(own, /refuserait/, `${stage} step ${step} says the Skill tool would refuse ${id}`);
+    const headings = new Set(skill.split('\n').filter((l) => /^#+ /.test(l)).map((l) => l.replace(/^#+ /, '').trim()));
+    for (const [, name] of own.matchAll(/« (\d+\. [^»]+?) »/g)) {
+      assert.ok(headings.has(name), `« ${name} », cited by ${stage} step ${step}, is a heading of ${id}`);
+    }
+    const text = flat(stage);
+    assert.ok(text.includes(`.claude/skills/${id}/SKILL.md`), `${stage} must point to the file of ${id}`);
+    assert.doesNotMatch(text, new RegExp(`skill \`${id}\``), `${stage} must not ask to load ${id}`);
+  }
+  const agent = readFileSync(join(dir, '.factory/AGENT.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(agent.includes('réservé au lancement à la main'), 'AGENT.md names the exception to « load skills with the Skill tool »');
+});
+
+test('every hand-only skill named by the agent instructions is one the stages handle (issue #622)', () => {
+  const root = join(import.meta.dirname, '..');
+  const handled = ['grill-with-docs', 'improve-codebase-architecture', 'to-spec', 'to-tickets'];
+  const handOnly = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name === 'SKILL.md' && /^disable-model-invocation:\s*true\s*$/m.test(readFileSync(p, 'utf8'))) {
+        handOnly.push(join(p, '..').split(/[\\/]/).pop());
+      }
+    }
+  };
+  walk(join(root, 'packs'));
+  for (const id of handled) assert.ok(handOnly.includes(id), `${id} is still hand-only in packs/`);
+  const sources = [join(root, 'agent/AGENT.md'),
+    ...readdirSync(join(root, 'agent/stages')).filter((f) => f.endsWith('.md')).map((f) => join(root, 'agent/stages', f))];
+  const named = new Set();
+  for (const f of sources) {
+    const text = readFileSync(f, 'utf8');
+    for (const id of handOnly) if (text.includes(`\`${id}\``)) named.add(id);
+  }
+  for (const id of named) {
+    assert.ok(handled.includes(id), `${id} is hand-only (the Skill tool refuses it): a stage must read its file instead`);
+  }
+  for (const id of handled) assert.ok(named.has(id), `${id} is still named by a stage`);
+});
+
 test('a project without a glossary gets a one-off catch-up, at questions and at construction (issue #526)', () => {
   const dir = project();
   sync({ projectDir: dir });
