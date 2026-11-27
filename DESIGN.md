@@ -112,7 +112,7 @@ Le ressenti visé : au clair, aux commandes, serein. Jamais noyé sous les déta
 Un papier presque blanc le jour, un anthracite profond la nuit (automatique selon le système), une encre noire, et un bleu franc.
 
 ### Primary
-- **Bleu signal** (`#1850e8`, nuit `#6c93ff`) : uniquement la carte « À vous » et son bouton « go » (exception : les boutons de connexion et de validation du jeton de lecture de la discussion). Les liens sont en encre soulignée, le bouton d'envoi de la discussion est encre. Fond doux associé (`#eaf0ff`, nuit `#16213f`).
+- **Bleu signal** (`#1850e8`, nuit `#6c93ff`) : uniquement la carte « À vous » et son bouton « go » / « Ok » / « Oui pour tout » (exception : les boutons de connexion et de validation du jeton de lecture de la discussion). Les liens sont en encre soulignée, le bouton d'envoi de la discussion est encre. Fond doux associé (`#eaf0ff`, nuit `#16213f`).
 
 ### Neutral
 - **Papier** (`#fbfbfa`, nuit `#101113`) : fond de page.
@@ -126,7 +126,7 @@ Un papier presque blanc le jour, un anthracite profond la nuit (automatique selo
 - **Voile** (`rgb(0 0 0 / .45)`) : derrière une fenêtre (code QR) et sur les vignettes d'images, pour détacher ce qui est devant.
 - **Vert** (`#1a7f4b`, nuit `#6fcf97`) : terminé. **Rouge** (`#c62828`, nuit `#ff8a80`) : échec ; son fond doux (`#fdecea`, nuit `#3a1f1c`) teinte une carte bloquée et un message d'erreur de chargement. Toujours accompagnés d'un mot ou d'une icône, jamais seuls.
 
-**The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. Dans la section « À vous de jouer », c'est un bouton bleu par carte (« go » pour une spec, « Ok » pour des captures ou une recette), les autres boutons de la carte restent discrets. S'il n'y a rien à répondre, il n'y a pas de bleu. Seule exception : le point d'état bleu de la liste des projets, qui signale lui aussi une réponse attendue.
+**The One Voice Rule.** Le bleu apparaît sur un seul élément principal par écran : ce qui attend la réponse. Dans la section « À vous de jouer », c'est un bouton bleu par carte (« go » pour une spec, « Ok » pour des captures ou une recette, « Oui pour tout » pour des questions dont le dernier message de l'agent propose « oui à tout »), les autres boutons de la carte restent discrets. S'il n'y a rien à répondre, il n'y a pas de bleu. Seule exception : le point d'état bleu de la liste des projets, qui signale lui aussi une réponse attendue.
 
 ## 3. Typography
 
@@ -157,7 +157,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Bouton principal** : fond bleu signal, texte blanc, 44 px de haut ; un seul par écran. Survol : légère variation de teinte. Focus : anneau de 2 px encre avec 2 px de marge (le bleu reste réservé à ce qui attend une réponse) ; liens, cartes, volets repliables et zones qui défilent ont le même anneau.
 - **Bouton discret** : surface, filet, texte encre ; pour toutes les autres actions.
 - **Carte** : surface, filet d'un pixel, coins 14 px, marge intérieure 24 px.
-- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go » ou « Ok », qui part dès le toucher), toujours en premier, sur la même ligne que les boutons discrets (un mot chacun, « Voir… ») ; tous ces boutons ont la petite taille des boutons des cartes « Prise en compte en cours… » (32 px visibles, 44 px sous le doigt). Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Le titre de la carte s'ouvre au toucher (44 px sous le doigt), pas le fond de la carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
+- **Section « À vous de jouer »** : en tête de page, titre et nombre comme les autres sections, puis une carte par demande au même format que les autres, teintée de bleu doux (rouge si bloquée) ; chaque carte a au plus un bouton bleu (« go », « Ok » ou « Oui pour tout », qui part dès le toucher), toujours en premier, sur la même ligne que les boutons discrets (un mot chacun, « Voir… », ou « Répondre » à côté de « Oui pour tout ») ; une carte de questions n'a « Oui pour tout » que si le dernier message de l'agent propose « oui à tout » (sinon seulement « Répondre »), et l'ouvrir avec « Répondre » la laisse dans « À vous de jouer », comme une carte « go » / « Ok » ; tous ces boutons ont la petite taille des boutons des cartes « Prise en compte en cours… » (32 px visibles, 44 px sous le doigt). Toutes les cartes de la section ont la même taille, quel que soit leur contenu ; la barre d'étapes et le temps restant sont alignés en bas de chaque carte. Le titre de la carte s'ouvre au toucher (44 px sous le doigt), pas le fond de la carte. Quand rien n'attend, une carte calme « Rien ne vous attend » la remplace.
 - **Étiquette de taille** : en haut d'une carte, la taille de la demande (« petite demande », « demande moyenne », « grande demande ») dans une puce neutre (fond filet, texte encre gras, coins 6 px ; fond surface et filet bleu doux sur une carte « À vous »), jamais en bleu.
 - **Ligne de tâche** : numéro en mono, titre, état en gris ; une seule ligne, détail au clic.
 - **Liste des projets** : colonne de 240 px collée au bord droit (au-delà de 900 px de large), fond un ton à côté du papier (surface 2 le jour, papier la nuit) et filet à gauche, titre « Projets » sans nombre ; un projet par ligne (44 px), par ordre alphabétique, nom coupé par « … ». Le projet ouvert : fond plus clair que la colonne (surface le jour, surface 2 la nuit), filet appuyé, coins 10 px, nom en gras (jamais de bleu). Sur téléphone, le nom du projet en haut ouvre la même liste en plein écran.
@@ -184,7 +184,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 
 ## Issue 123 additions
 - **Téléphone** : en haut, seulement le nom du projet, l'état du site en ligne (« En ligne : à jour », « En ligne : 2 modifications d'écart »… sur une ligne discrète, en rouge quand la dernière publication a échoué), « Nouvelle fonctionnalité », « Plus » (menu qui replie les actions secondaires) puis la carte « À vous ». Sur un projet mis en production « sur accord », « Mise en production » prend la place de « Nouvelle fonctionnalité », qui devient la première ligne de « Plus » : toujours une seule ligne de boutons, le « go » ne bouge jamais. Sur ordinateur tout reste affiché.
-- **« go » immédiat** (#450) : un toucher envoie la réponse tout de suite ; le bouton affiche « Envoi… » le temps de l'envoi, puis « Envoyé ✓ » (gris, désactivé) jusqu'à ce que la carte change de colonne (#517), sans compte à rebours ni fenêtre de confirmation. « Jeter » sur une idée part aussi au toucher.
+- **« go » immédiat** (#450) : un toucher sur « go », « Ok » ou « Oui pour tout » (#620, qui envoie « oui à tout ») envoie la réponse tout de suite ; le bouton affiche « Envoi… » le temps de l'envoi, puis « Envoyé ✓ » (gris, désactivé) jusqu'à ce que la carte change de colonne (#517), sans compte à rebours ni fenêtre de confirmation. « Jeter » sur une idée part aussi au toucher.
 - **Carte « Prise en compte en cours… »** (#517) : la ligne du haut dit depuis quand la réponse attend (« envoyé à l'instant », « envoyé il y a 3 min »), sous la ligne du type, au lieu du temps passé à l'étape.
 - **Chargement** : cartes grises calmes, sans animation. **Erreur de discussions** : message permanent + « Réessayer ».
 
@@ -215,7 +215,7 @@ Coins doucement arrondis : 6 px (champs, puces), 10 px (boutons), 14 px (cartes,
 - **Largeur** : la largeur du contenu du projet (1100 px au plus).
 - **Libellés et explications** : le titre de section et son nombre ; une section vide dit une seule phrase dans un cadre en pointillés (« Rien de livré pour l'instant. »).
 - **Volets repliables** : les cartes « Mise en production » repliables (liste des modifications) ; le reste est ouvert.
-- **Boutons des cartes** : petits (32 px visibles, 44 px sous le doigt) sur toutes les cartes : « go » / « Ok » et « Voir… » des cartes « À vous », boutons des cartes en attente, « Garder » / « Jeter » des idées.
+- **Boutons des cartes** : petits (32 px visibles, 44 px sous le doigt) sur toutes les cartes : « go » / « Ok » / « Oui pour tout » et « Voir… » / « Répondre » des cartes « À vous », boutons des cartes en attente, « Garder » / « Jeter » des idées.
 - **Sur téléphone** : une carte par ligne, la carte « À vous » en tête ; les boutons d'une carte gardent leur petite taille, côte à côte.
 - **Écrans concernés** : Suivi.
 

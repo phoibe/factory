@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepsFor, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, yoursList } from '../panel/live.mjs';
+import { stepsFor, progress, laneFor, actionFor, moves, agoText, statusText, pollDelay, timeLine, isIdle, cardChanges, yoursList, offersYesToAll, yesToAllRound } from '../panel/live.mjs';
 import { all } from './panel-source.mjs';
 
 test('a feature goes through six steps, a bug skips the questions and the spec', () => {
@@ -209,4 +209,38 @@ test('a card whose launch waits for its relaunch sits with the work in progress,
 test('an « Amélioration UI » card has no questions and no spec, like a general review (issue #462)', async () => {
   const { stepsFor } = await import('../panel/live.mjs');
   assert.deepEqual(stepsFor(['factory:ui-polish']), stepsFor(['factory:audit']));
+});
+
+test('issue #620: a questions card whose agent round proposes « oui à tout » is answered by a plain « oui à tout »', () => {
+  const item = (number, column, extra = {}) => ({ number, column, updated_at: '2026-11-04T10:00:00Z', labels: [], ...extra });
+  assert.equal(yoursList([item(1, 'grilling', { offersAll: true })])[0].reply, 'all');
+  assert.equal(yoursList([item(2, 'grilling')])[0].reply, 'open');
+  assert.equal(yoursList([item(3, 'spec', { offersAll: true })])[0].reply, 'go');
+  assert.equal(yoursList([item(4, 'blocked', { offersAll: true, labels: ['factory:blocked'] })])[0].reply, 'open');
+});
+
+test('issue #620: only the last agent message counts to propose « oui à tout »', () => {
+  const AGENT = '<!-- factory-agent -->';
+  const round = { body: `${AGENT}\n1. Une liste ? ➡️ oui\n\nRépondez par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ».`, user: { login: 'o' } };
+  const plain = { body: `${AGENT}\nLa spec est prête.`, user: { login: 'o' } };
+  assert.equal(offersYesToAll([round]), true);
+  assert.equal(offersYesToAll([round, plain]), false, 'a later agent message without it');
+  assert.equal(offersYesToAll([plain]), false);
+  assert.equal(offersYesToAll([]), false);
+  assert.equal(offersYesToAll(undefined), false);
+  // The phone alert the factory adds after a round is not a new round.
+  const notified = { body: `<!-- factory-notified -->\n${AGENT}\n🔔 Une alerte a été envoyée sur votre téléphone.`, user: { login: 'github-actions[bot]' } };
+  assert.equal(offersYesToAll([round, notified]), true);
+  // Someone else's message never makes it appear: without the agent's marker, or written by a stranger.
+  assert.equal(offersYesToAll([plain, { body: 'Répondez par numéro, ou « oui à tout ».', user: { login: 'x' } }]), false);
+  assert.equal(offersYesToAll([plain, { ...round, user: { login: 'x' }, untrusted: true }]), false);
+  // A stranger's message after the round does not hide it either: it is not the agent's.
+  assert.equal(offersYesToAll([round, { body: 'hello', user: { login: 'x' }, untrusted: true }]), true);
+});
+
+test('issue #620: each round of questions is told apart, so that a new round gets a fresh « Oui pour tout »', () => {
+  const round = (id) => ({ id, body: '<!-- factory-agent -->\n1. Oui ?\n\nRépondez par numéro, ou « oui à tout ».', user: { login: 'o' } });
+  assert.equal(yesToAllRound([round(7)]), '7');
+  assert.equal(yesToAllRound([round(7), { id: 8, body: 'oui à tout', user: { login: 'o' } }, round(9)]), '9');
+  assert.equal(yesToAllRound([{ id: 3, body: 'rien', user: { login: 'o' } }]), null);
 });
