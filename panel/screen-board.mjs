@@ -155,6 +155,8 @@ async function refresh() {
       // The agent's estimate may sit on the page before the last one on a long thread.
       const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
       if (!before || !same()) return;
+      // A questions card shows its answer buttons only once its messages were read (see `unread`): draw it then.
+      if (!live.read.has(c.number) && c.column === 'grilling') previewsChanged = true;
       live.read.set(c.number, cardSig(c));
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
@@ -282,7 +284,13 @@ const goName = (c) => `${goState(c).name} pour #${c.number} ${c.title}`;
 // An « ok » or « oui à tout » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
 const holdsAfterSend = (c) => c.reply === 'ok' || c.reply === 'all';
 const isSent = (c) => sentGo.has(goKey(c)) || (holdsAfterSend(c) && pendingState()[c.number]?.sent === true);
-const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, goState(c).text);
+// A pointer press on a blue button that a re-layout of the board just slid under the finger is not aimed at it (on a
+// phone, the next card's button takes the place of the one just touched): dropped. The keyboard always answers.
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: c.reply === 'all' ? 'go all' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c),
+  onclick: (e) => { if (!(e.detail > 0 && justSlid(c.number, e.clientX, e.clientY))) answerGo(c, e.currentTarget); } }, goState(c).text);
+// Before its messages are read, a questions card does not know yet whether « Oui pour tout » belongs first: it draws
+// no answer button rather than a « Répondre » whose place a blue button would take a moment later (issue #620).
+const unread = (c) => c.column === 'grilling' && !live.read.has(c.number);
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -407,7 +415,7 @@ function card(c, lane, minutes, now, moved) {
     testIt && preview && !asks ? null : status,
     c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    c.column === 'release' || unread(c) ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     c.column === 'release' ? null : stepTrack(c),
     // No agent works on a card whose launch waits: no estimate of its work until it starts.
     c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
@@ -426,6 +434,27 @@ const EASE = 'cubic-bezier(.16, 1, .3, 1)';
 const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]:not(.leaving)')].map((n) => [Number(n.dataset.number), n]));
 const onScreen = (r) => r.bottom > 0 && r.top < innerHeight;
 
+// The board's recent re-layouts, each with where its blue buttons were just before it, to tell a press aimed at a
+// button from one that lands on a button the re-layout slid under the finger (see goButton).
+const SETTLE_MS = 600;
+let layouts = []; // [{ until, rects: Map(number → DOMRect) }]
+const goRects = (root) => new Map([...root.querySelectorAll('button.go[data-go]')].map((b) => [b.dataset.go, b.getBoundingClientRect()]));
+function noteLayout(rects) {
+  const now = Date.now();
+  layouts = [...layouts.filter((l) => l.until > now), { until: now + (reduced() ? 0 : 350) + SETTLE_MS, rects }];
+}
+// True for a press at (x, y) on card n's button when, a moment ago, that button was elsewhere: farther than half its
+// height from there (a card nudged by a few pixels keeps its button under the finger; a newly drawn button was nowhere,
+// it did not slide in).
+function justSlid(n, x, y) {
+  const now = Date.now();
+  return layouts.some((l) => {
+    const r = l.until > now && l.rects.get(String(n));
+    if (!r) return false;
+    const m = r.height / 2;
+    return !(x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m);
+  });
+}
 // FLIP: slide each card from where it was to where it is now (fade in place when either spot is off-screen).
 function flip(before) {
   if (reduced()) return;
@@ -684,6 +713,7 @@ function drawBoard() {
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
+  const goBefore = goRects(board);
   const fresh = [
     youCard(yours, headline, sub, minutes, now, movedSet),
     pendingZone(held.pending, minutes, now),
@@ -744,13 +774,15 @@ function drawBoard() {
     board.replaceChildren(...holder.childNodes);
     announceIdea.clear();
     flip(before);
+    noteLayout(goBefore);
     if (!reduced() && !live.instant) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
     for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
     if (leaving.length) setTimeout(() => {
-      const mid = rectsOf(board);
+      const mid = rectsOf(board), goMid = goRects(board);
       for (const node of leaving) node.remove();
       for (const { grid, empty } of restore) if (!grid.children.length && grid.isConnected) grid.replaceWith(empty);
       flip(mid);
+      noteLayout(goMid);
     }, 300);
   }
   if (focusKey) board.querySelector(`[data-key="${focusKey}"]`)?.focus();

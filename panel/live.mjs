@@ -144,9 +144,13 @@ export function yoursList(cards) {
 // marker, from a trusted author); the phone alert the factory adds after a round is not a new message of the agent.
 const AGENT = '<!-- factory-agent -->';
 const YES_TO_ALL = /«\s*oui à tout\s*»/i;
+// Nor are the factory's session note (edited or created at each launch of the agent) and an estimate the agent posts
+// alone (a size, no question; the spec carries one too, and is a new message).
+const notAMessage = (body) => body.includes('<!-- factory-notified -->') || body.includes('<!-- factory-session -->')
+  || (body.includes('<!-- factory-estimate') && !body.includes('<!-- factory-spec -->') && !YES_TO_ALL.test(body) && !body.includes('?'));
 // `yesToAllRound` gives that message's id (each new round gets a fresh button), or null.
 export function yesToAllRound(comments) {
-  const last = [...(comments || [])].reverse().find((c) => !c?.untrusted && String(c?.body || '').includes(AGENT) && !String(c.body).includes('<!-- factory-notified -->'));
+  const last = [...(comments || [])].reverse().find((c) => !c?.untrusted && String(c?.body || '').includes(AGENT) && !notAMessage(String(c.body)));
   return last && YES_TO_ALL.test(String(last.body)) ? String(last.id ?? last.created_at ?? 'round') : null;
 }
 export const offersYesToAll = (comments) => yesToAllRound(comments) != null;

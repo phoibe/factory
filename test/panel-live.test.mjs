@@ -213,10 +213,11 @@ test('an « Amélioration UI » card has no questions and no spec, like a genera
 
 test('issue #620: a questions card whose agent round proposes « oui à tout » is answered by a plain « oui à tout »', () => {
   const item = (number, column, extra = {}) => ({ number, column, updated_at: '2026-11-04T10:00:00Z', labels: [], ...extra });
-  assert.equal(yoursList([item(1, 'grilling', { offersAll: true })])[0].reply, 'all');
+  // `offersAll` is the id of the round's message, as yesToAllRound gives it.
+  assert.equal(yoursList([item(1, 'grilling', { offersAll: '3546210987' })])[0].reply, 'all');
   assert.equal(yoursList([item(2, 'grilling')])[0].reply, 'open');
-  assert.equal(yoursList([item(3, 'spec', { offersAll: true })])[0].reply, 'go');
-  assert.equal(yoursList([item(4, 'blocked', { offersAll: true, labels: ['factory:blocked'] })])[0].reply, 'open');
+  assert.equal(yoursList([item(3, 'spec', { offersAll: '3546210987' })])[0].reply, 'go');
+  assert.equal(yoursList([item(4, 'blocked', { offersAll: '3546210987', labels: ['factory:blocked'] })])[0].reply, 'open');
 });
 
 test('issue #620: only the last agent message counts to propose « oui à tout »', () => {
@@ -243,4 +244,25 @@ test('issue #620: each round of questions is told apart, so that a new round get
   assert.equal(yesToAllRound([round(7)]), '7');
   assert.equal(yesToAllRound([round(7), { id: 8, body: 'oui à tout', user: { login: 'o' } }, round(9)]), '9');
   assert.equal(yesToAllRound([{ id: 3, body: 'rien', user: { login: 'o' } }]), null);
+});
+
+test('issue #620: the factory\'s session note and a lone estimate are not a new message of the agent', () => {
+  const AGENT = '<!-- factory-agent -->';
+  const round = { id: 7, body: `${AGENT}\n1. Une liste ? ➡️ oui\n\nRépondez par numéro (ex. « 1 oui, 2 non : … »), ou « oui à tout ».`, user: { login: 'o' } };
+  // The relay creates or edits this note at each launch of the agent (scripts/relay/launches.mjs).
+  const session = { id: 8, body: `<!-- factory-session -->\n${AGENT}\nDernier lancement de l'agent : **Questions**, à 10:02. [Voir ce qu'il fait](https://claude.ai/code/x)`, user: { login: 'github-actions[bot]' } };
+  assert.equal(yesToAllRound([round, session]), '7');
+  // The size of the request, posted alone (agent/stages/grilling.md: « dans le message de ce run ou seule »).
+  const estimate = { id: 9, body: `${AGENT}\n<!-- factory-estimate size=medium min=40 max=90 -->\nTaille estimée : moyenne (construction 40 à 90 min).`, user: { login: 'o' } };
+  assert.equal(yesToAllRound([round, estimate]), '7');
+  assert.equal(yesToAllRound([round, session, estimate]), '7');
+  // A round that carries the estimate in the same message is still a round.
+  const both = { id: 10, body: `${round.body}\n<!-- factory-estimate size=small min=10 max=20 -->`, user: { login: 'o' } };
+  assert.equal(yesToAllRound([round, both]), '10');
+  // The spec carries an estimate too: it is a new message of the agent, the round is over.
+  const spec = { id: 11, body: `${AGENT}\n<!-- factory-spec -->\n<!-- factory-estimate size=medium min=40 max=90 -->\n## Spec\nL'écran liste les comptes.`, user: { login: 'o' } };
+  assert.equal(yesToAllRound([round, spec]), null);
+  // An agent message with an estimate and a new question is a new message too.
+  const asks = { id: 12, body: `${AGENT}\n<!-- factory-estimate size=small min=10 max=20 -->\nUne dernière question : quelle couleur ?`, user: { login: 'o' } };
+  assert.equal(yesToAllRound([round, asks]), null);
 });

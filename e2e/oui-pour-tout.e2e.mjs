@@ -124,3 +124,111 @@ test('les cartes « go » et « Ok » n\'ont pas changé', async () => {
     await page.waitForFunction(() => document.getElementById('toast').textContent === '« go » envoyé. La construction démarre.');
   });
 });
+
+test('avant la lecture des messages, la carte de questions ne montre aucun bouton de réponse (pas de « Répondre » qui laisse sa place)', async () => {
+  // The final « Oui pour tout » spot, measured on a board whose messages come at once (same layout).
+  let spot = null;
+  await withPanel({ issues: [questions()], comments: { 20: [round] } }, async ({ page, url }) => {
+    await page.goto(url);
+    const box = await page.locator('button.go[data-go="20"]').boundingBox();
+    spot = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, slowReads: [[/\/issues\/20\/comments/, 2500]] }, async ({ page, writes, url, context }) => {
+    await page.goto(url);
+    await card(page).waitFor();
+    assert.deepEqual(await buttons(page), [], 'no answer button until the messages are read');
+    let popups = 0;
+    context.on('page', () => { popups++; });
+    await page.mouse.click(spot.x, spot.y); // where « Répondre » stood before the fix, and « Oui pour tout » will
+    await page.locator('button.go[data-go="20"]').waitFor();
+    assert.deepEqual((await buttons(page)).map((t) => t.trim()), ['Oui pour tout', 'Répondre']);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(300);
+    assert.equal(popups, 0, 'nothing opened');
+    assert.deepEqual(sentOn(writes, 20), [], 'nothing sent');
+    assert.equal(await page.locator('.ticket.pending[data-number="20"]').count(), 0);
+  });
+});
+
+test('sur téléphone, un second toucher au même endroit n\'envoie pas la réponse de la carte suivante qui glisse sous le doigt', async () => {
+  const older = new Date(Date.now() - 60_000).toISOString();
+  const first = { ...questions(20), updated_at: older }, second = { ...questions(21), title: 'Partager une liste' };
+  await withPanel({ issues: [first, second], comments: { 20: [round], 21: [comment(2, ROUND)] }, viewport: { width: 390, height: 844 }, device: { hasTouch: true, isMobile: true } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="21"]').waitFor();
+    await page.waitForTimeout(500);
+    const box = await page.locator('button.go[data-go="20"]').boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.touchscreen.tap(x, y);
+    await page.locator('.ticket.pending[data-number="20"]').waitFor();
+    await page.waitForTimeout(400); // the board slid: the next card's blue button is now under the finger
+    assert.equal(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('button.go')?.dataset.go, [x, y]), '21');
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(1000);
+    assert.deepEqual(sentOn(writes, 20), ['oui à tout']);
+    assert.deepEqual(sentOn(writes, 21), [], 'the card that slid under the finger is not answered');
+    // A deliberate touch, once it has settled, answers it.
+    await page.touchscreen.tap(x, y);
+    await waitFor(() => sentOn(writes, 21).length, page);
+    assert.deepEqual(sentOn(writes, 21), ['oui à tout']);
+  });
+});
+
+test('« Oui pour tout » garde sa largeur d\'un état à l\'autre, avec la même marge que « go » et « Ok »', async () => {
+  await withPanel({ issues: [questions()], comments: { 20: [round] }, writeDelay: 1500 }, async ({ page, url }) => {
+    await page.goto(url);
+    const go = page.locator('button.go[data-go="20"]');
+    await go.waitFor();
+    const measure = () => go.evaluate((n) => {
+      const range = document.createRange(); range.selectNodeContents(n);
+      const r = n.getBoundingClientRect(), t = range.getBoundingClientRect();
+      return { text: n.textContent, width: Math.round(r.width * 10) / 10, left: t.left - r.left - n.clientLeft, right: r.right - t.right - n.clientLeft }; // from the inner edge of the border
+    });
+    const idle = await measure();
+    assert.ok(idle.left >= 12 && idle.right >= 12, `room on both sides of the label (${idle.left.toFixed(1)} / ${idle.right.toFixed(1)} px)`);
+    await go.click();
+    const sending = await measure();
+    assert.equal(sending.text, 'Envoi…');
+    await page.locator('.ticket.pending[data-number="20"] button.go').waitFor();
+    const sent = await page.locator('.ticket.pending[data-number="20"] button.go').evaluate((n) => ({ text: n.textContent, width: Math.round(n.getBoundingClientRect().width * 10) / 10 }));
+    assert.equal(sent.text, 'Envoyé ✓');
+    assert.deepEqual([sending.width, sent.width], [idle.width, idle.width]);
+  });
+});
+
+test('les zones de toucher de « Oui pour tout » et « Répondre » ne se chevauchent pas', async () => {
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    await withPanel({ issues: [questions()], comments: { 20: [round] }, viewport }, async ({ page, url }) => {
+      await page.goto(url);
+      await page.locator('button.go[data-go="20"]').waitFor();
+      const zones = await card(page).locator('.card-actions > *').evaluateAll((nodes) => nodes.map((n) => {
+        const r = n.getBoundingClientRect(), a = getComputedStyle(n, '::after');
+        return { left: r.left - parseFloat(a.left) * -1, right: r.right - parseFloat(a.right) };
+      }));
+      assert.equal(zones.length, 2);
+      assert.ok(zones[0].right <= zones[1].left, `${viewport.width}px: ${zones[0].right} <= ${zones[1].left}`);
+    });
+  }
+});
+
+test('une nouvelle série de questions a un « Oui pour tout » neuf', async () => {
+  const thread = [round];
+  const q = questions();
+  await withPanel({ issues: [q], comments: { 20: thread } }, async ({ page, writes, url }) => {
+    await page.goto(url);
+    await page.locator('button.go[data-go="20"]').click();
+    await waitFor(() => sentOn(writes, 20).length, page);
+    await page.locator('.ticket.pending[data-number="20"] button.go:disabled').waitFor();
+    // The agent takes the answer, then asks a new round.
+    thread.push(comment(2, 'oui à tout'));
+    Object.assign(q, { labels: [...q.labels, { name: 'factory:running' }], comments: 2, updated_at: new Date(Date.now() + 1000).toISOString() });
+    await page.locator('.ticket.working[data-number="20"]').waitFor({ timeout: 20000 });
+    thread.push(comment(3, `${AGENT}\n1. Une seule langue ? ➡️ oui\n\nRépondez par numéro (ex. « 1 oui »), ou « oui à tout ».`));
+    Object.assign(q, { labels: q.labels.filter((l) => l.name !== 'factory:running'), comments: 3, updated_at: new Date(Date.now() + 2000).toISOString() });
+    await page.waitForFunction(() => { const b = document.querySelector('.ticket.yours[data-number="20"] button.go'); return b && !b.disabled && b.textContent === 'Oui pour tout'; }, null, { timeout: 20000 });
+    await page.waitForTimeout(1000); // the card just slid back into « À vous de jouer »: a touch counts once it settled
+    await page.locator('.ticket.yours[data-number="20"] button.go').click();
+    await waitFor(() => sentOn(writes, 20).length > 1, page);
+    assert.deepEqual(sentOn(writes, 20), ['oui à tout', 'oui à tout']);
+  });
+});

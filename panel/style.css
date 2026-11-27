@@ -561,6 +561,8 @@ details summary { color: var(--text); }
 .ticket.pending .card-actions .button:hover, .ticket.pending .card-actions button:hover:not(:disabled) { border-color: var(--muted); }
 /* Wide enough for « Envoi… », so the button does not jump once pressed. */
 .ticket.pending .card-actions button.go { min-width: 9em; }
+/* Issue #620: « Oui pour tout » is the widest label; one width for it on both cards, from « Oui pour tout » to « Envoyé ✓ ». */
+.ticket.yours .card-actions button.go.all, .ticket.pending .card-actions button.go.all { min-width: 9em; }
 .ticket.pending .card-actions button.go:disabled { opacity: 1; color: var(--muted); }
 .ticket.pending .blocked-tag { font-weight: 600; color: var(--danger); }
 @media (prefers-color-scheme: dark) {
@@ -634,11 +636,12 @@ details summary { color: var(--text); }
 /* Retouch 3 (#269): « go » / « Ok » and its quiet buttons share one row (the quiet buttons say it in one word, see
    SHORT_LABELS); the blue button stays first and keeps its width when it reads « Envoi… ». */
 .ticket.yours .card-actions { gap: 8px; }
-.ticket.yours .card-actions button.go { flex: 0 0 auto; width: auto; min-width: 8.25em; padding-inline: 8px; font-weight: 600; white-space: nowrap; }
+.ticket.yours .card-actions button.go { flex: 0 0 auto; width: auto; min-width: 8.25em; padding-inline: 12px; font-weight: 600; white-space: nowrap; }
 /* Issue #450: « Envoi… » shows at once after the touch; it stays crisp (muted, not faded), like on a waiting card. */
 .ticket.yours .card-actions button.go:disabled { opacity: 1; background: var(--surface); border-color: var(--line); color: var(--muted); }
 .ticket.yours .card-actions > :not(.go) { flex: 0 1 auto; white-space: nowrap; overflow-wrap: normal; }
-.ticket.yours .card-actions .button::after, .ticket.yours .card-actions button::after { content: ""; position: absolute; inset: -7px -5px; }
+/* 44 px under the finger; the touch areas of two buttons side by side meet in the middle of their 8 px gap, without overlapping. */
+.ticket.yours .card-actions .button::after, .ticket.yours .card-actions button::after { content: ""; position: absolute; inset: -7px -4px; }
 
 /* ---- « Mise en production » (issue #294) ---- */
 .button[aria-disabled=true] { opacity: .55; cursor: not-allowed; }
