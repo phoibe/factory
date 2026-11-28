@@ -1,0 +1,24 @@
+{
+  "files": [
+    "consommation--desktop--sombre.png",
+    "consommation--desktop.png",
+    "consommation--mobile--sombre.png",
+    "consommation--mobile.png",
+    "reglages-generaux--desktop--sombre.png",
+    "reglages-generaux--desktop.png",
+    "reglages-generaux--mobile--sombre.png",
+    "reglages-generaux--mobile.png"
+  ],
+  "unchanged": [
+    "tableau--desktop--sombre.png",
+    "tableau--desktop.png",
+    "tableau--mobile--sombre.png",
+    "tableau--mobile.png"
+  ],
+  "framed": [
+    "reglages-generaux--desktop--sombre.png",
+    "reglages-generaux--desktop.png",
+    "reglages-generaux--mobile--sombre.png",
+    "reglages-generaux--mobile.png"
+  ]
+}
