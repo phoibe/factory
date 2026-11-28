@@ -26,3 +26,6 @@
 {"t":"2026-11-28T11:20:21.979Z","kind":"skill","name":"test-driven-development","id":"toolu_019iCP2BQYwzDYDafkLp2N2m"}
 {"t":"2026-11-28T11:20:31.213Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"[kind:task-review] Relecture tâche 3","id":"toolu_019RsZJUBrCv58RW8SvMRdfd"}
 {"t":"2026-11-28T11:20:33.698Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-28T11:20:51.580Z","kind":"agent","model":"opus","effort":"medium","role":"code","label":"[kind:task-review] Relecture tâche 1","id":"toolu_018npcMSJZvrHRuc3GepTiMX"}
+{"t":"2026-11-28T11:20:53.803Z","kind":"gate","event":"Stop"}
+{"t":"2026-11-28T11:20:56.046Z","kind":"test","cmd":"node --test test/usage.test.mjs 2>&1 | grep -E \"^not ok|^# (pass|fail)|error:|expected|actual\" | head -30","ok":false,"id":"toolu_016bCj7LZDPRVVN21wdwJEju"}
