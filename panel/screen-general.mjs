@@ -1,6 +1,6 @@
 import { toBase64 } from './lib.mjs';
 import { errorText } from './errors.mjs';
-import { readRunnersFile } from './machine.mjs';
+import { readRunnersFile, ensureRunnersBranch } from './machine.mjs';
 import { MODEL_ROLES, MODEL_FAMILIES, familyLabel, roleModel } from './models.mjs';
 import { frenchSpaces } from './stack.mjs';
 import { FACTORY_REPO, MACHINE_CHOICES, $, app, el, toast, machineRadios, onReset, onUnsaved, onView, shown, setGeneralOpen, provide, call } from './common.mjs';
@@ -15,15 +15,10 @@ const runnersFile = (path) => readRunnersFile(api, path);
 
 // Writes the general settings (machine and models) on the factory's branch (created if it does not exist yet).
 async function writeGeneral({ machine: choice, models }) {
-  if (!(await api(`/repos/${FACTORY_REPO}/branches/${RUNNERS_BRANCH}`).catch(() => null))) {
-    const tree = await api(`/repos/${FACTORY_REPO}/git/trees`, { method: 'POST', body: JSON.stringify({ tree: [
-      { path: 'README.md', mode: '100644', type: 'blob', content: 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' },
-    ] }) });
-    const commit = await api(`/repos/${FACTORY_REPO}/git/commits`, { method: 'POST', body: JSON.stringify({ message: 'chore(factory): dev server branch', tree: tree.sha, parents: [] }) });
-    await api(`/repos/${FACTORY_REPO}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${RUNNERS_BRANCH}`, sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
-  }
+  await ensureRunnersBranch(api);
   const fresh = await runnersFile('settings.json');
-  // Keeps what changed there since the page loaded (runner labels): only the machine and the models are written from here.
+  // Keeps what changed there since the page loaded (runner labels, the « Consommation » page's `quota`): only the machine
+  // and the models are written from here.
   const body = JSON.stringify({ ...(fresh.json || call('machineSettings') || {}), machine: choice, models }, null, 2) + '\n';
   const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
     method: 'PUT',
@@ -46,6 +41,7 @@ const generalFrom = (raw) => ({ machine: raw?.machine === 'github' ? 'github' : 
 async function openGeneral(from = $('general-open')) {
   const open = !$('general-view').hidden;
   if (!open) general.from = from;
+  call('closeUsage'); // the top button, from the « Consommation » page: back to the general page itself
   const session = app.token, project = app.current;
   // What was edited stays while the page is dirty: it is read again only when clean (or when it could not be read).
   const clean = !generalDirty() || general.unreadable;
@@ -75,10 +71,11 @@ async function openGeneral(from = $('general-open')) {
   }
   Object.assign(general, generalFrom(settings.json), { unreadable: settings.unreadable });
   general.saved = generalValue();
-  if (!$('general-view').hidden) renderGeneral();
+  renderGeneral(); // also when hidden: the « Consommation » page, opened meanwhile, comes back to a filled page
 }
 function closeGeneral(giveFocusBack = false) {
-  const wasOpen = !$('general-view').hidden;
+  const wasOpen = !$('general-view').hidden || !$('usage-view').hidden;
+  call('closeUsage');
   $('project-view').classList.remove('on-general');
   $('general-view').hidden = true;
   $('general-open').setAttribute('aria-pressed', 'false');
@@ -101,11 +98,13 @@ function renderGeneral() {
       ...MODEL_FAMILIES.map((f) => el('option', { value: f.id, selected: general.models[r.id] === f.id }, familyLabel(f)))))));
   const models = el('fieldset', {}, el('legend', {}, 'Modèles'), ...modelRows,
     el('p', { class: 'models-note' }, frenchSpaces('L’agent qui pilote chaque lancement garde le modèle de la routine du projet sur claude.ai : la factory ne peut pas le changer, choisissez-le dans la routine. Il confie toujours le plan et l’écriture du code aux rôles ci-dessus, même pour une petite retouche.')));
+  // The « Consommation » page (issue #628): it replaces this page and leaves its unsaved choices as they are.
+  const usageLink = el('p', { class: 'usage-link' }, el('button', { type: 'button', id: 'usage-open', class: 'link-button', onclick: () => call('openUsage').catch((err) => toast(errorText(err))) }, 'Voir la consommation'));
   const tasks = el('fieldset', { class: 'machine' }, el('legend', {}, 'Machine des tâches'),
     ...machineRadios('machine-general', MACHINE_CHOICES, general.machine, (v) => { general.machine = v; renderGeneral(); }, general.unreadable));
   const dirty = generalDirty();
   const failed = general.unreadable ? [el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.')] : [];
-  $('general').replaceChildren(...failed, models, tasks, el('div', { class: 'savebar' },
+  $('general').replaceChildren(...failed, models, usageLink, tasks, el('div', { class: 'savebar' },
     el('button', { type: 'submit', class: 'secondary', disabled: !dirty || general.unreadable }, 'Enregistrer'),
     el('span', { class: 'muted' }, general.unreadable ? '' : dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')));
 }

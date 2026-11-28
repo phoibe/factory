@@ -46,7 +46,10 @@ export const issue = (number, title, labels, extra = {}) => ({ number, title, st
 // are read at each request: a journey may change them on the way.
 // `root`: a folder served as the whole site, the panel as published (issue #561, scripts/stamp-panel.mjs); without it
 // the panel is served from its sources.
-export async function withPanel({ root = null, issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {}, device = {} }, journey) {
+// `usage`: the « Consommation » records (issue #628), full name → month ('YYYY-MM') → the month file's object, 'invalid'
+// (served as text that is not JSON) or an HTTP status; served at contents/usage/<month>.json?ref=claude/factory-usage
+// of any project, the factory included. A month not given is a 404.
+export async function withPanel({ root = null, issues = [], token = true, files = {}, fileDates = {}, viewport = null, failing = null, forbidden = null, missing = null, offline = null, config = {}, writeDelay = 0, repos = ['o/r'], comments = {}, factoryFiles = {}, publicRepos = [], events = [], chatServer = null, awaiting = [], branches = {}, repoIssues = {}, repoClosed = {}, repoComments = {}, slowRepos = {}, framedRepos = [], slowReads = [], etag = false, homepages = {}, closed = [], deploy = null, pushed = {}, configMeta = { sha: 's' }, refFiles = null, readToken = Boolean(chatServer), issueDelay = 0, created = {}, stable = null, tokenCheck = {}, scopes = {}, device = {}, usage = {} }, journey) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     try {
@@ -155,6 +158,14 @@ export async function withPanel({ root = null, issues = [], token = true, files 
         // The factory then queues a new feature (the board shows it in « File d'attente »).
         issues.push(issue(number, made.title, made.labels.includes('factory:feature') ? [...made.labels, 'factory:queued'] : made.labels, { body: made.body }));
         return json({ number, html_url: `https://github.com/o/r/issues/${number}` }, 201);
+      }
+      const usageFile = /^\/repos\/([^/]+\/[^/]+)\/contents\/usage\/(\d{4}-\d{2})\.json$/.exec(path);
+      if (usageFile && req.method() === 'GET' && new URL(req.url()).searchParams.get('ref') === 'claude/factory-usage') {
+        const data = usage[usageFile[1]]?.[usageFile[2]];
+        if (data === undefined) return json({ message: 'Not Found' }, 404);
+        if (typeof data === 'number') return json({ message: 'Server Error' }, data);
+        const text = data === 'invalid' ? '{ not json' : JSON.stringify(data);
+        return json({ content: Buffer.from(text).toString('base64'), encoding: 'base64', sha: 'u' });
       }
       if (req.method() !== 'GET') {
         writes.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });

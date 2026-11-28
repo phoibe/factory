@@ -716,7 +716,7 @@ details.advanced[open] > summary .advanced-summary { display: none; }
 /* Open, its group titles a touch lighter than the bold default. */
 details.advanced fieldset > legend { font-weight: 600; }
 /* ---- Réglages généraux (issue #544): a page of its own, in place of the project's header, tabs and panels ---- */
-#project-view.on-general > :not(#general-view) { display: none; }
+#project-view.on-general > :not(#general-view, #usage-view) { display: none; }
 .link-button { min-height: 44px; padding: 0; border: none; background: none; color: var(--text); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .link-button:hover { border: none; }
 .link-button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
@@ -761,3 +761,44 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .runner-alert-help { margin: 0 0 12px; }
 .pdot-warn { width: 10px; height: 10px; background: var(--warn-line); box-shadow: 0 0 0 1px var(--text); }
 .pwarn { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--warn-line); border-radius: 50%; background: var(--warn-soft); color: var(--text); font-size: .8125rem; font-weight: 700; line-height: 1; }
+
+/* Issue #628: the « Consommation » page, opened from « Réglages généraux ». A table of figures, no chart (DESIGN.md). */
+.usage-link { margin: -4px 0 16px; }
+#usage { padding-bottom: 24px; }
+.usage-filters { display: flex; flex-wrap: wrap; gap: 0 16px; margin: 0 0 16px; }
+.usage-field { min-width: 0; max-width: 100%; }
+.usage-field label { margin: 8px 0 6px; }
+.usage-field select { width: 100%; }
+.usage-field input[type=text] { width: 8em; max-width: 100%; font: inherit; font-size: 16px; font-family: var(--mono); color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 44px; }
+.usage-table-wrap { overflow-x: auto; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.usage-table-wrap:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.usage-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.usage-table th, .usage-table td { padding: 8px 12px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; }
+.usage-table thead th { border-top: none; color: var(--muted); font-size: .8125rem; font-weight: 600; }
+.usage-table .fig { text-align: right; }
+.usage-table small { display: block; color: var(--muted); font-size: .8125rem; }
+.usage-table tbody th { font-weight: 600; }
+.usage-kind th, .usage-kind td { background: var(--surface-2); }
+.usage-table .usage-kind th { padding-left: 36px; font-weight: 400; }
+.usage-total th, .usage-total td { border-top: 2px solid var(--line); font-weight: 700; }
+.usage-total small { font-weight: 400; }
+.usage-toggle { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin: -10px 0; padding: 0; border: none; border-radius: 6px; background: none; color: var(--text); font-weight: 600; text-align: left; }
+.usage-toggle:hover { border: none; text-decoration: underline; text-underline-offset: 3px; }
+.usage-toggle .chev { flex: none; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+.usage-toggle[aria-expanded=true] .chev { transform: rotate(45deg); }
+@media (prefers-reduced-motion: no-preference) { .usage-toggle .chev { transition: transform .15s; } }
+.usage-empty { margin: 0 0 8px; padding: 16px; border: 1px dashed var(--line); border-radius: 10px; }
+.usage-note { margin: 0 0 24px; font-size: .8125rem; }
+.usage-plan h2 { margin: 16px 0 0; font-size: 1rem; }
+.usage-plan h2:first-of-type { margin-top: 0; }
+.usage-resets { display: flex; flex-wrap: wrap; gap: 0 24px; margin: 0 0 12px; }
+.usage-gauge { display: flex; flex-wrap: wrap; gap: 0 12px; margin: 8px 0 0; padding: 0; border: none; background: none; min-width: 0; }
+.usage-gauge legend { padding: 0; font-weight: 500; }
+.usage-gauge .usage-field label { font-weight: 400; color: var(--muted); }
+.usage-question { margin: 12px 0 0; }
+.usage-question p { margin: 0 0 8px; }
+.usage-question .muted { margin-top: 8px; font-size: .8125rem; }
+.usage-last { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.usage-last p { margin: 0; }
+.usage-plan [role=status], .usage-calibration, .usage-split { margin: 12px 0 0; }
+.usage-split { margin-top: 4px; }

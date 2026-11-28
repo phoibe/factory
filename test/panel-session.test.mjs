@@ -43,7 +43,7 @@ test('un projet devenu introuvable ne bloque pas le compteur des lancements du j
 test('la remise à zéro vit dans la partie commune ; chaque écran y déclare la sienne', () => {
   assert.match(files['common.mjs'], /export function resetSession\(/);
   const declaring = Object.keys(files).filter((f) => /^onReset\(\(\) => \{$/m.test(files[f])).sort();
-  assert.deepEqual(declaring, ['github.mjs', 'screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-projects.mjs', 'screen-rules.mjs']);
+  assert.deepEqual(declaring, ['github.mjs', 'screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-projects.mjs', 'screen-rules.mjs', 'screen-usage.mjs']);
 });
 
 test('après un retour à la connexion, le projet qui s\'ouvre montre toujours « Suivi » (issue #590)', () => {

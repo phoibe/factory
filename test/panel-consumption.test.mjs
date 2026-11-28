@@ -156,3 +156,12 @@ test('average: too few measures under 5 tasks', () => {
   assert.equal(fmtAverage(57.4, 14), '4,10 $');
   assert.equal(fmtAverage(null, 14), 'tarif inconnu');
 });
+
+test('every kind id the runs record (agent/scripts/usage.mjs) has a name on the page', async () => {
+  const { KINDS } = await import('../agent/scripts/usage.mjs');
+  assert.deepEqual(Object.keys(KINDS).sort(), TASK_TYPES.map((t) => t.id).sort());
+  for (const [type, ids] of Object.entries(KINDS)) {
+    const named = TASK_TYPES.find((t) => t.id === type).kinds;
+    for (const id of ids) assert.ok(named.some((k) => k.id === id && k.name), `${type}/${id}`);
+  }
+});

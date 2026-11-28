@@ -1,4 +1,4 @@
-// Accessibility check of the panel: the login screen, then Suivi, Paramètres and Agent of a signed-in
+// Accessibility check of the panel: the login screen, then Suivi, Paramètres, Agent, Réglages généraux and Consommation of a signed-in
 // (fake) account, each in the light and the dark theme. A violation fails the test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,6 +22,17 @@ const TYPES = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascri
 const FAKE_REPO = { name: 'exemple', full_name: 'proprio/exemple', private: true, html_url: 'https://github.com/proprio/exemple', default_branch: 'main', archived: false, is_template: false };
 const label = (name) => ({ name });
 const issue = (number, title, labels, extra = {}) => ({ number, title, labels: labels.map(label), state: 'open', comments: 0, created_at: '2026-11-04T10:00:00Z', updated_at: '2026-11-04T12:00:00Z', html_url: `https://github.com/proprio/exemple/issues/${number}`, user: { login: 'proprio' }, body: '', ...extra });
+// « Consommation » (issue #628): one run two hours ago, a plan week started two days ago with one reading, and a
+// calibration (its window holds no run: the stored dollars per point stay), so the plan columns and the question show.
+const HOUR = 3600e3;
+const ago = (h) => new Date(Date.now() - h * HOUR);
+const USAGE_RUN = { at: ago(2).toISOString(), issue: 34, stage: 'build', size: 'medium',
+  tasks: [{ type: 'pilot', kind: 'build', model: 'claude-opus-5-5', effort: 'medium' }, { type: 'review', kind: 'final-review', model: 'claude-fable-5-2', effort: 'high' },
+    { type: 'code', kind: 'build', model: 'claude-opus-5-5', effort: 'medium' }],
+  use: [0, 1, 2].map((i) => [ago(2).toISOString().slice(0, 13), i, i === 1 ? 'claude-fable-5-2' : 'claude-opus-5-5', 1000, 0, 0, 500000, 80000]) };
+const QUOTA = { reset: { all: { day: ago(48).getDay() || 7, hour: 0 }, fable: null }, readings: [{ at: ago(1).toISOString(), all: 12, fable: 4, outside: null }],
+  calibration: { from: ago(30).toISOString(), to: ago(26).toISOString(), all: 2, fable: 1, points: { all: 10, fable: 10 } } };
+const asContent = (data) => ({ content: Buffer.from(JSON.stringify(data)).toString('base64'), encoding: 'base64', sha: 'u' });
 async function fakeGithub(route) {
   const url = new URL(route.request().url());
   const path = url.pathname;
@@ -30,6 +41,9 @@ async function fakeGithub(route) {
   // A chat message never leaves (the network drops): it stays in the conversation, « Non envoyé » (issue #580).
   if (route.request().method() === 'POST' && /\/issues(\/\d+\/comments)?$/.test(path)) return route.abort('internetdisconnected');
   if (path === '/user/repos') return json([FAKE_REPO]);
+  if (path === '/repos/phoibe/factory/contents/settings.json') return json(asContent({ machine: 'dev-server', quota: QUOTA }));
+  if (path === `/repos/proprio/exemple/contents/usage/${USAGE_RUN.at.slice(0, 7)}.json`) return json(asContent({ v: 1, runs: { s1: USAGE_RUN } }));
+  if (/\/contents\/usage\//.test(path)) return json({ message: 'Not Found' }, 404);
   if (path === '/repos/proprio/exemple/contents/factory.config.json') {
     const content = (await readFile(join(ROOT, 'defaults/factory.config.json'))).toString('base64');
     return json({ content, sha: 'abc', name: 'factory.config.json' });
@@ -68,7 +82,7 @@ test('panel screens have no axe violations, in the light and the dark theme', as
         await page.route('https://api.github.com/**', fakeGithub);
         await page.addInitScript((on) => { if (on) localStorage.setItem('factory.token', 'fake-token-for-tests'); }, signedIn);
         await page.goto(`http://localhost:${server.address().port}/`);
-        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Agent', 'tab-chat', '.conv'], ['Réglages généraux', 'general-open', '#general fieldset']] : [['Connexion', null, '#login:not([hidden])']];
+        const screens = signedIn ? [['Suivi', 'tab-board', '.ticket'], ['Paramètres', 'tab-rules', '#rules fieldset'], ['Agent', 'tab-chat', '.conv'], ['Réglages généraux', 'general-open', '#general fieldset'], ['Consommation', 'usage-open', '#usage table']] : [['Connexion', null, '#login:not([hidden])']];
         for (const [name, tab, ready] of screens) {
           if (tab) {
             await page.waitForSelector('#project-view:not([hidden])');
@@ -101,6 +115,23 @@ test('panel screens have no axe violations, in the light and the dark theme', as
               return n;
             }).catch(() => 0);
             if (hit < 44) found.push(`Agent, message non envoyé, téléphone (${scheme}): « Renvoyer » trop petit ou caché : ${hit} px sous le doigt`);
+            await page.setViewportSize({ width: 1280, height: 720 });
+          }
+          if (name === 'Consommation') {
+            // A row unfolded and the question about use outside the factory, then the same page at phone width.
+            await page.click('#usage .usage-toggle');
+            await page.fill('#usage-reading-all', '15');
+            await page.click('#usage-reading-save');
+            await page.waitForSelector('#usage-question', { state: 'visible', timeout: 15000 });
+            const open = await page.evaluate(() => axe.run());
+            for (const v of open.violations) found.push(`Consommation, ligne dépliée et question (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+            const columns = await page.locator('#usage thead th').count();
+            if (columns !== 7) found.push(`Consommation (${scheme}): ${columns} colonnes au lieu de 7`);
+            await page.setViewportSize({ width: 390, height: 844 });
+            const phone = await page.evaluate(() => axe.run());
+            for (const v of phone.violations) found.push(`Consommation, téléphone (${scheme}): ${v.id}: ${v.nodes.length} node(s) — ${v.nodes[0].target.join(' ')}`);
+            const wide = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+            if (wide) found.push(`Consommation, téléphone (${scheme}): la page déborde`);
             await page.setViewportSize({ width: 1280, height: 720 });
           }
           if (name === 'Paramètres') {
