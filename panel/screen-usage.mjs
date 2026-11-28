@@ -107,7 +107,9 @@ function closeUsage(back = false) {
 
 // ---- The table ------------------------------------------------------------------------------------------------------
 const rowKey = (r) => JSON.stringify([r.type, r.family, r.version, r.effort]);
-const money = (dollars, tokens) => el('td', { class: 'fig' }, fmtDollars(dollars), el('small', {}, fmtTokens(tokens)));
+// « tarif inconnu » in place of the dollars is a phrase: small and grey, as in `fig`.
+const money = (dollars, tokens) => el('td', { class: 'fig' }, dollars === null ? el('span', { class: 'usage-word' }, fmtDollars(dollars)) : fmtDollars(dollars),
+  el('small', {}, fmtTokens(tokens)));
 // A figure cell; a phrase in place of a figure (« trop peu de mesures », « tarif inconnu », « — ») stays in the text's
 // font, small and grey: only digits are mono (numbers.mjs).
 const fig = (text) => el('td', { class: 'fig' }, /\d/.test(text) || text === '' ? text : el('span', { class: 'usage-word' }, text));
@@ -176,8 +178,14 @@ function disarm() {
   usage.confirmDelete = false;
   return true;
 }
+// From a field being typed in: a full render would rebuild the field and move the caret, so only the button changes.
+function disarmInPlace() {
+  if (!disarm()) return;
+  const b = $('usage-reading-delete');
+  if (b) b.textContent = 'Supprimer ce relevé';
+}
 const resetText = (r) => `${DAYS[r.day - 1]} ${r.hour} h`;
-const button = (id, label, onclick, { disabled = false, kind = 'secondary' } = {}) => el('button', { type: 'button', id, class: kind,
+const button = (id, label, onclick, { disabled = false, kind = 'secondary', name = null } = {}) => el('button', { type: 'button', id, class: kind, 'aria-label': name,
   disabled: disabled || (!!usage.saving && usage.saving !== id) || usage.unreadable, 'aria-disabled': usage.saving === id ? 'true' : null,
   onclick: () => { if (usage.saving === id) return; if (id !== 'usage-reading-delete') disarm(); onclick(); } }, usage.saving === id ? 'Enregistrement…' : label);
 
@@ -197,7 +205,7 @@ function resetPart() {
   const resetChanged = JSON.stringify(usage.reset) !== JSON.stringify({ all: resetDraft(q.reset.all), fable: resetDraft(q.reset.fable) });
   const parts = [el('h3', {}, 'Remise à zéro de la semaine'), el('div', { class: 'usage-resets' }, gauge('all', 'Tous moteurs'), gauge('fable', 'Fable')),
     el('div', { class: 'actions' }, button('usage-reset-save', 'Enregistrer', () => saveReset(), { disabled: !resetChanged }),
-      q.reset.all ? button('usage-reset-cancel', 'Annuler', () => { usage.editReset = false; usage.resetError = ''; usage.focus = 'usage-reset-edit'; render(); }) : null)];
+      q.reset.all ? button('usage-reset-cancel', 'Annuler', () => { usage.editReset = false; usage.resetError = ''; usage.focus = 'usage-reset-edit'; render(); }, { name: 'Annuler la modification de la remise à zéro' }) : null)];
   if (usage.resetError) parts.push(el('p', { class: 'error', role: 'alert' }, usage.resetError));
   return parts;
 }
@@ -205,8 +213,8 @@ function resetPart() {
 function readingPart() {
   const off = usage.unreadable || !!usage.saving;
   const parts = [el('h3', {}, 'Nouveau relevé'), el('div', { class: 'usage-resets' },
-    field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; if (disarm()) render(); }, off || !!usage.asking),
-    field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; if (disarm()) render(); }, off || !!usage.asking)),
+    field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; disarmInPlace(); }, off || !!usage.asking),
+    field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; disarmInPlace(); }, off || !!usage.asking)),
   button('usage-reading-save', 'Noter le relevé', () => noteReading(), { disabled: !!usage.asking })];
   if (usage.error) parts.push(el('p', { class: 'error', role: 'alert' }, usage.error));
   if (usage.asking) {
@@ -215,7 +223,7 @@ function readingPart() {
       el('div', { class: 'actions', role: 'group', 'aria-labelledby': 'usage-question' },
         button('usage-outside-yes', 'Oui', () => commitReading(true)),
         button('usage-outside-no', 'Non', () => commitReading(false)),
-        button('usage-outside-cancel', 'Annuler', () => { usage.asking = null; usage.focus = 'usage-reading-all'; render(); })),
+        button('usage-outside-cancel', 'Annuler', () => { usage.asking = null; usage.focus = 'usage-reading-all'; render(); }, { name: 'Annuler le relevé' })),
       el('p', { class: 'muted' }, OUTSIDE_HELP)));
   }
   if (usage.message) parts.push(el('p', { id: 'usage-message', role: 'status', tabindex: '-1' }, usage.message));

@@ -280,6 +280,19 @@ test('un moteur sans tarif affiche tarif inconnu', async () => {
     await openUsage(page, url);
     assert.deepEqual((await cells(page, 'Plans et organisation')).slice(1, 4), ['Opus 5.6 · élevé', '1', 'tarif inconnu\n2 M de tokens']);
     assert.equal((await cells(page, 'Total'))[3].split('\n')[0], 'tarif inconnu');
+    // In the Total column too, the phrase is small and grey like « trop peu de mesures » (DESIGN.md).
+    const look = await page.evaluate(() => {
+      const st = (n) => (n ? { size: getComputedStyle(n).fontSize, color: getComputedStyle(n).color, font: getComputedStyle(n).fontFamily } : null);
+      const rows = [...document.querySelectorAll('#usage tbody tr')];
+      const plan = rows.find((r) => r.textContent.includes('Plans et organisation'));
+      const total = rows.find((r) => r.classList.contains('usage-total'));
+      const phrase = (row) => [...row.querySelectorAll('td.fig .usage-word')].find((w) => w.textContent === 'tarif inconnu');
+      const average = [...document.querySelectorAll('#usage td.fig .usage-word')].find((w) => w.textContent === 'trop peu de mesures');
+      return { row: st(phrase(plan)), total: st(phrase(total)), average: st(average) };
+    });
+    assert.ok(look.row && look.total && look.average, `the phrases are wrapped: ${JSON.stringify(look)}`);
+    assert.deepEqual(look.row, look.average);
+    assert.deepEqual(look.total, look.average);
   });
 });
 
@@ -315,8 +328,9 @@ test('les chiffres du tableau sont en police à chasse fixe, les mots dans la po
       const font = (n) => getComputedStyle(n).fontFamily;
       const total = row.querySelectorAll('td.fig')[1];
       return { digits: font(total.querySelector('.num')), unit: font(total), tokens: font(total.querySelector('small')),
-        words: font([...row.querySelectorAll('td.fig')].find((c) => c.textContent === 'trop peu de mesures').firstElementChild || row.querySelectorAll('td.fig')[2]) };
+        words: (() => { const w = [...row.querySelectorAll('td.fig .usage-word')].find((c) => c.textContent === 'trop peu de mesures'); return w ? font(w) : null; })() };
     });
+    assert.ok(fonts.words, 'the Revue row has a « trop peu de mesures » cell');
     assert.match(fonts.digits, /^"?Geist Mono/);
     for (const f of [fonts.unit, fonts.tokens, fonts.words]) assert.match(f, /^"?Geist"?,/);
   });
@@ -464,5 +478,38 @@ test('Confirmer la suppression redevient Supprimer ce relevé dès qu une autre 
     await page.waitForFunction(() => !document.querySelector('#usage-reading-save')?.disabled);
     await disarmed('answering the question');
     assert.ok(settingsPuts(writes).every((w) => decode(w).quota.readings.length === 2), 'nothing deleted');
+  });
+});
+
+// Final review 3 of #628.
+test('taper un relevé pendant que la suppression attend sa confirmation garde les chiffres dans l ordre', async () => {
+  const first = { at: new Date(Date.now() - HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([first]) } }, async ({ page, url, writes }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('button', { name: 'Supprimer ce relevé' }).click();
+    await plan.getByRole('button', { name: 'Confirmer la suppression' }).waitFor();
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).click();
+    await page.keyboard.type('13');
+    assert.equal(await page.locator('#usage-reading-all').inputValue(), '13');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'usage-reading-all');
+    await plan.getByRole('button', { name: 'Supprimer ce relevé' }).waitFor(); // disarmed by the typing
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByRole('button', { name: 'Non', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#usage-reading-save')?.disabled);
+    assert.deepEqual(decode(settingsPuts(writes).at(-1)).quota.readings.map((r) => r.all), [10, 13]);
+  });
+});
+
+test('les deux boutons Annuler disent ce qu ils annulent', async () => {
+  const first = { at: new Date(Date.now() - HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([first]) } }, async ({ page, url }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('button', { name: 'Modifier' }).click();
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('12');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByRole('button', { name: 'Annuler la modification de la remise à zéro', exact: true }).waitFor();
+    await plan.getByRole('button', { name: 'Annuler le relevé', exact: true }).waitFor();
   });
 });
