@@ -7,6 +7,8 @@
 //           calibration: { from, to, all, fable, points: { all, fable }, previous? } | null }
 // `points` keeps the gauge rises so the dollars per point can be recomputed from fresher prices.
 
+import { fmtDollars } from './consumption.mjs';
+
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const MIN_RISE = 5;
@@ -65,10 +67,14 @@ const inWeek = (quota, now) => {
 export const needsQuestion = (quota, now) => inWeek(quota, now).length > 0;
 
 const crossed = (reset, a, b) => !!reset && weekStart(new Date(time(b)), reset).getTime() > time(a);
-// A reset lies between two readings: its time was crossed, or a gauge went down.
-function resetBetween(quota, a, b) {
+// A reset lies between chain[i - 1] and chain[i]: its time was crossed, or a gauge went down (Fable compared with the
+// last non-empty Fable value, so an empty field in between does not hide a drop).
+function resetBetween(quota, chain, i) {
+  const a = chain[i - 1];
+  const b = chain[i];
+  const lastFable = chain.slice(0, i).map((r) => r.fable).filter((f) => f != null).at(-1);
   return crossed(quota.reset?.all, a, b) || crossed(quota.reset?.fable, a, b)
-    || b.all < a.all || (a.fable != null && b.fable != null && b.fable < a.fable);
+    || b.all < a.all || (lastFable != null && b.fable != null && b.fable < lastFable);
 }
 
 // Keeps one earlier calibration, enough for « Supprimer ce relevé » without growing settings.json forever.
@@ -88,7 +94,7 @@ export function addReading(quota, { all, fable = null, outside = null }, { now, 
   // Walk back while the later reading said « Non » and no reset lies between the two.
   const chain = [...week, reading];
   let s = chain.length - 1;
-  while (s > 0 && chain[s].outside === false && !resetBetween(quota, chain[s - 1], chain[s])) s -= 1;
+  while (s > 0 && chain[s].outside === false && !resetBetween(quota, chain, s)) s -= 1;
   if (s === chain.length - 1) return next(kept, RESET_CROSSED);
   const start = chain[s];
 
@@ -135,15 +141,14 @@ export function livePerPoint(quota, cost) {
   return { all: live(c.all, c.points?.all, false), fable: live(c.fable, c.points?.fable, true) };
 }
 
-const dollars = (v) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: v < 10 ? 1 : 0 }).format(v)} $`;
 const shortDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
 export function calibrationLine(quota, now, cost) {
   const c = quota?.calibration;
   if (!c) return 'Pas encore d’étalonnage';
   const per = livePerPoint(quota, cost);
-  const parts = [`Étalonnage du ${shortDate(c.to)}`, `1 % de la semaine tous moteurs ≈ ${dollars(per.all)}`];
-  if (per.fable != null) parts.push(`1 % de la semaine Fable ≈ ${dollars(per.fable)}`);
+  const parts = [`Étalonnage du ${shortDate(c.to)}`, `1 % de la semaine tous moteurs ≈ ${fmtDollars(per.all)}`];
+  if (per.fable != null) parts.push(`1 % de la semaine Fable ≈ ${fmtDollars(per.fable)}`);
   const line = parts.join(' · ');
   return now - Date.parse(c.to) < PROVISIONAL ? `${line} (provisoire)` : line;
 }

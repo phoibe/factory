@@ -162,6 +162,21 @@ test('a gauge that went down blocks as a reset', () => {
   assert.equal(r.quota.calibration, null);
 });
 
+test('a Fable drop across an empty Fable reading blocks as a reset', () => {
+  let q = add(base(), { all: 10, fable: 20 }, d(26, 10)).quota;
+  q = add(q, { all: 12, fable: null, outside: false }, d(26, 20)).quota;
+  const r = add(q, { all: 30, fable: 5, outside: false }, d(27, 20));
+  assert.equal(r.message, 'Une remise à zéro a eu lieu depuis le relevé précédent : ce relevé devient le point de départ.');
+  assert.equal(r.quota.calibration, null);
+});
+
+test('calibrationLine shows cents below 10 $ and drops them when they round to ,00', () => {
+  let q = add(base(), { all: 0, fable: 0 }, d(27, 0)).quota;
+  const cost = (f, t, { fableOnly } = {}) => ((t - f) / H) * (fableOnly ? 0.3 : 2.05); // 20 h → 41 $ / 10, 6 $ / 10
+  q = add(q, { all: 10, fable: 10, outside: false }, d(27, 20), cost).quota;
+  assert.equal(calibrationLine(q, d(28, 10), cost), 'Étalonnage du 27 nov. · 1 % de la semaine tous moteurs ≈ 4,10 $ · 1 % de la semaine Fable ≈ 0,60 $');
+});
+
 test('a new calibration replaces the previous one and deleteLast restores it', () => {
   let q = add(base(), { all: 10 }, d(26, 10)).quota;
   q = add(q, { all: 20, outside: false }, d(26, 20)).quota; // 10 $ / 10 → 1
@@ -226,7 +241,7 @@ test('splitLines splits the newest reading of the week between factory and the r
     readings: [{ at: d(27, 9).toISOString(), all: 43, fable: 20, outside: null }],
     calibration: { from: d(20, 9).toISOString(), to: d(20, 19).toISOString(), all: 1, fable: 1, points: { all: 10, fable: 3 } },
   };
-  // Week starts 26 9:00, reading at 27 9:00 → 24 h of factory; 1 $ / point stored, live cost doubles it
+  // Week starts 26 9:00, reading at 27 9:00 → 24 h of factory (31 $, 12 $ Fable); the calibration window gives 1 $ / point
   const cost = (f, t, { fableOnly } = {}) => {
     if (f.getTime() === d(20, 9).getTime()) return fableOnly ? 3 : 10; // calibration window: 1 $ / point
     return ((t - f) / H) * (fableOnly ? 0.5 : 31 / 24);

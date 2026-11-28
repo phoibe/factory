@@ -133,7 +133,9 @@ const oneDecimal = (x) => decimals(x, 1).replace(/,0$/, '');
 
 export function fmtDollars(x) {
   if (x === null || x === undefined || Number.isNaN(x)) return 'tarif inconnu';
-  return x >= 10 ? `${groups(x)} $` : `${decimals(x, 2)} $`;
+  const cents = Math.round(x * 100) / 100; // 9.996 is « 10 $ », 5.999 is « 6 $ »
+  if (cents >= 10) return `${groups(cents)} $`;
+  return Number.isInteger(cents) ? `${cents} $` : `${decimals(cents, 2)} $`;
 }
 
 export function fmtTokens(n) {
