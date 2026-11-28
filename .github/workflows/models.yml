@@ -1,4 +1,4 @@
-# Monthly: proposes the latest model versions of the catalog as a pull request.
+# Monthly: proposes the latest model versions of the catalog and the public prices as a pull request.
 name: Mise à jour des modèles
 on:
   schedule:
@@ -22,20 +22,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- scripts/lib/models.mjs; then echo "Modèles déjà à jour"; exit 0; fi
+          if git diff --quiet -- scripts/lib/models.mjs scripts/lib/prices.mjs; then echo "Modèles et tarifs déjà à jour"; exit 0; fi
           branch="models-update-$(date +%Y-%m)"
           {
-            echo "Les versions des familles de modèles proposées dans les réglages ont changé :"
-            echo
-            git diff -U0 -- scripts/lib/models.mjs | grep -E "^[+-]  \{ id:" | sed -E "s/^([+-])  \{ id: '([^']+)', name: '[^']*', version: '([^']+)'.*/\1 \2 \3/"
-            echo
+            if ! git diff --quiet -- scripts/lib/models.mjs; then
+              echo "Les versions des familles de modèles proposées dans les réglages ont changé :"
+              echo
+              git diff -U0 -- scripts/lib/models.mjs | grep -E "^[+-]  \{ id:" | sed -E "s/^([+-])  \{ id: '([^']+)', name: '[^']*', version: '([^']+)'.*/\1 \2 \3/"
+              echo
+            fi
+            if ! git diff --quiet -- scripts/lib/prices.mjs; then
+              echo "Les tarifs publics utilisés par la page « Consommation » ont changé (dollars par million de tokens : entrée / sortie / lecture du cache) :"
+              echo
+              git diff -U0 -- scripts/lib/prices.mjs | grep -E "^[+-]  \{ model:" | sed -E "s/^([+-])  \{ model: '([^']+)', input: ([^,]+), output: ([^,]+), cacheRead: ([^,]+),.*/\1 \2 \3 \/ \4 \/ \5/"
+              echo
+            fi
             echo "Rien d'autre ne change : le choix des modèles de chaque rôle reste le vôtre."
           } > "$RUNNER_TEMP/pr-body.md"
           git config user.name "factory-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add scripts/lib/models.mjs
-          git commit -m "chore: update model catalog"
+          git add scripts/lib/models.mjs scripts/lib/prices.mjs
+          git commit -m "chore: update model catalog and prices"
           git push -f origin "$branch"
           gh pr create --title "Mise à jour mensuelle des modèles" --body-file "$RUNNER_TEMP/pr-body.md" --head "$branch" \
             || gh pr edit "$branch" --body-file "$RUNNER_TEMP/pr-body.md" \

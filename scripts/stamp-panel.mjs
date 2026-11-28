@@ -16,6 +16,7 @@ export const SHARED = [
   'scripts/lib/waits.mjs',
   'scripts/lib/trust.mjs',
   'scripts/lib/models.mjs',
+  'scripts/lib/prices.mjs',
 ];
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
