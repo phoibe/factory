@@ -2,3 +2,4 @@
 {"t":"2026-11-28T10:53:48.201Z","kind":"agent","model":"fable","effort":"high","role":"plan","up":true,"label":"Spec issue 628","id":"toolu_01Kab7CuWbxH9e1ywTTXL8cv"}
 {"t":"2026-11-28T10:53:56.675Z","kind":"skill","name":"grilling","id":"toolu_013QQMAK1ydHpUF8BQe59x8w"}
 {"t":"2026-11-28T10:53:56.989Z","kind":"skill","name":"domain-modeling","id":"toolu_01YU2DkXvwdAtKpEbinarc9A"}
+{"t":"2026-11-28T10:58:33.406Z","kind":"skill","name":"claude-api","id":"toolu_01UTMQQLvGyLXvCSejJASqs7"}
