@@ -24,10 +24,41 @@ test('a version with no price gives null', () => {
   assert.equal(priceFor(undefined), null);
 });
 
-test('the table holds the four families of the catalog, checked on the date shown', () => {
-  assert.equal(PRICES_DATE, '2026-11-03');
-  assert.deepEqual(PRICES.map((p) => p.model).sort(), ['claude-fable-5-2', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5']);
-  for (const p of PRICES) assert.match(p.since, /^\d{4}-\d{2}-\d{2}$/);
+// Invariants only, never the live values: the monthly job runs the tests before opening its PR, so a real price
+// change must not fail them.
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const checkTable = (prices, date) => {
+  for (const family of ['fable', 'opus', 'sonnet', 'haiku']) {
+    assert.ok(prices.some((p) => p.model.startsWith(`claude-${family}-`)), family);
+  }
+  assert.match(date, DAY);
+  for (const p of prices) {
+    assert.match(p.since, DAY, p.model);
+    for (const k of ['input', 'output', 'cacheRead']) assert.ok(Number.isFinite(p[k]) && p[k] > 0, `${p.model} ${k}`);
+  }
+};
+
+test('the table holds the four families of the catalog, each version dated', () => {
+  checkTable(PRICES, PRICES_DATE);
+});
+
+test('the live table stays valid after a monthly update', async () => {
+  const live = readFileSync(new URL('../scripts/lib/prices.mjs', import.meta.url), 'utf8');
+  const first = PRICES[0];
+  const found = [
+    { model: first.model, input: first.input * 2, output: first.output, cacheRead: first.cacheRead },
+    { model: 'claude-opus-9-9', input: 6, output: 30, cacheRead: 0.6 },
+  ];
+  const next = updatePrices(live, found, '2027-01-01');
+  assert.notEqual(next, live);
+  const file = join(mkdtempSync(join(tmpdir(), 'prices-live-')), 'prices.mjs');
+  writeFileSync(file, next);
+  const mod = await import(pathToFileURL(file).href);
+  checkTable(mod.PRICES, mod.PRICES_DATE);
+  assert.equal(mod.PRICES_DATE, '2027-01-01');
+  assert.equal(mod.priceFor(first.model).input, first.input * 2);
+  assert.equal(mod.priceFor('claude-opus-9-9').since, '2027-01-01');
+  assert.equal(mod.PRICES.length, PRICES.length + 1);
 });
 
 const OPUS = { model: 'claude-opus-5-5', input: 4, output: 20, cacheRead: 0.4 };
@@ -95,6 +126,31 @@ test('updatePrices bumps a changed version and appends a new one, removing none'
   assert.equal(mod.PRICES_DATE, '2026-12-01', 'the date shown follows the last change');
   assert.equal(mod.AFTER, true);
   assert.equal(next.slice(next.indexOf('// prices:end')), source.slice(source.indexOf('// prices:end')));
+});
+
+test('parsePrices fails safe: a row is kept only when cache read <= input <= output, all positive', () => {
+  const rows = [
+    'Claude Opus 5.5 | $4 | $5 | $8 | $0.40 | $20',
+    'Claude Opus 5.6 | $20 | $5 | $8 | $0.40 | $4',
+    'Claude Opus 5.7 | $4 | $5 | $8 | $6 | $20',
+    'Claude Opus 5.8 | $0 | $0 | $0 | $0 | $0',
+    'Claude Opus 5.9 | $4 | $5 | $8 | $0 | $20',
+  ].join('\n');
+  assert.deepEqual(parsePrices(rows), [OPUS]);
+});
+
+test('updatePrices appends no legacy version older than the table for its family', () => {
+  const found = [
+    { model: 'claude-opus-4-1', input: 15, output: 75, cacheRead: 1.5 },
+    { model: 'claude-fable-4', input: 15, output: 75, cacheRead: 1.5 },
+    { model: 'claude-opus-5-6', input: 4, output: 20, cacheRead: 0.2 },
+    { model: 'claude-mythos-1-0', input: 20, output: 100, cacheRead: 2 },
+  ];
+  const next = updatePrices(source, found, '2026-12-01');
+  assert.doesNotMatch(next, /claude-opus-4-1|claude-fable-4'/);
+  assert.match(next, /model: 'claude-opus-5-6'/);
+  assert.match(next, /model: 'claude-mythos-1-0'/, 'a family not in the table yet is added');
+  assert.equal(updatePrices(source, found.slice(0, 2), '2026-12-01'), source);
 });
 
 test('updatePrices returns the same text when nothing changed', () => {
