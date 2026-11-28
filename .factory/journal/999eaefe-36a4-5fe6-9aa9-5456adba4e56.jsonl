@@ -1,0 +1,2 @@
+{"t":"2026-11-28T11:07:10.857Z","kind":"run","stage":"grilling","issue":630,"pr":null,"repo":"phoibe/factory","models":{"plan":"opus","review":"opus"}}
+{"t":"2026-11-28T11:07:52.397Z","kind":"agent","model":"opus","effort":"high","role":"plan","up":true,"label":"Spec tranche #630","id":"toolu_01WL5tKT23LWvDuUeDxQ9hki"}
