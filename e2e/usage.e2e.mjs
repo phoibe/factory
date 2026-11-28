@@ -53,6 +53,8 @@ const headers = (page) => page.locator('#usage thead th').allTextContents();
 // A reset two days ago at midnight: the plan week started before every reading of the journeys.
 const twoDaysAgo = new Date(Date.now() - 48 * HOUR);
 const RESET = { day: twoDaysAgo.getDay() || 7, hour: 0 };
+// A calibration whose window holds no run: its stored dollars per point stay, and the 7 columns show.
+const CALIBRATED = { from: new Date(Date.now() - 30 * HOUR).toISOString(), to: new Date(Date.now() - 26 * HOUR).toISOString(), all: 2, fable: 1, points: { all: 10, fable: 10 } };
 const quotaWith = (readings, calibration = null) => ({ machine: 'dev-server', quota: { reset: { all: RESET, fable: null }, readings, calibration } });
 
 test('le lien Voir la consommation ouvre la page et Retour aux réglages généraux y ramène', async () => {
@@ -79,7 +81,7 @@ test('la page montre type de tâche, moteur et effort, tâches, total en dollars
     assert.deepEqual(await headers(page), ['Type de tâche', 'Moteur · effort', 'Tâches', 'Total', 'En moyenne']);
     assert.deepEqual(await cells(page, 'Écriture du code'), ['Écriture du code', 'Opus · moyen', '5', '10 $\n500 000 tokens', '2 $']);
     assert.deepEqual(await cells(page, 'Agent qui pilote'), ['Agent qui pilote', 'Opus · moyen', '1', '0,20 $\n1 M de tokens', 'trop peu de mesures']);
-    const types = await page.locator('#usage tbody tr:not([hidden]) th').allTextContents();
+    const types = await page.locator('#usage tbody tr:not([hidden]) th').evaluateAll((n) => n.map((x) => x.innerText.trim()));
     assert.deepEqual(types, ['Écriture du code', 'Revue', 'Agent qui pilote', 'Total'], 'the order of the settings, the pilot last');
     assert.deepEqual(await cells(page, 'Total'), ['Total', '', '9', '22 $\n1,8 M de tokens', '']);
     await page.getByText('Équivalent au tarif public de Claude du 3 nov. 2026. Ce n\'est pas une facture.', { exact: true }).waitFor();
@@ -102,7 +104,8 @@ test('un toucher sur une ligne Revue la déplie : relecture finale, relectures 2
     await button.click();
     assert.equal(await button.getAttribute('aria-expanded'), 'true');
     for (const kind of ['relecture finale', 'relectures 2 et 3', 'vérification de portée']) {
-      assert.deepEqual(await cells(page, kind), [kind, '', '1', '4 $\n100 000 tokens', 'trop peu de mesures']);
+      // The row already says « trop peu de mesures »: its parts show a dash instead of repeating it.
+      assert.deepEqual(await cells(page, kind), [kind, '', '1', '4 $\n100 000 tokens', '—']);
     }
     await button.click();
     assert.equal(await page.locator('#usage').getByText('relecture finale', { exact: true }).isVisible(), false);
@@ -125,14 +128,21 @@ test('les listes Période et Taille changent les chiffres et sans remise à zér
 });
 
 test('la remise à zéro enregistrée propose Semaine de forfait en cours et Semaine de forfait précédente', async () => {
-  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': { machine: 'github', models: { code: 'sonnet' } } } }, async ({ page, url, writes }) => {
+  await withPanel({ usage: USAGE, writeDelay: 500, factoryFiles: { 'settings.json': { machine: 'github', models: { code: 'sonnet' } } } }, async ({ page, url, writes }) => {
     await openUsage(page, url);
     const plan = page.getByRole('group', { name: 'Mon forfait' });
-    assert.equal(await plan.getByRole('button', { name: 'Noter le relevé' }).isDisabled(), true, 'no reading before the reset is saved');
+    await page.getByRole('heading', { name: 'Mon forfait', level: 2 }).waitFor();
+    // Nothing to save yet: the button looks disabled. A reading before the reset says what to do first.
+    assert.ok(Number(await plan.getByRole('button', { name: 'Enregistrer' }).evaluate((b) => b.disabled && getComputedStyle(b).opacity)) < 1);
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('12');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByText('Choisissez d\'abord la remise à zéro.', { exact: true }).waitFor();
+    assert.equal(settingsPuts(writes).length, 0);
     const all = plan.getByRole('group', { name: 'Tous moteurs' });
     await all.getByRole('combobox', { name: 'Jour' }).selectOption({ label: 'mardi' });
     await all.getByRole('combobox', { name: 'Heure' }).selectOption({ label: '9 h' });
     await plan.getByRole('button', { name: 'Enregistrer' }).click();
+    await plan.getByRole('button', { name: 'Enregistrement…' }).waitFor();
     await page.getByRole('combobox', { name: 'Période' }).locator('option', { hasText: 'Semaine de forfait en cours' }).waitFor({ state: 'attached' });
     assert.deepEqual(await page.getByRole('combobox', { name: 'Période' }).locator('option').allTextContents(),
       ['Semaine de forfait en cours', 'Semaine de forfait précédente', '30 derniers jours']);
@@ -141,6 +151,11 @@ test('la remise à zéro enregistrée propose Semaine de forfait en cours et Sem
     assert.equal(puts[0].body.branch, 'factory-runners');
     assert.deepEqual(decode(puts[0]), { machine: 'github', models: { code: 'sonnet' }, quota: { reset: { all: { day: 2, hour: 9 }, fable: null }, readings: [], calibration: null } });
     assert.equal(await plan.getByRole('button', { name: 'Noter le relevé' }).isDisabled(), false);
+    // Set once: the reset folds into one line, with « Modifier » to open it again.
+    await plan.getByText('Remise à zéro : mardi 9 h', { exact: true }).waitFor();
+    assert.equal(await plan.getByRole('combobox', { name: 'Jour' }).count(), 0);
+    await plan.getByRole('button', { name: 'Modifier' }).click();
+    assert.equal(await all.getByRole('combobox', { name: 'Jour' }).inputValue(), '2');
   });
 });
 
@@ -174,7 +189,9 @@ test('un relevé de 150 est refusé et Supprimer ce relevé le fait disparaître
     assert.equal(await page.getByText('Avez-vous utilisé Claude en dehors de la factory').count(), 0);
     assert.equal(settingsPuts(writes).length, 0);
     await plan.getByText(/^Dernier relevé du /).waitFor();
+    // Two steps: the first touch only asks for a confirmation.
     await plan.getByRole('button', { name: 'Supprimer ce relevé' }).click();
+    await plan.getByRole('button', { name: 'Confirmer la suppression' }).click();
     await plan.getByText(/^Dernier relevé du /).waitFor({ state: 'detached' });
     assert.deepEqual(decode(settingsPuts(writes)[0]).quota.readings, []);
   });
@@ -197,6 +214,9 @@ test('sans étalonnage seuls les dollars s\'affichent et après étalonnage 1 % 
     assert.deepEqual((await cells(page, 'Revue')).slice(5), ['≈ 10 %', '≈ 5,4 %']);
     assert.deepEqual((await cells(page, 'Écriture du code')).slice(5), ['0 %', '≈ 4,5 %']);
     assert.deepEqual((await cells(page, 'Total')).slice(5), ['≈ 10 %', '≈ 10 %']);
+    await page.locator('#usage tbody').getByRole('button', { name: 'Revue' }).click();
+    const fit = await page.locator('.usage-table-wrap').evaluate((w) => [w.scrollWidth, w.clientWidth]);
+    assert.ok(fit[0] <= fit[1], `the 7 columns fit on a computer: ${fit}`);
     const c = decode(settingsPuts(writes)[0]).quota.calibration;
     assert.deepEqual(c.points, { all: 10, fable: 10 });
     await page.getByText('Jauge tous moteurs à 20 % : factory ≈ 10 %, hors factory ≈ 10 %').waitFor();
@@ -204,7 +224,7 @@ test('sans étalonnage seuls les dollars s\'affichent et après étalonnage 1 % 
 });
 
 test('sur téléphone la page tient sur une colonne et le tableau défile sans faire déborder la page', async () => {
-  await withPanel({ usage: USAGE, viewport: { width: 390, height: 844 } }, async ({ page, url }) => {
+  await withPanel({ usage: USAGE, viewport: { width: 390, height: 844 }, factoryFiles: { 'settings.json': quotaWith([], CALIBRATED) } }, async ({ page, url }) => {
     await page.goto(url);
     await page.getByRole('tab', { name: 'Suivi' }).waitFor();
     await page.getByText('Plus', { exact: true }).click();
@@ -240,6 +260,9 @@ test('une page sans mesure dit Aucune mesure pour l\'instant', async () => {
     await openUsage(page, url);
     await page.getByText('Aucune mesure pour l\'instant. Les chiffres arrivent à la fin du prochain lancement de la factory.', { exact: true }).waitFor();
     assert.equal(await page.locator('#usage table').count(), 0);
+    // Nothing to filter or to price: no lists, no price line.
+    assert.equal(await page.getByRole('combobox', { name: 'Période' }).count(), 0);
+    assert.equal(await page.getByText('Ce n\'est pas une facture.', { exact: false }).count(), 0);
     assert.ok(reads.some((p) => p.startsWith('/repos/phoibe/factory/contents/usage/')), 'the factory itself is read');
     assert.ok(reads.some((p) => p.startsWith('/repos/o/r/contents/usage/')));
   });
@@ -272,16 +295,24 @@ test('un relevé noté sur un autre appareil pendant que la page est ouverte res
     // Deleting works on the fresh readings too: the phone's 14 becomes the last one.
     factoryFiles['settings.json'] = decode(settingsPuts(writes).at(-1));
     await plan.getByRole('button', { name: 'Supprimer ce relevé' }).click();
+    await plan.getByRole('button', { name: 'Confirmer la suppression' }).click();
     await plan.getByText(/^Dernier relevé du .+ tous moteurs 14 %$/).waitFor();
     assert.deepEqual(decode(settingsPuts(writes).at(-1)).quota.readings.map((r) => r.all), [10, 14]);
   });
 });
 
-test('les chiffres du tableau sont en police à chasse fixe', async () => {
+test('les chiffres du tableau sont en police à chasse fixe, les mots dans la police du texte', async () => {
   await withPanel({ usage: USAGE }, async ({ page, url }) => {
     await openUsage(page, url);
-    const font = await page.evaluate(() => getComputedStyle(document.querySelector('#usage td.fig')).fontFamily);
-    assert.match(font, /Geist Mono/);
+    const fonts = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#usage tbody tr')].find((r) => r.textContent.includes('Revue'));
+      const font = (n) => getComputedStyle(n).fontFamily;
+      const total = row.querySelectorAll('td.fig')[1];
+      return { digits: font(total.querySelector('.num')), unit: font(total), tokens: font(total.querySelector('small')),
+        words: font([...row.querySelectorAll('td.fig')].find((c) => c.textContent === 'trop peu de mesures').firstElementChild || row.querySelectorAll('td.fig')[2]) };
+    });
+    assert.match(fonts.digits, /^"?Geist Mono/);
+    for (const f of [fonts.unit, fonts.tokens, fonts.words]) assert.match(f, /^"?Geist"?,/);
   });
 });
 
@@ -299,6 +330,8 @@ test('au clavier, la question puis le message de Mon forfait reçoivent le focus
     assert.match(await page.evaluate(() => document.activeElement.textContent), /il en faut au moins 5/);
     await page.locator('#usage-reading-delete').focus();
     await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Confirmer la suppression');
+    await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.activeElement?.closest('.usage-plan') && document.activeElement.id === 'usage-reading-all');
   });
 });
@@ -311,6 +344,7 @@ test('une remise à zéro avec seulement un jour ou seulement une heure est refu
     await plan.getByRole('button', { name: 'Enregistrer' }).click();
     await plan.getByText('Choisissez un jour et une heure.', { exact: true }).waitFor();
     await plan.getByRole('group', { name: 'Tous moteurs' }).getByRole('combobox', { name: 'Heure' }).selectOption({ label: '9 h' });
+    assert.equal(await plan.getByText('Choisissez un jour et une heure.').count(), 0, 'corrected: the message goes');
     await plan.getByRole('group', { name: 'Fable' }).getByRole('combobox', { name: 'Heure' }).selectOption({ label: '8 h' });
     await plan.getByRole('button', { name: 'Enregistrer' }).click();
     await plan.getByText('Choisissez un jour et une heure.', { exact: true }).waitFor();
@@ -319,5 +353,65 @@ test('une remise à zéro avec seulement un jour ou seulement une heure est refu
     await plan.getByRole('button', { name: 'Enregistrer' }).click();
     await plan.getByText('Choisissez un jour et une heure.').waitFor({ state: 'detached' });
     await page.waitForFunction(() => document.querySelectorAll('#usage-period option').length === 3);
+  });
+});
+
+// Design pass of #628 (.impeccable/critique/consommation-628.md).
+test('un choix de remise à zéro pas encore enregistré reste après un relevé', async () => {
+  const r1 = { at: new Date(Date.now() - 5 * HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([r1]) } }, async ({ page, url }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('button', { name: 'Modifier' }).click();
+    await plan.getByRole('group', { name: 'Fable' }).getByRole('combobox', { name: 'Jour' }).selectOption({ label: 'lundi' });
+    await plan.getByRole('group', { name: 'Fable' }).getByRole('combobox', { name: 'Heure' }).selectOption({ label: '8 h' });
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('20');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByRole('button', { name: 'Non', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#usage-reading-save')?.disabled);
+    assert.deepEqual(await page.evaluate(() => [document.querySelector('#usage-reset-fable-day').value, document.querySelector('#usage-reset-fable-hour').value]), ['1', '8']);
+  });
+});
+
+test('Annuler referme la question et laisse corriger le relevé', async () => {
+  const first = { at: new Date(Date.now() - HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([first]) } }, async ({ page, url, writes }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('2');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByRole('button', { name: 'Annuler' }).click();
+    assert.equal(await page.getByText('Avez-vous utilisé Claude en dehors de la factory').count(), 0);
+    const field = plan.getByRole('textbox', { name: 'Tous moteurs (%)' });
+    assert.equal(await field.isEditable(), true);
+    assert.equal(await field.inputValue(), '2');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'usage-reading-all');
+    assert.equal(settingsPuts(writes).length, 0);
+  });
+});
+
+test('sur téléphone les premiers chiffres se voient, la première colonne reste et le cadre montre qu il défile', async () => {
+  await withPanel({ usage: USAGE, viewport: { width: 390, height: 844 }, factoryFiles: { 'settings.json': quotaWith([], CALIBRATED) } }, async ({ page, url }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Suivi' }).waitFor();
+    await page.getByText('Plus', { exact: true }).click();
+    await page.getByRole('button', { name: 'Réglages généraux' }).click();
+    await page.getByRole('button', { name: 'Voir la consommation' }).click();
+    await page.locator('#usage table').waitFor();
+    const before = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#usage tbody tr')].find((r) => r.textContent.includes('Écriture du code'));
+      const total = row.querySelectorAll('td.fig')[1].getBoundingClientRect();
+      return { total: Math.round(total.right), width: innerWidth, engine: row.querySelector('th').innerText, more: document.querySelector('.usage-table-wrap').classList.contains('more') };
+    });
+    assert.ok(before.total <= before.width, `the total is on the first screen: ${JSON.stringify(before)}`);
+    assert.match(before.engine, /Opus · moyen/, 'the engine sits under the type');
+    assert.equal(before.more, true, 'the frame shows there is more to the right');
+    const after = await page.locator('.usage-table-wrap').evaluate(async (w) => {
+      w.scrollLeft = w.scrollWidth;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { first: Math.round(w.querySelector('tbody th').getBoundingClientRect().left), wrap: Math.round(w.getBoundingClientRect().left), more: w.classList.contains('more') };
+    });
+    assert.ok(Math.abs(after.first - after.wrap) <= 1, `the first column stays: ${JSON.stringify(after)}`);
+    assert.equal(after.more, false);
   });
 });

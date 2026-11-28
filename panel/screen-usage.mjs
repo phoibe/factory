@@ -22,7 +22,7 @@ const OUTSIDE_HELP = 'En dehors de la factory : vos discussions sur claude.ai, v
 const EMPTY = 'Aucune mesure pour l\'instant. Les chiffres arrivent à la fin du prochain lancement de la factory.';
 
 const fresh = () => ({ seq: 0, runs: [], missing: [], quota: emptyQuota(), unreadable: false, period: null, size: 'all', open: new Set(),
-  reset: { all: { day: '', hour: '' }, fable: { day: '', hour: '' } }, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', saving: false, focus: null });
+  reset: { all: { day: '', hour: '' }, fable: { day: '', hour: '' } }, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', saving: null, focus: null, editReset: false, confirmDelete: false });
 const emptyQuota = () => ({ reset: { all: null, fable: null }, readings: [], calibration: null });
 const usage = fresh();
 
@@ -88,7 +88,7 @@ async function openUsage() {
   if (seq !== usage.seq || app.token !== session || $('usage-view').hidden) return; // closed, or opened again meanwhile
   Object.assign(usage, {
     runs: read.flatMap((r) => r.runs || []), missing: read.filter((r) => r.failed).map((r) => r.failed),
-    quota, unreadable: settings.unreadable, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', focus: null,
+    quota, unreadable: settings.unreadable, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', focus: null, editReset: false, confirmDelete: false,
     reset: { all: resetDraft(quota.reset.all), fable: resetDraft(quota.reset.fable) },
   });
   render();
@@ -108,7 +108,9 @@ function closeUsage(back = false) {
 // ---- The table ------------------------------------------------------------------------------------------------------
 const rowKey = (r) => JSON.stringify([r.type, r.family, r.version, r.effort]);
 const money = (dollars, tokens) => el('td', { class: 'fig' }, fmtDollars(dollars), el('small', {}, fmtTokens(tokens)));
-const fig = (text) => el('td', { class: 'fig' }, text);
+// A figure cell; a phrase in place of a figure (« trop peu de mesures », « tarif inconnu », « — ») stays in the text's
+// font, small and grey: only digits are mono (numbers.mjs).
+const fig = (text) => el('td', { class: 'fig' }, /\d/.test(text) || text === '' ? text : el('span', { class: 'usage-word' }, text));
 
 function table(rows, total, perPoint, periodId) {
   const span = weeks(periodId);
@@ -119,7 +121,7 @@ function table(rows, total, perPoint, periodId) {
     perPoint.all != null && { name: 'Semaine tous moteurs', cell: (dollars) => share(dollars, perPoint.all) },
   ].filter(Boolean);
   const head = el('thead', {}, el('tr', {}, ...['Type de tâche', 'Moteur · effort', 'Tâches', 'Total', 'En moyenne', ...gauges.map((g) => g.name)]
-    .map((name, i) => el('th', { scope: 'col', class: i >= 2 ? 'fig' : '' }, name))));
+    .map((name, i) => el('th', { scope: 'col', class: i >= 2 ? 'fig' : i === 1 ? 'usage-engine' : '' }, name))));
   const body = el('tbody', {});
   rows.forEach((r, i) => {
     const key = rowKey(r);
@@ -129,18 +131,26 @@ function table(rows, total, perPoint, periodId) {
     const toggle = el('button', { type: 'button', id: `usage-toggle-${i}`, class: 'usage-toggle', 'aria-expanded': String(open), 'aria-controls': kindIds.join(' '),
       onclick: () => { if (usage.open.has(key)) usage.open.delete(key); else usage.open.add(key); render(); } },
     el('span', { class: 'chev', 'aria-hidden': 'true' }), typeName(r.type));
-    body.append(el('tr', {}, el('th', { scope: 'row' }, toggle), el('td', {}, engineLabel(r)), fig(String(r.tasks)), money(r.dollars, r.tokens),
+    // On a phone the engine goes under the type (style.css): the first figures fit on the first screen.
+    body.append(el('tr', {}, el('th', { scope: 'row' }, toggle, el('span', { class: 'usage-engine-inline' }, engineLabel(r))),
+      el('td', { class: 'usage-engine' }, engineLabel(r)), fig(String(r.tasks)), money(r.dollars, r.tokens),
       fig(fmtAverage(r.dollars, r.tasks)), ...gauges.map((g) => fig(g.cell(r.dollars, r.fableDollars, isFable)))));
     r.kinds.forEach((k, j) => body.append(el('tr', { id: kindIds[j], class: 'usage-kind', hidden: !open },
-      el('th', { scope: 'row' }, k.name), el('td', {}, ''), fig(String(k.tasks)), money(k.dollars, k.tokens), fig(fmtAverage(k.dollars, k.tasks)),
+      el('th', { scope: 'row' }, k.name), el('td', { class: 'usage-engine' }, ''), fig(String(k.tasks)), money(k.dollars, k.tokens),
+      fig(r.tasks < 5 ? '—' : fmtAverage(k.dollars, k.tasks)), // the row already says « trop peu de mesures »
       ...gauges.map((g) => fig(g.cell(k.dollars, isFable ? k.dollars ?? 0 : 0, isFable))))));
   });
-  body.append(el('tr', { class: 'usage-total' }, el('th', { scope: 'row' }, 'Total'), el('td', {}, ''), fig(String(total.tasks)), money(total.dollars, total.tokens), fig(''),
+  body.append(el('tr', { class: 'usage-total' }, el('th', { scope: 'row' }, 'Total'), el('td', { class: 'usage-engine' }, ''), fig(String(total.tasks)), money(total.dollars, total.tokens), fig(''),
     ...gauges.map((g) => fig(g.cell(total.dollars, total.fableDollars, false)))));
   // A region that scrolls sideways on a phone: reachable with the keyboard, named for screen readers.
-  return el('div', { class: 'usage-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Consommation par type de tâche' },
+  // `more`: columns lie beyond the right edge, which then fades (style.css) to show the frame scrolls.
+  return el('div', { class: 'usage-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Consommation par type de tâche', onscroll: (e) => showMore(e.currentTarget) },
     el('table', { class: 'usage-table' }, head, body));
 }
+function showMore(wrap) {
+  if (wrap) wrap.classList.toggle('more', wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1);
+}
+addEventListener('resize', () => showMore(document.querySelector('.usage-table-wrap')));
 const typeName = (id) => TASK_TYPES.find((t) => t.id === id)?.name || id;
 
 // ---- « Mon forfait » ------------------------------------------------------------------------------------------------
@@ -159,40 +169,71 @@ const when = (iso) => {
   return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 };
 
-function plan(now) {
+const resetText = (r) => `${DAYS[r.day - 1]} ${r.hour} h`;
+const button = (id, label, onclick, { disabled = false, kind = 'secondary' } = {}) => el('button', { type: 'button', id, class: kind,
+  disabled: disabled || (!!usage.saving && usage.saving !== id) || usage.unreadable, 'aria-disabled': usage.saving === id ? 'true' : null,
+  onclick: () => { if (usage.saving !== id) onclick(); } }, usage.saving === id ? 'Enregistrement…' : label);
+
+// The weekly reset is set once: a form until it is saved (or « Modifier »), then one line.
+function resetPart() {
   const q = usage.quota;
-  const off = usage.unreadable || usage.saving;
+  const off = usage.unreadable || !!usage.saving;
+  if (q.reset.all && !usage.editReset) {
+    const text = `Remise à zéro : ${resetText(q.reset.all)}${q.reset.fable ? ` · Fable : ${resetText(q.reset.fable)}` : ''}`;
+    return [el('div', { class: 'usage-reset-line' }, el('p', {}, text),
+      button('usage-reset-edit', 'Modifier', () => { usage.editReset = true; usage.reset = { all: resetDraft(q.reset.all), fable: resetDraft(q.reset.fable) }; usage.focus = 'usage-reset-all-day'; render(); }))];
+  }
+  const pick = (id, part) => (v) => { usage.reset[id][part] = v; usage.resetError = ''; render(); };
   const gauge = (id, name) => el('fieldset', { class: 'usage-gauge' }, el('legend', {}, name),
-    select(`usage-reset-${id}-day`, 'Jour', dayOptions, usage.reset[id].day, (v) => { usage.reset[id].day = v; render(); }, off),
-    select(`usage-reset-${id}-hour`, 'Heure', hourOptions, usage.reset[id].hour, (v) => { usage.reset[id].hour = v; render(); }, off));
+    select(`usage-reset-${id}-day`, 'Jour', dayOptions, usage.reset[id].day, pick(id, 'day'), off),
+    select(`usage-reset-${id}-hour`, 'Heure', hourOptions, usage.reset[id].hour, pick(id, 'hour'), off));
   const resetChanged = JSON.stringify(usage.reset) !== JSON.stringify({ all: resetDraft(q.reset.all), fable: resetDraft(q.reset.fable) });
-  const parts = [el('legend', {}, 'Mon forfait')];
-  if (usage.unreadable) parts.push(el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.'));
-  parts.push(el('h2', {}, 'Remise à zéro de la semaine'), el('div', { class: 'usage-resets' }, gauge('all', 'Tous moteurs'), gauge('fable', 'Fable')),
-    el('button', { type: 'button', id: 'usage-reset-save', class: 'secondary', disabled: off || !resetChanged, onclick: () => saveReset() }, 'Enregistrer'));
+  const parts = [el('h3', {}, 'Remise à zéro de la semaine'), el('div', { class: 'usage-resets' }, gauge('all', 'Tous moteurs'), gauge('fable', 'Fable')),
+    el('div', { class: 'actions' }, button('usage-reset-save', 'Enregistrer', () => saveReset(), { disabled: !resetChanged }),
+      q.reset.all ? button('usage-reset-cancel', 'Annuler', () => { usage.editReset = false; usage.resetError = ''; usage.focus = 'usage-reset-edit'; render(); }) : null)];
   if (usage.resetError) parts.push(el('p', { class: 'error', role: 'alert' }, usage.resetError));
-  parts.push(el('h2', {}, 'Nouveau relevé'), el('div', { class: 'usage-resets' },
+  return parts;
+}
+
+function readingPart() {
+  const off = usage.unreadable || !!usage.saving;
+  const parts = [el('h3', {}, 'Nouveau relevé'), el('div', { class: 'usage-resets' },
     field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; }, off || !!usage.asking),
     field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; }, off || !!usage.asking)),
-  el('button', { type: 'button', id: 'usage-reading-save', class: 'secondary', disabled: off || !q.reset.all || !!usage.asking, onclick: () => noteReading() }, 'Noter le relevé'));
+  button('usage-reading-save', 'Noter le relevé', () => noteReading(), { disabled: !!usage.asking })];
   if (usage.error) parts.push(el('p', { class: 'error', role: 'alert' }, usage.error));
   if (usage.asking) {
     parts.push(el('div', { class: 'usage-question' },
       el('p', { id: 'usage-question', tabindex: '-1' }, 'Avez-vous utilisé Claude en dehors de la factory depuis le relevé précédent ?'),
       el('div', { class: 'actions', role: 'group', 'aria-labelledby': 'usage-question' },
-        el('button', { type: 'button', id: 'usage-outside-yes', class: 'secondary', disabled: off, onclick: () => commitReading(true) }, 'Oui'),
-        el('button', { type: 'button', id: 'usage-outside-no', class: 'secondary', disabled: off, onclick: () => commitReading(false) }, 'Non')),
+        button('usage-outside-yes', 'Oui', () => commitReading(true)),
+        button('usage-outside-no', 'Non', () => commitReading(false)),
+        button('usage-outside-cancel', 'Annuler', () => { usage.asking = null; usage.focus = 'usage-reading-all'; render(); })),
       el('p', { class: 'muted' }, OUTSIDE_HELP)));
   }
   if (usage.message) parts.push(el('p', { id: 'usage-message', role: 'status', tabindex: '-1' }, usage.message));
+  return parts;
+}
+
+function plan(now) {
+  const q = usage.quota;
+  const parts = [el('legend', {}, el('h2', {}, 'Mon forfait'))];
+  if (usage.unreadable) parts.push(el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.'));
+  // What is done each time (the reading) comes first once the reset, done once, is saved.
+  if (q.reset.all) parts.push(...readingPart());
+  else parts.push(...resetPart(), ...readingPart());
   const last = [...q.readings].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
   if (last) {
+    // « Supprimer ce relevé » may undo a calibration: a second touch confirms it.
     parts.push(el('div', { class: 'usage-last' },
       el('p', {}, `Dernier relevé du ${when(last.at)} : tous moteurs ${last.all} %${last.fable != null ? `, Fable ${last.fable} %` : ''}`),
-      el('button', { type: 'button', id: 'usage-reading-delete', class: 'secondary', disabled: off, onclick: () => removeLast() }, 'Supprimer ce relevé')));
+      button('usage-reading-delete', usage.confirmDelete ? 'Confirmer la suppression' : 'Supprimer ce relevé',
+        () => { if (usage.confirmDelete) removeLast(); else { usage.confirmDelete = true; render(); } })));
   }
-  parts.push(el('p', { class: 'usage-calibration' }, calibrationLine(q, now, quotaCost)));
+  // The answer first (the week's split), then the calibration it comes from, in grey.
   for (const line of splitLines(q, now, quotaCost)) parts.push(el('p', { class: 'usage-split' }, line));
+  parts.push(el('p', { class: 'usage-calibration muted' }, calibrationLine(q, now, quotaCost)));
+  if (q.reset.all) parts.push(...resetPart());
   return el('fieldset', { class: 'usage-plan' }, ...parts);
 }
 
@@ -207,14 +248,17 @@ function render() {
   const perPoint = livePerPoint(usage.quota, quotaCost);
   const priced = new Date(`${PRICES_DATE}T00:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   $('usage').removeAttribute('aria-busy');
+  // No measure at all: nothing to filter or to price, only the sentence.
+  const measured = usage.runs.length > 0;
   $('usage').replaceChildren(
     ...usage.missing.map((name) => el('p', { class: 'machine-status warn' }, `Les chiffres de ${name} n'ont pas pu être lus.`)),
-    el('div', { class: 'usage-filters' },
+    measured ? el('div', { class: 'usage-filters' },
       select('usage-period', 'Période', periods.map((p) => [p.id, p.label]), period.id, (v) => { usage.period = v; render(); }, false),
-      select('usage-size', 'Taille', SIZES, usage.size, (v) => { usage.size = v; render(); }, false)),
+      select('usage-size', 'Taille', SIZES, usage.size, (v) => { usage.size = v; render(); }, false)) : null,
     rows.length ? table(rows, total, perPoint, period.id) : el('p', { class: 'usage-empty' }, EMPTY),
-    el('p', { class: 'muted usage-note' }, `Équivalent au tarif public de Claude du ${priced}. Ce n'est pas une facture.`),
+    measured ? el('p', { class: 'muted usage-note' }, `Équivalent au tarif public de Claude du ${priced}. Ce n'est pas une facture.`) : null,
     plan(now));
+  showMore(document.querySelector('.usage-table-wrap'));
   // After an action of « Mon forfait », the focus goes to what it produced (the question, the message), never back to
   // the top of the page past the whole table.
   const target = usage.focus && !usage.saving ? $(usage.focus) : null;
@@ -238,19 +282,20 @@ async function writeQuota(change) {
   call('generalWritten', { settings, sha: res?.content?.sha || null, general: settings.machine === 'github' ? 'github' : 'dev-server' });
   return quota;
 }
-async function save(change, after = () => {}) {
+// `by`: the button saving, which reads « Enregistrement… » meanwhile.
+async function save(by, change, after = () => {}) {
   if (usage.saving) return;
-  usage.saving = true;
+  usage.saving = by;
+  usage.confirmDelete = false;
   render();
   try {
     const quota = await writeQuota(change);
     usage.quota = quota;
-    usage.reset = { all: resetDraft(quota.reset.all), fable: resetDraft(quota.reset.fable) };
-    after();
+    after(quota);
   } catch (err) {
     toast(`Échec de l'enregistrement. ${errorText(err)}`);
   } finally {
-    usage.saving = false;
+    usage.saving = null;
     if (!$('usage-view').hidden) render();
   }
 }
@@ -262,14 +307,18 @@ function saveReset() {
   usage.resetError = !all || half(usage.reset.fable) ? 'Choisissez un jour et une heure.' : '';
   if (usage.resetError) return render();
   const fable = draftReset(usage.reset.fable);
-  return save((q) => ({ ...q, reset: { all, fable } }), () => { usage.message = ''; });
+  // Only a reset save brings the drafts back to what is saved: a reading leaves an unsaved choice as it is.
+  return save('usage-reset-save', (q) => ({ ...q, reset: { all, fable } }), (quota) => {
+    usage.message = ''; usage.editReset = false; usage.focus = 'usage-reset-edit';
+    usage.reset = { all: resetDraft(quota.reset.all), fable: resetDraft(quota.reset.fable) };
+  });
 }
 
 function noteReading() {
   const all = parseReading(usage.reading.all);
   const fable = parseReading(usage.reading.fable, { optional: true });
   usage.message = '';
-  usage.error = all.error || fable.error || '';
+  usage.error = !usage.quota.reset.all ? 'Choisissez d\'abord la remise à zéro.' : all.error || fable.error || '';
   if (usage.error) return render();
   const reading = { all: all.value, fable: fable.value };
   if (needsQuestion(usage.quota, new Date())) { usage.asking = reading; usage.focus = 'usage-question'; return render(); }
@@ -279,13 +328,13 @@ function commitReading(outside, reading = usage.asking) {
   if (!reading) return;
   let message = null;
   const change = (q) => { const out = addReading(q, { ...reading, outside }, { now: new Date(), cost: quotaCost }); message = out.message; return out.quota; };
-  return save(change, () => {
+  return save(outside === null ? 'usage-reading-save' : outside ? 'usage-outside-yes' : 'usage-outside-no', change, () => {
     usage.asking = null; usage.reading = { all: '', fable: '' }; usage.message = message || '';
     usage.focus = usage.message ? 'usage-message' : 'usage-reading-all';
   });
 }
 function removeLast() {
-  return save((q) => deleteLast(q), () => { usage.message = ''; usage.asking = null; usage.focus = 'usage-reading-all'; });
+  return save('usage-reading-delete', (q) => deleteLast(q), () => { usage.message = ''; usage.asking = null; usage.focus = 'usage-reading-all'; });
 }
 
 onReset(() => {
