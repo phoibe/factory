@@ -77,3 +77,5 @@
 {"t":"2026-11-28T11:48:55.692Z","kind":"test","cmd":"npm test 2>&1 | grep -B2 -A30 \"^not ok 139\" | grep -vE \"^\\s+at \" | head -50","ok":true,"id":"toolu_01Li7jMrmnKR1ypzCkdtE5Sg"}
 {"t":"2026-11-28T11:51:56.746Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/usage.e2e.mjs e2e/general-settings.e2e.mjs 2>&1 | grep -E \"^(not ok|# (pass|fail))\"; CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^(not ok|","ok":true,"id":"toolu_01LZktLeAHz28i4Y7FQtFmnJ"}
 {"t":"2026-11-28T11:52:18.480Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/machine.e2e.mjs e2e/settings-tab.e2e.mjs e2e/build-stamp.e2e.mjs e2e/panel.e2e.mjs 2>&1 | grep -E \"^(not ok|# (pass|fail))\"","ok":true,"id":"toolu_01DANQTuFKEvq39h6mVQDtqo"}
+{"t":"2026-11-28T11:53:11.368Z","kind":"skill","name":"requesting-code-review","id":"toolu_01RdFJWdeT8UcobK54KKq6kU"}
+{"t":"2026-11-28T11:53:32.574Z","kind":"agent","model":"opus","effort":"high","role":"review","label":"[kind:final-review] Relecture finale","id":"toolu_01JhwSH7nTnGoHyyrWmtbDX3"}
