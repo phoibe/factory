@@ -22,7 +22,7 @@ const OUTSIDE_HELP = 'En dehors de la factory : vos discussions sur claude.ai, v
 const EMPTY = 'Aucune mesure pour l\'instant. Les chiffres arrivent à la fin du prochain lancement de la factory.';
 
 const fresh = () => ({ seq: 0, runs: [], missing: [], quota: emptyQuota(), unreadable: false, period: null, size: 'all', open: new Set(),
-  reset: { all: { day: '', hour: '' }, fable: { day: '', hour: '' } }, reading: { all: '', fable: '' }, error: '', asking: null, message: '', saving: false });
+  reset: { all: { day: '', hour: '' }, fable: { day: '', hour: '' } }, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', saving: false, focus: null });
 const emptyQuota = () => ({ reset: { all: null, fable: null }, readings: [], calibration: null });
 const usage = fresh();
 
@@ -88,7 +88,7 @@ async function openUsage() {
   if (seq !== usage.seq || app.token !== session || $('usage-view').hidden) return; // closed, or opened again meanwhile
   Object.assign(usage, {
     runs: read.flatMap((r) => r.runs || []), missing: read.filter((r) => r.failed).map((r) => r.failed),
-    quota, unreadable: settings.unreadable, reading: { all: '', fable: '' }, error: '', asking: null, message: '',
+    quota, unreadable: settings.unreadable, reading: { all: '', fable: '' }, error: '', resetError: '', asking: null, message: '', focus: null,
     reset: { all: resetDraft(quota.reset.all), fable: resetDraft(quota.reset.fable) },
   });
   render();
@@ -165,11 +165,12 @@ function plan(now) {
   const gauge = (id, name) => el('fieldset', { class: 'usage-gauge' }, el('legend', {}, name),
     select(`usage-reset-${id}-day`, 'Jour', dayOptions, usage.reset[id].day, (v) => { usage.reset[id].day = v; render(); }, off),
     select(`usage-reset-${id}-hour`, 'Heure', hourOptions, usage.reset[id].hour, (v) => { usage.reset[id].hour = v; render(); }, off));
-  const resetChanged = JSON.stringify([draftReset(usage.reset.all), draftReset(usage.reset.fable)]) !== JSON.stringify([q.reset.all, q.reset.fable]);
+  const resetChanged = JSON.stringify(usage.reset) !== JSON.stringify({ all: resetDraft(q.reset.all), fable: resetDraft(q.reset.fable) });
   const parts = [el('legend', {}, 'Mon forfait')];
   if (usage.unreadable) parts.push(el('p', { class: 'machine-status machine-alert warn', role: 'alert' }, 'Impossible de lire les réglages actuels. Réessayez dans un instant.'));
   parts.push(el('h2', {}, 'Remise à zéro de la semaine'), el('div', { class: 'usage-resets' }, gauge('all', 'Tous moteurs'), gauge('fable', 'Fable')),
-    el('button', { type: 'button', id: 'usage-reset-save', class: 'secondary', disabled: off || !draftReset(usage.reset.all) || !resetChanged, onclick: () => saveReset() }, 'Enregistrer'));
+    el('button', { type: 'button', id: 'usage-reset-save', class: 'secondary', disabled: off || !resetChanged, onclick: () => saveReset() }, 'Enregistrer'));
+  if (usage.resetError) parts.push(el('p', { class: 'error', role: 'alert' }, usage.resetError));
   parts.push(el('h2', {}, 'Nouveau relevé'), el('div', { class: 'usage-resets' },
     field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; }, off || !!usage.asking),
     field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; }, off || !!usage.asking)),
@@ -177,13 +178,13 @@ function plan(now) {
   if (usage.error) parts.push(el('p', { class: 'error', role: 'alert' }, usage.error));
   if (usage.asking) {
     parts.push(el('div', { class: 'usage-question' },
-      el('p', { id: 'usage-question' }, 'Avez-vous utilisé Claude en dehors de la factory depuis le relevé précédent ?'),
+      el('p', { id: 'usage-question', tabindex: '-1' }, 'Avez-vous utilisé Claude en dehors de la factory depuis le relevé précédent ?'),
       el('div', { class: 'actions', role: 'group', 'aria-labelledby': 'usage-question' },
         el('button', { type: 'button', id: 'usage-outside-yes', class: 'secondary', disabled: off, onclick: () => commitReading(true) }, 'Oui'),
         el('button', { type: 'button', id: 'usage-outside-no', class: 'secondary', disabled: off, onclick: () => commitReading(false) }, 'Non')),
       el('p', { class: 'muted' }, OUTSIDE_HELP)));
   }
-  if (usage.message) parts.push(el('p', { role: 'status' }, usage.message));
+  if (usage.message) parts.push(el('p', { id: 'usage-message', role: 'status', tabindex: '-1' }, usage.message));
   const last = [...q.readings].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
   if (last) {
     parts.push(el('div', { class: 'usage-last' },
@@ -214,29 +215,37 @@ function render() {
     rows.length ? table(rows, total, perPoint, period.id) : el('p', { class: 'usage-empty' }, EMPTY),
     el('p', { class: 'muted usage-note' }, `Équivalent au tarif public de Claude du ${priced}. Ce n'est pas une facture.`),
     plan(now));
-  if (focused && $(focused) && !$(focused).disabled) $(focused).focus();
+  // After an action of « Mon forfait », the focus goes to what it produced (the question, the message), never back to
+  // the top of the page past the whole table.
+  const target = usage.focus && !usage.saving ? $(usage.focus) : null;
+  if (target) { usage.focus = null; target.focus(); } else if (focused && $(focused) && !$(focused).disabled) $(focused).focus();
   else if (focused?.startsWith('usage-') && !$('usage-view').hidden && document.activeElement === document.body) $('usage-title').focus();
 }
 
 // ---- Saving the readings (settings.json of the factory, only `quota` changes) --------------------------------------
-async function writeQuota(quota) {
+// `change(quota) → quota` is applied to the quota read just before the write, never to the page's copy: a reading
+// noted on another device meanwhile is kept (final review 1 of #628). Returns the quota written.
+async function writeQuota(change) {
   await ensureRunnersBranch(api);
   const current = await runnersFile('settings.json');
   if (current.unreadable) throw new Error('Impossible de lire les réglages actuels. Réessayez dans un instant.');
+  const quota = change(quotaFrom(current.json?.quota));
   const settings = { ...(current.json || call('machineSettings') || {}), quota };
   const res = await api(`/repos/${FACTORY_REPO}/contents/settings.json`, {
     method: 'PUT',
     body: JSON.stringify({ message: 'chore(factory): plan readings from the panel', content: toBase64(JSON.stringify(settings, null, 2) + '\n'), branch: 'factory-runners', ...(current.sha ? { sha: current.sha } : {}) }),
   });
   call('generalWritten', { settings, sha: res?.content?.sha || null, general: settings.machine === 'github' ? 'github' : 'dev-server' });
+  return quota;
 }
-async function save(next, after = () => {}) {
+async function save(change, after = () => {}) {
   if (usage.saving) return;
   usage.saving = true;
   render();
   try {
-    await writeQuota(next);
-    usage.quota = next;
+    const quota = await writeQuota(change);
+    usage.quota = quota;
+    usage.reset = { all: resetDraft(quota.reset.all), fable: resetDraft(quota.reset.fable) };
     after();
   } catch (err) {
     toast(`Échec de l'enregistrement. ${errorText(err)}`);
@@ -246,10 +255,14 @@ async function save(next, after = () => {}) {
   }
 }
 
+// A gauge's reset is a day and an hour, or nothing for Fable; « tous moteurs » is needed.
+const half = (d) => (d.day === '') !== (d.hour === '');
 function saveReset() {
   const all = draftReset(usage.reset.all);
-  if (!all) return;
-  return save({ ...usage.quota, reset: { all, fable: draftReset(usage.reset.fable) } }, () => { usage.message = ''; });
+  usage.resetError = !all || half(usage.reset.fable) ? 'Choisissez un jour et une heure.' : '';
+  if (usage.resetError) return render();
+  const fable = draftReset(usage.reset.fable);
+  return save((q) => ({ ...q, reset: { all, fable } }), () => { usage.message = ''; });
 }
 
 function noteReading() {
@@ -259,16 +272,20 @@ function noteReading() {
   usage.error = all.error || fable.error || '';
   if (usage.error) return render();
   const reading = { all: all.value, fable: fable.value };
-  if (needsQuestion(usage.quota, new Date())) { usage.asking = reading; return render(); }
+  if (needsQuestion(usage.quota, new Date())) { usage.asking = reading; usage.focus = 'usage-question'; return render(); }
   return commitReading(null, reading);
 }
 function commitReading(outside, reading = usage.asking) {
   if (!reading) return;
-  const { quota, message } = addReading(usage.quota, { ...reading, outside }, { now: new Date(), cost: quotaCost });
-  return save(quota, () => { usage.asking = null; usage.reading = { all: '', fable: '' }; usage.message = message || ''; });
+  let message = null;
+  const change = (q) => { const out = addReading(q, { ...reading, outside }, { now: new Date(), cost: quotaCost }); message = out.message; return out.quota; };
+  return save(change, () => {
+    usage.asking = null; usage.reading = { all: '', fable: '' }; usage.message = message || '';
+    usage.focus = usage.message ? 'usage-message' : 'usage-reading-all';
+  });
 }
 function removeLast() {
-  return save(deleteLast(usage.quota), () => { usage.message = ''; usage.asking = null; });
+  return save((q) => deleteLast(q), () => { usage.message = ''; usage.asking = null; usage.focus = 'usage-reading-all'; });
 }
 
 onReset(() => {

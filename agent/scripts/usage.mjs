@@ -21,7 +21,7 @@ export const KEEP_MONTHS = 3;
 export const KINDS = {
   plan: ['questions', 'plan', 'bug', 'framing', 'other'],
   code: ['build', 'task-review', 'design-critique', 'review-fix', 'owner-fix', 'checks-fix', 'other'],
-  review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'other'],
+  review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'questions', 'other'],
   audit: ['parts', 'history', 'other'],
   simple: ['research', 'screenshots', 'other'],
   pilot: ['questions', 'build', 'fixes', 'audit', 'other'],
@@ -48,6 +48,7 @@ export function kindOf({ role, up = false, label = '', stage = '' }) {
     if (at('feedback', 'visual-fix', 'acceptance-fix')) return 'owner-fix';
     if (at('build', 'bugfix', 'foundation')) return 'build';
   } else if (role === 'review') {
+    if (up) return 'questions'; // [role:review:amont]: the review role took over the upstream phase
     if (at('audit')) return 'audit';
   } else if (role === 'audit') {
     return /^Historique/i.test(text) ? 'history' : 'parts';

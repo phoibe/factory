@@ -19,7 +19,7 @@ test('every kind id recorded by the runs has a French name, and the types keep t
   const ids = {
     plan: ['questions', 'plan', 'bug', 'framing', 'other'],
     code: ['build', 'task-review', 'design-critique', 'review-fix', 'owner-fix', 'checks-fix', 'other'],
-    review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'other'],
+    review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'questions', 'other'],
     audit: ['parts', 'history', 'other'],
     simple: ['research', 'screenshots', 'other'],
     pilot: ['questions', 'build', 'fixes', 'audit', 'other'],

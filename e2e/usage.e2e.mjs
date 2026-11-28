@@ -253,3 +253,71 @@ test('un moteur sans tarif affiche tarif inconnu', async () => {
     assert.equal((await cells(page, 'Total'))[3].split('\n')[0], 'tarif inconnu');
   });
 });
+
+// Final review 1 of #628: the readings live with the general settings so that the page is the same on every device.
+test('un relevé noté sur un autre appareil pendant que la page est ouverte reste après le relevé suivant', async () => {
+  const r1 = { at: new Date(Date.now() - 5 * HOUR).toISOString(), all: 10, fable: null, outside: null };
+  const r2 = { at: new Date(Date.now() - HOUR).toISOString(), all: 14, fable: null, outside: false }; // the phone
+  const factoryFiles = { 'settings.json': quotaWith([r1]) };
+  await withPanel({ usage: USAGE, factoryFiles }, async ({ page, url, writes }) => {
+    await openUsage(page, url);
+    factoryFiles['settings.json'] = quotaWith([r1, r2]); // meanwhile, the phone notes a reading
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('20');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await plan.getByRole('button', { name: 'Non', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#usage-reading-save')?.disabled);
+    assert.deepEqual(decode(settingsPuts(writes).at(-1)).quota.readings.map((r) => r.all), [10, 14, 20], 'the phone reading (14) is kept');
+    await plan.getByText(/^Dernier relevé du .+ tous moteurs 20 %$/).waitFor();
+    // Deleting works on the fresh readings too: the phone's 14 becomes the last one.
+    factoryFiles['settings.json'] = decode(settingsPuts(writes).at(-1));
+    await plan.getByRole('button', { name: 'Supprimer ce relevé' }).click();
+    await plan.getByText(/^Dernier relevé du .+ tous moteurs 14 %$/).waitFor();
+    assert.deepEqual(decode(settingsPuts(writes).at(-1)).quota.readings.map((r) => r.all), [10, 14]);
+  });
+});
+
+test('les chiffres du tableau sont en police à chasse fixe', async () => {
+  await withPanel({ usage: USAGE }, async ({ page, url }) => {
+    await openUsage(page, url);
+    const font = await page.evaluate(() => getComputedStyle(document.querySelector('#usage td.fig')).fontFamily);
+    assert.match(font, /Geist Mono/);
+  });
+});
+
+test('au clavier, la question puis le message de Mon forfait reçoivent le focus', async () => {
+  const first = { at: new Date(Date.now() - HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([first]) } }, async ({ page, url }) => {
+    await openUsage(page, url);
+    await page.locator('#usage-reading-all').fill('12');
+    await page.locator('#usage-reading-save').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'usage-question');
+    await page.locator('#usage-outside-no').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'usage-message');
+    assert.match(await page.evaluate(() => document.activeElement.textContent), /il en faut au moins 5/);
+    await page.locator('#usage-reading-delete').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.closest('.usage-plan') && document.activeElement.id === 'usage-reading-all');
+  });
+});
+
+test('une remise à zéro avec seulement un jour ou seulement une heure est refusée', async () => {
+  await withPanel({ usage: USAGE }, async ({ page, url, writes }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    await plan.getByRole('group', { name: 'Tous moteurs' }).getByRole('combobox', { name: 'Jour' }).selectOption({ label: 'mardi' });
+    await plan.getByRole('button', { name: 'Enregistrer' }).click();
+    await plan.getByText('Choisissez un jour et une heure.', { exact: true }).waitFor();
+    await plan.getByRole('group', { name: 'Tous moteurs' }).getByRole('combobox', { name: 'Heure' }).selectOption({ label: '9 h' });
+    await plan.getByRole('group', { name: 'Fable' }).getByRole('combobox', { name: 'Heure' }).selectOption({ label: '8 h' });
+    await plan.getByRole('button', { name: 'Enregistrer' }).click();
+    await plan.getByText('Choisissez un jour et une heure.', { exact: true }).waitFor();
+    assert.equal(settingsPuts(writes).length, 0);
+    await plan.getByRole('group', { name: 'Fable' }).getByRole('combobox', { name: 'Jour' }).selectOption({ label: 'lundi' });
+    await plan.getByRole('button', { name: 'Enregistrer' }).click();
+    await plan.getByText('Choisissez un jour et une heure.').waitFor({ state: 'detached' });
+    await page.waitForFunction(() => document.querySelectorAll('#usage-period option').length === 3);
+  });
+});

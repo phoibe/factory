@@ -94,6 +94,9 @@ test('role and kind come from the description, derived from the stage without a 
   assert.equal(kindOf({ role: 'code', label: 'x', stage: 'visual-fix' }), 'owner-fix');
   assert.equal(kindOf({ role: 'code', label: 'x', stage: 'foundation' }), 'build');
   assert.equal(kindOf({ role: 'review', label: 'Synthèse', stage: 'audit' }), 'audit');
+  // [role:review:amont]: the review role took over the upstream phase (agent/AGENT.md).
+  assert.equal(kindOf({ role: 'review', up: true, label: 'Questions', stage: 'grilling' }), 'questions');
+  assert.equal(kindOf({ role: 'review', up: true, label: 'Analyse', stage: 'bugfix' }), 'questions');
   assert.equal(kindOf({ role: 'audit', label: 'Historique : PR 1 à 50', stage: 'audit' }), 'history');
   assert.equal(kindOf({ role: 'audit', label: 'Relecture : le panneau', stage: 'audit' }), 'parts');
   assert.equal(kindOf({ role: 'simple', label: 'Captures', stage: 'screenshots' }), 'screenshots');
@@ -110,7 +113,7 @@ test('the pilot kind follows the stage', () => {
   assert.deepEqual(KINDS, {
     plan: ['questions', 'plan', 'bug', 'framing', 'other'],
     code: ['build', 'task-review', 'design-critique', 'review-fix', 'owner-fix', 'checks-fix', 'other'],
-    review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'other'],
+    review: ['final-review', 'review-round', 'scope-check', 'security', 'audit', 'questions', 'other'],
     audit: ['parts', 'history', 'other'],
     simple: ['research', 'screenshots', 'other'],
     pilot: ['questions', 'build', 'fixes', 'audit', 'other'],

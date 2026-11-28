@@ -14,7 +14,8 @@ export const TASK_TYPES = [
     { id: 'checks-fix', name: 'corrections après les contrôles automatiques' }, other] },
   { id: 'review', name: 'Revue', kinds: [
     { id: 'final-review', name: 'relecture finale' }, { id: 'review-round', name: 'relectures 2 et 3' }, { id: 'scope-check', name: 'vérification de portée' },
-    { id: 'security', name: 'revue de sécurité' }, { id: 'audit', name: 'review générale' }, other] },
+    { id: 'security', name: 'revue de sécurité' }, { id: 'audit', name: 'review générale' },
+    { id: 'questions', name: 'questions et fiche' }, other] },
   { id: 'audit', name: 'Relectures d’une review générale', kinds: [
     { id: 'parts', name: 'code partie par partie' }, { id: 'history', name: 'historique du projet' }, other] },
   { id: 'simple', name: 'Tâches simples', kinds: [{ id: 'research', name: 'recherches' }, { id: 'screenshots', name: 'captures' }, other] },

@@ -776,6 +776,7 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .usage-table th, .usage-table td { padding: 8px 12px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; }
 .usage-table thead th { border-top: none; color: var(--muted); font-size: .8125rem; font-weight: 600; }
 .usage-table .fig { text-align: right; }
+.usage-table td.fig { font-family: var(--mono); } /* DESIGN.md « Tableau de chiffres »: the figures in mono */
 .usage-table small { display: block; color: var(--muted); font-size: .8125rem; }
 .usage-table tbody th { font-weight: 600; }
 .usage-kind th, .usage-kind td { background: var(--surface-2); }

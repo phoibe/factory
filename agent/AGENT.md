@@ -105,7 +105,7 @@ et son modèle.
   | --- | --- |
   | `plan` | `questions` (phase amont d'une demande), `plan` (écrire le plan), `bug` (analyse d'un bug), `framing` (cadrage) |
   | `code` | `build` (construction), `task-review` (relecture d'une tâche), `design-critique` (critique du design), `review-fix` (corrections après relecture), `owner-fix` (corrections demandées par le propriétaire), `checks-fix` (corrections des contrôles) |
-  | `review` | `final-review` (relecture finale), `review-round` (tour après correction), `scope-check` (vérification de portée), `security` (revue de sécurité), `audit` (synthèse et relectures d'une review générale) |
+  | `review` | `final-review` (relecture finale), `review-round` (tour après correction), `scope-check` (vérification de portée), `security` (revue de sécurité), `audit` (synthèse et relectures d'une review générale), `questions` (phase amont reprise par ce rôle, `[role:review:amont]`) |
   | `audit` | `parts` (relecture partie par partie), `history` (lecture de l'historique) |
   | `simple` | `research` (recherches), `screenshots` (captures d'écran) |
   | tous | `other` (rien de ce qui précède) |
