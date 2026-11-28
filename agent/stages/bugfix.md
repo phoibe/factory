@@ -5,7 +5,7 @@ Un bug signalé dans l'issue. Pas de grilling.
 **Rattrapage des documents du projet** : si `grill-with-docs` est installé, lis la partie « Rattrapage » de
 `.factory/stages/docs.md` et fais-la d'abord si le projet n'a pas encore de glossaire (une seule fois par projet).
 
-1. **Analyse** par un sous-agent du rôle `plan`, lancé avec la description `[role:plan:amont]` (« Phase amont » dans
+1. **Analyse** par un sous-agent du rôle `plan`, lancé avec la description `[role:plan:amont] [kind:bug]` (« Phase amont » dans
    AGENT.md), après le rattrapage éventuel et avant tout autre travail : il lit l'issue, cherche dans le code (skill
    `systematic-debugging`) et te rend soit la question à poser quand le comportement attendu n'est pas clair, soit la
    cause probable, les fichiers concernés et le test qui reproduira le bug. Dès qu'il te l'a rendue, lance
@@ -14,7 +14,7 @@ Un bug signalé dans l'issue. Pas de grilling.
    les étapes qu'il dit manquantes à ce moment se font dans la suite, rien de plus à faire ici. S'il te dit de
    committer `.factory/journal/`, ne committe rien à ce moment : le journal partira avec la branche de l'étape 2.
    S'il rend une question : pose-la (**une** question simple) sur l'issue, mets `factory:blocked` et termine.
-2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Un sous-agent du rôle `code` (description `[role:code]`)
+2. Branche `claude/issue-<n>-fix` depuis `origin/{{base}}`. Un sous-agent du rôle `code` (description `[role:code] [kind:build]`)
    part de cette analyse : skill `systematic-debugging`, reproduis le bug par un test qui échoue,
    trouve la cause racine, corrige, le test passe. Si le bug se voit dans un navigateur et que le projet a
    `test:e2e`, ce test est un parcours dans `e2e/` : il protège ensuite chaque livraison.
@@ -25,13 +25,14 @@ Un bug signalé dans l'issue. Pas de grilling.
 2 bis. **Vérification de portée**, seulement si la correction touche à un sujet sensible ou aux ordres de bourse
    (critères de l'étape 4 ter de `build.md`). Un bug n'a pas de fiche : juges-en d'après l'analyse de l'étape 1 et
    d'après ce que la correction modifie réellement. Après la correction et son test, avant la revue de l'étape 3, suis
-   l'étape 4 ter de `build.md` : sous-agent neuf du rôle `review` (description `[role:review] Vérification de portée`),
+   l'étape 4 ter de `build.md` : sous-agent neuf du rôle `review` (description `[role:review] [kind:scope-check] Vérification de portée`),
    fait prouvé par une commande, rien de réel touché, casse corrigée avec un test qui échoue d'abord, une seule fois.
    Le résumé de la PR contient la ligne « Portée vérifiée : … » et, tout en bas, le fait prouvé, la commande et son
    résultat. Fait impossible à prouver : « Portée non prouvée : … », PR ouverte sans `factory:checks`, question sur
    l'issue et `factory:blocked`, comme à l'étape 4 ter : une correction de bug est fusionnée sans recette, elle ne part
    donc jamais sans son « ok ». Les autres corrections de bugs ne changent pas.
-3. Revue par un sous-agent neuf (rôle `review` ; skill `requesting-code-review`, comme dans `build.md`, au plus {{maxLoops}} tours, en suivant `.factory/stages/code-review.md` : un problème ne bloque que s'il est prouvé). Si l'interface change :
+3. Revue par un sous-agent neuf (rôle `review`, description `[role:review] [kind:final-review] …`, puis
+   `[role:review] [kind:review-round] Tour <n>` pour les tours suivants ; skill `requesting-code-review`, comme dans `build.md`, au plus {{maxLoops}} tours, en suivant `.factory/stages/code-review.md` : un problème ne bloque que s'il est prouvé). Si l'interface change :
    passe design (`design-pass.md`). Puis vérifications locales.
    **Contrôle du journal** : lance `node .factory/scripts/journal-check.mjs`. S'il liste des étapes manquantes, fais-les maintenant (outil Skill), puis relance-le jusqu'à « rien ne manque ».
 3 bis. **Fiche stack** : si ta PR ajoute, retire ou change de version principale une techno, une bibliothèque ou un service, mets `STACK.md` à jour dans la même PR (format de `.factory/stages/stack.md`). Les contrôles automatiques refusent une PR qui change les bibliothèques sans toucher la fiche.

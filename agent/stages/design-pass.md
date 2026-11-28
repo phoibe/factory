@@ -68,7 +68,8 @@ Règles :
    diff avec `{{base}}`. Lance l'appli en local et ouvre chaque écran dans le navigateur (Playwright), sur
    téléphone et sur ordinateur.
 2. **Critique** : pour chaque écran, skill `impeccable`, commande `critique`
-   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (rôle `code`) et le détecteur.
+   (`reference/critique.md`), avec ses deux évaluations indépendantes en sous-agents (rôle `code`, description
+   `[role:code] [kind:design-critique] …`) et le détecteur.
    Elle juge l'écran contre `PRODUCT.md`, `DESIGN.md` et la règle « Textes à l'écran » ci-dessus, et elle juge l'écran
    aussi sur sa mise en page : celle de son type d'écran dans la partie « Mises en page » ci-dessus, pas seulement les
    couleurs et les polices.

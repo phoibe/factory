@@ -143,6 +143,13 @@ test('a task sent again later counts once, and tasks never launched together say
   assert.equal(parallelLine(apart), '**Tâches en parallèle** : 2 tâches construites chacune dans sa copie, jamais lancées ensemble (A, puis B)');
 });
 
+// Issue #628: the kind tag after the role is for the « Consommation » page, not for the label shown in the PR.
+test('the journal label leaves out the kind tag after the role', () => {
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:review] [kind:review-round] Tour 2' } }).label, 'Tour 2');
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:plan:amont] [kind:bug] Analyse' } }).label, 'Analyse');
+  assert.equal(agentEntry({ tool_name: 'Agent', tool_input: { description: 'Relecture [kind:x]' } }).label, 'Relecture [kind:x]');
+});
+
 // Issue #559: the pilot announces each sub-agent's role at launch, and the journal keeps it.
 test('the journal records the role announced at the start of the description', () => {
   assert.deepEqual(agentEntry({ tool_name: 'Agent', tool_input: { description: '[role:plan:amont] Questions de la demande 12', model: 'fable' } }),

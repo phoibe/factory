@@ -10,7 +10,7 @@ const flat = (f) => read(f).replace(/\*\*/g, '').replace(/\s+/g, ' ');
 const between = (text, from, to) => { const a = text.indexOf(from); const b = text.indexOf(to); return a >= 0 && b > a ? text.slice(a, b) : ''; };
 const has = (text, list) => { for (const s of list) assert.ok(text.includes(s), s); };
 const SENSITIVE = 'connexion, codes, comptes, données personnelles, argent, partage, suppression de données';
-const AGENT = 'sous-agent neuf du rôle `review` (description `[role:review] Vérification de portée`)';
+const AGENT = 'sous-agent neuf du rôle `review` (description `[role:review] [kind:scope-check] Vérification de portée`)';
 const build = flat('stages/build.md');
 const step = between(build, '4 ter. Vérification de portée', '5. Revue de code');
 
@@ -62,7 +62,7 @@ test('bugfix: the same check after the fix and its test, before the review, judg
 test('acceptance fix: the check is redone on a fix that changes code, before pushing, and the line is updated', () => {
   const fix = flat('stages/acceptance-fix.md');
   const s = between(fix, '2 bis. Vérification de portée', '3. Corrige (TDD si actif)');
-  has(s, ['modifie du code', '« Portée vérifiée » ou « Portée non prouvée »', 'étape 4 ter de `build.md`', 'sous-agent neuf du rôle `review`, description `[role:review] Vérification de portée`', 'avant de pousser',
+  has(s, ['modifie du code', '« Portée vérifiée » ou « Portée non prouvée »', 'étape 4 ter de `build.md`', 'sous-agent neuf du rôle `review`, description `[role:review] [kind:scope-check] Vérification de portée`', 'avant de pousser',
     'ajoute ou mets à jour la ligne « Portée vérifiée : … » de la description de la PR', 'sans toucher au reste de la description',
     "une fois l'étape 3 finie (revue par un sous-agent neuf, passe design si besoin, vérifications locales)",
     "mets d'abord `factory:blocked` sur la PR, puis retire tous ses labels d'étape présents (`factory:acceptance`, `factory:checks`, `factory:visual-review`)",
