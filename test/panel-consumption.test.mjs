@@ -121,11 +121,16 @@ test('no runs: no rows and a zero total', () => {
   assert.deepEqual(aggregate([], all), { rows: [], total: { tasks: 0, tokens: 0, dollars: 0, fableDollars: 0 } });
 });
 
-test('dollars: whole above 10, cents below, unknown price', () => {
+test('dollars: whole from 10, cents below unless they round to ,00, unknown price', () => {
   assert.equal(fmtDollars(58.4), '58 $');
   assert.equal(fmtDollars(1234.2), '1 234 $');
   assert.equal(fmtDollars(4.1), '4,10 $');
-  assert.equal(fmtDollars(0), '0,00 $');
+  assert.equal(fmtDollars(0.6), '0,60 $');
+  assert.equal(fmtDollars(0.04), '0,04 $');
+  assert.equal(fmtDollars(6), '6 $');
+  assert.equal(fmtDollars(5.999), '6 $');
+  assert.equal(fmtDollars(9.996), '10 $');
+  assert.equal(fmtDollars(0), '0 $');
   assert.equal(fmtDollars(null), 'tarif inconnu');
 });
 
