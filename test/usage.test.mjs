@@ -2,7 +2,7 @@
 // claude/factory-usage of its project, for the « Consommation » page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -213,4 +213,56 @@ test('the record is pushed to claude/factory-usage, once per session, and expire
   recordUsage(opts);
   assert.equal(git(['--git-dir', bare, 'rev-list', '--count', 'claude/factory-usage']), commits, 'nothing changed: no new commit');
   assert.ok(readdirSync(repo).every((f) => f !== 'usage'), 'the project copy is untouched');
+});
+
+// A project with a local bare repository standing for GitHub, and the fixture session in its transcripts.
+function project() {
+  const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
+  const base = mkdtempSync(join(tmpdir(), 'usage-'));
+  const bare = join(base, 'origin.git');
+  git(['init', '--quiet', '--bare', bare]);
+  const repo = join(base, 'repo');
+  git(['init', '--quiet', '-b', 'main', repo]);
+  git(['config', 'remote.origin.url', 'https://github.com/o/r'], repo);
+  git(['config', `url.${bare}.insteadOf`, 'https://github.com/o/r'], repo);
+  git(['commit', '--quiet', '--allow-empty', '-m', 'init'], repo);
+  const projects = join(base, 'projects');
+  mkdirSync(join(projects, '-repo'), { recursive: true });
+  cpSync(join(FIX, 'session-1.jsonl'), join(projects, '-repo', 'session-1.jsonl'));
+  cpSync(join(FIX, 'session-1'), join(projects, '-repo', 'session-1'), { recursive: true });
+  const gh = () => { throw new Error('offline'); };
+  return { git, bare, repo, opts: { cwd: repo, projectsDir: projects, now: new Date('2026-11-28T12:00:00Z'), gh, git: (args, cwd) => git(args, cwd || repo) } };
+}
+
+test('a first push that fails leaves nothing behind: the next run creates the branch', () => {
+  const { git, bare, repo, opts } = project();
+  const failing = (args, cwd) => { if (args[0] === 'push') throw new Error('network down'); return opts.git(args, cwd); };
+  assert.throws(() => recordUsage({ ...opts, git: failing }), /network down/);
+  recordUsage(opts);
+  assert.ok(git(['--git-dir', bare, 'show', 'claude/factory-usage:usage/2026-11.json']).includes('session-1'));
+  assert.deepEqual(git(['branch', '--list', '--format=%(refname:short)'], repo).split('\n').filter(Boolean), ['main'], 'no local branch is left');
+});
+
+test('the commit and the push skip the project hooks', () => {
+  const { opts } = project();
+  const calls = [];
+  recordUsage({ ...opts, git: (args, cwd) => { calls.push(args); return opts.git(args, cwd); } });
+  for (const verb of ['commit', 'push']) assert.ok(calls.find((a) => a[0] === verb)?.includes('--no-verify'), verb);
+});
+
+test('a pilot with no tokens has no model', () => {
+  const { tasks } = usageFromTranscript({ main: [], subagents: [], stage: 'build' });
+  assert.deepEqual(tasks, [{ type: 'pilot', kind: 'build', model: null, effort: null }]);
+});
+
+// The last action of a run must never fail it: one line, exit 0.
+test('the command never fails the run: one line and exit 0 when nothing can be read', () => {
+  const home = mkdtempSync(join(tmpdir(), 'usage-home-'));
+  const res = spawnSync('node', [new URL('../agent/scripts/usage.mjs', import.meta.url).pathname], { cwd: home, encoding: 'utf8',
+    env: { ...process.env, HOME: home, GIT_CEILING_DIRECTORIES: tmpdir() } });
+  assert.equal(res.status, 0);
+  const out = `${res.stdout}${res.stderr}`.split('\n').filter(Boolean);
+  assert.equal(out.length, 1, out.join('\n'));
+  assert.match(out[0], /^Consommation : /);
 });
