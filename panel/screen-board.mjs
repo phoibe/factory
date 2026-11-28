@@ -2,7 +2,7 @@ import { COLUMNS, boardItems, doneItems, doneView, olderNote, doneAgo, previewFr
 import { answerForPr } from './answer.mjs';
 import { stageMinutes, estimate, humanMinutes, parseEstimate, buildingMinutes, kindParts } from './eta.mjs';
 import { noteClick, noteReturn, pendingNow, untakenAnswer, heldCards, holdLine, goLabel, sentLine } from './pending.mjs';
-import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits } from './live.mjs';
+import { yoursList, progress, laneFor, actionFor, moves, statusText, pollDelay, timeLine, isIdle, cardChanges, shouldSlide, withoutTimes, syncTimes, cardSig, commentsStale, waitsText, waitsEta, stillWaited, relaunchWaits, yesToAllRound } from './live.mjs';
 import { waitedFor } from './waits.mjs';
 import { readRelaunch, relaunchLine } from './relaunch.mjs';
 import { trustNotes } from './trust.mjs';
@@ -18,12 +18,12 @@ provide('stopLive', stopLive);
 // ---- Live board -------------------------------------------------------------------------------
 // The board polls GitHub every 8 s while the owner is active (30 s after 2 minutes of calm). Requests carry the last ETag, so an unchanged
 // answer is a 304 that GitHub does not count against the hourly limit.
-const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
+const live = { repo: null, issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), answering: new Set(), pauseMs: 0, prev: null, sigs: null, done: [], doneSig: null, doneLoaded: false, drawn: false, instant: false, activity: Date.now(), last: 0, failures: 0, timer: null, tick: null, busy: null };
 
 // Each project's board, kept while this tab stays open (issue #327; never in localStorage: a reload starts over).
 const boards = new Map();
-const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
-const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
+const BOARD_KEYS = ['issues', 'events', 'eventsDeep', 'previews', 'yesToAll', 'targets', 'sessions', 'plans', 'releases', 'waits', 'answered', 'read', 'unreadable', 'answering', 'prev', 'done', 'doneLoaded', 'doneTried', 'last'];
+const blankBoard = () => ({ issues: null, events: [], eventsDeep: false, previews: new Map(), yesToAll: new Map(), targets: new Map(), sessions: new Map(), plans: new Map(), releases: new Map(), waits: new Map(), answered: new Map(), read: new Map(), unreadable: new Map(), answering: new Set(), prev: null, done: [], doneLoaded: false, doneTried: false, last: 0 });
 // The open requests the project list already read in the background for its dot (all pages, or nothing).
 function knownIssues(repo) {
   const issues = [];
@@ -60,6 +60,7 @@ export function enterBoard(repo) {
   // `last` comes with the board (when it was read), `failures` starts over: the line under « À vous de jouer » never
   // shows the left project's lost connection or « à jour à l'instant » (issue #397).
   Object.assign(live, blankBoard(), known, { repo, sigs: null, doneSig: null, yoursSig: null, ideasSig: null, drawn: false, synced: false, failures: 0 });
+  slid.clear(); // card numbers repeat from one project to the next
 }
 const LANES = [
   ['yours', 'À vous de jouer', 'Rien ne vous attend.'],
@@ -151,11 +152,19 @@ async function refresh() {
       if (!same()) return; // left meanwhile: no more requests for this project
       const page = Math.max(1, Math.ceil((c.comments || 0) / 100));
       const res = c.comments ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page}`).catch(quiet) : { data: [] };
-      if (!res || !same()) return;
       // The agent's estimate may sit on the page before the last one on a long thread.
-      const before = page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
-      if (!before || !same()) return;
+      const before = res && page > 1 ? await cachedGet(`/repos/${repo}/issues/${c.number}/comments?per_page=100&page=${page - 1}`).catch(quiet) : { data: [] };
+      if (!same()) return;
+      // A questions card shows its answer buttons only once its messages were read, or could not be (see `unread`):
+      // draw it then. Its messages are read again at the next refresh.
+      const wasUnread = unread(c, 'yours');
+      if (!res || !before) {
+        if (cannotRead(c)) previewsChanged = true;
+        return;
+      }
+      if (wasUnread) previewsChanged = true;
       live.read.set(c.number, cardSig(c));
+      live.unreadable.delete(c.number);
       const url = c.pull_request ? previewFrom(res.data) : null;
       const target = focusComment(res.data);
       // Only the owner's and the factory's own invisible notes count (issue #339).
@@ -175,6 +184,12 @@ async function refresh() {
       const answered = untakenAnswer(res.data, repo.split('/')[0]);
       if ((live.answered.get(c.number) ?? null) !== answered) {
         if (answered == null) live.answered.delete(c.number); else live.answered.set(c.number, answered);
+        previewsChanged = true;
+      }
+      // Issue #620: the agent's last round of questions proposes « oui à tout » (one touch answers it).
+      const round = yesToAllRound(thread);
+      if ((live.yesToAll.get(c.number) ?? null) !== round) {
+        if (round == null) live.yesToAll.delete(c.number); else live.yesToAll.set(c.number, round);
         previewsChanged = true;
       }
       const plan = parseEstimate(thread);
@@ -219,6 +234,12 @@ async function refresh() {
   } catch (err) {
     // A failure of a project left meanwhile says nothing about the one on screen.
     if (!same()) return;
+    // The questions cards whose current messages were not read show « Répondre » alone while GitHub fails.
+    if (live.issues) {
+      let redraw = false;
+      for (const c of boardItems(live.issues)) if (c.column === 'grilling' && live.read.get(c.number) !== cardSig(c)) redraw = cannotRead(c) || redraw;
+      if (redraw && live.drawn) drawBoard();
+    }
     // A pause, not a lost connection; at most 5 min, so an empty first board does not stay without news for long.
     if (err?.rateLimited) { live.pauseMs = Math.min(err.waitMs, 5 * 60_000); return; }
     live.failures++;
@@ -264,16 +285,44 @@ function stepTrack(c) {
 // The button names what it asks for, not a generic « Répondre ».
 const REPLY_LABELS = { spec: 'Valider la spec', visual: 'Voir les captures', acceptance: 'Voir la recette', blocked: 'Débloquer' };
 const replyLabel = (column) => REPLY_LABELS[column] || 'Répondre';
-// The card's answer: a « go » (spec) or « Ok » (captures, recette) button that sends at the touch (issue #450), or the
-// link to the message to answer. The button's spoken name follows what a press does: send, or nothing while it is sent.
-const goWord = (c) => (c.reply === 'ok' ? 'ok' : 'go');
-const goText = (c) => (c.reply === 'ok' ? 'Ok' : 'go');
+// The card's answer: a « go » (spec), « Ok » (captures, recette) or « Oui pour tout » (questions whose round proposes
+// « oui à tout », issue #620) button that sends at the touch (issue #450), or the link to the message to answer.
+// The button's spoken name follows what a press does: send, or nothing while it is sent.
+const GO_WORDS = { ok: 'ok', all: 'oui à tout' };
+const goWord = (c) => GO_WORDS[c.reply] || 'go';
+const goText = (c) => goLabel(goWord(c)).text;
 // « Envoi… » only while the answer leaves, then « Envoyé ✓ » until the card changes column (issue #517).
 const goState = (c) => goLabel(goWord(c), { sending: sendingGo.has(goKey(c)), sent: isSent(c) });
 const goName = (c) => `${goState(c).name} pour #${c.number} ${c.title}`;
-// An « ok » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
-const isSent = (c) => sentGo.has(goKey(c)) || (c.reply === 'ok' && pendingState()[c.number]?.sent === true);
-const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c), onclick: (e) => answerGo(c, e.currentTarget) }, goState(c).text);
+// An « ok » or « oui à tout » already sent stays sent after a reload: its hold (see sendGo) remembers it on this device.
+const holdsAfterSend = (c) => c.reply === 'ok' || c.reply === 'all';
+const isSent = (c) => sentGo.has(goKey(c)) || (holdsAfterSend(c) && pendingState()[c.number]?.sent === true);
+// A pointer press on a blue button that a re-layout of the board just slid under the finger is not aimed at it (on a
+// phone, the next card's button takes the place of the one just touched): dropped. The keyboard always answers.
+const goButton = (c) => el('button', { type: 'button', disabled: isSent(c), class: c.reply === 'all' ? 'go all' : 'go', 'data-go': String(c.number), 'data-key': `go-${c.number}`, 'aria-label': goName(c),
+  onclick: (e) => { if (!(e.detail !== 0 && justSlid(c.number))) answerGo(c, e.currentTarget); } }, goState(c).text);
+// Before the messages of its current state are read, a questions card in « À vous de jouer » does not know yet whether
+// « Oui pour tout » belongs first: it keeps its row of buttons empty rather than show a « Répondre » whose place a blue
+// button would take a moment later (issue #620). Messages it could not read show « Répondre » alone, as before.
+// A card already drawn here with its buttons, whose request changed without a new message (a label: `updated_at` moves,
+// not the number of messages), keeps them while it is read again: its round cannot have changed.
+// (A card on hold, which carries no button to answer, only waits for the first read.)
+const sameMessages = (c) => (live.read.get(c.number) ?? live.unreadable.get(c.number))?.split('|')[1] === String(c.comments || 0);
+const unread = (c, lane) => {
+  if (c.column !== 'grilling') return false;
+  const n = c.number;
+  if (lane !== 'yours') return !live.read.has(n) && !live.unreadable.has(n);
+  return live.read.get(n) !== cardSig(c) && live.unreadable.get(n) !== cardSig(c) && !(live.answering.has(n) && sameMessages(c));
+};
+// The messages of the card's current state could not be read: it shows « Répondre » alone. A round of questions read
+// for an older state is forgotten (the agent may have asked something else since). True when the card must be redrawn.
+function cannotRead(c) {
+  const n = c.number, sig = cardSig(c);
+  const changed = unread(c, 'yours') || (live.read.get(n) !== sig && live.yesToAll.has(n));
+  live.unreadable.set(n, sig);
+  if (live.read.get(n) !== sig) live.yesToAll.delete(n);
+  return changed;
+}
 // In « À vous de jouer » the card is narrow: the quiet buttons say it in one word (their spoken name keeps the full label),
 // so that « Ok » and its two quiet buttons fit on one row.
 const SHORT_LABELS = { visual: 'Captures', acceptance: 'Recette' };
@@ -281,7 +330,7 @@ const replyLink = (c, short = false) => el('a', { class: 'button secondary', hre
   'aria-label': short && SHORT_LABELS[c.column] ? replyLabel(c.column) : null }, short && SHORT_LABELS[c.column] || replyLabel(c.column));
 // The buttons of a card waiting for the owner, in order. In « À vous de jouer » the blue « go » or « Ok » comes first, then the
 // preview and the page to read; a card waiting for GitHub keeps its former order (« go » after the preview).
-const answerButtons = (c, previewLink, waiting = false) => (c.reply === 'ok' ? [goButton(c), previewLink, replyLink(c, !waiting)]
+const answerButtons = (c, previewLink, waiting = false) => (holdsAfterSend(c) ? [goButton(c), previewLink, replyLink(c, !waiting)]
   : c.reply === 'go' ? (waiting ? [previewLink, goButton(c)] : [goButton(c), previewLink]) : [previewLink, replyLink(c, !waiting)]);
 
 // The titles of the project's requests, open or done, to name the one a card waits for.
@@ -398,7 +447,9 @@ function card(c, lane, minutes, now, moved) {
     testIt && preview && !asks ? null : status,
     c.column === 'release' ? changeList(releaseChanges(c)) : null,
     // On a card that waits for an answer the buttons sit together on one row (within reach, without taking over the card).
-    c.column === 'release' ? null : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
+    // A questions card whose messages are being read keeps the row empty, at the buttons' height (no jump when they come).
+    c.column === 'release' ? null : asks && unread(c, lane) ? el('div', { class: 'card-actions', 'aria-hidden': 'true' })
+      : asks ? el('div', { class: 'card-actions' }, answerButtons(c, previewLink, waiting)) : previewLink,
     c.column === 'release' ? null : stepTrack(c),
     // No agent works on a card whose launch waits: no estimate of its work until it starts.
     c.column === 'release' || relaunch ? null : el('p', { class: 'eta', 'data-time': '' }, c.waits?.length ? waitsEta(c) : timeLine(e)),
@@ -417,6 +468,35 @@ const EASE = 'cubic-bezier(.16, 1, .3, 1)';
 const cardsOf = (root) => new Map([...root.querySelectorAll('.ticket[data-number]:not(.leaving)')].map((n) => [Number(n.dataset.number), n]));
 const onScreen = (r) => r.bottom > 0 && r.top < innerHeight;
 
+// The blue buttons a re-layout of the board just slid under the finger, to tell a press aimed at a button from one
+// that lands on a button that was not there a moment ago (see goButton): card number → until when a press is dropped.
+const SETTLE_MS = 600;
+const slid = new Map();
+// Where each blue button and each other button of the cards' rows stand, in page coordinates (scrolling moves none).
+function actionLayout(root) {
+  const go = new Map(), all = [];
+  for (const b of root.querySelectorAll('.ticket[data-number] .card-actions > *')) {
+    const r = b.getBoundingClientRect();
+    const box = { left: r.left + scrollX, top: r.top + scrollY, right: r.right + scrollX, bottom: r.bottom + scrollY, height: r.height };
+    if (b.matches('button.go[data-go]')) go.set(b.dataset.go, box);
+    all.push(box);
+  }
+  return { go, all };
+}
+const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+// A blue button that left its former spot altogether (a card nudged by a line of text keeps it partly under the
+// finger, which still lands on it), or a new one standing where another button stood, is marked for a moment after
+// the re-layout.
+function noteLayout(before, after) {
+  const now = Date.now(), until = now + (reduced() ? 0 : 350) + SETTLE_MS;
+  for (const [n, t] of slid) if (t <= now) slid.delete(n);
+  for (const [n, b] of after.go) {
+    const a = before.go.get(n);
+    const moved = a ? !overlaps(a, b) : before.all.some((r) => overlaps(r, b));
+    if (moved) slid.set(n, Math.max(slid.get(n) || 0, until));
+  }
+}
+const justSlid = (n) => (slid.get(String(n)) || 0) > Date.now();
 // FLIP: slide each card from where it was to where it is now (fade in place when either spot is off-screen).
 function flip(before) {
   if (reduced()) return;
@@ -433,13 +513,15 @@ const rectsOf = (root) => new Map([...cardsOf(root)].map(([n, node]) => [n, node
 const sentGo = new Set(); // « go » already posted this session: the card shows no second « go » while it waits for the agent
 const sendingGo = new Set(); // the answers still on their way to GitHub (« Envoi… »); the others in sentGo read « Envoyé ✓ »
 // Both are keyed by project and number: #12 of one project is not #12 of another.
-// The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette.
-const goKey = (c) => `${app.current.repo.full_name}#${c.number}@${c.column}`;
+// The column is part of the key: the same change gets a fresh « Ok » when it moves from captures to recette. A new round
+// of questions (its agent message) gets a fresh « Oui pour tout » (issue #620).
+const goKey = (c) => `${app.current.repo.full_name}#${c.number}@${c.column}${c.reply === 'all' ? `:${c.offersAll}` : ''}`;
 // What the toast says once the answer has left, by the column it answers.
 const SENT = {
   spec: '« go » envoyé. La construction démarre.',
   visual: '« ok » envoyé. Captures validées : la fusion se fera dès que les contrôles automatiques sont verts.',
   acceptance: '« ok » envoyé. Recette validée : la mise en ligne se fait maintenant.',
+  grilling: '« oui à tout » envoyé. L\'agent reprend avec vos réponses.',
 };
 // The panel's token may be read-only on pull requests (the one created from the sign-in link was, until 2026-11-06):
 // GitHub then refuses the comment with a 403. The answer goes on the issue the PR delivers, and the relay applies
@@ -458,8 +540,9 @@ async function sendGo(c, btn, repo, key) {
     sendingGo.delete(key);
     if (app.current?.repo.full_name === repo) { const b = goBtn(c, btn); b.textContent = goState(c).text; b.setAttribute('aria-label', goName(c)); }
     toast(SENT[c.column] || `« ${goWord(c)} » envoyé.`);
-    // An « ok » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its column changes.
-    if (c.reply === 'ok' && app.current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
+    // An « ok » or « oui à tout » waits for GitHub like any answer: the card goes to « En attente de GitHub » until its
+    // column changes (or, for questions, until the agent restarts).
+    if (holdsAfterSend(c) && app.current?.repo.full_name === repo) { const now = Date.now(); savePending({ ...pendingState(), [c.number]: { column: c.column, clickedAt: now, backAt: now, sent: true } }); }
     await refresh();
   } catch (e) {
     toast(`Envoi impossible. ${errorText(e)}`);
@@ -510,9 +593,11 @@ for (const type of ['click', 'auxclick']) {
     const link = e.target.closest?.('a');
     if (!li || !app.current || !link) return;
     if (e.type === 'auxclick' && e.button !== 1) return; // right click: « copy link », not an answer
-    // Reading a plate answered by a button (« go », « Ok ») is not answering it: looking at the captures, the preview or
-    // the recette keeps it in « À vous de jouer »; only the button sends it to « En attente de GitHub ».
-    if (li.querySelector('button.go')) return;
+    // Reading a plate answered by a button (« go », « Ok », « Oui pour tout ») is not answering it: looking at the captures,
+    // the preview, the recette or the questions keeps it in « À vous de jouer »; only the button (or a written answer
+    // seen on GitHub) sends it to « En attente de GitHub ». A questions card whose messages are still being read may be
+    // one of these: reading it is not answering it either.
+    if (li.querySelector('button.go, .card-actions[aria-hidden]')) return;
     const c = live.issues && boardItems(live.issues).find((x) => x.number === Number(li.dataset.number));
     if (c) savePending(noteClick(pendingState(), c, Date.now()));
   });
@@ -633,7 +718,8 @@ function drawBoard() {
   const cards = boardItems(live.issues).map((c) => {
     const waits = c.column === 'blocked' ? live.waits.get(c.number) || [] : [];
     const left = stillWaited(waits, live.done);
-    return waits.length ? { ...c, waits: left.length ? left : waits, waitsMerged: !left.length } : c;
+    const item = live.yesToAll.has(c.number) ? { ...c, offersAll: live.yesToAll.get(c.number) } : c; // issue #620
+    return waits.length ? { ...item, waits: left.length ? left : waits, waitsMerged: !left.length } : item;
   });
   const moved = moves(live.prev, cards);
   live.prev = new Map(cards.map((c) => [c.number, c.column]));
@@ -670,6 +756,7 @@ function drawBoard() {
   const focusKey = document.activeElement?.dataset?.key;
   const oldCards = cardsOf(board);
   const before = rectsOf(board);
+  const goBefore = actionLayout(board);
   const fresh = [
     youCard(yours, headline, sub, minutes, now, movedSet),
     pendingZone(held.pending, minutes, now),
@@ -692,6 +779,7 @@ function drawBoard() {
   const yoursSig = JSON.stringify([held.pending.map((c) => [c.number, c.title]), ...yours.map((c) => [c.number, c.title, c.reply, c.column, live.targets.get(c.number), live.previews.get(c.number), c.labels.includes('factory:skills-alert')])]);
   const holder = el('div', {}, ...fresh);
   const freshCards = cardsOf(holder);
+  live.answering = new Set([...holder.querySelectorAll('.lane-yours .ticket[data-number] > .card-actions:not([aria-hidden])')].map((r) => Number(r.parentNode.dataset.number)));
   const changes = cardChanges(live.sigs, new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig])));
   const prevSigs = live.sigs;
   live.sigs = new Map([...freshCards].map(([k, v]) => [k, v.dataset.sig]));
@@ -729,13 +817,15 @@ function drawBoard() {
     live.ideasSig = ideasSig;
     board.replaceChildren(...holder.childNodes);
     announceIdea.clear();
+    noteLayout(goBefore, actionLayout(board)); // measured before the slides start
     flip(before);
     if (!reduced() && !live.instant) for (const n of changes.added) if (!oldCards.has(n)) freshCards.get(n).animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
     for (const node of leaving) node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }], { duration: 300, easing: EASE, fill: 'forwards' });
     if (leaving.length) setTimeout(() => {
-      const mid = rectsOf(board);
+      const mid = rectsOf(board), goMid = actionLayout(board);
       for (const node of leaving) node.remove();
       for (const { grid, empty } of restore) if (!grid.children.length && grid.isConnected) grid.replaceWith(empty);
+      noteLayout(goMid, actionLayout(board));
       flip(mid);
     }, 300);
   }

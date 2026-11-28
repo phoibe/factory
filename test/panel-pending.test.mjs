@@ -96,6 +96,12 @@ test('the answer button says « Envoi… » only while it leaves, then « Envoy�
   assert.deepEqual(goLabel('go', {}), { text: 'go', name: 'go' });
 });
 
+test('issue #620: the « oui à tout » button reads « Oui pour tout », then « Envoi… » and « Envoyé ✓ »', () => {
+  assert.deepEqual(goLabel('oui à tout', {}), { text: 'Oui pour tout', name: 'Oui pour tout' });
+  assert.deepEqual(goLabel('oui à tout', { sending: true }), { text: 'Envoi…', name: 'Envoi du oui à tout' });
+  assert.deepEqual(goLabel('oui à tout', { sent: true }), { text: 'Envoyé ✓', name: 'oui à tout envoyé' });
+});
+
 test('a card on hold tells since when its answer waits, not the time at the step', () => {
   assert.equal(sentLine(null, T0), null);
   assert.equal(sentLine(undefined, T0), null);

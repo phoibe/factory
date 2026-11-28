@@ -60,11 +60,13 @@ export function holdLine(answeredAt, now) {
 }
 
 // The « go » / « Ok » button of a card (issue #517): « Envoi… » only while the answer leaves; once GitHub took it,
-// « Envoyé ✓ » until the card changes column, so that a sent answer never looks stuck. `word`: « go » or « ok ».
+// « Envoyé ✓ » until the card changes column, so that a sent answer never looks stuck. `word`: « go », « ok » or
+// « oui à tout » (issue #620, read « Oui pour tout » on its button).
+const BUTTON_TEXT = { ok: 'Ok', 'oui à tout': 'Oui pour tout' };
 export function goLabel(word, { sending = false, sent = false } = {}) {
   if (sending) return { text: 'Envoi…', name: `Envoi du ${word}` };
   if (sent) return { text: 'Envoyé ✓', name: `${word} envoyé` };
-  const text = word === 'ok' ? 'Ok' : 'go';
+  const text = BUTTON_TEXT[word] || 'go';
   return { text, name: text };
 }
 

@@ -128,14 +128,32 @@ export function timeLine(e) {
 }
 
 // What waits for the owner, oldest wait first. reply 'go' = a plain « go » answers it (the spec), 'ok' = a plain « ok »
-// answers it (the captures, the recette); 'open' = needs text or a look.
+// answers it (the captures, the recette), 'all' = a plain « oui à tout » answers it (a questions card whose agent round
+// proposes it, `offersAll`, issue #620); 'open' = needs text or a look.
 const REPLIES = { spec: 'go', visual: 'ok', acceptance: 'ok' };
+const replyFor = (c) => REPLIES[c.column] || (c.column === 'grilling' && c.offersAll ? 'all' : 'open');
 export function yoursList(cards) {
   return cards
     .filter((c) => laneFor(c) === 'yours')
     .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
-    .map((c) => ({ ...c, reply: REPLIES[c.column] || 'open' }));
+    .map((c) => ({ ...c, reply: replyFor(c) }));
 }
+
+// Issue #620: true when the agent's last message on a card (oldest first, factory notes of strangers already taken out
+// by trustNotes) proposes « oui à tout », as every round of questions ends. Only the agent's own messages count (its
+// marker, from a trusted author); the phone alert the factory adds after a round is not a new message of the agent.
+const AGENT = '<!-- factory-agent -->';
+const YES_TO_ALL = /«\s*oui à tout\s*»/i;
+// Nor are the factory's session note (edited or created at each launch of the agent) and an estimate the agent posts
+// alone (a size, no question; the spec carries one too, and is a new message).
+const notAMessage = (body) => body.includes('<!-- factory-notified -->') || body.includes('<!-- factory-session -->')
+  || (body.includes('<!-- factory-estimate') && !body.includes('<!-- factory-spec -->') && !YES_TO_ALL.test(body) && !body.includes('?'));
+// `yesToAllRound` gives that message's id (each new round gets a fresh button), or null.
+export function yesToAllRound(comments) {
+  const last = [...(comments || [])].reverse().find((c) => !c?.untrusted && String(c?.body || '').includes(AGENT) && !notAMessage(String(c.body)));
+  return last && YES_TO_ALL.test(String(last.body)) ? String(last.id ?? last.created_at ?? 'round') : null;
+}
+export const offersYesToAll = (comments) => yesToAllRound(comments) != null;
 
 // A card slides only when it moved by a real distance. A text that changes length ("il y a 2 min" → "il y a 3 min")
 // shifts the cards below by a few pixels: that must not animate.
