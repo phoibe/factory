@@ -198,6 +198,52 @@ _À éviter_ : niveau, palier, léger / intermédiaire / puissant
 Le nom d'une lignée de modèles (Fable, Opus, Sonnet, Haiku) que le propriétaire choisit pour un rôle, et qu'il appelle aussi « moteur » ; c'est toujours sa version la plus récente qui sert.
 _À éviter_ : version, modèle précis
 
+## Consommation
+
+**Consommation** :
+Ce que les agents de la factory ont utilisé de Claude pour faire leur travail, mesuré à la fin de chaque lancement de l'agent, sur tous les projets. Elle ne compte ni la discussion de l'onglet « Agent » ni les autres usages que le propriétaire fait de Claude.
+_À éviter_ : coût, dépense, facture
+
+**Équivalent au tarif public** :
+La consommation exprimée en dollars : ce que le même travail aurait coûté sans forfait, au tarif que Claude publie pour chaque moteur et chaque sorte de token. Ce n'est ni une facture ni la façon dont le forfait compte.
+_À éviter_ : coût réel, prix, montant facturé
+
+**Type de tâche** :
+Sur la page « Consommation », ce à quoi une consommation est rattachée : l'un des rôles de modèle, ou l'agent qui pilote. C'est le mot du propriétaire pour les lignes du bloc « Modèles » des réglages généraux.
+_À éviter_ : étape, catégorie, poste
+
+**Tâche mesurée** :
+Le travail d'un seul agent, du moment où il est lancé à celui où il rend son résultat ; un lancement de l'agent qui pilote en est une aussi. C'est ce que compte la colonne « Tâches » de la page « Consommation ».
+_À éviter_ : tâche du plan, étape, passage
+
+**Agent qui pilote** :
+L'agent principal d'un lancement : il organise le travail et le confie aux autres agents. Son moteur est celui de la routine sur claude.ai, que la factory ne peut pas changer.
+_À éviter_ : agent principal, orchestrateur, chef d'orchestre
+
+**Niveau d'effort** :
+Le réglage qui dit à un moteur jusqu'où pousser sa réflexion sur une tâche : faible, moyen ou élevé. Plus il est haut, plus la tâche consomme.
+_À éviter_ : intensité, puissance, budget de réflexion
+
+**Jauge du forfait** :
+L'un des deux pourcentages que Claude affiche au propriétaire pour la semaine en cours de son forfait : l'un pour tous les moteurs, l'autre pour Fable seul. Elles comptent tout ce qu'il fait avec Claude, pas seulement la factory, et la factory ne peut pas les lire.
+_À éviter_ : quota, limite, compteur
+
+**Relevé** :
+Les pourcentages des deux jauges du forfait, que le propriétaire recopie lui-même sur la page « Consommation » à un moment donné.
+_À éviter_ : mesure (ce que la factory compte elle-même), saisie, pointage
+
+**Étalonnage** :
+Le calcul de ce que vaut 1 % de chaque jauge du forfait, fait à partir de deux relevés entre lesquels seule la factory a utilisé Claude. Il sert à dire ce que pèse chaque type de tâche sur la semaine du forfait, et reste valable tant que Claude ne change pas les limites du forfait.
+_À éviter_ : calibrage, conversion, réglage du forfait
+
+**Usage hors factory** :
+Tout ce que le propriétaire fait avec Claude en dehors des lancements de la factory : ses discussions sur claude.ai, ses propres sessions, ses tâches planifiées et, tant qu'elle n'est pas mesurée, la discussion de l'onglet « Agent ».
+_À éviter_ : usage personnel, usage externe, autres usages
+
+**Mode économe** :
+L'interrupteur unique des réglages généraux qui fait travailler la factory en consommant moins, au prix de relectures plus légères : la relecture finale d'une petite demande à l'effort moyen au plus, et les relectures 2 et 3 limitées aux corrections. Éteint, rien ne change.
+_À éviter_ : mode éco, mode léger, économie de tokens
+
 ## Design
 
 **Document de design** :
