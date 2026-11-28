@@ -1,0 +1,5 @@
+{"t":"2026-11-28T10:22:00.929Z","kind":"run","stage":"grilling","issue":628,"pr":null,"repo":"phoibe/factory","models":{"plan":"fable","review":"fable"}}
+{"t":"2026-11-28T10:22:27.853Z","kind":"agent","model":"fable","effort":"high","role":"plan","up":true,"label":"Questions #628","id":"toolu_016jgHhihP1Jjb6waY9Zio6K"}
+{"t":"2026-11-28T10:22:31.544Z","kind":"skill","name":"grilling","id":"toolu_01141yYfWcxpu6YfZJdXE9oA"}
+{"t":"2026-11-28T10:22:31.852Z","kind":"skill","name":"domain-modeling","id":"toolu_018FKuNB7uD7LMsxEoCUZdfy"}
+{"t":"2026-11-28T10:27:42.420Z","kind":"skill","name":"claude-api","id":"toolu_01FRLtZP3nDTGeE2A5TQvaA3"}
