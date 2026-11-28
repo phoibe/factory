@@ -1,3 +1,5 @@
 {"t":"2026-11-28T11:08:03.842Z","kind":"run","stage":"build","issue":628,"pr":null,"repo":"phoibe/factory","models":{"plan":"opus","review":"opus"}}
 {"t":"2026-11-28T11:08:58.603Z","kind":"agent","model":"opus","effort":"high","role":"plan","label":"Plan issue 628","id":"toolu_01CoxjrcJ6Aow83fq9JRXewm"}
 {"t":"2026-11-28T11:09:00.977Z","kind":"skill","name":"writing-plans","id":"toolu_01GmjPoaxQTMrg6gSaEj4HJH"}
+{"t":"2026-11-28T11:15:09.562Z","kind":"skill","name":"subagent-driven-development","id":"toolu_01RZWorKk97vBZhFzfgtQVqG"}
+{"t":"2026-11-28T11:15:09.848Z","kind":"skill","name":"dispatching-parallel-agents","id":"toolu_0135VZjvpH9yHBRdXrXgDLX8"}
