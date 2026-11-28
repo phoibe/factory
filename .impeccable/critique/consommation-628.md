@@ -212,3 +212,86 @@ States: calibrated (plan columns, « Revue » expanded), Oui/Non question, empty
 - Live-server `detect.js` overlay: skipped on purpose (read-only critique; the overlay flow can edit the entry HTML). No user-visible overlay exists.
 - Dark mode and phone width of Réglages généraux: screenshots taken, detector scan only in light (same DOM).
 - Local servers belonged to the fixture and closed with each journey; the Chromium/CDP port closed with the browser. Nothing left running.
+
+---
+
+## Re-critique after the fixes (single evaluation)
+
+# Re-critique, Assessment A: « Consommation » after 6246457 (« fix(panel): Consommation design pass »)
+
+Read-only. This is a single evaluation with no detector. Screenshots come from `shotsR.mjs`, which is the same script as `shotsA.mjs` with three extra captures: the table scrolled sideways, « Confirmer la suppression », and « Modifier » on the weekly reset. They were taken at 1280 and 390 px, light and dark:
+`/tmp/claude-0/-home-user-factory/494eb2f2-dc79-5ee6-9616-a103c8ec77aa/scratchpad/critique/R-*.png`
+
+## Design Health Score: 29/40 (Good; it was 25/40)
+
+| # | Heuristic | Before | Now | Note |
+|---|-----------|-------:|----:|------|
+| 1 | Visibility of System Status | 2 | 3 | Disabled controls are now at 55 % opacity, and the button being saved reads « Enregistrement… ». |
+| 2 | Match System / Real World | 3 | 3 | Unchanged. |
+| 3 | User Control and Freedom | 2 | 3 | « Annuler » on the question and on the reset edit; deleting now takes two touches. The armed delete never disarms (see N3). |
+| 4 | Consistency and Standards | 3 | 3 | Only the digits are mono now, in the table and in the plan lines. Labels are bold everywhere. |
+| 5 | Error Prevention | 3 | 3 | Delete is confirmed, but the confirmation stays armed with no time limit. |
+| 6 | Recognition Rather Than Recall | 3 | 3 | On a phone, « Tâches » and « Total » show on the first screen. The fade at the right edge hints that more columns exist. |
+| 7 | Flexibility and Efficiency | 2 | 3 | The reading comes first; once saved, the reset folds into one line with « Modifier ». |
+| 8 | Aesthetic and Minimalist Design | 2 | 2 | The empty state now prints « null » twice (N1). On a phone the row names collide with the row lines (N2). |
+| 9 | Error Recovery | 3 | 3 | New message: « Choisissez d'abord la remise à zéro. » |
+| 10 | Help and Documentation | 2 | 3 | The first-visit dead end is gone. |
+
+## Earlier issues
+
+| Issue | Status | Evidence |
+|---|---|---|
+| [P1] Table cut off on a 1280 px desktop | ✅ Fixed | All 7 columns fit, and « Semaine tous moteurs ≈ 4,5 % » is fully visible (R-desk-*-calibrated). The headers can wrap, « trop peu de mesures » is small grey body text, and the padding is 8 px. |
+| [P1] Figures off-screen on a phone | ✅ Fixed (with new side effects, N2 and N4) | « Moteur · effort » folds in grey under the type name. The first column stays in place with a 1 px rule. « Tâches » and « Total » are visible at 390 px, and the right edge fades when more columns follow. |
+| [P1] Disabled controls looked active | ✅ Fixed | Disabled fields and buttons are clearly dimmed in both themes (R-desk-dark-question, R-*-empty). The button being saved says « Enregistrement… ». « Noter le relevé » stays active before the reset is saved and answers with an error instead of doing nothing. |
+| [P2] No way out of the question | ✅ Fixed | « Oui / Non / Annuler », 12 px apart. Annuler gives focus back to the reading field. |
+| [P2] Whole table cells in mono | ✅ Fixed | `td.fig` is no longer mono. The page-wide `monoNumbers` observer wraps only the digits, so « $ », « tokens » and « M de tokens » are in the text font. Phrases use `.usage-word`. |
+
+Earlier minor notes, also addressed:
+- « Mon forfait » is now a real h2 inside its legend, with h3 subparts.
+- Label weights are unified.
+- The underline on hover over a row toggle is gone.
+- Expanded rows show « — » instead of repeating « trop peu de mesures ».
+- In the empty state the filters and the price line are hidden, but the way it was done causes N1.
+
+## New issues introduced by the fixes
+
+**[P0] N1: the empty state prints « null » twice**
+- **Where:** `panel/screen-usage.mjs`, `render()`. The children `measured ? el('div', {class:'usage-filters'}, …) : null` and `measured ? el('p', {class:'muted usage-note'}, …) : null` are passed to `$('usage').replaceChildren(...)`. The native `replaceChildren` turns `null` into the text « null ». (`el()` drops null children, but `replaceChildren` does not.)
+- **Seen:** the word « null » appears above the dashed frame and above « Mon forfait », at both widths and in both themes (R-desk-light-empty, R-phone-dark-empty).
+- **Why it matters:** this is the very first screen the owner sees before any run, and raw code text is on it.
+- **Fix:** spread conditionally (`...(measured ? [filters] : [])`) or `.filter(Boolean)` the list.
+- **Test gap:** the e2e test « une page sans mesure… » only looks for the sentence. It should also assert that `#usage` contains no « null » text.
+
+**[P2] N2: on a phone the type names ride over the row lines**
+- **Where:** `panel/style.css`, in the `@media (max-width: 600px)` block: `.usage-toggle { margin: -10px 0 0 }`, combined with the sticky first column now wrapping (`max-width: 11em; white-space: normal`).
+- **Seen:** « Écriture du code » and « Agent qui pilote » wrap onto two lines and their first line overlaps the border above (R-phone-*-calibrated, R-phone-dark-table-scrolled). The chevron is vertically centred on the two lines, not on the first line.
+- **Fix:**
+  - Drop the negative top margin on phones; the 44 px touch height can come from padding.
+  - Align the chevron to the first line (`align-items: flex-start` with a small top offset).
+
+**[P2] N3: « Confirmer la suppression » stays armed indefinitely**
+- **Where:** `plan()`, where `usage.confirmDelete` is only cleared by `save()` and `openUsage()`.
+- **Seen:** after one touch, the button keeps saying « Confirmer la suppression » while you open « Modifier », type a reading, or answer the question (R-phone-light-plan-edit). A later stray touch deletes the reading and its calibration.
+- **Fix:** clear `confirmDelete` on any other action in « Mon forfait » (in render, unless the focus is still on the button) or after about 5 s. Also clear it on blur.
+
+**[P3] N4: phone table rows are much taller**
+- « trop peu de mesures » wraps onto 3 lines.
+- Kind names wrap (« relecture / finale », « relectures 2 et / 3 »).
+- The header row has an empty band above « Type de tâche » because the other headers wrap.
+- **Fix:** keep `.usage-word` on one line in the table (`white-space: nowrap`; the column scrolls anyway) and give the first column `min-width: 10.5em`.
+
+**[P3] N5: the bold split lines break between number and « % »**
+- **Seen at 390 px:** « Jauge tous moteurs à 20 % : factory ≈ 10 / %, hors factory ≈ 10 % ».
+- **Fix:** use non-breaking spaces between « ≈ » and the number, and between the number and « % » (in `splitLines` in `panel/quota.mjs`, or when rendering).
+
+**[P3] N6: the fade also erases the frame's right border and rounded corner**
+- **Where:** `.usage-table-wrap.more` (mask on the whole wrapper). The frame looks open on the right.
+- **Fix:** this is acceptable as a scroll cue. Alternatively, put the mask on an inner scroller and keep the border on an outer wrapper.
+
+## Still fine and unchanged
+
+- The calibration line is now grey and small under the bold « Jauge … » answer, which is the right hierarchy.
+- The reset summary line « Remise à zéro : jeudi 0 h » plus « Modifier » at the bottom works.
+- Before a reset is saved, the reset form comes first.
+- No blue anywhere, and no new explanatory text: « Choisissez d'abord la remise à zéro. » is an allowed short error.
