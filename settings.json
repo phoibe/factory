@@ -1,4 +1,6 @@
 {
   "machine": "dev-server",
-  "models": {}
+  "models": {
+    "review": "opus"
+  }
 }
