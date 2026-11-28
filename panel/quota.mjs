@@ -141,6 +141,10 @@ export function livePerPoint(quota, cost) {
   return { all: live(c.all, c.points?.all, false), fable: live(c.fable, c.points?.fable, true) };
 }
 
+// A figure never leaves its « ≈ », « % » or « $ » alone at the start or end of a line: non-breaking spaces (U+00A0, as
+// frenchSpaces in stack.mjs).
+const tight = (text) => text.replace(/≈ /g, '≈\u00a0').replace(/(\d) ([%$])/g, '$1\u00a0$2');
+
 const shortDate = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
 export function calibrationLine(quota, now, cost) {
@@ -150,7 +154,7 @@ export function calibrationLine(quota, now, cost) {
   const parts = [`Étalonnage du ${shortDate(c.to)}`, `1 % de la semaine tous moteurs ≈ ${fmtDollars(per.all)}`];
   if (per.fable != null) parts.push(`1 % de la semaine Fable ≈ ${fmtDollars(per.fable)}`);
   const line = parts.join(' · ');
-  return now - Date.parse(c.to) < PROVISIONAL ? `${line} (provisoire)` : line;
+  return tight(now - Date.parse(c.to) < PROVISIONAL ? `${line} (provisoire)` : line);
 }
 
 // For the newest reading of the current week, the share of each calibrated gauge the factory used.
@@ -166,7 +170,7 @@ export function splitLines(quota, now, cost) {
     const start = weekStart(at, reset);
     const factory = Math.round(cost(start, at, { fableOnly }) / perPoint);
     if (factory > value) redo = true;
-    lines.push(`Jauge ${name} à ${value} % : factory ≈ ${factory} %, hors factory ≈ ${Math.max(0, value - factory)} %`);
+    lines.push(tight(`Jauge ${name} à ${value} % : factory ≈ ${factory} %, hors factory ≈ ${Math.max(0, value - factory)} %`));
   };
   gauge('tous moteurs', reading.all, per.all, quota.reset.all, false);
   gauge('Fable', reading.fable, per.fable, quota.reset.fable ?? quota.reset.all, true);

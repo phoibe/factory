@@ -174,7 +174,7 @@ test('calibrationLine shows cents below 10 $ and drops them when they round to ,
   let q = add(base(), { all: 0, fable: 0 }, d(27, 0)).quota;
   const cost = (f, t, { fableOnly } = {}) => ((t - f) / H) * (fableOnly ? 0.3 : 2.05); // 20 h → 41 $ / 10, 6 $ / 10
   q = add(q, { all: 10, fable: 10, outside: false }, d(27, 20), cost).quota;
-  assert.equal(calibrationLine(q, d(28, 10), cost), 'Étalonnage du 27 nov. · 1 % de la semaine tous moteurs ≈ 4,10 $ · 1 % de la semaine Fable ≈ 0,60 $');
+  assert.equal(calibrationLine(q, d(28, 10), cost), 'Étalonnage du 27 nov. · 1\u00a0% de la semaine tous moteurs ≈\u00a04,10\u00a0$ · 1\u00a0% de la semaine Fable ≈\u00a00,60\u00a0$');
 });
 
 test('a new calibration replaces the previous one and deleteLast restores it', () => {
@@ -225,14 +225,14 @@ test('calibrationLine says there is none yet, then gives a dollar per point', ()
   let q = add(base(), { all: 0, fable: 0 }, d(27, 0)).quota;
   const cost = (f, t, { fableOnly } = {}) => ((t - f) / H) * (fableOnly ? 3 : 9.5); // 20 h → 190 $ / 10, 60 $ / 10
   q = add(q, { all: 10, fable: 10, outside: false }, d(27, 20), cost).quota;
-  assert.equal(calibrationLine(q, d(28, 10), cost), 'Étalonnage du 27 nov. · 1 % de la semaine tous moteurs ≈ 19 $ · 1 % de la semaine Fable ≈ 6 $');
+  assert.equal(calibrationLine(q, d(28, 10), cost), 'Étalonnage du 27 nov. · 1\u00a0% de la semaine tous moteurs ≈\u00a019\u00a0$ · 1\u00a0% de la semaine Fable ≈\u00a06\u00a0$');
 });
 
 test('calibrationLine omits Fable when it is not calibrated and is provisional under 3 hours', () => {
   let q = add(base(), { all: 0 }, d(28, 0)).quota;
   q = add(q, { all: 10, outside: false }, d(28, 10)).quota; // 10 $ / 10
-  assert.equal(calibrationLine(q, d(28, 12), hourly), 'Étalonnage du 28 nov. · 1 % de la semaine tous moteurs ≈ 1 $ (provisoire)');
-  assert.equal(calibrationLine(q, d(28, 13), hourly), 'Étalonnage du 28 nov. · 1 % de la semaine tous moteurs ≈ 1 $');
+  assert.equal(calibrationLine(q, d(28, 12), hourly), 'Étalonnage du 28 nov. · 1\u00a0% de la semaine tous moteurs ≈\u00a01\u00a0$ (provisoire)');
+  assert.equal(calibrationLine(q, d(28, 13), hourly), 'Étalonnage du 28 nov. · 1\u00a0% de la semaine tous moteurs ≈\u00a01\u00a0$');
 });
 
 test('splitLines splits the newest reading of the week between factory and the rest', () => {
@@ -247,8 +247,8 @@ test('splitLines splits the newest reading of the week between factory and the r
     return ((t - f) / H) * (fableOnly ? 0.5 : 31 / 24);
   };
   assert.deepEqual(splitLines(q, d(28, 10), cost), [
-    'Jauge tous moteurs à 43 % : factory ≈ 31 %, hors factory ≈ 12 %',
-    'Jauge Fable à 20 % : factory ≈ 12 %, hors factory ≈ 8 %',
+    'Jauge tous moteurs à 43\u00a0% : factory ≈\u00a031\u00a0%, hors factory ≈\u00a012\u00a0%',
+    'Jauge Fable à 20\u00a0% : factory ≈\u00a012\u00a0%, hors factory ≈\u00a08\u00a0%',
   ]);
 });
 
@@ -260,7 +260,7 @@ test('splitLines warns when the factory share exceeds the reading', () => {
   };
   const cost = (f, t) => (f.getTime() === d(20, 9).getTime() ? 10 : 24);
   assert.deepEqual(splitLines(q, d(28, 10), cost), [
-    'Jauge tous moteurs à 10 % : factory ≈ 24 %, hors factory ≈ 0 %',
+    'Jauge tous moteurs à 10\u00a0% : factory ≈\u00a024\u00a0%, hors factory ≈\u00a00\u00a0%',
     'L’étalonnage est peut-être à refaire.',
   ]);
 });

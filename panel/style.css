@@ -773,8 +773,10 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .usage-field label { margin: 8px 0 6px; }
 .usage-field select { width: 100%; }
 .usage-field input[type=text] { width: 8em; max-width: 100%; font: inherit; font-size: 16px; font-family: var(--mono); color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 44px; }
-.usage-table-wrap { overflow-x: auto; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.usage-table-wrap:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.usage-table-frame { margin: 0 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.usage-table-frame:has(.usage-table-wrap:focus-visible) { outline: 2px solid var(--text); outline-offset: 2px; }
+.usage-table-wrap { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.usage-table-wrap:focus-visible { outline: none; }
 /* More columns to the right: the right edge fades out, the cue that the frame scrolls. */
 .usage-table-wrap.more { -webkit-mask-image: linear-gradient(to left, transparent, #000 40px); mask-image: linear-gradient(to left, transparent, #000 40px); }
 .usage-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; overflow-wrap: normal; word-break: normal; hyphens: manual; }
@@ -784,7 +786,7 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 .usage-table thead th { border-top: none; color: var(--muted); font-size: .8125rem; font-weight: 600; white-space: normal; vertical-align: bottom; }
 .usage-table .fig { text-align: right; }
 .usage-table small { display: block; color: var(--muted); font-size: .8125rem; }
-.usage-word { color: var(--muted); font-size: .8125rem; white-space: normal; }
+.usage-word { color: var(--muted); font-size: .8125rem; }
 .usage-table tbody th { font-weight: 600; }
 .usage-table tbody th, .usage-table thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 .usage-engine-inline { display: none; }
@@ -820,6 +822,10 @@ dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
 @media (max-width: 600px) {
   .usage-engine { display: none; }
   .usage-engine-inline { display: block; margin-top: 2px; color: var(--muted); font-size: .8125rem; font-weight: 400; white-space: normal; }
-  .usage-table tbody th, .usage-table thead th:first-child { min-width: 9.5em; max-width: 11em; white-space: normal; box-shadow: inset -1px 0 0 var(--line); }
-  .usage-toggle { margin: -10px 0 0; }
+  .usage-table thead th { white-space: nowrap; }
+  .usage-table tbody th, .usage-table thead th:first-child { min-width: 10.5em; max-width: 11em; white-space: normal; box-shadow: inset -1px 0 0 var(--line); }
+  /* A name on two lines stays inside its row; the touch area keeps 44 px around it without moving the row. */
+  .usage-toggle { position: relative; margin: 0; min-height: 0; align-items: flex-start; }
+  .usage-toggle .chev { margin-top: .55em; }
+  .usage-toggle::after { content: ""; position: absolute; inset: -12px -8px; }
 }

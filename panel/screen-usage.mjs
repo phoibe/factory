@@ -129,7 +129,7 @@ function table(rows, total, perPoint, periodId) {
     const isFable = r.family === 'Fable';
     const kindIds = r.kinds.map((_, j) => `usage-row-${i}-${j}`);
     const toggle = el('button', { type: 'button', id: `usage-toggle-${i}`, class: 'usage-toggle', 'aria-expanded': String(open), 'aria-controls': kindIds.join(' '),
-      onclick: () => { if (usage.open.has(key)) usage.open.delete(key); else usage.open.add(key); render(); } },
+      onclick: () => { disarm(); if (usage.open.has(key)) usage.open.delete(key); else usage.open.add(key); render(); } },
     el('span', { class: 'chev', 'aria-hidden': 'true' }), typeName(r.type));
     // On a phone the engine goes under the type (style.css): the first figures fit on the first screen.
     body.append(el('tr', {}, el('th', { scope: 'row' }, toggle, el('span', { class: 'usage-engine-inline' }, engineLabel(r))),
@@ -144,8 +144,9 @@ function table(rows, total, perPoint, periodId) {
     ...gauges.map((g) => fig(g.cell(total.dollars, total.fableDollars, false)))));
   // A region that scrolls sideways on a phone: reachable with the keyboard, named for screen readers.
   // `more`: columns lie beyond the right edge, which then fades (style.css) to show the frame scrolls.
-  return el('div', { class: 'usage-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Consommation par type de tâche', onscroll: (e) => showMore(e.currentTarget) },
-    el('table', { class: 'usage-table' }, head, body));
+  // The frame keeps its border; only the scrolling content inside it fades.
+  return el('div', { class: 'usage-table-frame' }, el('div', { class: 'usage-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Consommation par type de tâche', onscroll: (e) => showMore(e.currentTarget) },
+    el('table', { class: 'usage-table' }, head, body)));
 }
 function showMore(wrap) {
   if (wrap) wrap.classList.toggle('more', wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1);
@@ -169,10 +170,16 @@ const when = (iso) => {
   return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 };
 
+// « Confirmer la suppression » holds only until another action: then it is « Supprimer ce relevé » again.
+function disarm() {
+  if (!usage.confirmDelete) return false;
+  usage.confirmDelete = false;
+  return true;
+}
 const resetText = (r) => `${DAYS[r.day - 1]} ${r.hour} h`;
 const button = (id, label, onclick, { disabled = false, kind = 'secondary' } = {}) => el('button', { type: 'button', id, class: kind,
   disabled: disabled || (!!usage.saving && usage.saving !== id) || usage.unreadable, 'aria-disabled': usage.saving === id ? 'true' : null,
-  onclick: () => { if (usage.saving !== id) onclick(); } }, usage.saving === id ? 'Enregistrement…' : label);
+  onclick: () => { if (usage.saving === id) return; if (id !== 'usage-reading-delete') disarm(); onclick(); } }, usage.saving === id ? 'Enregistrement…' : label);
 
 // The weekly reset is set once: a form until it is saved (or « Modifier »), then one line.
 function resetPart() {
@@ -183,7 +190,7 @@ function resetPart() {
     return [el('div', { class: 'usage-reset-line' }, el('p', {}, text),
       button('usage-reset-edit', 'Modifier', () => { usage.editReset = true; usage.reset = { all: resetDraft(q.reset.all), fable: resetDraft(q.reset.fable) }; usage.focus = 'usage-reset-all-day'; render(); }))];
   }
-  const pick = (id, part) => (v) => { usage.reset[id][part] = v; usage.resetError = ''; render(); };
+  const pick = (id, part) => (v) => { disarm(); usage.reset[id][part] = v; usage.resetError = ''; render(); };
   const gauge = (id, name) => el('fieldset', { class: 'usage-gauge' }, el('legend', {}, name),
     select(`usage-reset-${id}-day`, 'Jour', dayOptions, usage.reset[id].day, pick(id, 'day'), off),
     select(`usage-reset-${id}-hour`, 'Heure', hourOptions, usage.reset[id].hour, pick(id, 'hour'), off));
@@ -198,8 +205,8 @@ function resetPart() {
 function readingPart() {
   const off = usage.unreadable || !!usage.saving;
   const parts = [el('h3', {}, 'Nouveau relevé'), el('div', { class: 'usage-resets' },
-    field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; }, off || !!usage.asking),
-    field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; }, off || !!usage.asking)),
+    field('usage-reading-all', 'Tous moteurs (%)', usage.reading.all, (v) => { usage.reading.all = v; if (disarm()) render(); }, off || !!usage.asking),
+    field('usage-reading-fable', 'Fable (%)', usage.reading.fable, (v) => { usage.reading.fable = v; if (disarm()) render(); }, off || !!usage.asking)),
   button('usage-reading-save', 'Noter le relevé', () => noteReading(), { disabled: !!usage.asking })];
   if (usage.error) parts.push(el('p', { class: 'error', role: 'alert' }, usage.error));
   if (usage.asking) {
@@ -252,12 +259,13 @@ function render() {
   const measured = usage.runs.length > 0;
   $('usage').replaceChildren(
     ...usage.missing.map((name) => el('p', { class: 'machine-status warn' }, `Les chiffres de ${name} n'ont pas pu être lus.`)),
-    measured ? el('div', { class: 'usage-filters' },
-      select('usage-period', 'Période', periods.map((p) => [p.id, p.label]), period.id, (v) => { usage.period = v; render(); }, false),
-      select('usage-size', 'Taille', SIZES, usage.size, (v) => { usage.size = v; render(); }, false)) : null,
+    // replaceChildren would print a null as the text « null »: absent parts are left out.
+    ...[measured ? el('div', { class: 'usage-filters' },
+      select('usage-period', 'Période', periods.map((p) => [p.id, p.label]), period.id, (v) => { disarm(); usage.period = v; render(); }, false),
+      select('usage-size', 'Taille', SIZES, usage.size, (v) => { disarm(); usage.size = v; render(); }, false)) : null,
     rows.length ? table(rows, total, perPoint, period.id) : el('p', { class: 'usage-empty' }, EMPTY),
     measured ? el('p', { class: 'muted usage-note' }, `Équivalent au tarif public de Claude du ${priced}. Ce n'est pas une facture.`) : null,
-    plan(now));
+    plan(now)].filter(Boolean));
   showMore(document.querySelector('.usage-table-wrap'));
   // After an action of « Mon forfait », the focus goes to what it produced (the question, the message), never back to
   // the top of the page past the whole table.

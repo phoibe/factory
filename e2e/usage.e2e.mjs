@@ -46,7 +46,12 @@ const openUsage = async (page, url) => {
   await page.getByRole('button', { name: 'Voir la consommation' }).click();
   await page.getByRole('heading', { name: 'Consommation', level: 1 }).waitFor();
   await page.locator('#usage:not([aria-busy])').waitFor();
+  await noCodeWords(page);
 };
+// Never a raw « null » or « undefined » on the page (a missing value printed as text).
+async function noCodeWords(page) {
+  assert.doesNotMatch(await page.locator('#usage-view').innerText(), /\b(null|undefined|NaN)\b/);
+}
 // The cells of the first table row holding `text`, as shown (the tokens under the dollars on their own line).
 const cells = (page, text) => page.locator('#usage tbody tr', { hasText: text }).first().locator('th, td').evaluateAll((c) => c.map((x) => x.innerText.trim()));
 const headers = (page) => page.locator('#usage thead th').allTextContents();
@@ -209,7 +214,7 @@ test('sans étalonnage seuls les dollars s\'affichent et après étalonnage 1 % 
     await plan.getByRole('button', { name: 'Noter le relevé' }).click();
     await plan.getByRole('button', { name: 'Non', exact: true }).click();
     // 22,20 $ for 10 points of the « tous moteurs » gauge, 12 $ of Fable for 10 points of the Fable one.
-    await page.getByText(/^Étalonnage du .+ · 1 % de la semaine tous moteurs ≈ 2,22 \$ · 1 % de la semaine Fable ≈ 1,20 \$ \(provisoire\)$/).waitFor();
+    await page.getByText(/^Étalonnage du .+ · 1\s%\sde la semaine tous moteurs ≈\s2,22\s\$ · 1\s%\sde la semaine Fable ≈\s1,20\s\$ \(provisoire\)$/).waitFor();
     assert.deepEqual(await headers(page), ['Type de tâche', 'Moteur · effort', 'Tâches', 'Total', 'En moyenne', 'Semaine Fable', 'Semaine tous moteurs']);
     assert.deepEqual((await cells(page, 'Revue')).slice(5), ['≈ 10 %', '≈ 5,4 %']);
     assert.deepEqual((await cells(page, 'Écriture du code')).slice(5), ['0 %', '≈ 4,5 %']);
@@ -263,6 +268,7 @@ test('une page sans mesure dit Aucune mesure pour l\'instant', async () => {
     // Nothing to filter or to price: no lists, no price line.
     assert.equal(await page.getByRole('combobox', { name: 'Période' }).count(), 0);
     assert.equal(await page.getByText('Ce n\'est pas une facture.', { exact: false }).count(), 0);
+    assert.doesNotMatch(await page.locator('#usage').textContent(), /null|undefined/);
     assert.ok(reads.some((p) => p.startsWith('/repos/phoibe/factory/contents/usage/')), 'the factory itself is read');
     assert.ok(reads.some((p) => p.startsWith('/repos/o/r/contents/usage/')));
   });
@@ -406,6 +412,24 @@ test('sur téléphone les premiers chiffres se voient, la première colonne rest
     assert.ok(before.total <= before.width, `the total is on the first screen: ${JSON.stringify(before)}`);
     assert.match(before.engine, /Opus · moyen/, 'the engine sits under the type');
     assert.equal(before.more, true, 'the frame shows there is more to the right');
+    const shape = await page.evaluate(() => {
+      const wrap = document.querySelector('.usage-table-wrap');
+      const frame = wrap.parentElement;
+      const rows = [...document.querySelectorAll('#usage tbody tr:not([hidden]) th')].map((th) => {
+        const b = th.querySelector('.usage-toggle');
+        return b ? Math.round(b.getBoundingClientRect().top - th.getBoundingClientRect().top) : 0;
+      });
+      const word = document.querySelector('#usage .usage-word');
+      return { rows, word: Math.round(word.getBoundingClientRect().height), lineHeight: parseFloat(getComputedStyle(word).lineHeight) || 20,
+        head: Math.round(document.querySelector('#usage thead tr').getBoundingClientRect().height),
+        frameBorder: getComputedStyle(frame).borderRightWidth, frameMask: getComputedStyle(frame).maskImage, wrapMask: getComputedStyle(wrap).maskImage };
+    });
+    assert.ok(shape.rows.every((d) => d >= 0), `a type name never rides over the line above: ${shape.rows}`);
+    assert.ok(shape.word <= shape.lineHeight * 1.5, `« trop peu de mesures » on one line: ${JSON.stringify(shape)}`);
+    assert.ok(shape.head <= 56, `no empty band in the header row: ${shape.head}`);
+    assert.equal(shape.frameBorder, '1px', 'the frame keeps its border');
+    assert.equal(shape.frameMask, 'none', 'only the scrolling content fades, not the frame');
+    assert.notEqual(shape.wrapMask, 'none');
     const after = await page.locator('.usage-table-wrap').evaluate(async (w) => {
       w.scrollLeft = w.scrollWidth;
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -413,5 +437,32 @@ test('sur téléphone les premiers chiffres se voient, la première colonne rest
     });
     assert.ok(Math.abs(after.first - after.wrap) <= 1, `the first column stays: ${JSON.stringify(after)}`);
     assert.equal(after.more, false);
+  });
+});
+
+test('Confirmer la suppression redevient Supprimer ce relevé dès qu une autre action a lieu', async () => {
+  const first = { at: new Date(Date.now() - HOUR).toISOString(), all: 10, fable: null, outside: null };
+  await withPanel({ usage: USAGE, factoryFiles: { 'settings.json': quotaWith([first]) } }, async ({ page, url, writes }) => {
+    await openUsage(page, url);
+    const plan = page.getByRole('group', { name: 'Mon forfait' });
+    const arm = async () => { await plan.getByRole('button', { name: 'Supprimer ce relevé' }).click(); await plan.getByRole('button', { name: 'Confirmer la suppression' }).waitFor(); };
+    const disarmed = async (why) => assert.equal(await plan.getByRole('button', { name: 'Confirmer la suppression' }).count(), 0, why);
+    await arm();
+    await plan.getByRole('button', { name: 'Modifier' }).click();
+    await disarmed('editing the reset');
+    await plan.getByRole('button', { name: 'Annuler' }).click();
+    await arm();
+    await plan.getByRole('textbox', { name: 'Tous moteurs (%)' }).fill('13');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await disarmed('noting a reading');
+    await arm();
+    await plan.getByRole('button', { name: 'Annuler' }).click();
+    await disarmed('cancelling the question');
+    await plan.getByRole('button', { name: 'Noter le relevé' }).click();
+    await arm();
+    await plan.getByRole('button', { name: 'Non', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#usage-reading-save')?.disabled);
+    await disarmed('answering the question');
+    assert.ok(settingsPuts(writes).every((w) => decode(w).quota.readings.length === 2), 'nothing deleted');
   });
 });
