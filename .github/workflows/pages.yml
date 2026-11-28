@@ -2,7 +2,7 @@ name: Panneau
 on:
   push:
     branches: [main]
-    paths: ['panel/**', 'server/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', 'scripts/lib/ratelimit.mjs', 'scripts/lib/answer.mjs', 'scripts/lib/waits.mjs', 'scripts/lib/trust.mjs', 'scripts/lib/models.mjs', 'scripts/stamp-panel.mjs', '.github/workflows/pages.yml']
+    paths: ['panel/**', 'server/**', 'packs/catalog.json', 'defaults/**', 'scripts/lib/config-core.mjs', 'scripts/lib/ratelimit.mjs', 'scripts/lib/answer.mjs', 'scripts/lib/waits.mjs', 'scripts/lib/trust.mjs', 'scripts/lib/models.mjs', 'scripts/lib/prices.mjs', 'scripts/stamp-panel.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read

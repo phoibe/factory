@@ -7,6 +7,7 @@ import { errorText } from './errors.mjs';
 import { PROJECT_KEY, $, store, app, el, toast, resetSession, unsavedParts, show, selectTab, holdForBoard, boardFirst, provide } from './common.mjs';
 import './github.mjs';
 import './screen-general.mjs';
+import './screen-usage.mjs';
 import { recallProjects, loadProjects, checkProjects, refreshDots, renderProjectList } from './screen-projects.mjs';
 import { enterBoard, renderBoard, startLive, boardInfo } from './screen-board.mjs';
 import { resetChat, setChatServer } from './screen-chat.mjs';

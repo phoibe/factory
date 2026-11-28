@@ -28,7 +28,7 @@ Pas de spec à valider.
    performances, code mort ou dupliqué, écarts avec `PRODUCT.md`. Un relecteur qui échoue (pas de réponse, ou
    rapport inutilisable deux fois) repart sur le rôle `review` (description `[role:review] …`). Puis un sous-agent du rôle `review` fait la synthèse de
    leurs rapports (doublons, priorités, ce qui manque). Fais corriger chaque point par des sous-agents du rôle
-   `code` (skill `receiving-code-review`) ; pour un bug, le test qui échoue s'écrit d'abord. Puis une revue
+   `code` (`[role:code] [kind:review-fix] …`, skill `receiving-code-review`) ; pour un bug, le test qui échoue s'écrit d'abord. Puis une revue
    neuve des corrections par un sous-agent du rôle `review`, au plus {{maxLoops}} tours, en suivant
    `.factory/stages/code-review.md` : un problème ne bloque que s'il est prouvé (cette revue des corrections
    seulement, pas les relectures partie par partie ni leur synthèse).

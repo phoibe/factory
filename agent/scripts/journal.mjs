@@ -64,7 +64,8 @@ export function agentEntry(input) {
   // thinking. The key is always written: its presence tells a journal written since #559.
   const desc = String(i.description || '');
   const tag = desc.match(ROLE_TAG);
-  const label = String((tag ? desc.replace(tag[0], '') : desc) || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80);
+  // Issue #628: a [kind:<id>] right after the role is for the « Consommation » page, left out of the label.
+  const label = String((tag ? desc.replace(tag[0], '').replace(/^\s*\[\s*kind\s*:\s*[\w-]+\s*\]/i, '') : desc) || i.subagent_type || '').replace(/\s+/g, ' ').trim().replace(/@/g, '@\u200b').slice(0, 80);
   const entry = { kind: 'agent', model: i.model ? String(i.model) : null, effort: i.effort ? String(i.effort) : null, role: tag ? tag[1].toLowerCase() : null,
     ...(tag?.[2] ? { up: true } : {}), label };
   // Issue #417: a task of a large plan built at the same time as others works in its own copy (git worktree).

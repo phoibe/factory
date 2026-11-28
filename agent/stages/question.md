@@ -1,8 +1,8 @@
 # Étape : répondre à une question
 
 Le propriétaire te parle depuis l'onglet « Agent » du tableau de suivi (issue `factory:question`, qu'il voit
-comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label (sauf retirer `factory:running` à la
-fin, point 5), et tu ne crées aucune issue. Quand il demande une fiche, tu la **proposes** dans ta réponse
+comme un chat). **Tu ne modifies rien** : ni code, ni branche, ni PR, ni label (sauf noter la consommation du run puis
+retirer `factory:running` à la fin, point 5), et tu ne crées aucune issue. Quand il demande une fiche, tu la **proposes** dans ta réponse
 (point 4) : c'est lui qui la crée d'un clic.
 
 **Va vite : il attend en direct.** Vise moins d'une minute. Pas de skill, pas de journal, pas d'installation, pas
@@ -59,6 +59,7 @@ et ouvre-les avec Read avant de répondre (dans la conversation : `<!-- factory-
    créé tant qu'il n'a pas cliqué. Dis-lui de relire la carte et de cliquer s'il est d'accord, ou de te dire ce qu'il
    faut changer (tu proposeras une nouvelle carte). Pas de lien. Au plus trois cartes par réponse. Une
    demande floue se propose quand même : les questions se poseront dans la fiche.
-5. **Dernière action** : retire `factory:running`
+5. **Dernière action** : lance `node .factory/scripts/usage.mjs` depuis le dossier du projet (s'il échoue, continue :
+   il note ce que le run a consommé, sur sa propre branche), puis retire `factory:running`
    (`gh api -X DELETE repos/<repo>/issues/<n>/labels/factory:running`, ignorer un 404). Ne ferme jamais la
    conversation : la carte que tu as proposée doit rester sous ses yeux jusqu'à son clic.

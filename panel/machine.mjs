@@ -15,6 +15,17 @@ export async function readRunnersFile(api, path) {
   }
 }
 
+// The factory-runners branch, created (one README, no parent) when it does not exist yet: the general settings and the
+// « Consommation » page's plan readings are written on it.
+export async function ensureRunnersBranch(api) {
+  if (await api('/repos/phoibe/factory/branches/factory-runners').catch(() => null)) return;
+  const tree = await api('/repos/phoibe/factory/git/trees', { method: 'POST', body: JSON.stringify({ tree: [
+    { path: 'README.md', mode: '100644', type: 'blob', content: 'Réglage général et état du serveur de dev, écrits par la factory et le panneau. Ne pas fusionner.\n' },
+  ] }) });
+  const commit = await api('/repos/phoibe/factory/git/commits', { method: 'POST', body: JSON.stringify({ message: 'chore(factory): dev server branch', tree: tree.sha, parents: [] }) });
+  await api('/repos/phoibe/factory/git/refs', { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/factory-runners', sha: commit.sha }) }).catch((e) => { if (e.status !== 422) throw e; });
+}
+
 // The « Machine des tâches » line of the settings (issue #271), from the dev server check's status file.
 // `hash`: the project's key in that file (repoKey); `project`: its own setting, `default` follows `general`.
 // `created`: the repository's creation date; `now`: for tests (issue #504).

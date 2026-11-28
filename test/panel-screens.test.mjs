@@ -34,7 +34,7 @@ test('no part imports a name it does not use', () => {
   assert.deepEqual(unused, []);
 });
 
-const ORDER = ['common', 'github', 'screen-general', 'screen-projects', 'screen-board', 'screen-chat', 'screen-header', 'screen-rules', 'screen-login'];
+const ORDER = ['common', 'github', 'screen-general', 'screen-usage', 'screen-projects', 'screen-board', 'screen-chat', 'screen-header', 'screen-rules', 'screen-login'];
 
 test('app.mjs imports the parts in the documented order (the order of their reactions)', () => {
   const mine = imports(files['app.mjs']).map((i) => i.replace(/\.mjs$/, '')).filter((i) => ORDER.includes(i));
@@ -48,7 +48,7 @@ test('the entry point keeps no screen state: it declares no reset, no view react
 });
 
 test('every screen has its module, and every action provided is used', () => {
-  assert.deepEqual(screens, ['screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-login.mjs', 'screen-projects.mjs', 'screen-rules.mjs']);
+  assert.deepEqual(screens, ['screen-board.mjs', 'screen-chat.mjs', 'screen-general.mjs', 'screen-header.mjs', 'screen-login.mjs', 'screen-projects.mjs', 'screen-rules.mjs', 'screen-usage.mjs']);
   const provided = [...all.matchAll(/\bprovide\('([^']+)'/g)].map((m) => m[1]);
   const called = new Set([...all.matchAll(/\bcall\('([^']+)'/g)].map((m) => m[1]));
   assert.deepEqual(provided.filter((n) => !called.has(n)), []);

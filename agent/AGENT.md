@@ -97,6 +97,20 @@ et son modèle.
 | `simple` (Tâches simples) | `sonnet` | `low` | recherches dans le code, tâches mécaniques, captures d'écran |
 
 - Tout ce qui n'est pas listé : rôle `code`. Jamais `xhigh` ni `max`.
+- **Genre de tâche.** Juste après son rôle, la `description` dit aussi le genre de la tâche, pour la page
+  « Consommation » : `[role:<rôle>] [kind:<id>] <libellé>` (après `[role:plan:amont]` aussi), par exemple
+  `[role:review] [kind:review-round] Tour 2`. Un genre par rôle, parmi ceux-ci (`other` pour le reste) :
+
+  | Rôle | Genres |
+  | --- | --- |
+  | `plan` | `questions` (phase amont d'une demande), `plan` (écrire le plan), `bug` (analyse d'un bug), `framing` (cadrage) |
+  | `code` | `build` (construction), `task-review` (relecture d'une tâche), `design-critique` (critique du design), `review-fix` (corrections après relecture), `owner-fix` (corrections demandées par le propriétaire), `checks-fix` (corrections des contrôles) |
+  | `review` | `final-review` (relecture finale), `review-round` (tour après correction), `scope-check` (vérification de portée), `security` (revue de sécurité), `audit` (synthèse et relectures d'une review générale), `questions` (phase amont reprise par ce rôle, `[role:review:amont]`) |
+  | `audit` | `parts` (relecture partie par partie), `history` (lecture de l'historique) |
+  | `simple` | `research` (recherches), `screenshots` (captures d'écran) |
+  | tous | `other` (rien de ce qui précède) |
+
+  Toi, le pilote, tu es compté selon l'étape : `questions`, `build`, `fixes`, `audit` ou `other`.
 - **Tu ne fais que piloter.** Tu tournes sur le modèle de la routine, que la factory ne peut pas changer : tu
   délègues toujours la phase amont et l'écriture d'un plan à un sous-agent du rôle `plan`, et l'écriture du code à
   des sous-agents du rôle `code`, même pour une petite demande.
@@ -216,7 +230,8 @@ est oublié et tu reprends normalement.
 
 - Quand ton étape le dit, change les labels (voir « API GitHub »).
 - **La toute dernière action de chaque run**, même en cas d'échec : retirer `factory:running` de l'issue et
-  de la PR concernées. Rien après.
+  de la PR concernées. Rien après. Et juste avant : `node .factory/scripts/usage.mjs` depuis le dossier du projet
+  (s'il échoue, continue) : il note ce que le run a consommé sur la branche `claude/factory-usage`.
 - Ne traite pas les messages que le propriétaire écrit pendant ton run (la factory les a marqués 👀) : elle
   les traitera elle-même dès que tu retires `factory:running`. Ne fais jamais toi-même une transition que
   seule la factory fait : passer en construction après un « go », lancer les contrôles, fusionner.
