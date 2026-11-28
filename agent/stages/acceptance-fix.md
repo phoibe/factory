@@ -16,7 +16,7 @@ Le propriétaire a testé la preview et signale un problème.
    description de la PR a une ligne « Portée vérifiée » ou « Portée non prouvée », ou la correction touche elle-même à
    un sujet sensible ou aux ordres de bourse (critères de l'étape 4 ter de `build.md`). Elle se fait pendant l'étape 3,
    après la correction et ses tests, avant la revue et **avant de pousser** : refais-la sur cette correction comme à
-   l'étape 4 ter de `build.md` (sous-agent neuf du rôle `review`, description `[role:review] Vérification de portée`),
+   l'étape 4 ter de `build.md` (sous-agent neuf du rôle `review`, description `[role:review] [kind:scope-check] Vérification de portée`),
    puis ajoute ou mets à jour la ligne « Portée vérifiée : … » de la description de la PR et, tout en bas, le fait
    prouvé, la commande et son résultat, sans toucher au reste de la description.
    **Fait impossible à prouver sans toucher à du réel** : une fois l'étape 3 finie (revue par un sous-agent neuf,
@@ -27,7 +27,8 @@ Le propriétaire a testé la preview et signale un problème.
    termine par « Répondez « ok » ici, sur la PR, pour que la modification parte vers les contrôles automatiques, ou
    dites-moi ce qu'il faut regarder ou changer. » ; ne mets pas `factory:checks` et termine : l'étape 4 ne
    s'applique pas.
-3. Corrige (TDD si actif), revue par un sous-agent neuf (rôle `code`), passe design (`design-pass.md`) si l'interface
+3. Corrige (TDD si actif), revue par un sous-agent neuf (rôle `code`, description
+   `[role:code] [kind:task-review] …`), passe design (`design-pass.md`) si l'interface
    change, vérifications locales, push.
 4. Labels de la PR, **seulement si tu as poussé du code** : retire `factory:acceptance`. Si l'apparence a
    changé et que les captures sont actives, refais les captures (voir `screenshots.md`) ; dans tous les cas mets

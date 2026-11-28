@@ -7,8 +7,10 @@ première lecture de tout le code d'une review générale, à la revue de sécur
 ni aux relectures légères, sans tours ni escalade (correction de recette, retouche des captures, amélioration UI,
 relecture de chaque tâche d'un grand plan).
 
-Le relecteur reste un sous-agent neuf du rôle `review`, qui n'a pas écrit le code. Mets dans sa consigne qu'il lit ce
-fichier et suit « Ce que rend le relecteur » ; mets dans celle du sous-agent du rôle `code` qui corrige qu'il suit
+Le relecteur reste un sous-agent neuf du rôle `review`, qui n'a pas écrit le code (description
+`[role:review] [kind:final-review] …` pour la première revue, `[role:review] [kind:review-round] Tour <n>` pour les
+suivantes ; `[role:code] [kind:task-review] …` pour la relecture d'une tâche d'un grand plan). Mets dans sa consigne qu'il lit ce
+fichier et suit « Ce que rend le relecteur » ; mets dans celle du sous-agent du rôle `code` qui corrige (`[role:code] [kind:review-fix] …`) qu'il suit
 « Avant de corriger » et « Les simples remarques ». Ce guide prime sur les skills `requesting-code-review` et
 `receiving-code-review` là où ils disent autre chose : leurs niveaux (Critical, Important, Minor) ne décident pas de
 ce qui bloque.

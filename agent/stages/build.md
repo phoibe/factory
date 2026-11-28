@@ -21,17 +21,19 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
 3. **Parcours selon la taille** (ton estimation de l'étape 0). Pas de validation humaine du plan. Dans tous les cas,
    une relecture finale (étape 5, avec ses tours après correction) par un sous-agent du rôle `review`, et les mêmes tests, contrôles,
    passe design et captures :
-   - **petite** : pas de plan écrit ; un sous-agent du rôle `code` l'écrit d'une traite (tu ne codes plus toi-même,
+   - **petite** : pas de plan écrit ; un sous-agent du rôle `code` (description `[role:code] [kind:build] …`) l'écrit
+     d'une traite (tu ne codes plus toi-même,
      voir « Modèles par rôle » dans AGENT.md). Si elle touche finalement plus de 3 fichiers de
      code, elle devient moyenne : fais écrire le plan avant la PR (le verrou le demande) et publie une nouvelle estimation
      `size=medium` (même format), sans déranger le propriétaire ;
-   - **moyenne** (si l'étape plan est active) : un sous-agent du rôle `plan` écrit le plan (skill `writing-plans`),
+   - **moyenne** (si l'étape plan est active) : un sous-agent du rôle `plan` (description `[role:plan] [kind:plan] Plan`)
+     écrit le plan (skill `writing-plans`),
      court, enregistré dans `docs/plans/issue-<n>.md` ; puis **un seul** sous-agent du rôle `code` l'exécute
      **d'une traite** (skill `executing-plans`), sans confier chaque tâche à un sous-agent ni la faire relire
      séparément ;
-   - **grande** (si l'étape plan est active) : un sous-agent du rôle `plan` écrit le plan (skill `writing-plans`)
+   - **grande** (si l'étape plan est active) : un sous-agent du rôle `plan` (`[role:plan] [kind:plan] Plan`) écrit le plan (skill `writing-plans`)
      dans `docs/plans/issue-<n>.md`, puis `subagent-driven-development` : chaque tâche confiée à un sous-agent du
-     rôle `code` (rôle `plan` pour une tâche d'architecture) et relue.
+     rôle `code` (`[role:code] [kind:build] Tâche <N>` ; rôle `plan` pour une tâche d'architecture) et relue (`[role:code] [kind:task-review] …`).
      **Tâches parallélisables** : dans le plan, marque chaque tâche « parallélisable » (elle n'attend aucune autre
      tâche et ne touche ni les mêmes fichiers ni les mêmes tests que les autres tâches encore à faire) ou
      « séquentielle (après la tâche N) ». Puis, avec le skill `dispatching-parallel-agents` :
@@ -79,7 +81,7 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    qu'elle change le design ou la vision. Aucun réglage par projet. Demande non concernée : saute cette étape, sans
    rien ajouter au résumé.
    Une fois le code et ses tests écrits, avant la relecture finale (étape 5), lance un **sous-agent neuf** du rôle
-   `review` (description `[role:review] Vérification de portée`), qui n'a pas écrit le code. Sa consigne :
+   `review` (description `[role:review] [kind:scope-check] Vérification de portée`), qui n'a pas écrit le code. Sa consigne :
    - chercher ce que le changement peut casser **en dehors des fichiers modifiés** : les autres endroits qui se
      servent du code touché, les fichiers et données partagés, les écrans qui affichent la même information, les
      tâches planifiées qui lisent ce qui a changé ;
@@ -112,17 +114,17 @@ Le propriétaire a validé la spec (dernier commentaire `<!-- factory-spec -->`)
    ignorée), et le message de l'étape 10 n'est pas posté : cette question le remplace. Rien ne part vers les contrôles
    ni vers l'intégration sans son « ok » ; la suite est dans `resume.md`.
 5. **Revue de code** (si active) : charge d'abord toi-même le skill `requesting-code-review` (outil Skill),
-   puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale) qui n'a pas écrit le code, avec un contexte neuf : il
+   puis lance comme il l'explique un **sous-agent** (rôle `review` : c'est la relecture finale, description `[role:review] [kind:final-review] Relecture finale`) qui n'a pas écrit le code, avec un contexte neuf : il
    relit le diff contre la spec et les standards du dépôt, en suivant `.factory/stages/code-review.md` (mets-le dans
    sa consigne) : un problème ne bloque que s'il est prouvé, le reste est une simple remarque. Fais vérifier puis
-   corriger les problèmes bloquants confirmés (skill `receiving-code-review`, même guide dans la consigne), puis
-   relance une revue neuve. Au plus {{maxLoops}} tours, comptés comme le dit le guide.
+   corriger les problèmes bloquants confirmés (skill `receiving-code-review`, même guide dans la consigne ; sous-agent
+   `[role:code] [kind:review-fix] …`), puis relance une revue neuve (`[role:review] [kind:review-round] Tour <n>`). Au plus {{maxLoops}} tours, comptés comme le dit le guide.
    S'il reste un problème bloquant confirmé après le dernier tour : ouvre quand même la PR en brouillon, explique le
    blocage au propriétaire en langage simple sur l'issue, en disant comment le problème a été démontré, mets
    `factory:blocked` et termine.
 5 bis. **Revue de sécurité**, seulement si la spec est **sensible** (connexion, codes, comptes, données
    personnelles, argent, partage, suppression de données : mêmes critères que `spec.md`) : skill
-   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (rôle `review`) relit le diff uniquement
+   `security-review` (outil Skill) sur le diff ; s'il n'existe pas, un sous-agent neuf (rôle `review`, description `[role:review] [kind:security] Sécurité`) relit le diff uniquement
    sous l'angle sécurité (accès sans droit, données d'un autre visibles, injection, secrets, force brute).
    Corrige ce qu'il trouve avec un test qui échoue d'abord, et ajoute une ligne « Sécurité » au résumé de la PR.
 6. **Passe design** (si active et si l'interface change) : suis `.factory/stages/design-pass.md`
