@@ -115,3 +115,4 @@
 {"t":"2026-11-28T12:29:44.996Z","kind":"test","cmd":"CHROMIUM_PATH=… timeout 300 node --test e2e/general-settings.e2e.mjs 2>&1 | grep -E \"^(not ok|# (pass|fail))\"; CHROMIUM_PATH=… timeout 300 npm run test:a11y 2>&1 | grep -E \"^(not ok|# (pass|fail))|^\\s","ok":true,"id":"toolu_018NLJAyLbzpozRZWqDrQAtP"}
 {"t":"2026-11-28T12:30:16.434Z","kind":"agent","model":"opus","effort":"high","role":"review","label":"[kind:review-round] Relecture tour 3","id":"toolu_012CQNmjouwixe7ALPfuhQr7"}
 {"t":"2026-11-28T12:30:28.117Z","kind":"agent","model":"sonnet","effort":"low","role":"simple","label":"[kind:screenshots] Captures avant/après","id":"toolu_015u5hfrV5pvKKQT4oxi4B5S"}
+{"t":"2026-11-28T12:31:05.393Z","kind":"test","cmd":"git rev-parse HEAD && CHROMIUM_PATH=… timeout 300 node --test e2e/usage.e2e.mjs 2>&1 | grep -E \"^(not ok|ok|# )\" ; node --test test/panel-quota.test.mjs 2>&1 | tail -8","ok":true,"id":"toolu_01Py7EXHHxN5itdAM8Nz5Cy6"}
